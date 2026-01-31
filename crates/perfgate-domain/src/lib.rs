@@ -337,6 +337,177 @@ mod tests {
                 prop_assert_eq!(summary.median, value, "median should equal the single value");
             }
         }
+
+        // =====================================================================
+        // Property 2: Warmup Sample Exclusion
+        // =====================================================================
+
+        /// Helper to generate a non-warmup sample with arbitrary wall_ms
+        fn non_warmup_sample(wall_ms: u64) -> Sample {
+            Sample {
+                wall_ms,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            }
+        }
+
+        /// Helper to generate a warmup sample with arbitrary wall_ms
+        fn warmup_sample(wall_ms: u64) -> Sample {
+            Sample {
+                wall_ms,
+                exit_code: 0,
+                warmup: true,
+                timed_out: false,
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            }
+        }
+
+        proptest! {
+            /// **Validates: Requirements 3.4**
+            ///
+            /// Property 2: Warmup Sample Exclusion
+            ///
+            /// For any list of samples containing both warmup and non-warmup samples,
+            /// the computed statistics SHALL only reflect non-warmup samples.
+            /// Adding or modifying warmup samples SHALL NOT change the computed statistics.
+            #[test]
+            fn prop_warmup_samples_excluded_from_stats(
+                // Generate 1-20 non-warmup sample wall_ms values
+                non_warmup_wall_ms in prop::collection::vec(1u64..10000, 1..20),
+                // Generate 0-10 warmup sample wall_ms values (can be any values)
+                warmup_wall_ms in prop::collection::vec(any::<u64>(), 0..10),
+            ) {
+                // Create non-warmup samples
+                let non_warmup_samples: Vec<Sample> = non_warmup_wall_ms
+                    .iter()
+                    .map(|&ms| non_warmup_sample(ms))
+                    .collect();
+
+                // Create warmup samples
+                let warmup_samples: Vec<Sample> = warmup_wall_ms
+                    .iter()
+                    .map(|&ms| warmup_sample(ms))
+                    .collect();
+
+                // Compute stats with only non-warmup samples
+                let stats_without_warmup = compute_stats(&non_warmup_samples, None)
+                    .expect("non-empty non-warmup samples should succeed");
+
+                // Combine non-warmup and warmup samples
+                let mut combined_samples = non_warmup_samples.clone();
+                combined_samples.extend(warmup_samples.clone());
+
+                // Compute stats with combined samples (warmup + non-warmup)
+                let stats_with_warmup = compute_stats(&combined_samples, None)
+                    .expect("combined samples with non-warmup should succeed");
+
+                // Property: Statistics should be identical regardless of warmup samples
+                prop_assert_eq!(
+                    stats_without_warmup.wall_ms, stats_with_warmup.wall_ms,
+                    "wall_ms stats should be identical with or without warmup samples"
+                );
+                prop_assert_eq!(
+                    stats_without_warmup.max_rss_kb, stats_with_warmup.max_rss_kb,
+                    "max_rss_kb stats should be identical with or without warmup samples"
+                );
+                prop_assert_eq!(
+                    stats_without_warmup.throughput_per_s, stats_with_warmup.throughput_per_s,
+                    "throughput_per_s stats should be identical with or without warmup samples"
+                );
+            }
+
+            /// **Validates: Requirements 3.4**
+            ///
+            /// Property 2: Warmup Sample Exclusion (modification variant)
+            ///
+            /// Modifying warmup sample values SHALL NOT change the computed statistics.
+            #[test]
+            fn prop_modifying_warmup_samples_does_not_affect_stats(
+                // Generate 1-10 non-warmup sample wall_ms values
+                non_warmup_wall_ms in prop::collection::vec(1u64..10000, 1..10),
+                // Generate 1-5 warmup sample wall_ms values (original)
+                warmup_wall_ms_original in prop::collection::vec(any::<u64>(), 1..5),
+                // Generate 1-5 warmup sample wall_ms values (modified - different values)
+                warmup_wall_ms_modified in prop::collection::vec(any::<u64>(), 1..5),
+            ) {
+                // Create non-warmup samples
+                let non_warmup_samples: Vec<Sample> = non_warmup_wall_ms
+                    .iter()
+                    .map(|&ms| non_warmup_sample(ms))
+                    .collect();
+
+                // Create original warmup samples
+                let warmup_samples_original: Vec<Sample> = warmup_wall_ms_original
+                    .iter()
+                    .map(|&ms| warmup_sample(ms))
+                    .collect();
+
+                // Create modified warmup samples (different values)
+                let warmup_samples_modified: Vec<Sample> = warmup_wall_ms_modified
+                    .iter()
+                    .map(|&ms| warmup_sample(ms))
+                    .collect();
+
+                // Combine with original warmup samples
+                let mut samples_with_original_warmup = non_warmup_samples.clone();
+                samples_with_original_warmup.extend(warmup_samples_original);
+
+                // Combine with modified warmup samples
+                let mut samples_with_modified_warmup = non_warmup_samples.clone();
+                samples_with_modified_warmup.extend(warmup_samples_modified);
+
+                // Compute stats with original warmup samples
+                let stats_original = compute_stats(&samples_with_original_warmup, None)
+                    .expect("samples with original warmup should succeed");
+
+                // Compute stats with modified warmup samples
+                let stats_modified = compute_stats(&samples_with_modified_warmup, None)
+                    .expect("samples with modified warmup should succeed");
+
+                // Property: Statistics should be identical regardless of warmup sample values
+                prop_assert_eq!(
+                    stats_original.wall_ms, stats_modified.wall_ms,
+                    "wall_ms stats should be identical regardless of warmup sample values"
+                );
+            }
+
+            /// **Validates: Requirements 3.4**
+            ///
+            /// Property 2: Warmup Sample Exclusion (only warmup samples error)
+            ///
+            /// If all samples are warmup samples, compute_stats SHALL return an error.
+            #[test]
+            fn prop_only_warmup_samples_returns_error(
+                warmup_wall_ms in prop::collection::vec(any::<u64>(), 1..10),
+            ) {
+                // Create only warmup samples
+                let warmup_only_samples: Vec<Sample> = warmup_wall_ms
+                    .iter()
+                    .map(|&ms| warmup_sample(ms))
+                    .collect();
+
+                // Compute stats should fail with NoSamples error
+                let result = compute_stats(&warmup_only_samples, None);
+
+                prop_assert!(
+                    result.is_err(),
+                    "compute_stats should return error when all samples are warmup"
+                );
+
+                // Verify it's specifically a NoSamples error
+                match result {
+                    Err(DomainError::NoSamples) => { /* expected */ }
+                    Err(other) => prop_assert!(false, "expected NoSamples error, got: {:?}", other),
+                    Ok(_) => prop_assert!(false, "expected error, got Ok"),
+                }
+            }
+        }
     }
 
     #[test]
