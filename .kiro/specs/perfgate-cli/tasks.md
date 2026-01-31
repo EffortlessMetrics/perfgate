@@ -37,7 +37,7 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
     - Generate random u64 vectors, verify median/min/max are correct
     - **Validates: Requirements 3.1, 3.2, 3.3**
   
-  - [-] 3.3 Write property test for warmup exclusion
+  - [x] 3.3 Write property test for warmup exclusion
     - **Property 2: Warmup Sample Exclusion**
     - Generate samples with warmup flags, verify warmup samples don't affect stats
     - **Validates: Requirements 3.4**
