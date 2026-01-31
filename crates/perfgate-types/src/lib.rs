@@ -548,4 +548,238 @@ mod property_tests {
             }
         }
     }
+
+    // --- Strategies for CompareReceipt ---
+
+    // Strategy for CompareRef
+    fn compare_ref_strategy() -> impl Strategy<Value = CompareRef> {
+        (
+            proptest::option::of(non_empty_string()),
+            proptest::option::of(non_empty_string()),
+        )
+            .prop_map(|(path, run_id)| CompareRef { path, run_id })
+    }
+
+    // Strategy for Direction
+    fn direction_strategy() -> impl Strategy<Value = Direction> {
+        prop_oneof![Just(Direction::Lower), Just(Direction::Higher),]
+    }
+
+    // Strategy for Budget - using finite positive floats for thresholds
+    fn budget_strategy() -> impl Strategy<Value = Budget> {
+        (0.01f64..1.0, 0.01f64..1.0, direction_strategy()).prop_map(
+            |(threshold, warn_factor, direction)| {
+                // warn_threshold should be <= threshold
+                let warn_threshold = threshold * warn_factor;
+                Budget {
+                    threshold,
+                    warn_threshold,
+                    direction,
+                }
+            },
+        )
+    }
+
+    // Strategy for MetricStatus
+    fn metric_status_strategy() -> impl Strategy<Value = MetricStatus> {
+        prop_oneof![
+            Just(MetricStatus::Pass),
+            Just(MetricStatus::Warn),
+            Just(MetricStatus::Fail),
+        ]
+    }
+
+    // Strategy for Delta - using finite positive floats
+    fn delta_strategy() -> impl Strategy<Value = Delta> {
+        (
+            0.1f64..10000.0, // baseline (positive, non-zero)
+            0.1f64..10000.0, // current (positive, non-zero)
+            metric_status_strategy(),
+        )
+            .prop_map(|(baseline, current, status)| {
+                let ratio = current / baseline;
+                let pct = (current - baseline) / baseline;
+                let regression = if pct > 0.0 { pct } else { 0.0 };
+                Delta {
+                    baseline,
+                    current,
+                    ratio,
+                    pct,
+                    regression,
+                    status,
+                }
+            })
+    }
+
+    // Strategy for VerdictStatus
+    fn verdict_status_strategy() -> impl Strategy<Value = VerdictStatus> {
+        prop_oneof![
+            Just(VerdictStatus::Pass),
+            Just(VerdictStatus::Warn),
+            Just(VerdictStatus::Fail),
+        ]
+    }
+
+    // Strategy for VerdictCounts
+    fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
+        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
+            pass,
+            warn,
+            fail,
+        })
+    }
+
+    // Strategy for Verdict
+    fn verdict_strategy() -> impl Strategy<Value = Verdict> {
+        (
+            verdict_status_strategy(),
+            verdict_counts_strategy(),
+            proptest::collection::vec("[a-zA-Z0-9 ]{1,50}", 0..5),
+        )
+            .prop_map(|(status, counts, reasons)| Verdict {
+                status,
+                counts,
+                reasons,
+            })
+    }
+
+    // Strategy for Metric
+    fn metric_strategy() -> impl Strategy<Value = Metric> {
+        prop_oneof![
+            Just(Metric::WallMs),
+            Just(Metric::MaxRssKb),
+            Just(Metric::ThroughputPerS),
+        ]
+    }
+
+    // Strategy for BTreeMap<Metric, Budget>
+    fn budgets_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Budget>> {
+        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 0..4)
+    }
+
+    // Strategy for BTreeMap<Metric, Delta>
+    fn deltas_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Delta>> {
+        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 0..4)
+    }
+
+    // Strategy for CompareReceipt
+    fn compare_receipt_strategy() -> impl Strategy<Value = CompareReceipt> {
+        (
+            tool_info_strategy(),
+            bench_meta_strategy(),
+            compare_ref_strategy(),
+            compare_ref_strategy(),
+            budgets_map_strategy(),
+            deltas_map_strategy(),
+            verdict_strategy(),
+        )
+            .prop_map(
+                |(tool, bench, baseline_ref, current_ref, budgets, deltas, verdict)| {
+                    CompareReceipt {
+                        schema: COMPARE_SCHEMA_V1.to_string(),
+                        tool,
+                        bench,
+                        baseline_ref,
+                        current_ref,
+                        budgets,
+                        deltas,
+                        verdict,
+                    }
+                },
+            )
+    }
+
+    // Helper function for comparing f64 values with tolerance
+    fn f64_approx_eq(a: f64, b: f64) -> bool {
+        if a == 0.0 && b == 0.0 {
+            true
+        } else {
+            let max_val = a.abs().max(b.abs());
+            if max_val == 0.0 {
+                true
+            } else {
+                (a - b).abs() / max_val < 1e-10
+            }
+        }
+    }
+
+    // **Property 8: Serialization Round-Trip (CompareReceipt)**
+    //
+    // For any valid CompareReceipt, serializing to JSON then deserializing
+    // SHALL produce an equivalent value.
+    //
+    // **Validates: Requirements 10.2**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn compare_receipt_serialization_round_trip(receipt in compare_receipt_strategy()) {
+            // Serialize to JSON
+            let json = serde_json::to_string(&receipt)
+                .expect("CompareReceipt should serialize to JSON");
+
+            // Deserialize back
+            let deserialized: CompareReceipt = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to CompareReceipt");
+
+            // Compare non-f64 fields directly
+            prop_assert_eq!(&receipt.schema, &deserialized.schema);
+            prop_assert_eq!(&receipt.tool, &deserialized.tool);
+            prop_assert_eq!(&receipt.bench, &deserialized.bench);
+            prop_assert_eq!(&receipt.baseline_ref, &deserialized.baseline_ref);
+            prop_assert_eq!(&receipt.current_ref, &deserialized.current_ref);
+            prop_assert_eq!(&receipt.verdict, &deserialized.verdict);
+
+            // Compare budgets map - contains f64 fields
+            prop_assert_eq!(receipt.budgets.len(), deserialized.budgets.len());
+            for (metric, orig_budget) in &receipt.budgets {
+                let deser_budget = deserialized.budgets.get(metric)
+                    .expect("Budget metric should exist in deserialized");
+                prop_assert!(
+                    f64_approx_eq(orig_budget.threshold, deser_budget.threshold),
+                    "Budget threshold mismatch for {:?}: {} vs {}",
+                    metric, orig_budget.threshold, deser_budget.threshold
+                );
+                prop_assert!(
+                    f64_approx_eq(orig_budget.warn_threshold, deser_budget.warn_threshold),
+                    "Budget warn_threshold mismatch for {:?}: {} vs {}",
+                    metric, orig_budget.warn_threshold, deser_budget.warn_threshold
+                );
+                prop_assert_eq!(orig_budget.direction, deser_budget.direction);
+            }
+
+            // Compare deltas map - contains f64 fields
+            prop_assert_eq!(receipt.deltas.len(), deserialized.deltas.len());
+            for (metric, orig_delta) in &receipt.deltas {
+                let deser_delta = deserialized.deltas.get(metric)
+                    .expect("Delta metric should exist in deserialized");
+                prop_assert!(
+                    f64_approx_eq(orig_delta.baseline, deser_delta.baseline),
+                    "Delta baseline mismatch for {:?}: {} vs {}",
+                    metric, orig_delta.baseline, deser_delta.baseline
+                );
+                prop_assert!(
+                    f64_approx_eq(orig_delta.current, deser_delta.current),
+                    "Delta current mismatch for {:?}: {} vs {}",
+                    metric, orig_delta.current, deser_delta.current
+                );
+                prop_assert!(
+                    f64_approx_eq(orig_delta.ratio, deser_delta.ratio),
+                    "Delta ratio mismatch for {:?}: {} vs {}",
+                    metric, orig_delta.ratio, deser_delta.ratio
+                );
+                prop_assert!(
+                    f64_approx_eq(orig_delta.pct, deser_delta.pct),
+                    "Delta pct mismatch for {:?}: {} vs {}",
+                    metric, orig_delta.pct, deser_delta.pct
+                );
+                prop_assert!(
+                    f64_approx_eq(orig_delta.regression, deser_delta.regression),
+                    "Delta regression mismatch for {:?}: {} vs {}",
+                    metric, orig_delta.regression, deser_delta.regression
+                );
+                prop_assert_eq!(orig_delta.status, deser_delta.status);
+            }
+        }
+    }
 }

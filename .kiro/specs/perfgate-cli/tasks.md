@@ -62,7 +62,7 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
     - Generate arbitrary RunReceipt, serialize to JSON, deserialize, compare
     - **Validates: Requirements 10.1**
   
-  - [~] 4.3 Write property test for CompareReceipt round-trip
+  - [x] 4.3 Write property test for CompareReceipt round-trip
     - **Property 8: Serialization Round-Trip (CompareReceipt)**
     - Generate arbitrary CompareReceipt, serialize to JSON, deserialize, compare
     - **Validates: Requirements 10.2**
