@@ -1,0 +1,18 @@
+[package]
+name = "perfgate-app"
+description = "Application layer for perfgate (use-cases)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+perfgate-types = { path = "../perfgate-types" }
+perfgate-domain = { path = "../perfgate-domain" }
+perfgate-adapters = { path = "../perfgate-adapters" }
+anyhow.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

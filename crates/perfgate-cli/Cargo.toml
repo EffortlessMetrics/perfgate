@@ -1,0 +1,22 @@
+[package]
+name = "perfgate"
+description = "Perf budgets and baseline diffs for CI / PR bots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+perfgate-types = { path = "../perfgate-types" }
+perfgate-domain = { path = "../perfgate-domain" }
+perfgate-app = { path = "../perfgate-app" }
+anyhow.workspace = true
+clap.workspace = true
+humantime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true

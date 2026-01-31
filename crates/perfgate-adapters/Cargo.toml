@@ -1,0 +1,19 @@
+[package]
+name = "perfgate-adapters"
+description = "Std adapters for perfgate (process runner, system metrics, filesystem)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+perfgate-types = { path = "../perfgate-types" }
+anyhow.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
