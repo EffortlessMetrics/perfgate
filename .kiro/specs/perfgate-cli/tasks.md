@@ -32,12 +32,12 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
     - Add `proptest = "1"` to dev-dependencies
     - _Requirements: 3.1_
   
-  - [-] 3.2 Write property test for statistics computation
+  - [x] 3.2 Write property test for statistics computation
     - **Property 1: Statistics Computation Correctness**
     - Generate random u64 vectors, verify median/min/max are correct
     - **Validates: Requirements 3.1, 3.2, 3.3**
   
-  - [~] 3.3 Write property test for warmup exclusion
+  - [-] 3.3 Write property test for warmup exclusion
     - **Property 2: Warmup Sample Exclusion**
     - Generate samples with warmup flags, verify warmup samples don't affect stats
     - **Validates: Requirements 3.4**

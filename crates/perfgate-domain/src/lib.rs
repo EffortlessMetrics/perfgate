@@ -67,7 +67,10 @@ fn median_f64_sorted(sorted: &[f64]) -> f64 {
 /// Compute perfgate stats from samples.
 ///
 /// Warmup samples (`sample.warmup == true`) are excluded.
-pub fn compute_stats(samples: &[perfgate_types::Sample], work_units: Option<u64>) -> Result<Stats, DomainError> {
+pub fn compute_stats(
+    samples: &[perfgate_types::Sample],
+    work_units: Option<u64>,
+) -> Result<Stats, DomainError> {
     let measured: Vec<&perfgate_types::Sample> = samples.iter().filter(|s| !s.warmup).collect();
     if measured.is_empty() {
         return Err(DomainError::NoSamples);
@@ -225,11 +228,115 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
 mod tests {
     use super::*;
     use perfgate_types::{Sample, U64Summary};
+    use proptest::prelude::*;
 
     #[test]
     fn summarize_u64_median_even_rounds_down() {
         let s = summarize_u64(&[10, 20]).unwrap();
         assert_eq!(s.median, 15);
+    }
+
+    // =========================================================================
+    // Property-Based Tests
+    // =========================================================================
+
+    /// **Validates: Requirements 3.1, 3.2, 3.3**
+    ///
+    /// Property 1: Statistics Computation Correctness
+    ///
+    /// For any non-empty list of u64 values, the computed summary SHALL have:
+    /// - `median` equal to the middle value (or average of two middle values for even-length lists)
+    /// - `min` equal to the smallest value
+    /// - `max` equal to the largest value
+    mod property_tests {
+        use super::*;
+
+        /// Helper function to compute the expected median for a sorted slice.
+        /// For even-length lists, computes the average of the two middle values,
+        /// matching the implementation's rounding behavior.
+        fn expected_median(sorted: &[u64]) -> u64 {
+            let n = sorted.len();
+            let mid = n / 2;
+            if n % 2 == 1 {
+                sorted[mid]
+            } else {
+                // Match the implementation's rounding: avoid overflow by splitting
+                let a = sorted[mid - 1];
+                let b = sorted[mid];
+                (a / 2) + (b / 2) + ((a % 2 + b % 2) / 2)
+            }
+        }
+
+        proptest! {
+            /// **Validates: Requirements 3.1, 3.2, 3.3**
+            ///
+            /// Property 1: Statistics Computation Correctness
+            ///
+            /// For any non-empty list of u64 values:
+            /// - min equals the smallest value
+            /// - max equals the largest value
+            /// - median equals the middle value (or average of two middle for even-length)
+            #[test]
+            fn prop_summarize_u64_correctness(values in prop::collection::vec(any::<u64>(), 1..100)) {
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                // Sort the values to compute expected results
+                let mut sorted = values.clone();
+                sorted.sort_unstable();
+
+                // Property: min is the smallest value
+                let expected_min = *sorted.first().unwrap();
+                prop_assert_eq!(
+                    summary.min, expected_min,
+                    "min should be the smallest value"
+                );
+
+                // Property: max is the largest value
+                let expected_max = *sorted.last().unwrap();
+                prop_assert_eq!(
+                    summary.max, expected_max,
+                    "max should be the largest value"
+                );
+
+                // Property: median is correct
+                let expected_med = expected_median(&sorted);
+                prop_assert_eq!(
+                    summary.median, expected_med,
+                    "median should be the middle value (or average for even-length)"
+                );
+            }
+
+            /// **Validates: Requirements 3.1, 3.2, 3.3**
+            ///
+            /// Property: min <= median <= max always holds
+            #[test]
+            fn prop_summarize_u64_ordering(values in prop::collection::vec(any::<u64>(), 1..100)) {
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                prop_assert!(
+                    summary.min <= summary.median,
+                    "min ({}) should be <= median ({})",
+                    summary.min, summary.median
+                );
+                prop_assert!(
+                    summary.median <= summary.max,
+                    "median ({}) should be <= max ({})",
+                    summary.median, summary.max
+                );
+            }
+
+            /// **Validates: Requirements 3.1, 3.2, 3.3**
+            ///
+            /// Property: For single-element vectors, min == median == max
+            #[test]
+            fn prop_summarize_u64_single_element(value: u64) {
+                let summary = summarize_u64(&[value]).expect("single element should succeed");
+
+                prop_assert_eq!(summary.min, value, "min should equal the single value");
+                prop_assert_eq!(summary.max, value, "max should equal the single value");
+                prop_assert_eq!(summary.median, value, "median should equal the single value");
+            }
+        }
     }
 
     #[test]
@@ -256,18 +363,33 @@ mod tests {
         ];
 
         let stats = compute_stats(&samples, None).unwrap();
-        assert_eq!(stats.wall_ms, U64Summary { median: 200, min: 200, max: 200 });
+        assert_eq!(
+            stats.wall_ms,
+            U64Summary {
+                median: 200,
+                min: 200,
+                max: 200
+            }
+        );
     }
 
     #[test]
     fn compare_lower_is_worse_regression_is_positive_pct() {
         let baseline = Stats {
-            wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+            wall_ms: U64Summary {
+                median: 1000,
+                min: 1000,
+                max: 1000,
+            },
             max_rss_kb: None,
             throughput_per_s: None,
         };
         let current = Stats {
-            wall_ms: U64Summary { median: 1100, min: 1100, max: 1100 },
+            wall_ms: U64Summary {
+                median: 1100,
+                min: 1100,
+                max: 1100,
+            },
             max_rss_kb: None,
             throughput_per_s: None,
         };
@@ -275,7 +397,11 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(
             Metric::WallMs,
-            Budget { threshold: 0.20, warn_threshold: 0.18, direction: Direction::Lower },
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.18,
+                direction: Direction::Lower,
+            },
         );
 
         let c = compare_stats(&baseline, &current, &budgets).unwrap();
@@ -287,20 +413,40 @@ mod tests {
     #[test]
     fn compare_higher_is_better_regression_is_negative_pct() {
         let baseline = Stats {
-            wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+            wall_ms: U64Summary {
+                median: 1000,
+                min: 1000,
+                max: 1000,
+            },
             max_rss_kb: None,
-            throughput_per_s: Some(F64Summary { median: 100.0, min: 100.0, max: 100.0 }),
+            throughput_per_s: Some(F64Summary {
+                median: 100.0,
+                min: 100.0,
+                max: 100.0,
+            }),
         };
         let current = Stats {
-            wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+            wall_ms: U64Summary {
+                median: 1000,
+                min: 1000,
+                max: 1000,
+            },
             max_rss_kb: None,
-            throughput_per_s: Some(F64Summary { median: 92.0, min: 92.0, max: 92.0 }),
+            throughput_per_s: Some(F64Summary {
+                median: 92.0,
+                min: 92.0,
+                max: 92.0,
+            }),
         };
 
         let mut budgets = BTreeMap::new();
         budgets.insert(
             Metric::ThroughputPerS,
-            Budget { threshold: 0.15, warn_threshold: 0.135, direction: Direction::Higher },
+            Budget {
+                threshold: 0.15,
+                warn_threshold: 0.135,
+                direction: Direction::Higher,
+            },
         );
 
         let c = compare_stats(&baseline, &current, &budgets).unwrap();
