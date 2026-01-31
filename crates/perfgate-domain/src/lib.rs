@@ -227,7 +227,10 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{Sample, U64Summary};
+    use perfgate_types::{
+        Budget, Direction, F64Summary, Metric, MetricStatus, Sample, Stats, U64Summary,
+        VerdictStatus,
+    };
     use proptest::prelude::*;
 
     #[test]
@@ -506,6 +509,910 @@ mod tests {
                     Err(other) => prop_assert!(false, "expected NoSamples error, got: {:?}", other),
                     Ok(_) => prop_assert!(false, "expected error, got Ok"),
                 }
+            }
+        }
+
+        // =====================================================================
+        // Property 4: Metric Status Determination
+        // =====================================================================
+
+        /// Helper to compute expected regression value based on direction.
+        ///
+        /// For Direction::Lower: regression = max(0, (current - baseline) / baseline)
+        /// For Direction::Higher: regression = max(0, (baseline - current) / baseline)
+        fn compute_regression(baseline: f64, current: f64, direction: Direction) -> f64 {
+            let pct = (current - baseline) / baseline;
+            match direction {
+                Direction::Lower => pct.max(0.0),
+                Direction::Higher => (-pct).max(0.0),
+            }
+        }
+
+        /// Helper to compute expected status based on regression and thresholds.
+        fn expected_status(regression: f64, threshold: f64, warn_threshold: f64) -> MetricStatus {
+            if regression > threshold {
+                MetricStatus::Fail
+            } else if regression >= warn_threshold {
+                MetricStatus::Warn
+            } else {
+                MetricStatus::Pass
+            }
+        }
+
+        /// Strategy to generate valid threshold pairs where warn_threshold <= threshold.
+        fn threshold_pair_strategy() -> impl Strategy<Value = (f64, f64)> {
+            // Generate threshold in range (0.0, 1.0] and warn_factor in range [0.0, 1.0]
+            (0.01f64..1.0, 0.0f64..=1.0).prop_map(|(threshold, warn_factor)| {
+                let warn_threshold = threshold * warn_factor;
+                (threshold, warn_threshold)
+            })
+        }
+
+        /// Strategy to generate a valid baseline value (must be > 0).
+        fn baseline_strategy() -> impl Strategy<Value = f64> {
+            // Use positive values, avoiding very small values that could cause precision issues
+            1.0f64..10000.0
+        }
+
+        /// Strategy to generate a current value (can be any positive value).
+        fn current_strategy() -> impl Strategy<Value = f64> {
+            // Use positive values
+            0.1f64..20000.0
+        }
+
+        proptest! {
+            /// **Validates: Requirements 5.1, 5.2, 5.3**
+            ///
+            /// Property 4: Metric Status Determination
+            ///
+            /// For any baseline value, current value, threshold, warn_threshold, and direction:
+            /// - If regression > threshold, status SHALL be Fail
+            /// - If warn_threshold <= regression <= threshold, status SHALL be Warn
+            /// - If regression < warn_threshold, status SHALL be Pass
+            #[test]
+            fn prop_metric_status_determination_lower_is_better(
+                baseline in baseline_strategy(),
+                current in current_strategy(),
+                (threshold, warn_threshold) in threshold_pair_strategy(),
+            ) {
+                let direction = Direction::Lower;
+
+                // Create stats for baseline and current
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: baseline as u64,
+                        min: baseline as u64,
+                        max: baseline as u64,
+                    },
+                    max_rss_kb: None,
+                    throughput_per_s: None,
+                };
+
+                let current_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: current as u64,
+                        min: current as u64,
+                        max: current as u64,
+                    },
+                    max_rss_kb: None,
+                    throughput_per_s: None,
+                };
+
+                // Create budget with the generated thresholds
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction,
+                    },
+                );
+
+                // Compare stats
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed with valid inputs");
+
+                // Get the delta for WallMs
+                let delta = comparison.deltas.get(&Metric::WallMs)
+                    .expect("WallMs delta should exist");
+
+                // Verify the status matches expected
+                // Note: We use the actual median values (as u64) for comparison,
+                // so we need to recompute expected based on actual values used
+                let actual_baseline = baseline_stats.wall_ms.median as f64;
+                let actual_current = current_stats.wall_ms.median as f64;
+                let actual_regression = compute_regression(actual_baseline, actual_current, direction);
+                let actual_expected = expected_status(actual_regression, threshold, warn_threshold);
+
+                prop_assert_eq!(
+                    delta.status, actual_expected,
+                    "Status mismatch for Direction::Lower: baseline={}, current={}, regression={}, threshold={}, warn_threshold={}",
+                    actual_baseline, actual_current, actual_regression, threshold, warn_threshold
+                );
+            }
+
+            /// **Validates: Requirements 5.1, 5.2, 5.3**
+            ///
+            /// Property 4: Metric Status Determination (Higher is Better)
+            ///
+            /// For Direction::Higher (e.g., throughput), regression is computed as
+            /// max(0, (baseline - current) / baseline), meaning a decrease in value
+            /// is a regression.
+            #[test]
+            fn prop_metric_status_determination_higher_is_better(
+                baseline in baseline_strategy(),
+                current in current_strategy(),
+                (threshold, warn_threshold) in threshold_pair_strategy(),
+            ) {
+                let direction = Direction::Higher;
+
+                // Create stats for baseline and current using throughput
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: 1000,
+                        min: 1000,
+                        max: 1000,
+                    },
+                    max_rss_kb: None,
+                    throughput_per_s: Some(F64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    }),
+                };
+
+                let current_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: 1000,
+                        min: 1000,
+                        max: 1000,
+                    },
+                    max_rss_kb: None,
+                    throughput_per_s: Some(F64Summary {
+                        median: current,
+                        min: current,
+                        max: current,
+                    }),
+                };
+
+                // Create budget with the generated thresholds
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::ThroughputPerS,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction,
+                    },
+                );
+
+                // Compare stats
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed with valid inputs");
+
+                // Get the delta for ThroughputPerS
+                let delta = comparison.deltas.get(&Metric::ThroughputPerS)
+                    .expect("ThroughputPerS delta should exist");
+
+                // Compute expected regression and status
+                let regression = compute_regression(baseline, current, direction);
+                let expected = expected_status(regression, threshold, warn_threshold);
+
+                prop_assert_eq!(
+                    delta.status, expected,
+                    "Status mismatch for Direction::Higher: baseline={}, current={}, regression={}, threshold={}, warn_threshold={}",
+                    baseline, current, regression, threshold, warn_threshold
+                );
+            }
+
+            /// **Validates: Requirements 5.1, 5.2, 5.3**
+            ///
+            /// Property 4: Metric Status Determination (Regression is non-negative)
+            ///
+            /// The regression value SHALL always be >= 0, regardless of whether
+            /// performance improved or degraded.
+            #[test]
+            fn prop_regression_is_non_negative(
+                baseline in baseline_strategy(),
+                current in current_strategy(),
+                (threshold, warn_threshold) in threshold_pair_strategy(),
+                direction_lower in any::<bool>(),
+            ) {
+                let direction = if direction_lower { Direction::Lower } else { Direction::Higher };
+
+                // Create appropriate stats based on direction
+                let (baseline_stats, current_stats, metric, budgets) = if direction_lower {
+                    let bs = Stats {
+                        wall_ms: U64Summary {
+                            median: baseline as u64,
+                            min: baseline as u64,
+                            max: baseline as u64,
+                        },
+                        max_rss_kb: None,
+                        throughput_per_s: None,
+                    };
+                    let cs = Stats {
+                        wall_ms: U64Summary {
+                            median: current as u64,
+                            min: current as u64,
+                            max: current as u64,
+                        },
+                        max_rss_kb: None,
+                        throughput_per_s: None,
+                    };
+                    let mut b = BTreeMap::new();
+                    b.insert(Metric::WallMs, Budget { threshold, warn_threshold, direction });
+                    (bs, cs, Metric::WallMs, b)
+                } else {
+                    let bs = Stats {
+                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        max_rss_kb: None,
+                        throughput_per_s: Some(F64Summary {
+                            median: baseline,
+                            min: baseline,
+                            max: baseline,
+                        }),
+                    };
+                    let cs = Stats {
+                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        max_rss_kb: None,
+                        throughput_per_s: Some(F64Summary {
+                            median: current,
+                            min: current,
+                            max: current,
+                        }),
+                    };
+                    let mut b = BTreeMap::new();
+                    b.insert(Metric::ThroughputPerS, Budget { threshold, warn_threshold, direction });
+                    (bs, cs, Metric::ThroughputPerS, b)
+                };
+
+                // Compare stats
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed with valid inputs");
+
+                // Get the delta
+                let delta = comparison.deltas.get(&metric)
+                    .expect("delta should exist");
+
+                // Property: regression is always >= 0
+                prop_assert!(
+                    delta.regression >= 0.0,
+                    "Regression should be non-negative, got: {} for baseline={}, current={}, direction={:?}",
+                    delta.regression, baseline, current, direction
+                );
+            }
+
+            /// **Validates: Requirements 5.1, 5.2, 5.3**
+            ///
+            /// Property 4: Metric Status Determination (Status boundaries)
+            ///
+            /// Verify the exact boundary conditions:
+            /// - regression == threshold should be Warn (not Fail)
+            /// - regression == warn_threshold should be Warn (not Pass)
+            #[test]
+            fn prop_status_boundary_conditions(
+                baseline in 100.0f64..1000.0,
+                (threshold, warn_threshold) in threshold_pair_strategy(),
+            ) {
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                    max_rss_kb: None,
+                    throughput_per_s: Some(F64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    }),
+                };
+
+                // For Direction::Higher, regression = max(0, (baseline - current) / baseline)
+                // To get regression = threshold, we need: (baseline - current) / baseline = threshold
+                // So: current = baseline * (1 - threshold)
+                let current_at_threshold_higher = baseline * (1.0 - threshold);
+
+                // Only test if current would be positive
+                if current_at_threshold_higher > 0.0 {
+                    let current_stats = Stats {
+                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        max_rss_kb: None,
+                        throughput_per_s: Some(F64Summary {
+                            median: current_at_threshold_higher,
+                            min: current_at_threshold_higher,
+                            max: current_at_threshold_higher,
+                        }),
+                    };
+
+                    let mut budgets = BTreeMap::new();
+                    budgets.insert(
+                        Metric::ThroughputPerS,
+                        Budget {
+                            threshold,
+                            warn_threshold,
+                            direction: Direction::Higher,
+                        },
+                    );
+
+                    let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                        .expect("compare_stats should succeed");
+
+                    let delta = comparison.deltas.get(&Metric::ThroughputPerS)
+                        .expect("delta should exist");
+
+                    // At exactly threshold, status should be Warn (not Fail)
+                    // because the condition is regression > threshold for Fail
+                    prop_assert!(
+                        delta.status != MetricStatus::Fail || delta.regression > threshold,
+                        "At regression={} (threshold={}), status should not be Fail unless regression > threshold",
+                        delta.regression, threshold
+                    );
+                }
+            }
+        }
+
+        // =====================================================================
+        // Property 5: Verdict Aggregation
+        // =====================================================================
+
+        /// Strategy to generate a random MetricStatus.
+        fn metric_status_strategy() -> impl Strategy<Value = MetricStatus> {
+            prop_oneof![
+                Just(MetricStatus::Pass),
+                Just(MetricStatus::Warn),
+                Just(MetricStatus::Fail),
+            ]
+        }
+
+        /// Compute the expected verdict status from a set of metric statuses.
+        ///
+        /// - If any metric has Fail status, verdict SHALL be Fail
+        /// - Else if any metric has Warn status, verdict SHALL be Warn
+        /// - Else verdict SHALL be Pass
+        fn expected_verdict_status(statuses: &[MetricStatus]) -> VerdictStatus {
+            if statuses.contains(&MetricStatus::Fail) {
+                VerdictStatus::Fail
+            } else if statuses.contains(&MetricStatus::Warn) {
+                VerdictStatus::Warn
+            } else {
+                VerdictStatus::Pass
+            }
+        }
+
+        /// Helper to create Stats with a specific wall_ms median value.
+        fn make_stats_with_wall_ms(median: u64) -> Stats {
+            Stats {
+                wall_ms: U64Summary {
+                    median,
+                    min: median,
+                    max: median,
+                },
+                max_rss_kb: None,
+                throughput_per_s: None,
+            }
+        }
+
+        /// Helper to compute the current value needed to achieve a specific status.
+        ///
+        /// Given a baseline, threshold, warn_threshold, and desired status,
+        /// returns a current value that will produce that status.
+        fn current_for_status(
+            baseline: u64,
+            threshold: f64,
+            warn_threshold: f64,
+            status: MetricStatus,
+        ) -> u64 {
+            let baseline_f = baseline as f64;
+            match status {
+                // For Pass: regression < warn_threshold
+                // regression = (current - baseline) / baseline
+                // So current = baseline * (1 + regression)
+                // Use regression = 0 (no change) for Pass
+                MetricStatus::Pass => baseline,
+
+                // For Warn: warn_threshold <= regression <= threshold
+                // Use midpoint between warn_threshold and threshold
+                MetricStatus::Warn => {
+                    let regression = (warn_threshold + threshold) / 2.0;
+                    (baseline_f * (1.0 + regression)).ceil() as u64
+                }
+
+                // For Fail: regression > threshold
+                // Use threshold + 0.1 to ensure we exceed it
+                MetricStatus::Fail => {
+                    let regression = threshold + 0.1;
+                    (baseline_f * (1.0 + regression)).ceil() as u64
+                }
+            }
+        }
+
+        proptest! {
+            /// **Validates: Requirements 5.4, 5.5, 5.6**
+            ///
+            /// Property 5: Verdict Aggregation
+            ///
+            /// For any set of metric statuses:
+            /// - If any metric has Fail status, verdict SHALL be Fail
+            /// - Else if any metric has Warn status, verdict SHALL be Warn
+            /// - Else verdict SHALL be Pass
+            #[test]
+            fn prop_verdict_aggregation_single_metric(
+                status in metric_status_strategy(),
+            ) {
+                // Use fixed baseline and thresholds
+                let baseline = 1000u64;
+                let threshold = 0.20;
+                let warn_threshold = 0.10;
+
+                let baseline_stats = make_stats_with_wall_ms(baseline);
+                let current_value = current_for_status(baseline, threshold, warn_threshold, status);
+                let current_stats = make_stats_with_wall_ms(current_value);
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed");
+
+                // Verify the verdict matches the expected aggregation
+                let expected = expected_verdict_status(&[status]);
+                prop_assert_eq!(
+                    comparison.verdict.status, expected,
+                    "Verdict should be {:?} when single metric status is {:?}",
+                    expected, status
+                );
+            }
+
+            /// **Validates: Requirements 5.4, 5.5, 5.6**
+            ///
+            /// Property 5: Verdict Aggregation (Multiple Metrics)
+            ///
+            /// Test with multiple metrics to verify aggregation across all metrics.
+            #[test]
+            fn prop_verdict_aggregation_multiple_metrics(
+                wall_ms_status in metric_status_strategy(),
+                max_rss_status in metric_status_strategy(),
+            ) {
+                // Use fixed baseline and thresholds
+                let baseline = 1000u64;
+                let threshold = 0.20;
+                let warn_threshold = 0.10;
+
+                // Create baseline stats with both wall_ms and max_rss_kb
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    }),
+                    throughput_per_s: None,
+                };
+
+                // Compute current values to achieve desired statuses
+                let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
+                let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
+
+                let current_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: wall_ms_current,
+                        min: wall_ms_current,
+                        max: wall_ms_current,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: max_rss_current,
+                        min: max_rss_current,
+                        max: max_rss_current,
+                    }),
+                    throughput_per_s: None,
+                };
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+                budgets.insert(
+                    Metric::MaxRssKb,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed");
+
+                // Verify the verdict matches the expected aggregation
+                let expected = expected_verdict_status(&[wall_ms_status, max_rss_status]);
+                prop_assert_eq!(
+                    comparison.verdict.status, expected,
+                    "Verdict should be {:?} when metric statuses are [{:?}, {:?}]",
+                    expected, wall_ms_status, max_rss_status
+                );
+            }
+
+            /// **Validates: Requirements 5.4, 5.5, 5.6**
+            ///
+            /// Property 5: Verdict Aggregation (Three Metrics)
+            ///
+            /// Test with all three metric types to verify comprehensive aggregation.
+            #[test]
+            fn prop_verdict_aggregation_three_metrics(
+                wall_ms_status in metric_status_strategy(),
+                max_rss_status in metric_status_strategy(),
+                throughput_status in metric_status_strategy(),
+            ) {
+                // Use fixed baseline and thresholds
+                let baseline = 1000u64;
+                let baseline_throughput = 100.0f64;
+                let threshold = 0.20;
+                let warn_threshold = 0.10;
+
+                // Create baseline stats with all three metrics
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    }),
+                    throughput_per_s: Some(F64Summary {
+                        median: baseline_throughput,
+                        min: baseline_throughput,
+                        max: baseline_throughput,
+                    }),
+                };
+
+                // Compute current values to achieve desired statuses
+                let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
+                let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
+
+                // For throughput (higher is better), we need to invert the logic
+                // Pass: current >= baseline (no regression)
+                // Warn: current = baseline * (1 - midpoint of warn/threshold)
+                // Fail: current = baseline * (1 - (threshold + 0.1))
+                let throughput_current = match throughput_status {
+                    MetricStatus::Pass => baseline_throughput,
+                    MetricStatus::Warn => {
+                        let regression = (warn_threshold + threshold) / 2.0;
+                        baseline_throughput * (1.0 - regression)
+                    }
+                    MetricStatus::Fail => {
+                        let regression = threshold + 0.1;
+                        baseline_throughput * (1.0 - regression)
+                    }
+                };
+
+                let current_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: wall_ms_current,
+                        min: wall_ms_current,
+                        max: wall_ms_current,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: max_rss_current,
+                        min: max_rss_current,
+                        max: max_rss_current,
+                    }),
+                    throughput_per_s: Some(F64Summary {
+                        median: throughput_current,
+                        min: throughput_current,
+                        max: throughput_current,
+                    }),
+                };
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+                budgets.insert(
+                    Metric::MaxRssKb,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+                budgets.insert(
+                    Metric::ThroughputPerS,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Higher,
+                    },
+                );
+
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed");
+
+                // Verify the verdict matches the expected aggregation
+                let expected = expected_verdict_status(&[wall_ms_status, max_rss_status, throughput_status]);
+                prop_assert_eq!(
+                    comparison.verdict.status, expected,
+                    "Verdict should be {:?} when metric statuses are [{:?}, {:?}, {:?}]",
+                    expected, wall_ms_status, max_rss_status, throughput_status
+                );
+            }
+
+            /// **Validates: Requirements 5.4, 5.5, 5.6**
+            ///
+            /// Property 5: Verdict Aggregation (Fail dominates)
+            ///
+            /// If any metric has Fail status, the verdict SHALL be Fail,
+            /// regardless of other metric statuses.
+            #[test]
+            fn prop_verdict_fail_dominates(
+                other_status in metric_status_strategy(),
+            ) {
+                // Use fixed baseline and thresholds
+                let baseline = 1000u64;
+                let threshold = 0.20;
+                let warn_threshold = 0.10;
+
+                // Create baseline stats with both wall_ms and max_rss_kb
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    }),
+                    throughput_per_s: None,
+                };
+
+                // wall_ms will be Fail, max_rss will be the random status
+                let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Fail);
+                let max_rss_current = current_for_status(baseline, threshold, warn_threshold, other_status);
+
+                let current_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: wall_ms_current,
+                        min: wall_ms_current,
+                        max: wall_ms_current,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: max_rss_current,
+                        min: max_rss_current,
+                        max: max_rss_current,
+                    }),
+                    throughput_per_s: None,
+                };
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+                budgets.insert(
+                    Metric::MaxRssKb,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed");
+
+                // Verdict should always be Fail when any metric is Fail
+                prop_assert_eq!(
+                    comparison.verdict.status, VerdictStatus::Fail,
+                    "Verdict should be Fail when any metric has Fail status, regardless of other_status={:?}",
+                    other_status
+                );
+            }
+
+            /// **Validates: Requirements 5.4, 5.5, 5.6**
+            ///
+            /// Property 5: Verdict Aggregation (Warn without Fail)
+            ///
+            /// If no metric has Fail status but at least one has Warn status,
+            /// the verdict SHALL be Warn.
+            #[test]
+            fn prop_verdict_warn_without_fail(
+                // Generate only Pass or Warn statuses (no Fail)
+                other_status in prop_oneof![Just(MetricStatus::Pass), Just(MetricStatus::Warn)],
+            ) {
+                // Use fixed baseline and thresholds
+                let baseline = 1000u64;
+                let threshold = 0.20;
+                let warn_threshold = 0.10;
+
+                // Create baseline stats with both wall_ms and max_rss_kb
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    }),
+                    throughput_per_s: None,
+                };
+
+                // wall_ms will be Warn, max_rss will be Pass or Warn
+                let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Warn);
+                let max_rss_current = current_for_status(baseline, threshold, warn_threshold, other_status);
+
+                let current_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: wall_ms_current,
+                        min: wall_ms_current,
+                        max: wall_ms_current,
+                    },
+                    max_rss_kb: Some(U64Summary {
+                        median: max_rss_current,
+                        min: max_rss_current,
+                        max: max_rss_current,
+                    }),
+                    throughput_per_s: None,
+                };
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+                budgets.insert(
+                    Metric::MaxRssKb,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed");
+
+                // Verdict should be Warn when at least one metric is Warn and none are Fail
+                prop_assert_eq!(
+                    comparison.verdict.status, VerdictStatus::Warn,
+                    "Verdict should be Warn when at least one metric is Warn and none are Fail, other_status={:?}",
+                    other_status
+                );
+            }
+
+            /// **Validates: Requirements 5.4, 5.5, 5.6**
+            ///
+            /// Property 5: Verdict Aggregation (All Pass)
+            ///
+            /// If all metrics have Pass status, the verdict SHALL be Pass.
+            #[test]
+            fn prop_verdict_all_pass(
+                // Generate 1-3 metrics, all with Pass status
+                num_metrics in 1usize..=3,
+            ) {
+                // Use fixed baseline and thresholds
+                let baseline = 1000u64;
+                let baseline_throughput = 100.0f64;
+                let threshold = 0.20;
+                let warn_threshold = 0.10;
+
+                // All metrics will be Pass (current == baseline, no regression)
+                let baseline_stats = Stats {
+                    wall_ms: U64Summary {
+                        median: baseline,
+                        min: baseline,
+                        max: baseline,
+                    },
+                    max_rss_kb: if num_metrics >= 2 {
+                        Some(U64Summary {
+                            median: baseline,
+                            min: baseline,
+                            max: baseline,
+                        })
+                    } else {
+                        None
+                    },
+                    throughput_per_s: if num_metrics >= 3 {
+                        Some(F64Summary {
+                            median: baseline_throughput,
+                            min: baseline_throughput,
+                            max: baseline_throughput,
+                        })
+                    } else {
+                        None
+                    },
+                };
+
+                // Current stats are same as baseline (Pass status)
+                let current_stats = baseline_stats.clone();
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(
+                    Metric::WallMs,
+                    Budget {
+                        threshold,
+                        warn_threshold,
+                        direction: Direction::Lower,
+                    },
+                );
+                if num_metrics >= 2 {
+                    budgets.insert(
+                        Metric::MaxRssKb,
+                        Budget {
+                            threshold,
+                            warn_threshold,
+                            direction: Direction::Lower,
+                        },
+                    );
+                }
+                if num_metrics >= 3 {
+                    budgets.insert(
+                        Metric::ThroughputPerS,
+                        Budget {
+                            threshold,
+                            warn_threshold,
+                            direction: Direction::Higher,
+                        },
+                    );
+                }
+
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    .expect("compare_stats should succeed");
+
+                // Verdict should be Pass when all metrics are Pass
+                prop_assert_eq!(
+                    comparison.verdict.status, VerdictStatus::Pass,
+                    "Verdict should be Pass when all {} metrics have Pass status",
+                    num_metrics
+                );
+
+                // Also verify the counts are correct
+                prop_assert_eq!(
+                    comparison.verdict.counts.pass, num_metrics as u32,
+                    "Pass count should equal number of metrics"
+                );
+                prop_assert_eq!(
+                    comparison.verdict.counts.warn, 0,
+                    "Warn count should be 0"
+                );
+                prop_assert_eq!(
+                    comparison.verdict.counts.fail, 0,
+                    "Fail count should be 0"
+                );
             }
         }
     }

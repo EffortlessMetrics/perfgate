@@ -27,7 +27,7 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
 - [x] 2. Checkpoint - Verify build passes
   - Ensure `cargo build --all` succeeds, ask the user if questions arise.
 
-- [ ] 3. Add property-based tests for domain logic
+- [x] 3. Add property-based tests for domain logic
   - [x] 3.1 Add proptest dependency to perfgate-domain
     - Add `proptest = "1"` to dev-dependencies
     - _Requirements: 3.1_
@@ -42,22 +42,22 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
     - Generate samples with warmup flags, verify warmup samples don't affect stats
     - **Validates: Requirements 3.4**
   
-  - [~] 3.4 Write property test for metric status determination
+  - [x] 3.4 Write property test for metric status determination
     - **Property 4: Metric Status Determination**
     - Generate random baseline/current/threshold values, verify status logic
     - **Validates: Requirements 5.1, 5.2, 5.3**
   
-  - [~] 3.5 Write property test for verdict aggregation
+  - [x] 3.5 Write property test for verdict aggregation
     - **Property 5: Verdict Aggregation**
     - Generate random metric status sets, verify verdict logic
     - **Validates: Requirements 5.4, 5.5, 5.6**
 
 - [ ] 4. Add property-based tests for serialization
-  - [~] 4.1 Add proptest and arbitrary dependencies to perfgate-types
+  - [x] 4.1 Add proptest and arbitrary dependencies to perfgate-types
     - Add `proptest = "1"` and `proptest-derive = "0.4"` to dev-dependencies
     - _Requirements: 10.1_
   
-  - [~] 4.2 Write property test for RunReceipt round-trip
+  - [x] 4.2 Write property test for RunReceipt round-trip
     - **Property 8: Serialization Round-Trip (RunReceipt)**
     - Generate arbitrary RunReceipt, serialize to JSON, deserialize, compare
     - **Validates: Requirements 10.1**
