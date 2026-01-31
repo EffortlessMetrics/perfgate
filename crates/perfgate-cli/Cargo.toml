@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 perfgate-types = { path = "../perfgate-types" }
 perfgate-domain = { path = "../perfgate-domain" }
+perfgate-adapters = { path = "../perfgate-adapters" }
 perfgate-app = { path = "../perfgate-app" }
 anyhow.workspace = true
 clap.workspace = true
@@ -20,3 +21,5 @@ uuid.workspace = true
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
+tempfile = "3"
+serde_json.workspace = true

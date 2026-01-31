@@ -1,7 +1,10 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use perfgate_adapters::StdProcessRunner;
-use perfgate_app::{github_annotations, render_markdown, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase, SystemClock};
+use perfgate_app::{
+    github_annotations, render_markdown, CompareRequest, CompareUseCase, RunBenchRequest,
+    RunBenchUseCase, SystemClock,
+};
 use perfgate_domain::DomainError;
 use perfgate_types::{Budget, CompareRef, Metric, RunReceipt, ToolInfo};
 use std::collections::BTreeMap;
@@ -11,7 +14,11 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 #[derive(Debug, Parser)]
-#[command(name = "perfgate", version, about = "Perf budgets and baseline diffs for CI / PR bots")]
+#[command(
+    name = "perfgate",
+    version,
+    about = "Perf budgets and baseline diffs for CI / PR bots"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Command,
@@ -150,15 +157,11 @@ fn real_main() -> anyhow::Result<()> {
             pretty,
             command,
         } => {
-            let timeout = timeout
-                .as_deref()
-                .map(parse_duration)
-                .transpose()?
-                .map(|d| d);
+            let timeout = timeout.as_deref().map(parse_duration).transpose()?;
 
             let tool = tool_info();
-            let runner = StdProcessRunner::default();
-            let clock = SystemClock::default();
+            let runner = StdProcessRunner;
+            let clock = SystemClock;
             let usecase = RunBenchUseCase::new(runner, clock, tool);
 
             let outcome = usecase.execute(RunBenchRequest {
@@ -235,9 +238,7 @@ fn real_main() -> anyhow::Result<()> {
                         Ok(())
                     }
                 }
-                perfgate_types::VerdictStatus::Fail => {
-                    std::process::exit(2)
-                }
+                perfgate_types::VerdictStatus::Fail => std::process::exit(2),
             }
         }
 
@@ -298,22 +299,22 @@ fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
     let (k, v) = s
         .split_once('=')
         .ok_or_else(|| "expected KEY=VALUE".to_string())?;
-    let f: f64 = v
-        .parse()
-        .map_err(|_| format!("invalid float value: {v}"))?;
+    let f: f64 = v.parse().map_err(|_| format!("invalid float value: {v}"))?;
     Ok((k.to_string(), f))
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
     let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let v = serde_json::from_slice(&bytes).with_context(|| format!("parse json {}", path.display()))?;
+    let v =
+        serde_json::from_slice(&bytes).with_context(|| format!("parse json {}", path.display()))?;
     Ok(v)
 }
 
 fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bool) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create dir {}", parent.display()))?;
         }
     }
 
@@ -334,12 +335,15 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     tmp.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
 
     {
-        let mut f = fs::File::create(&tmp).with_context(|| format!("create temp {}", tmp.display()))?;
-        f.write_all(bytes).with_context(|| format!("write temp {}", tmp.display()))?;
+        let mut f =
+            fs::File::create(&tmp).with_context(|| format!("create temp {}", tmp.display()))?;
+        f.write_all(bytes)
+            .with_context(|| format!("write temp {}", tmp.display()))?;
         f.sync_all().ok();
     }
 
-    fs::rename(&tmp, path).with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
+    fs::rename(&tmp, path)
+        .with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
     Ok(())
 }
 
@@ -373,7 +377,9 @@ fn build_budgets(
         let dir = match dirs.remove(key).as_deref() {
             Some("lower") => perfgate_types::Direction::Lower,
             Some("higher") => perfgate_types::Direction::Higher,
-            Some(other) => anyhow::bail!("invalid direction for {key}: {other} (expected lower|higher)"),
+            Some(other) => {
+                anyhow::bail!("invalid direction for {key}: {other} (expected lower|higher)")
+            }
             None => metric.default_direction(),
         };
 

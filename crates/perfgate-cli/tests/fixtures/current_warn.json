@@ -1,0 +1,74 @@
+{
+    "schema": "perfgate.run.v1",
+    "tool": {
+        "name": "perfgate",
+        "version": "0.1.0"
+    },
+    "run": {
+        "id": "current-run-warn-001",
+        "started_at": "2024-01-16T10:00:00Z",
+        "ended_at": "2024-01-16T10:00:06Z",
+        "host": {
+            "os": "linux",
+            "arch": "x86_64"
+        }
+    },
+    "bench": {
+        "name": "test-benchmark",
+        "command": [
+            "sleep",
+            "0.1"
+        ],
+        "repeat": 5,
+        "warmup": 0
+    },
+    "samples": [
+        {
+            "wall_ms": 119,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 1200
+        },
+        {
+            "wall_ms": 121,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 1210
+        },
+        {
+            "wall_ms": 117,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 1190
+        },
+        {
+            "wall_ms": 120,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 1205
+        },
+        {
+            "wall_ms": 118,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 1195
+        }
+    ],
+    "stats": {
+        "wall_ms": {
+            "median": 119,
+            "min": 117,
+            "max": 121
+        },
+        "max_rss_kb": {
+            "median": 1200,
+            "min": 1190,
+            "max": 1210
+        }
+    }
+}

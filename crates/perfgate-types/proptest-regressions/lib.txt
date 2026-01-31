@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a6eccac387f1f81c8888496babf780638fb4e35797184a59e21e72476cf39a88 # shrinks to receipt = RunReceipt { schema: "perfgate.run.v1", tool: ToolInfo { name: "-", version: "-" }, run: RunMeta { id: "0", started_at: "2020-01-01T00:00:00Z", ended_at: "2020-01-01T00:00:00Z", host: HostInfo { os: "-", arch: "a" } }, bench: BenchMeta { name: "-", cwd: None, command: ["-"], repeat: 1, warmup: 0, work_units: None, timeout_ms: None }, samples: [Sample { wall_ms: 0, exit_code: 0, warmup: false, timed_out: false, max_rss_kb: None, stdout: None, stderr: None }], stats: Stats { wall_ms: U64Summary { median: 0, min: 0, max: 0 }, max_rss_kb: None, throughput_per_s: Some(F64Summary { median: 0.0, min: 0.0, max: 988154.8228823575 }) } }
