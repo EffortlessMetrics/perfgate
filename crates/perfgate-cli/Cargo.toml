@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 perfgate-types = { path = "../perfgate-types" }
 perfgate-domain = { path = "../perfgate-domain" }
+perfgate-adapters = { path = "../perfgate-adapters" }
 perfgate-app = { path = "../perfgate-app" }
 anyhow.workspace = true
 clap.workspace = true
