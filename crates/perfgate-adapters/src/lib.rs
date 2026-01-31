@@ -63,7 +63,7 @@ impl ProcessRunner for StdProcessRunner {
             if spec.timeout.is_some() {
                 return Err(AdapterError::TimeoutUnsupported);
             }
-            return run_portable(spec);
+            run_portable(spec)
         }
     }
 }
@@ -230,9 +230,8 @@ fn wait4_with_timeout(
                         libc::kill(pid, libc::SIGKILL);
                     }
                     // Reap it.
-                    let res2 = unsafe {
-                        libc::wait4(pid, &mut status as *mut libc::c_int, 0, &mut ru)
-                    };
+                    let res2 =
+                        unsafe { libc::wait4(pid, &mut status as *mut libc::c_int, 0, &mut ru) };
                     if res2 != pid {
                         return Err(AdapterError::Other(anyhow::anyhow!(
                             "wait4 after kill failed: {:?}",

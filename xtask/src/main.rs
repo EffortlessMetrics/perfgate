@@ -45,7 +45,14 @@ fn cmd_ci() -> anyhow::Result<()> {
     run("cargo", ["fmt", "--all", "--", "--check"])?;
     run(
         "cargo",
-        ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"],
+        [
+            "clippy",
+            "--all-targets",
+            "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ],
     )?;
     run("cargo", ["test", "--all"])?;
     run("cargo", ["run", "-p", "xtask", "--", "schema"])?;
@@ -102,7 +109,7 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
 }
 
 fn write_schema<T: serde::Serialize>(
-    out_dir: &PathBuf,
+    out_dir: &std::path::Path,
     name: &str,
     schema: T,
 ) -> anyhow::Result<()> {

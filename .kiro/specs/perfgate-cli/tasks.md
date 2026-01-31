@@ -52,7 +52,7 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
     - Generate random metric status sets, verify verdict logic
     - **Validates: Requirements 5.4, 5.5, 5.6**
 
-- [ ] 4. Add property-based tests for serialization
+- [x] 4. Add property-based tests for serialization
   - [x] 4.1 Add proptest and arbitrary dependencies to perfgate-types
     - Add `proptest = "1"` and `proptest-derive = "0.4"` to dev-dependencies
     - _Requirements: 10.1_
@@ -67,50 +67,50 @@ This plan completes the perfgate CLI implementation. The workspace scaffold exis
     - Generate arbitrary CompareReceipt, serialize to JSON, deserialize, compare
     - **Validates: Requirements 10.2**
 
-- [ ] 5. Add property-based tests for rendering
-  - [~] 5.1 Add proptest dependency to perfgate-app
+- [x] 5. Add property-based tests for rendering
+  - [x] 5.1 Add proptest dependency to perfgate-app
     - Add `proptest = "1"` to dev-dependencies
     - _Requirements: 7.2_
   
-  - [~] 5.2 Write property test for markdown rendering completeness
+  - [x] 5.2 Write property test for markdown rendering completeness
     - **Property 6: Markdown Rendering Completeness**
     - Generate arbitrary CompareReceipt, verify output contains required elements
     - **Validates: Requirements 7.2, 7.3, 7.4, 7.5**
   
-  - [~] 5.3 Write property test for GitHub annotation generation
+  - [x] 5.3 Write property test for GitHub annotation generation
     - **Property 7: GitHub Annotation Generation**
     - Generate arbitrary CompareReceipt, verify annotation format and count
     - **Validates: Requirements 8.2, 8.3, 8.4, 8.5**
 
-- [~] 6. Checkpoint - Verify property tests pass
+- [x] 6. Checkpoint - Verify property tests pass
   - Ensure `cargo test --all` succeeds, ask the user if questions arise.
 
-- [ ] 7. Add CLI integration tests
-  - [~] 7.1 Create test fixtures directory and baseline receipts
+- [x] 7. Add CLI integration tests
+  - [x] 7.1 Create test fixtures directory and baseline receipts
     - Create `crates/perfgate-cli/tests/fixtures/` directory
     - Add sample Run_Receipt JSON files for testing
     - _Requirements: 4.1_
   
-  - [~] 7.2 Write integration test for `perfgate run` command
+  - [x] 7.2 Write integration test for `perfgate run` command
     - Test basic run with `--name test -- true`
     - Verify output file is valid JSON with correct schema
     - **Validates: Requirements 1.1, 1.2, 9.1**
   
-  - [~] 7.3 Write integration test for `perfgate compare` command
+  - [x] 7.3 Write integration test for `perfgate compare` command
     - Test compare with fixture baseline and current receipts
     - Verify exit codes for pass/warn/fail scenarios
     - **Validates: Requirements 4.1, 6.1, 6.2, 6.3**
   
-  - [~] 7.4 Write integration test for `perfgate md` command
+  - [x] 7.4 Write integration test for `perfgate md` command
     - Test markdown generation from compare receipt
     - Verify output contains expected table structure
     - **Validates: Requirements 7.1, 7.6**
   
-  - [~] 7.5 Write integration test for `perfgate github-annotations` command
+  - [x] 7.5 Write integration test for `perfgate github-annotations` command
     - Test annotation output format
     - **Validates: Requirements 8.1**
 
-- [~] 8. Final checkpoint - Ensure all tests pass
+- [x] 8. Final checkpoint - Ensure all tests pass
   - Run `cargo test --all` and verify all tests pass
   - Run `cargo clippy --all-targets --all-features -- -D warnings`
   - Run `cargo fmt --all -- --check`
