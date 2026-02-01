@@ -113,7 +113,6 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
 
 #[cfg(unix)]
 fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
-    use std::io::Read;
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Command, Stdio};
     use std::thread;
@@ -178,7 +177,7 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
 }
 
 #[cfg(unix)]
-fn read_with_cap<R: Read>(reader: &mut R, cap: usize) -> Vec<u8> {
+fn read_with_cap<R: std::io::Read>(reader: &mut R, cap: usize) -> Vec<u8> {
     let mut buf: Vec<u8> = Vec::new();
     let mut tmp = [0u8; 8192];
 
