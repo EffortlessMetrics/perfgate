@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RunReceipt",
+  "type": "object",
+  "required": [
+    "bench",
+    "run",
+    "samples",
+    "schema",
+    "stats",
+    "tool"
+  ],
+  "properties": {
+    "bench": {
+      "$ref": "#/definitions/BenchMeta"
+    },
+    "run": {
+      "$ref": "#/definitions/RunMeta"
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Sample"
+      }
+    },
+    "schema": {
+      "type": "string"
+    },
+    "stats": {
+      "$ref": "#/definitions/Stats"
+    },
+    "tool": {
+      "$ref": "#/definitions/ToolInfo"
+    }
+  },
+  "definitions": {
+    "BenchMeta": {
+      "type": "object",
+      "required": [
+        "command",
+        "name",
+        "repeat",
+        "warmup"
+      ],
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "F64Summary": {
+      "type": "object",
+      "required": [
+        "max",
+        "median",
+        "min"
+      ],
+      "properties": {
+        "max": {
+          "type": "number",
+          "format": "double"
+        },
+        "median": {
+          "type": "number",
+          "format": "double"
+        },
+        "min": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "HostInfo": {
+      "type": "object",
+      "required": [
+        "arch",
+        "os"
+      ],
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        }
+      }
+    },
+    "RunMeta": {
+      "type": "object",
+      "required": [
+        "ended_at",
+        "host",
+        "id",
+        "started_at"
+      ],
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/definitions/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      }
+    },
+    "Sample": {
+      "type": "object",
+      "required": [
+        "exit_code",
+        "wall_ms"
+      ],
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "max_rss_kb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "stderr": {
+          "description": "Truncated stderr (bytes interpreted as UTF-8 lossily).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stdout": {
+          "description": "Truncated stdout (bytes interpreted as UTF-8 lossily).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timed_out": {
+          "default": false,
+          "type": "boolean"
+        },
+        "wall_ms": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "warmup": {
+          "default": false,
+          "type": "boolean"
+        }
+      }
+    },
+    "Stats": {
+      "type": "object",
+      "required": [
+        "wall_ms"
+      ],
+      "properties": {
+        "max_rss_kb": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "throughput_per_s": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/F64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wall_ms": {
+          "$ref": "#/definitions/U64Summary"
+        }
+      }
+    },
+    "ToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "U64Summary": {
+      "type": "object",
+      "required": [
+        "max",
+        "median",
+        "min"
+      ],
+      "properties": {
+        "max": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "median": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "min": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
+}

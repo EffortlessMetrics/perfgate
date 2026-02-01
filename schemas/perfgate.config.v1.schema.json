@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConfigFile",
+  "type": "object",
+  "properties": {
+    "bench": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/BenchConfigFile"
+      }
+    },
+    "defaults": {
+      "default": {},
+      "allOf": [
+        {
+          "$ref": "#/definitions/DefaultsConfig"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "BenchConfigFile": {
+      "type": "object",
+      "required": [
+        "command",
+        "name"
+      ],
+      "properties": {
+        "budgets": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/definitions/BudgetOverride"
+          }
+        },
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metrics": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Metric"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "timeout": {
+          "description": "Duration string parseable by humantime, e.g. \"2s\".",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "work": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "BudgetOverride": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Direction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "warn_factor": {
+          "description": "Warn fraction (warn_threshold = threshold * warn_factor).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "DefaultsConfig": {
+      "type": "object",
+      "properties": {
+        "baseline_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "out_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repeat": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "warmup": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn_factor": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "Metric": {
+      "type": "string",
+      "enum": [
+        "wall_ms",
+        "max_rss_kb",
+        "throughput_per_s"
+      ]
+    }
+  }
+}

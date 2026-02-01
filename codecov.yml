@@ -1,0 +1,41 @@
+# Codecov configuration for perfgate
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  # Coverage status checks
+  status:
+    # Project-level coverage thresholds
+    project:
+      default:
+        # Fail if coverage drops below 80% line coverage
+        target: 80%
+        # Allow 1% decrease from base coverage
+        threshold: 1%
+        # Only check against the base commit
+        base: auto
+        # Require CI to pass before reporting
+        if_ci_failed: error
+
+    # Patch-level coverage (for new code in PRs)
+    patch:
+      default:
+        # New code should have at least 70% coverage
+        target: 70%
+        # Allow some flexibility for edge cases
+        threshold: 5%
+
+# Comment configuration for PRs
+comment:
+  # Post coverage report as PR comment
+  layout: "reach,diff,flags,files"
+  # Update existing comment instead of creating new ones
+  behavior: default
+  # Require both project and patch checks to pass
+  require_changes: false
+
+# Ignore certain paths from coverage
+ignore:
+  - "fuzz/**"
+  - "**/tests/**"
+  - "**/proptest-regressions/**"
+  - "xtask/**"
