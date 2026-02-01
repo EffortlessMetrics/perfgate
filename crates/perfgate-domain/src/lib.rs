@@ -342,6 +342,463 @@ mod tests {
         }
 
         // =====================================================================
+        // Property 2: Statistics Ordering Invariant for f64
+        // **Feature: comprehensive-test-coverage, Property 2: Statistics Ordering Invariant**
+        // =====================================================================
+
+        /// Strategy to generate finite f64 values (no NaN, no infinity).
+        /// This ensures we test the ordering invariant with valid numeric values.
+        fn finite_f64_strategy() -> impl Strategy<Value = f64> {
+            // Generate finite f64 values in a reasonable range
+            prop::num::f64::NORMAL.prop_filter("must be finite", |v| v.is_finite())
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig {
+                cases: 100,
+                ..ProptestConfig::default()
+            })]
+
+            /// **Feature: comprehensive-test-coverage, Property 2: Statistics Ordering Invariant**
+            /// **Validates: Requirements 4.6**
+            ///
+            /// Property 2: Statistics Ordering Invariant
+            ///
+            /// For any non-empty list of finite f64 values, the computed summary SHALL satisfy:
+            /// min <= median <= max
+            #[test]
+            fn prop_summarize_f64_ordering(
+                values in prop::collection::vec(finite_f64_strategy(), 1..100)
+            ) {
+                let summary = summarize_f64(&values).expect("non-empty vec should succeed");
+
+                prop_assert!(
+                    summary.min <= summary.median,
+                    "min ({}) should be <= median ({})",
+                    summary.min, summary.median
+                );
+                prop_assert!(
+                    summary.median <= summary.max,
+                    "median ({}) should be <= max ({})",
+                    summary.median, summary.max
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 2: Statistics Ordering Invariant**
+            /// **Validates: Requirements 4.6**
+            ///
+            /// Property 2: Statistics Ordering Invariant (single element)
+            ///
+            /// For single-element vectors, min == median == max
+            #[test]
+            fn prop_summarize_f64_single_element(value in finite_f64_strategy()) {
+                let summary = summarize_f64(&[value]).expect("single element should succeed");
+
+                prop_assert!(
+                    (summary.min - value).abs() < f64::EPSILON,
+                    "min ({}) should equal the single value ({})",
+                    summary.min, value
+                );
+                prop_assert!(
+                    (summary.max - value).abs() < f64::EPSILON,
+                    "max ({}) should equal the single value ({})",
+                    summary.max, value
+                );
+                prop_assert!(
+                    (summary.median - value).abs() < f64::EPSILON,
+                    "median ({}) should equal the single value ({})",
+                    summary.median, value
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 2: Statistics Ordering Invariant**
+            /// **Validates: Requirements 4.6**
+            ///
+            /// Property 2: Statistics Ordering Invariant (correctness)
+            ///
+            /// For any non-empty list of finite f64 values:
+            /// - min equals the smallest value
+            /// - max equals the largest value
+            /// - median equals the middle value (or average of two middle for even-length)
+            #[test]
+            fn prop_summarize_f64_correctness(
+                values in prop::collection::vec(finite_f64_strategy(), 1..100)
+            ) {
+                let summary = summarize_f64(&values).expect("non-empty vec should succeed");
+
+                // Sort the values to compute expected results
+                let mut sorted = values.clone();
+                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+                // Property: min is the smallest value
+                let expected_min = *sorted.first().unwrap();
+                prop_assert!(
+                    (summary.min - expected_min).abs() < f64::EPSILON,
+                    "min ({}) should be the smallest value ({})",
+                    summary.min, expected_min
+                );
+
+                // Property: max is the largest value
+                let expected_max = *sorted.last().unwrap();
+                prop_assert!(
+                    (summary.max - expected_max).abs() < f64::EPSILON,
+                    "max ({}) should be the largest value ({})",
+                    summary.max, expected_max
+                );
+
+                // Property: median is correct
+                let n = sorted.len();
+                let mid = n / 2;
+                let expected_median = if n % 2 == 1 {
+                    sorted[mid]
+                } else {
+                    (sorted[mid - 1] + sorted[mid]) / 2.0
+                };
+                prop_assert!(
+                    (summary.median - expected_median).abs() < f64::EPSILON * 10.0,
+                    "median ({}) should be the middle value ({})",
+                    summary.median, expected_median
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 2: Statistics Ordering Invariant**
+            /// **Validates: Requirements 4.6**
+            ///
+            /// Property 2: Statistics Ordering Invariant (with infinity)
+            ///
+            /// The summarize_f64 function handles infinity values by sorting them
+            /// appropriately (negative infinity is smallest, positive infinity is largest).
+            /// The ordering invariant min <= median <= max should still hold.
+            #[test]
+            fn prop_summarize_f64_with_infinity(
+                finite_values in prop::collection::vec(finite_f64_strategy(), 1..50),
+                include_pos_inf in any::<bool>(),
+                include_neg_inf in any::<bool>(),
+            ) {
+                let mut values = finite_values;
+
+                // Optionally add positive infinity
+                if include_pos_inf {
+                    values.push(f64::INFINITY);
+                }
+
+                // Optionally add negative infinity
+                if include_neg_inf {
+                    values.push(f64::NEG_INFINITY);
+                }
+
+                let summary = summarize_f64(&values).expect("non-empty vec should succeed");
+
+                // The ordering invariant should still hold
+                prop_assert!(
+                    summary.min <= summary.median,
+                    "min ({}) should be <= median ({}) even with infinity values",
+                    summary.min, summary.median
+                );
+                prop_assert!(
+                    summary.median <= summary.max,
+                    "median ({}) should be <= max ({}) even with infinity values",
+                    summary.median, summary.max
+                );
+
+                // If we included negative infinity, min should be negative infinity
+                if include_neg_inf {
+                    prop_assert!(
+                        summary.min == f64::NEG_INFINITY,
+                        "min should be NEG_INFINITY when included, got {}",
+                        summary.min
+                    );
+                }
+
+                // If we included positive infinity, max should be positive infinity
+                if include_pos_inf {
+                    prop_assert!(
+                        summary.max == f64::INFINITY,
+                        "max should be INFINITY when included, got {}",
+                        summary.max
+                    );
+                }
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 2: Statistics Ordering Invariant**
+            /// **Validates: Requirements 4.6**
+            ///
+            /// Property 2: Statistics Ordering Invariant (NaN handling)
+            ///
+            /// The summarize_f64 function uses partial_cmp with Ordering::Equal fallback
+            /// for NaN values. This test verifies the function doesn't panic with NaN
+            /// and the ordering invariant holds for the non-NaN interpretation.
+            #[test]
+            fn prop_summarize_f64_with_nan_no_panic(
+                finite_values in prop::collection::vec(finite_f64_strategy(), 1..50),
+                nan_count in 0usize..3,
+            ) {
+                let mut values = finite_values;
+
+                // Add some NaN values
+                for _ in 0..nan_count {
+                    values.push(f64::NAN);
+                }
+
+                // The function should not panic
+                let result = summarize_f64(&values);
+                prop_assert!(result.is_ok(), "summarize_f64 should not panic with NaN values");
+
+                let summary = result.unwrap();
+
+                // Due to NaN comparison behavior, we can only verify the function completes
+                // and returns some result. The ordering may not hold strictly with NaN
+                // because NaN comparisons are undefined, but the function should not panic.
+                // We verify that if all values are finite (no NaN in result), ordering holds.
+                if summary.min.is_finite() && summary.median.is_finite() && summary.max.is_finite() {
+                    prop_assert!(
+                        summary.min <= summary.median,
+                        "min ({}) should be <= median ({}) for finite results",
+                        summary.min, summary.median
+                    );
+                    prop_assert!(
+                        summary.median <= summary.max,
+                        "median ({}) should be <= max ({}) for finite results",
+                        summary.median, summary.max
+                    );
+                }
+            }
+        }
+
+        // =====================================================================
+        // Property 3: Median Algorithm Correctness
+        // **Feature: comprehensive-test-coverage, Property 3: Median Algorithm Correctness**
+        // =====================================================================
+
+        /// Strategy to generate large u64 values near u64::MAX for overflow testing.
+        /// This generates values in the upper 10% of the u64 range.
+        fn large_u64_strategy() -> impl Strategy<Value = u64> {
+            // Generate values in the range [u64::MAX - u64::MAX/10, u64::MAX]
+            // This ensures we test values near the overflow boundary
+            let min_val = u64::MAX - (u64::MAX / 10);
+            min_val..=u64::MAX
+        }
+
+        /// Reference implementation of median for u64 that uses u128 to avoid overflow.
+        /// This serves as the oracle for testing the overflow-safe implementation.
+        fn reference_median_u64(sorted: &[u64]) -> u64 {
+            debug_assert!(!sorted.is_empty());
+            let n = sorted.len();
+            let mid = n / 2;
+            if n % 2 == 1 {
+                sorted[mid]
+            } else {
+                // Use u128 to compute the average without overflow, then truncate
+                let a = sorted[mid - 1] as u128;
+                let b = sorted[mid] as u128;
+                ((a + b) / 2) as u64
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig {
+                cases: 100,
+                ..ProptestConfig::default()
+            })]
+
+            /// **Feature: comprehensive-test-coverage, Property 3: Median Algorithm Correctness**
+            /// **Validates: Requirements 8.5**
+            ///
+            /// Property 3: Median Algorithm Correctness (Overflow Handling)
+            ///
+            /// For any non-empty list of large u64 values near u64::MAX, the median
+            /// algorithm SHALL compute the correct result without overflow.
+            /// The implementation uses the formula:
+            /// (a/2) + (b/2) + ((a%2 + b%2)/2) to avoid overflow.
+            #[test]
+            fn prop_median_u64_overflow_handling(
+                values in prop::collection::vec(large_u64_strategy(), 2..50)
+            ) {
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                // Sort values to compute expected median using reference implementation
+                let mut sorted = values.clone();
+                sorted.sort_unstable();
+
+                let expected_median = reference_median_u64(&sorted);
+
+                prop_assert_eq!(
+                    summary.median, expected_median,
+                    "median should match reference implementation for large values near u64::MAX"
+                );
+
+                // Also verify the ordering invariant holds
+                prop_assert!(
+                    summary.min <= summary.median,
+                    "min ({}) should be <= median ({}) for large values",
+                    summary.min, summary.median
+                );
+                prop_assert!(
+                    summary.median <= summary.max,
+                    "median ({}) should be <= max ({}) for large values",
+                    summary.median, summary.max
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 3: Median Algorithm Correctness**
+            /// **Validates: Requirements 8.5**
+            ///
+            /// Property 3: Median Algorithm Correctness (Even Length - Average with Rounding Down)
+            ///
+            /// For any even-length sorted list of u64 values, the median SHALL equal
+            /// the average of the two middle elements, rounded down (floor division).
+            #[test]
+            fn prop_median_u64_even_length_rounding(
+                // Generate pairs of values to ensure even length
+                pairs in prop::collection::vec((any::<u64>(), any::<u64>()), 1..50)
+            ) {
+                // Flatten pairs into a single vector (guaranteed even length)
+                let values: Vec<u64> = pairs.into_iter().flat_map(|(a, b)| vec![a, b]).collect();
+                prop_assert!(values.len() % 2 == 0, "length should be even");
+
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                // Sort values to compute expected median
+                let mut sorted = values.clone();
+                sorted.sort_unstable();
+
+                let n = sorted.len();
+                let mid = n / 2;
+                let a = sorted[mid - 1];
+                let b = sorted[mid];
+
+                // Expected median using reference implementation (u128 to avoid overflow)
+                let expected_median = reference_median_u64(&sorted);
+
+                prop_assert_eq!(
+                    summary.median, expected_median,
+                    "median for even-length list should be floor((a + b) / 2) where a={}, b={}",
+                    a, b
+                );
+
+                // Verify rounding down behavior: median should be <= true average
+                // (true average computed with u128 to avoid overflow)
+                let true_avg_x2 = (a as u128) + (b as u128);
+                let median_x2 = (summary.median as u128) * 2;
+                prop_assert!(
+                    median_x2 <= true_avg_x2,
+                    "median*2 ({}) should be <= (a+b) ({}) due to floor rounding",
+                    median_x2, true_avg_x2
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 3: Median Algorithm Correctness**
+            /// **Validates: Requirements 8.5**
+            ///
+            /// Property 3: Median Algorithm Correctness (Odd Length - Exact Middle)
+            ///
+            /// For any odd-length sorted list of u64 values, the median SHALL equal
+            /// exactly the middle element (no averaging or rounding).
+            #[test]
+            fn prop_median_u64_odd_length_exact_middle(
+                // Generate odd-length vectors by generating n values and adding one more
+                base_values in prop::collection::vec(any::<u64>(), 1..50),
+                extra_value: u64,
+            ) {
+                // Ensure odd length by conditionally adding an extra value
+                let mut values = base_values;
+                if values.len() % 2 == 0 {
+                    values.push(extra_value);
+                }
+                prop_assert!(values.len() % 2 == 1, "length should be odd");
+
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                // Sort values to find the exact middle element
+                let mut sorted = values.clone();
+                sorted.sort_unstable();
+
+                let n = sorted.len();
+                let mid = n / 2;
+                let expected_median = sorted[mid];
+
+                prop_assert_eq!(
+                    summary.median, expected_median,
+                    "median for odd-length list should be exactly the middle element at index {}",
+                    mid
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 3: Median Algorithm Correctness**
+            /// **Validates: Requirements 8.5**
+            ///
+            /// Property 3: Median Algorithm Correctness (Extreme Values)
+            ///
+            /// Test with u64::MAX values to ensure no overflow occurs.
+            /// When both middle values are u64::MAX, the median should be u64::MAX.
+            #[test]
+            fn prop_median_u64_max_values(
+                count in 2usize..20,
+            ) {
+                // Create a vector of all u64::MAX values
+                let values: Vec<u64> = vec![u64::MAX; count];
+
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                // All values are u64::MAX, so median should be u64::MAX
+                prop_assert_eq!(
+                    summary.median, u64::MAX,
+                    "median of all u64::MAX values should be u64::MAX"
+                );
+                prop_assert_eq!(
+                    summary.min, u64::MAX,
+                    "min of all u64::MAX values should be u64::MAX"
+                );
+                prop_assert_eq!(
+                    summary.max, u64::MAX,
+                    "max of all u64::MAX values should be u64::MAX"
+                );
+            }
+
+            /// **Feature: comprehensive-test-coverage, Property 3: Median Algorithm Correctness**
+            /// **Validates: Requirements 8.5**
+            ///
+            /// Property 3: Median Algorithm Correctness (Mixed Large Values)
+            ///
+            /// Test with a mix of u64::MAX and u64::MAX-1 to verify correct averaging
+            /// at the overflow boundary.
+            #[test]
+            fn prop_median_u64_adjacent_max_values(
+                max_count in 1usize..10,
+                max_minus_one_count in 1usize..10,
+            ) {
+                // Create a vector with u64::MAX and u64::MAX-1 values
+                let mut values: Vec<u64> = Vec::new();
+                for _ in 0..max_count {
+                    values.push(u64::MAX);
+                }
+                for _ in 0..max_minus_one_count {
+                    values.push(u64::MAX - 1);
+                }
+
+                let summary = summarize_u64(&values).expect("non-empty vec should succeed");
+
+                // Sort to compute expected median
+                let mut sorted = values.clone();
+                sorted.sort_unstable();
+
+                let expected_median = reference_median_u64(&sorted);
+
+                prop_assert_eq!(
+                    summary.median, expected_median,
+                    "median should match reference for mix of u64::MAX and u64::MAX-1"
+                );
+
+                // Verify ordering invariant
+                prop_assert!(
+                    summary.min <= summary.median && summary.median <= summary.max,
+                    "ordering invariant should hold: {} <= {} <= {}",
+                    summary.min, summary.median, summary.max
+                );
+            }
+        }
+
+        // =====================================================================
         // Property 2: Warmup Sample Exclusion
         // =====================================================================
 
@@ -1531,5 +1988,414 @@ mod tests {
         let d = c.deltas.get(&Metric::ThroughputPerS).unwrap();
         assert!(d.pct < 0.0);
         assert_eq!(d.status, MetricStatus::Pass);
+    }
+
+    // =========================================================================
+    // Unit Tests for Domain Error Conditions
+    // **Validates: Requirements 11.1, 11.2**
+    // =========================================================================
+
+    mod error_condition_tests {
+        use super::*;
+
+        // ---------------------------------------------------------------------
+        // DomainError::NoSamples Tests
+        // ---------------------------------------------------------------------
+
+        /// Test that summarize_u64 returns DomainError::NoSamples for empty input.
+        /// **Validates: Requirements 11.1**
+        #[test]
+        fn summarize_u64_empty_input_returns_no_samples_error() {
+            let result = summarize_u64(&[]);
+
+            assert!(
+                result.is_err(),
+                "summarize_u64 should return error for empty input"
+            );
+            match result {
+                Err(DomainError::NoSamples) => { /* expected */ }
+                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that summarize_f64 returns DomainError::NoSamples for empty input.
+        /// **Validates: Requirements 11.1**
+        #[test]
+        fn summarize_f64_empty_input_returns_no_samples_error() {
+            let result = summarize_f64(&[]);
+
+            assert!(
+                result.is_err(),
+                "summarize_f64 should return error for empty input"
+            );
+            match result {
+                Err(DomainError::NoSamples) => { /* expected */ }
+                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that compute_stats returns DomainError::NoSamples for empty samples.
+        /// **Validates: Requirements 11.1**
+        #[test]
+        fn compute_stats_empty_samples_returns_no_samples_error() {
+            let samples: Vec<Sample> = vec![];
+            let result = compute_stats(&samples, None);
+
+            assert!(
+                result.is_err(),
+                "compute_stats should return error for empty samples"
+            );
+            match result {
+                Err(DomainError::NoSamples) => { /* expected */ }
+                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that compute_stats returns DomainError::NoSamples when all samples are warmup.
+        /// **Validates: Requirements 11.1**
+        #[test]
+        fn compute_stats_all_warmup_samples_returns_no_samples_error() {
+            // Create samples where all are marked as warmup
+            let samples = vec![
+                Sample {
+                    wall_ms: 100,
+                    exit_code: 0,
+                    warmup: true,
+                    timed_out: false,
+                    max_rss_kb: Some(1024),
+                    stdout: None,
+                    stderr: None,
+                },
+                Sample {
+                    wall_ms: 200,
+                    exit_code: 0,
+                    warmup: true,
+                    timed_out: false,
+                    max_rss_kb: Some(2048),
+                    stdout: None,
+                    stderr: None,
+                },
+                Sample {
+                    wall_ms: 150,
+                    exit_code: 0,
+                    warmup: true,
+                    timed_out: false,
+                    max_rss_kb: Some(1536),
+                    stdout: None,
+                    stderr: None,
+                },
+            ];
+
+            let result = compute_stats(&samples, None);
+
+            assert!(
+                result.is_err(),
+                "compute_stats should return error when all samples are warmup"
+            );
+            match result {
+                Err(DomainError::NoSamples) => { /* expected */ }
+                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that compute_stats with work_units also returns NoSamples for all-warmup samples.
+        /// **Validates: Requirements 11.1**
+        #[test]
+        fn compute_stats_all_warmup_with_work_units_returns_no_samples_error() {
+            let samples = vec![Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: true,
+                timed_out: false,
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            }];
+
+            // Even with work_units specified, should still fail
+            let result = compute_stats(&samples, Some(1000));
+
+            assert!(
+                result.is_err(),
+                "compute_stats should return error when all samples are warmup, even with work_units"
+            );
+            match result {
+                Err(DomainError::NoSamples) => { /* expected */ }
+                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // DomainError::InvalidBaseline Tests
+        // ---------------------------------------------------------------------
+
+        /// Test that compare_stats returns DomainError::InvalidBaseline when baseline value is 0.
+        /// **Validates: Requirements 11.2**
+        #[test]
+        fn compare_stats_zero_baseline_returns_invalid_baseline_error() {
+            // Create baseline stats with wall_ms median of 0
+            let baseline = Stats {
+                wall_ms: U64Summary {
+                    median: 0,
+                    min: 0,
+                    max: 0,
+                },
+                max_rss_kb: None,
+                throughput_per_s: None,
+            };
+
+            let current = Stats {
+                wall_ms: U64Summary {
+                    median: 100,
+                    min: 100,
+                    max: 100,
+                },
+                max_rss_kb: None,
+                throughput_per_s: None,
+            };
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(
+                Metric::WallMs,
+                Budget {
+                    threshold: 0.20,
+                    warn_threshold: 0.10,
+                    direction: Direction::Lower,
+                },
+            );
+
+            let result = compare_stats(&baseline, &current, &budgets);
+
+            assert!(
+                result.is_err(),
+                "compare_stats should return error when baseline value is 0"
+            );
+            match result {
+                Err(DomainError::InvalidBaseline(metric)) => {
+                    assert_eq!(
+                        metric,
+                        Metric::WallMs,
+                        "error should indicate WallMs metric"
+                    );
+                }
+                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that compare_stats returns InvalidBaseline for zero throughput baseline.
+        /// **Validates: Requirements 11.2**
+        #[test]
+        fn compare_stats_zero_throughput_baseline_returns_invalid_baseline_error() {
+            let baseline = Stats {
+                wall_ms: U64Summary {
+                    median: 1000,
+                    min: 1000,
+                    max: 1000,
+                },
+                max_rss_kb: None,
+                throughput_per_s: Some(F64Summary {
+                    median: 0.0,
+                    min: 0.0,
+                    max: 0.0,
+                }),
+            };
+
+            let current = Stats {
+                wall_ms: U64Summary {
+                    median: 1000,
+                    min: 1000,
+                    max: 1000,
+                },
+                max_rss_kb: None,
+                throughput_per_s: Some(F64Summary {
+                    median: 100.0,
+                    min: 100.0,
+                    max: 100.0,
+                }),
+            };
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(
+                Metric::ThroughputPerS,
+                Budget {
+                    threshold: 0.20,
+                    warn_threshold: 0.10,
+                    direction: Direction::Higher,
+                },
+            );
+
+            let result = compare_stats(&baseline, &current, &budgets);
+
+            assert!(
+                result.is_err(),
+                "compare_stats should return error when throughput baseline is 0"
+            );
+            match result {
+                Err(DomainError::InvalidBaseline(metric)) => {
+                    assert_eq!(
+                        metric,
+                        Metric::ThroughputPerS,
+                        "error should indicate ThroughputPerS metric"
+                    );
+                }
+                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that compare_stats returns InvalidBaseline for zero max_rss_kb baseline.
+        /// **Validates: Requirements 11.2**
+        #[test]
+        fn compare_stats_zero_max_rss_baseline_returns_invalid_baseline_error() {
+            let baseline = Stats {
+                wall_ms: U64Summary {
+                    median: 1000,
+                    min: 1000,
+                    max: 1000,
+                },
+                max_rss_kb: Some(U64Summary {
+                    median: 0,
+                    min: 0,
+                    max: 0,
+                }),
+                throughput_per_s: None,
+            };
+
+            let current = Stats {
+                wall_ms: U64Summary {
+                    median: 1000,
+                    min: 1000,
+                    max: 1000,
+                },
+                max_rss_kb: Some(U64Summary {
+                    median: 1024,
+                    min: 1024,
+                    max: 1024,
+                }),
+                throughput_per_s: None,
+            };
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(
+                Metric::MaxRssKb,
+                Budget {
+                    threshold: 0.20,
+                    warn_threshold: 0.10,
+                    direction: Direction::Lower,
+                },
+            );
+
+            let result = compare_stats(&baseline, &current, &budgets);
+
+            assert!(
+                result.is_err(),
+                "compare_stats should return error when max_rss_kb baseline is 0"
+            );
+            match result {
+                Err(DomainError::InvalidBaseline(metric)) => {
+                    assert_eq!(
+                        metric,
+                        Metric::MaxRssKb,
+                        "error should indicate MaxRssKb metric"
+                    );
+                }
+                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that compare_stats returns InvalidBaseline for negative throughput baseline.
+        /// Note: While negative throughput is unusual, the check is for <= 0.
+        /// **Validates: Requirements 11.2**
+        #[test]
+        fn compare_stats_negative_throughput_baseline_returns_invalid_baseline_error() {
+            let baseline = Stats {
+                wall_ms: U64Summary {
+                    median: 1000,
+                    min: 1000,
+                    max: 1000,
+                },
+                max_rss_kb: None,
+                throughput_per_s: Some(F64Summary {
+                    median: -10.0,
+                    min: -10.0,
+                    max: -10.0,
+                }),
+            };
+
+            let current = Stats {
+                wall_ms: U64Summary {
+                    median: 1000,
+                    min: 1000,
+                    max: 1000,
+                },
+                max_rss_kb: None,
+                throughput_per_s: Some(F64Summary {
+                    median: 100.0,
+                    min: 100.0,
+                    max: 100.0,
+                }),
+            };
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(
+                Metric::ThroughputPerS,
+                Budget {
+                    threshold: 0.20,
+                    warn_threshold: 0.10,
+                    direction: Direction::Higher,
+                },
+            );
+
+            let result = compare_stats(&baseline, &current, &budgets);
+
+            assert!(
+                result.is_err(),
+                "compare_stats should return error when throughput baseline is negative"
+            );
+            match result {
+                Err(DomainError::InvalidBaseline(metric)) => {
+                    assert_eq!(
+                        metric,
+                        Metric::ThroughputPerS,
+                        "error should indicate ThroughputPerS metric"
+                    );
+                }
+                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
+                Ok(_) => panic!("expected error, got Ok"),
+            }
+        }
+
+        /// Test that DomainError::NoSamples has the expected error message.
+        /// **Validates: Requirements 11.1**
+        #[test]
+        fn no_samples_error_has_descriptive_message() {
+            let error = DomainError::NoSamples;
+            let message = format!("{}", error);
+            assert_eq!(message, "no samples to summarize");
+        }
+
+        /// Test that DomainError::InvalidBaseline has the expected error message.
+        /// **Validates: Requirements 11.2**
+        #[test]
+        fn invalid_baseline_error_has_descriptive_message() {
+            let error = DomainError::InvalidBaseline(Metric::WallMs);
+            let message = format!("{}", error);
+            assert_eq!(message, "baseline value for WallMs must be > 0");
+
+            let error2 = DomainError::InvalidBaseline(Metric::ThroughputPerS);
+            let message2 = format!("{}", error2);
+            assert_eq!(message2, "baseline value for ThroughputPerS must be > 0");
+
+            let error3 = DomainError::InvalidBaseline(Metric::MaxRssKb);
+            let message3 = format!("{}", error3);
+            assert_eq!(message3, "baseline value for MaxRssKb must be > 0");
+        }
     }
 }

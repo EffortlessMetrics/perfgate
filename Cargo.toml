@@ -18,6 +18,26 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/EffortlessMetrics/perfgate" # update when you publish
 
+# Root package for workspace-level integration tests (BDD/cucumber)
+[package]
+name = "perfgate-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+cucumber.workspace = true
+tempfile.workspace = true
+assert_cmd.workspace = true
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde_json.workspace = true
+perfgate-types = { path = "crates/perfgate-types" }
+
+[[test]]
+name = "cucumber"
+harness = false
+
 [workspace.dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
@@ -34,6 +54,9 @@ toml = "0.8"
 assert_cmd = "2"
 predicates = "3"
 insta = { version = "1", features = ["json"] }
+cucumber = "0.21"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 # Unix-only
 libc = "0.2"

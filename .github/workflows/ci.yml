@@ -23,5 +23,20 @@ jobs:
       - name: test
         run: cargo test --all
 
+      - name: BDD tests
+        run: cargo test --test cucumber
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage report
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --fail-under-lines 80
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+
       - name: schemas
         run: cargo run -p xtask -- schema

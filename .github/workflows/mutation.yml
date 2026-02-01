@@ -1,0 +1,87 @@
+name: mutation-testing
+
+on:
+  # Run weekly on Sunday at midnight UTC
+  schedule:
+    - cron: "0 0 * * 0"
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Specific crate to test (leave empty for all)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - perfgate-domain
+          - perfgate-types
+          - perfgate-app
+          - perfgate-adapters
+          - perfgate-cli
+
+jobs:
+  mutation-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120 # Mutation testing can take a while
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+
+      - name: Run mutation testing
+        run: |
+          if [ -n "${{ github.event.inputs.crate }}" ]; then
+            cargo run -p xtask -- mutants --crate ${{ github.event.inputs.crate }} --summary
+          else
+            cargo run -p xtask -- mutants --summary
+          fi
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: |
+            mutants.out/
+          retention-days: 30
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Mutation Testing Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f mutants.out/outcomes.json ]; then
+            # Parse outcomes and generate summary
+            TOTAL=$(jq 'length' mutants.out/outcomes.json)
+            KILLED=$(jq '[.[] | select(.outcome == "Killed")] | length' mutants.out/outcomes.json)
+            SURVIVED=$(jq '[.[] | select(.outcome == "Missed")] | length' mutants.out/outcomes.json)
+            TIMEOUT=$(jq '[.[] | select(.outcome == "Timeout")] | length' mutants.out/outcomes.json)
+            
+            if [ "$TOTAL" -gt 0 ]; then
+              KILL_RATE=$(echo "scale=1; $KILLED * 100 / $TOTAL" | bc)
+            else
+              KILL_RATE="N/A"
+            fi
+            
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Mutants | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Killed | $KILLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Survived | $SURVIVED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Timeout | $TIMEOUT |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Kill Rate** | **${KILL_RATE}%** |" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$SURVIVED" -gt 0 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Surviving Mutants" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "See the uploaded artifact for details on surviving mutants." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "No mutation testing results found." >> $GITHUB_STEP_SUMMARY
+          fi

@@ -278,3 +278,284 @@ fn ru_maxrss_kb(ru: &libc::rusage) -> u64 {
         raw
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // **Feature: comprehensive-test-coverage, Property 8: Output Truncation Invariant**
+    // *For any* byte sequence and cap value, the truncated output SHALL have length `min(original_length, cap)`.
+    //
+    // **Validates: Requirements 9.3**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        /// Property test: truncated length equals min(original_length, cap)
+        #[test]
+        fn truncate_length_equals_min_of_original_and_cap(
+            bytes in proptest::collection::vec(any::<u8>(), 0..1000),
+            cap in 0usize..2000
+        ) {
+            let original_len = bytes.len();
+            let result = truncate(bytes, cap);
+            let expected_len = original_len.min(cap);
+            prop_assert_eq!(
+                result.len(),
+                expected_len,
+                "truncated length should be min({}, {}) = {}, but got {}",
+                original_len,
+                cap,
+                expected_len,
+                result.len()
+            );
+        }
+
+        /// Property test: truncated content is a prefix of the original
+        #[test]
+        fn truncate_preserves_prefix(
+            bytes in proptest::collection::vec(any::<u8>(), 0..1000),
+            cap in 0usize..2000
+        ) {
+            let original = bytes.clone();
+            let result = truncate(bytes, cap);
+
+            // The result should be a prefix of the original
+            prop_assert!(
+                original.starts_with(&result),
+                "truncated output should be a prefix of the original"
+            );
+        }
+
+        /// Property test: when cap >= original_length, output equals original
+        #[test]
+        fn truncate_no_op_when_cap_exceeds_length(
+            bytes in proptest::collection::vec(any::<u8>(), 0..500)
+        ) {
+            let original = bytes.clone();
+            let original_len = original.len();
+            // Use a cap that is >= original length
+            let cap = original_len + 100;
+            let result = truncate(bytes, cap);
+
+            prop_assert_eq!(
+                result,
+                original,
+                "when cap ({}) >= original_length ({}), output should equal original",
+                cap,
+                original_len
+            );
+        }
+    }
+
+    // Additional unit tests for edge cases
+    #[test]
+    fn truncate_empty_vec() {
+        let result = truncate(vec![], 10);
+        assert_eq!(result, vec![]);
+    }
+
+    #[test]
+    fn truncate_with_zero_cap() {
+        let result = truncate(vec![1, 2, 3, 4, 5], 0);
+        assert_eq!(result, vec![]);
+    }
+
+    #[test]
+    fn truncate_exact_cap() {
+        let bytes = vec![1, 2, 3, 4, 5];
+        let result = truncate(bytes.clone(), 5);
+        assert_eq!(result, bytes);
+    }
+
+    #[test]
+    fn truncate_one_over_cap() {
+        let bytes = vec![1, 2, 3, 4, 5];
+        let result = truncate(bytes, 4);
+        assert_eq!(result, vec![1, 2, 3, 4]);
+    }
+
+    // =========================================================================
+    // Unit tests for adapter error conditions
+    // Validates: Requirements 11.3
+    // =========================================================================
+
+    /// Test that StdProcessRunner::run returns AdapterError::EmptyArgv when argv is empty
+    #[test]
+    fn empty_argv_returns_error() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 1024,
+        };
+
+        let result = runner.run(&spec);
+        assert!(result.is_err(), "Expected error for empty argv");
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, AdapterError::EmptyArgv),
+            "Expected AdapterError::EmptyArgv, got {:?}",
+            err
+        );
+    }
+
+    /// Test that AdapterError::EmptyArgv has a descriptive error message
+    #[test]
+    fn empty_argv_error_message_is_descriptive() {
+        let err = AdapterError::EmptyArgv;
+        let msg = err.to_string();
+        assert!(
+            msg.contains("argv") && msg.contains("empty"),
+            "Error message should mention 'argv' and 'empty', got: {}",
+            msg
+        );
+    }
+
+    /// Test that AdapterError::Timeout has a descriptive error message
+    #[test]
+    fn timeout_error_message_is_descriptive() {
+        let err = AdapterError::Timeout;
+        let msg = err.to_string();
+        assert!(
+            msg.contains("timed out") || msg.contains("timeout"),
+            "Error message should mention 'timeout', got: {}",
+            msg
+        );
+    }
+
+    /// Test that AdapterError::TimeoutUnsupported has a descriptive error message
+    #[test]
+    fn timeout_unsupported_error_message_is_descriptive() {
+        let err = AdapterError::TimeoutUnsupported;
+        let msg = err.to_string();
+        assert!(
+            msg.contains("timeout") && msg.contains("not supported"),
+            "Error message should mention 'timeout' and 'not supported', got: {}",
+            msg
+        );
+    }
+
+    /// Test that on non-Unix platforms, timeout returns TimeoutUnsupported error
+    /// On Unix platforms, this test verifies the timeout functionality works
+    #[cfg(not(unix))]
+    #[test]
+    fn timeout_on_non_unix_returns_unsupported() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec!["echo".to_string(), "hello".to_string()],
+            cwd: None,
+            env: vec![],
+            timeout: Some(Duration::from_secs(10)),
+            output_cap_bytes: 1024,
+        };
+
+        let result = runner.run(&spec);
+        assert!(result.is_err(), "Expected error for timeout on non-Unix");
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, AdapterError::TimeoutUnsupported),
+            "Expected AdapterError::TimeoutUnsupported, got {:?}",
+            err
+        );
+    }
+
+    /// Test that on Unix platforms, timeout is supported and works correctly
+    #[cfg(unix)]
+    #[test]
+    fn timeout_on_unix_is_supported() {
+        let runner = StdProcessRunner;
+        // Use a command that completes quickly
+        let spec = CommandSpec {
+            argv: vec!["echo".to_string(), "hello".to_string()],
+            cwd: None,
+            env: vec![],
+            timeout: Some(Duration::from_secs(10)),
+            output_cap_bytes: 1024,
+        };
+
+        let result = runner.run(&spec);
+        assert!(
+            result.is_ok(),
+            "Timeout should be supported on Unix, got error: {:?}",
+            result.err()
+        );
+
+        let run_result = result.unwrap();
+        assert!(!run_result.timed_out, "Command should not have timed out");
+        assert_eq!(run_result.exit_code, 0, "Command should have succeeded");
+    }
+
+    /// Test that on Unix platforms, a command that exceeds timeout is killed
+    #[cfg(unix)]
+    #[test]
+    fn timeout_kills_long_running_command() {
+        let runner = StdProcessRunner;
+        // Use sleep command that would take longer than the timeout
+        let spec = CommandSpec {
+            argv: vec!["sleep".to_string(), "10".to_string()],
+            cwd: None,
+            env: vec![],
+            timeout: Some(Duration::from_millis(100)),
+            output_cap_bytes: 1024,
+        };
+
+        let start = std::time::Instant::now();
+        let result = runner.run(&spec);
+        let elapsed = start.elapsed();
+
+        assert!(
+            result.is_ok(),
+            "Should return Ok with timed_out flag, got error: {:?}",
+            result.err()
+        );
+
+        let run_result = result.unwrap();
+        assert!(run_result.timed_out, "Command should have timed out");
+
+        // Verify the command was killed within a reasonable time (not the full 10 seconds)
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "Command should have been killed quickly, but took {:?}",
+            elapsed
+        );
+    }
+
+    /// Test that AdapterError::Other wraps anyhow errors correctly
+    #[test]
+    fn other_error_wraps_anyhow() {
+        let inner_err = anyhow::anyhow!("test error message");
+        let err = AdapterError::Other(inner_err);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("test error message"),
+            "Error message should contain the inner error, got: {}",
+            msg
+        );
+    }
+
+    /// Test that empty argv check happens before any process spawning
+    #[test]
+    fn empty_argv_check_is_immediate() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![],
+            cwd: Some(std::path::PathBuf::from("/nonexistent/path")),
+            env: vec![("SOME_VAR".to_string(), "value".to_string())],
+            timeout: Some(Duration::from_secs(1)),
+            output_cap_bytes: 1024,
+        };
+
+        // This should return EmptyArgv error immediately, not fail due to
+        // invalid cwd or other issues
+        let result = runner.run(&spec);
+        assert!(
+            matches!(result, Err(AdapterError::EmptyArgv)),
+            "Should return EmptyArgv before checking other parameters"
+        );
+    }
+}
