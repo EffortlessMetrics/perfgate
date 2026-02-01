@@ -2,6 +2,10 @@
 //!
 //! Design goal: versioned, explicit, boring.
 //! These structs are used for receipts, PR comments, and (eventually) long-term baselines.
+//!
+//! # Feature Flags
+//!
+//! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,18 +15,21 @@ pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ToolInfo {
     pub name: String,
     pub version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HostInfo {
     pub os: String,
     pub arch: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RunMeta {
     pub id: String,
     pub started_at: String,
@@ -31,6 +38,7 @@ pub struct RunMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct BenchMeta {
     pub name: String,
 
@@ -52,6 +60,7 @@ pub struct BenchMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Sample {
     pub wall_ms: u64,
     pub exit_code: i32,
@@ -75,6 +84,7 @@ pub struct Sample {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct U64Summary {
     pub median: u64,
     pub min: u64,
@@ -82,6 +92,7 @@ pub struct U64Summary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct F64Summary {
     pub median: f64,
     pub min: f64,
@@ -89,6 +100,7 @@ pub struct F64Summary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Stats {
     pub wall_ms: U64Summary,
 
@@ -100,6 +112,7 @@ pub struct Stats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RunReceipt {
     pub schema: String,
     pub tool: ToolInfo,
@@ -112,6 +125,7 @@ pub struct RunReceipt {
 #[derive(
     Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum Metric {
     WallMs,
@@ -143,6 +157,7 @@ impl Metric {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     Lower,
@@ -150,6 +165,7 @@ pub enum Direction {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Budget {
     /// Fail threshold, as a fraction (0.20 = 20% regression allowed).
     pub threshold: f64,
@@ -161,6 +177,7 @@ pub struct Budget {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum MetricStatus {
     Pass,
@@ -169,6 +186,7 @@ pub enum MetricStatus {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Delta {
     pub baseline: f64,
     pub current: f64,
@@ -186,6 +204,7 @@ pub struct Delta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CompareRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -195,6 +214,7 @@ pub struct CompareRef {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum VerdictStatus {
     Pass,
@@ -203,6 +223,7 @@ pub enum VerdictStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct VerdictCounts {
     pub pass: u32,
     pub warn: u32,
@@ -210,6 +231,7 @@ pub struct VerdictCounts {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Verdict {
     pub status: VerdictStatus,
     pub counts: VerdictCounts,
@@ -217,6 +239,7 @@ pub struct Verdict {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CompareReceipt {
     pub schema: String,
     pub tool: ToolInfo,
@@ -237,6 +260,7 @@ pub struct CompareReceipt {
 // ----------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ConfigFile {
     #[serde(default)]
     pub defaults: DefaultsConfig,
@@ -246,6 +270,7 @@ pub struct ConfigFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct DefaultsConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repeat: Option<u32>,
@@ -267,6 +292,7 @@ pub struct DefaultsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct BenchConfigFile {
     pub name: String,
 
@@ -291,6 +317,7 @@ pub struct BenchConfigFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct BudgetOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f64>,
@@ -327,6 +354,7 @@ mod tests {
 mod property_tests {
     use super::*;
     use proptest::prelude::*;
+    use toml;
 
     // Strategy for generating valid non-empty strings (for names, IDs, etc.)
     fn non_empty_string() -> impl Strategy<Value = String> {
@@ -780,6 +808,555 @@ mod property_tests {
                 );
                 prop_assert_eq!(orig_delta.status, deser_delta.status);
             }
+        }
+    }
+
+    // --- Strategies for ConfigFile ---
+
+    // Strategy for BudgetOverride
+    fn budget_override_strategy() -> impl Strategy<Value = BudgetOverride> {
+        (
+            proptest::option::of(0.01f64..1.0),
+            proptest::option::of(direction_strategy()),
+            proptest::option::of(0.5f64..1.0),
+        )
+            .prop_map(|(threshold, direction, warn_factor)| BudgetOverride {
+                threshold,
+                direction,
+                warn_factor,
+            })
+    }
+
+    // Strategy for BTreeMap<Metric, BudgetOverride>
+    fn budget_overrides_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, BudgetOverride>> {
+        proptest::collection::btree_map(metric_strategy(), budget_override_strategy(), 0..4)
+    }
+
+    // Strategy for BenchConfigFile
+    fn bench_config_file_strategy() -> impl Strategy<Value = BenchConfigFile> {
+        (
+            non_empty_string(),
+            proptest::option::of(non_empty_string()),
+            proptest::option::of(1u64..10000),
+            proptest::option::of("[0-9]+[smh]"), // humantime-like duration strings
+            proptest::collection::vec(non_empty_string(), 1..5),
+            proptest::option::of(proptest::collection::vec(metric_strategy(), 1..4)),
+            proptest::option::of(budget_overrides_map_strategy()),
+        )
+            .prop_map(|(name, cwd, work, timeout, command, metrics, budgets)| {
+                BenchConfigFile {
+                    name,
+                    cwd,
+                    work,
+                    timeout,
+                    command,
+                    metrics,
+                    budgets,
+                }
+            })
+    }
+
+    // Strategy for DefaultsConfig
+    fn defaults_config_strategy() -> impl Strategy<Value = DefaultsConfig> {
+        (
+            proptest::option::of(1u32..100),
+            proptest::option::of(0u32..10),
+            proptest::option::of(0.01f64..1.0),
+            proptest::option::of(0.5f64..1.0),
+            proptest::option::of(non_empty_string()),
+            proptest::option::of(non_empty_string()),
+        )
+            .prop_map(
+                |(repeat, warmup, threshold, warn_factor, out_dir, baseline_dir)| DefaultsConfig {
+                    repeat,
+                    warmup,
+                    threshold,
+                    warn_factor,
+                    out_dir,
+                    baseline_dir,
+                },
+            )
+    }
+
+    // Strategy for ConfigFile
+    fn config_file_strategy() -> impl Strategy<Value = ConfigFile> {
+        (
+            defaults_config_strategy(),
+            proptest::collection::vec(bench_config_file_strategy(), 0..5),
+        )
+            .prop_map(|(defaults, benches)| ConfigFile { defaults, benches })
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip**
+    //
+    // For any valid ConfigFile, serializing to JSON then deserializing
+    // SHALL produce an equivalent value.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn config_file_json_serialization_round_trip(config in config_file_strategy()) {
+            // Serialize to JSON
+            let json = serde_json::to_string(&config)
+                .expect("ConfigFile should serialize to JSON");
+
+            // Deserialize back
+            let deserialized: ConfigFile = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to ConfigFile");
+
+            // Compare defaults
+            prop_assert_eq!(config.defaults.repeat, deserialized.defaults.repeat);
+            prop_assert_eq!(config.defaults.warmup, deserialized.defaults.warmup);
+            prop_assert_eq!(&config.defaults.out_dir, &deserialized.defaults.out_dir);
+            prop_assert_eq!(&config.defaults.baseline_dir, &deserialized.defaults.baseline_dir);
+
+            // Compare f64 fields in defaults with tolerance
+            match (config.defaults.threshold, deserialized.defaults.threshold) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(
+                        f64_approx_eq(orig, deser),
+                        "defaults.threshold mismatch: {} vs {}",
+                        orig, deser
+                    );
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "defaults.threshold presence mismatch"),
+            }
+
+            match (config.defaults.warn_factor, deserialized.defaults.warn_factor) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(
+                        f64_approx_eq(orig, deser),
+                        "defaults.warn_factor mismatch: {} vs {}",
+                        orig, deser
+                    );
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "defaults.warn_factor presence mismatch"),
+            }
+
+            // Compare benches
+            prop_assert_eq!(config.benches.len(), deserialized.benches.len());
+            for (orig_bench, deser_bench) in config.benches.iter().zip(deserialized.benches.iter()) {
+                prop_assert_eq!(&orig_bench.name, &deser_bench.name);
+                prop_assert_eq!(&orig_bench.cwd, &deser_bench.cwd);
+                prop_assert_eq!(orig_bench.work, deser_bench.work);
+                prop_assert_eq!(&orig_bench.timeout, &deser_bench.timeout);
+                prop_assert_eq!(&orig_bench.command, &deser_bench.command);
+                prop_assert_eq!(&orig_bench.metrics, &deser_bench.metrics);
+
+                // Compare budgets map with f64 tolerance
+                match (&orig_bench.budgets, &deser_bench.budgets) {
+                    (Some(orig_budgets), Some(deser_budgets)) => {
+                        prop_assert_eq!(orig_budgets.len(), deser_budgets.len());
+                        for (metric, orig_override) in orig_budgets {
+                            let deser_override = deser_budgets.get(metric)
+                                .expect("BudgetOverride metric should exist in deserialized");
+
+                            // Compare threshold with tolerance
+                            match (orig_override.threshold, deser_override.threshold) {
+                                (Some(orig), Some(deser)) => {
+                                    prop_assert!(
+                                        f64_approx_eq(orig, deser),
+                                        "BudgetOverride threshold mismatch for {:?}: {} vs {}",
+                                        metric, orig, deser
+                                    );
+                                }
+                                (None, None) => {}
+                                _ => prop_assert!(false, "BudgetOverride threshold presence mismatch for {:?}", metric),
+                            }
+
+                            prop_assert_eq!(orig_override.direction, deser_override.direction);
+
+                            // Compare warn_factor with tolerance
+                            match (orig_override.warn_factor, deser_override.warn_factor) {
+                                (Some(orig), Some(deser)) => {
+                                    prop_assert!(
+                                        f64_approx_eq(orig, deser),
+                                        "BudgetOverride warn_factor mismatch for {:?}: {} vs {}",
+                                        metric, orig, deser
+                                    );
+                                }
+                                (None, None) => {}
+                                _ => prop_assert!(false, "BudgetOverride warn_factor presence mismatch for {:?}", metric),
+                            }
+                        }
+                    }
+                    (None, None) => {}
+                    _ => prop_assert!(false, "bench.budgets presence mismatch"),
+                }
+            }
+        }
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip (TOML variant)**
+    //
+    // For any valid ConfigFile, serializing to TOML then deserializing
+    // SHALL produce an equivalent value.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn config_file_toml_serialization_round_trip(config in config_file_strategy()) {
+            // Serialize to TOML
+            let toml_str = toml::to_string(&config)
+                .expect("ConfigFile should serialize to TOML");
+
+            // Deserialize back
+            let deserialized: ConfigFile = toml::from_str(&toml_str)
+                .expect("TOML should deserialize back to ConfigFile");
+
+            // Compare defaults
+            prop_assert_eq!(config.defaults.repeat, deserialized.defaults.repeat);
+            prop_assert_eq!(config.defaults.warmup, deserialized.defaults.warmup);
+            prop_assert_eq!(&config.defaults.out_dir, &deserialized.defaults.out_dir);
+            prop_assert_eq!(&config.defaults.baseline_dir, &deserialized.defaults.baseline_dir);
+
+            // Compare f64 fields in defaults with tolerance
+            match (config.defaults.threshold, deserialized.defaults.threshold) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(
+                        f64_approx_eq(orig, deser),
+                        "defaults.threshold mismatch: {} vs {}",
+                        orig, deser
+                    );
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "defaults.threshold presence mismatch"),
+            }
+
+            match (config.defaults.warn_factor, deserialized.defaults.warn_factor) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(
+                        f64_approx_eq(orig, deser),
+                        "defaults.warn_factor mismatch: {} vs {}",
+                        orig, deser
+                    );
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "defaults.warn_factor presence mismatch"),
+            }
+
+            // Compare benches
+            prop_assert_eq!(config.benches.len(), deserialized.benches.len());
+            for (orig_bench, deser_bench) in config.benches.iter().zip(deserialized.benches.iter()) {
+                prop_assert_eq!(&orig_bench.name, &deser_bench.name);
+                prop_assert_eq!(&orig_bench.cwd, &deser_bench.cwd);
+                prop_assert_eq!(orig_bench.work, deser_bench.work);
+                prop_assert_eq!(&orig_bench.timeout, &deser_bench.timeout);
+                prop_assert_eq!(&orig_bench.command, &deser_bench.command);
+                prop_assert_eq!(&orig_bench.metrics, &deser_bench.metrics);
+
+                // Compare budgets map with f64 tolerance
+                match (&orig_bench.budgets, &deser_bench.budgets) {
+                    (Some(orig_budgets), Some(deser_budgets)) => {
+                        prop_assert_eq!(orig_budgets.len(), deser_budgets.len());
+                        for (metric, orig_override) in orig_budgets {
+                            let deser_override = deser_budgets.get(metric)
+                                .expect("BudgetOverride metric should exist in deserialized");
+
+                            // Compare threshold with tolerance
+                            match (orig_override.threshold, deser_override.threshold) {
+                                (Some(orig), Some(deser)) => {
+                                    prop_assert!(
+                                        f64_approx_eq(orig, deser),
+                                        "BudgetOverride threshold mismatch for {:?}: {} vs {}",
+                                        metric, orig, deser
+                                    );
+                                }
+                                (None, None) => {}
+                                _ => prop_assert!(false, "BudgetOverride threshold presence mismatch for {:?}", metric),
+                            }
+
+                            prop_assert_eq!(orig_override.direction, deser_override.direction);
+
+                            // Compare warn_factor with tolerance
+                            match (orig_override.warn_factor, deser_override.warn_factor) {
+                                (Some(orig), Some(deser)) => {
+                                    prop_assert!(
+                                        f64_approx_eq(orig, deser),
+                                        "BudgetOverride warn_factor mismatch for {:?}: {} vs {}",
+                                        metric, orig, deser
+                                    );
+                                }
+                                (None, None) => {}
+                                _ => prop_assert!(false, "BudgetOverride warn_factor presence mismatch for {:?}", metric),
+                            }
+                        }
+                    }
+                    (None, None) => {}
+                    _ => prop_assert!(false, "bench.budgets presence mismatch"),
+                }
+            }
+        }
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip**
+    //
+    // For any valid BenchConfigFile, serializing to JSON then deserializing
+    // SHALL produce an equivalent value. This tests the BenchConfigFile type
+    // in isolation with all optional fields.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn bench_config_file_json_serialization_round_trip(bench_config in bench_config_file_strategy()) {
+            // Serialize to JSON
+            let json = serde_json::to_string(&bench_config)
+                .expect("BenchConfigFile should serialize to JSON");
+
+            // Deserialize back
+            let deserialized: BenchConfigFile = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to BenchConfigFile");
+
+            // Compare required fields
+            prop_assert_eq!(&bench_config.name, &deserialized.name);
+            prop_assert_eq!(&bench_config.command, &deserialized.command);
+
+            // Compare optional fields
+            prop_assert_eq!(&bench_config.cwd, &deserialized.cwd);
+            prop_assert_eq!(bench_config.work, deserialized.work);
+            prop_assert_eq!(&bench_config.timeout, &deserialized.timeout);
+            prop_assert_eq!(&bench_config.metrics, &deserialized.metrics);
+
+            // Compare budgets map with f64 tolerance
+            match (&bench_config.budgets, &deserialized.budgets) {
+                (Some(orig_budgets), Some(deser_budgets)) => {
+                    prop_assert_eq!(orig_budgets.len(), deser_budgets.len());
+                    for (metric, orig_override) in orig_budgets {
+                        let deser_override = deser_budgets.get(metric)
+                            .expect("BudgetOverride metric should exist in deserialized");
+
+                        // Compare threshold with tolerance
+                        match (orig_override.threshold, deser_override.threshold) {
+                            (Some(orig), Some(deser)) => {
+                                prop_assert!(
+                                    f64_approx_eq(orig, deser),
+                                    "BudgetOverride threshold mismatch for {:?}: {} vs {}",
+                                    metric, orig, deser
+                                );
+                            }
+                            (None, None) => {}
+                            _ => prop_assert!(false, "BudgetOverride threshold presence mismatch for {:?}", metric),
+                        }
+
+                        prop_assert_eq!(orig_override.direction, deser_override.direction);
+
+                        // Compare warn_factor with tolerance
+                        match (orig_override.warn_factor, deser_override.warn_factor) {
+                            (Some(orig), Some(deser)) => {
+                                prop_assert!(
+                                    f64_approx_eq(orig, deser),
+                                    "BudgetOverride warn_factor mismatch for {:?}: {} vs {}",
+                                    metric, orig, deser
+                                );
+                            }
+                            (None, None) => {}
+                            _ => prop_assert!(false, "BudgetOverride warn_factor presence mismatch for {:?}", metric),
+                        }
+                    }
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "budgets presence mismatch"),
+            }
+        }
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip (TOML variant)**
+    //
+    // For any valid BenchConfigFile, serializing to TOML then deserializing
+    // SHALL produce an equivalent value. This tests the BenchConfigFile type
+    // in isolation with all optional fields.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn bench_config_file_toml_serialization_round_trip(bench_config in bench_config_file_strategy()) {
+            // Serialize to TOML
+            let toml_str = toml::to_string(&bench_config)
+                .expect("BenchConfigFile should serialize to TOML");
+
+            // Deserialize back
+            let deserialized: BenchConfigFile = toml::from_str(&toml_str)
+                .expect("TOML should deserialize back to BenchConfigFile");
+
+            // Compare required fields
+            prop_assert_eq!(&bench_config.name, &deserialized.name);
+            prop_assert_eq!(&bench_config.command, &deserialized.command);
+
+            // Compare optional fields
+            prop_assert_eq!(&bench_config.cwd, &deserialized.cwd);
+            prop_assert_eq!(bench_config.work, deserialized.work);
+            prop_assert_eq!(&bench_config.timeout, &deserialized.timeout);
+            prop_assert_eq!(&bench_config.metrics, &deserialized.metrics);
+
+            // Compare budgets map with f64 tolerance
+            match (&bench_config.budgets, &deserialized.budgets) {
+                (Some(orig_budgets), Some(deser_budgets)) => {
+                    prop_assert_eq!(orig_budgets.len(), deser_budgets.len());
+                    for (metric, orig_override) in orig_budgets {
+                        let deser_override = deser_budgets.get(metric)
+                            .expect("BudgetOverride metric should exist in deserialized");
+
+                        // Compare threshold with tolerance
+                        match (orig_override.threshold, deser_override.threshold) {
+                            (Some(orig), Some(deser)) => {
+                                prop_assert!(
+                                    f64_approx_eq(orig, deser),
+                                    "BudgetOverride threshold mismatch for {:?}: {} vs {}",
+                                    metric, orig, deser
+                                );
+                            }
+                            (None, None) => {}
+                            _ => prop_assert!(false, "BudgetOverride threshold presence mismatch for {:?}", metric),
+                        }
+
+                        prop_assert_eq!(orig_override.direction, deser_override.direction);
+
+                        // Compare warn_factor with tolerance
+                        match (orig_override.warn_factor, deser_override.warn_factor) {
+                            (Some(orig), Some(deser)) => {
+                                prop_assert!(
+                                    f64_approx_eq(orig, deser),
+                                    "BudgetOverride warn_factor mismatch for {:?}: {} vs {}",
+                                    metric, orig, deser
+                                );
+                            }
+                            (None, None) => {}
+                            _ => prop_assert!(false, "BudgetOverride warn_factor presence mismatch for {:?}", metric),
+                        }
+                    }
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "budgets presence mismatch"),
+            }
+        }
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip**
+    //
+    // For any valid Budget, serializing to JSON then deserializing
+    // SHALL produce an equivalent value.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn budget_json_serialization_round_trip(budget in budget_strategy()) {
+            // Serialize to JSON
+            let json = serde_json::to_string(&budget)
+                .expect("Budget should serialize to JSON");
+
+            // Deserialize back
+            let deserialized: Budget = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to Budget");
+
+            // Compare f64 fields with tolerance
+            prop_assert!(
+                f64_approx_eq(budget.threshold, deserialized.threshold),
+                "Budget threshold mismatch: {} vs {}",
+                budget.threshold, deserialized.threshold
+            );
+            prop_assert!(
+                f64_approx_eq(budget.warn_threshold, deserialized.warn_threshold),
+                "Budget warn_threshold mismatch: {} vs {}",
+                budget.warn_threshold, deserialized.warn_threshold
+            );
+            prop_assert_eq!(budget.direction, deserialized.direction);
+        }
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip**
+    //
+    // For any valid BudgetOverride, serializing to JSON then deserializing
+    // SHALL produce an equivalent value.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn budget_override_json_serialization_round_trip(budget_override in budget_override_strategy()) {
+            // Serialize to JSON
+            let json = serde_json::to_string(&budget_override)
+                .expect("BudgetOverride should serialize to JSON");
+
+            // Deserialize back
+            let deserialized: BudgetOverride = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to BudgetOverride");
+
+            // Compare threshold with tolerance
+            match (budget_override.threshold, deserialized.threshold) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(
+                        f64_approx_eq(orig, deser),
+                        "BudgetOverride threshold mismatch: {} vs {}",
+                        orig, deser
+                    );
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "BudgetOverride threshold presence mismatch"),
+            }
+
+            // Compare direction
+            prop_assert_eq!(budget_override.direction, deserialized.direction);
+
+            // Compare warn_factor with tolerance
+            match (budget_override.warn_factor, deserialized.warn_factor) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(
+                        f64_approx_eq(orig, deser),
+                        "BudgetOverride warn_factor mismatch: {} vs {}",
+                        orig, deser
+                    );
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "BudgetOverride warn_factor presence mismatch"),
+            }
+        }
+    }
+
+    // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip**
+    //
+    // For any valid Budget, the threshold relationship SHALL be preserved:
+    // warn_threshold <= threshold. This property verifies that the Budget
+    // strategy generates valid budgets and that serialization preserves
+    // this invariant.
+    //
+    // **Validates: Requirements 4.2, 4.5**
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn budget_threshold_relationship_preserved(budget in budget_strategy()) {
+            // Verify the invariant holds for the generated budget
+            prop_assert!(
+                budget.warn_threshold <= budget.threshold,
+                "Budget invariant violated: warn_threshold ({}) should be <= threshold ({})",
+                budget.warn_threshold, budget.threshold
+            );
+
+            // Serialize to JSON and back
+            let json = serde_json::to_string(&budget)
+                .expect("Budget should serialize to JSON");
+            let deserialized: Budget = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to Budget");
+
+            // Verify the invariant is preserved after round-trip
+            prop_assert!(
+                deserialized.warn_threshold <= deserialized.threshold,
+                "Budget invariant violated after round-trip: warn_threshold ({}) should be <= threshold ({})",
+                deserialized.warn_threshold, deserialized.threshold
+            );
         }
     }
 }

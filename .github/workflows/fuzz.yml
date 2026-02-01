@@ -1,0 +1,164 @@
+name: fuzz
+
+on:
+  pull_request:
+  # Run weekly on Sunday at 2am UTC (after mutation testing)
+  schedule:
+    - cron: "0 2 * * 0"
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Fuzzing duration per target (seconds)"
+        required: false
+        default: "60"
+        type: string
+
+env:
+  # All fuzz targets to run
+  FUZZ_TARGETS: "parse_run_receipt parse_compare_receipt parse_config parse_duration compare_stats render_markdown"
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90 # Allow enough time for all targets
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Restore fuzzing corpus cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fuzz/corpus
+          key: fuzz-corpus-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            fuzz-corpus-${{ github.ref_name }}-
+            fuzz-corpus-main-
+            fuzz-corpus-
+
+      - name: Determine fuzzing duration
+        id: duration
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # Weekly scheduled run: 10 minutes per target
+            echo "seconds=600" >> $GITHUB_OUTPUT
+            echo "Running scheduled fuzzing: 600 seconds per target"
+          elif [ -n "${{ github.event.inputs.duration }}" ]; then
+            # Manual trigger with custom duration
+            echo "seconds=${{ github.event.inputs.duration }}" >> $GITHUB_OUTPUT
+            echo "Running manual fuzzing: ${{ github.event.inputs.duration }} seconds per target"
+          else
+            # PR run: 60 seconds per target
+            echo "seconds=60" >> $GITHUB_OUTPUT
+            echo "Running PR fuzzing: 60 seconds per target"
+          fi
+
+      - name: Build fuzz targets
+        working-directory: fuzz
+        run: |
+          for target in $FUZZ_TARGETS; do
+            echo "Building fuzz target: $target"
+            cargo +nightly fuzz build $target
+          done
+
+      - name: Run fuzz targets
+        working-directory: fuzz
+        run: |
+          DURATION=${{ steps.duration.outputs.seconds }}
+          FAILED_TARGETS=""
+
+          for target in $FUZZ_TARGETS; do
+            echo "=========================================="
+            echo "Fuzzing target: $target for ${DURATION}s"
+            echo "=========================================="
+            
+            if cargo +nightly fuzz run $target -- -max_total_time=$DURATION; then
+              echo "✅ $target completed successfully"
+            else
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 124 ]; then
+                # Timeout is expected - fuzzing ran for the full duration
+                echo "✅ $target completed (timeout as expected)"
+              else
+                echo "❌ $target failed with exit code $EXIT_CODE"
+                FAILED_TARGETS="$FAILED_TARGETS $target"
+              fi
+            fi
+          done
+
+          if [ -n "$FAILED_TARGETS" ]; then
+            echo ""
+            echo "=========================================="
+            echo "❌ Failed fuzz targets:$FAILED_TARGETS"
+            echo "=========================================="
+            exit 1
+          fi
+
+          echo ""
+          echo "=========================================="
+          echo "✅ All fuzz targets completed successfully"
+          echo "=========================================="
+
+      - name: Save fuzzing corpus
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            fuzz/corpus
+          key: fuzz-corpus-${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Upload crash artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: |
+            fuzz/artifacts/
+          retention-days: 30
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Fuzzing Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+
+          DURATION=${{ steps.duration.outputs.seconds }}
+          for target in $FUZZ_TARGETS; do
+            echo "| $target | ${DURATION}s |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "**Mode:** Scheduled (weekly extended fuzzing)" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "**Mode:** Manual trigger" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Mode:** PR (short fuzzing session)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Report corpus sizes if available
+          if [ -d "fuzz/corpus" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Corpus Sizes" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Target | Corpus Files |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|--------------|" >> $GITHUB_STEP_SUMMARY
+            for target in $FUZZ_TARGETS; do
+              if [ -d "fuzz/corpus/$target" ]; then
+                COUNT=$(find "fuzz/corpus/$target" -type f | wc -l)
+                echo "| $target | $COUNT |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| $target | 0 |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          fi

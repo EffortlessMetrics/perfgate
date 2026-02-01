@@ -1,0 +1,267 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompareReceipt",
+  "type": "object",
+  "required": [
+    "baseline_ref",
+    "bench",
+    "budgets",
+    "current_ref",
+    "deltas",
+    "schema",
+    "tool",
+    "verdict"
+  ],
+  "properties": {
+    "baseline_ref": {
+      "$ref": "#/definitions/CompareRef"
+    },
+    "bench": {
+      "$ref": "#/definitions/BenchMeta"
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/Budget"
+      }
+    },
+    "current_ref": {
+      "$ref": "#/definitions/CompareRef"
+    },
+    "deltas": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/Delta"
+      }
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/definitions/ToolInfo"
+    },
+    "verdict": {
+      "$ref": "#/definitions/Verdict"
+    }
+  },
+  "definitions": {
+    "BenchMeta": {
+      "type": "object",
+      "required": [
+        "command",
+        "name",
+        "repeat",
+        "warmup"
+      ],
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Budget": {
+      "type": "object",
+      "required": [
+        "direction",
+        "threshold",
+        "warn_threshold"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/Direction"
+        },
+        "threshold": {
+          "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
+          "type": "number",
+          "format": "double"
+        },
+        "warn_threshold": {
+          "description": "Warn threshold, as a fraction.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "CompareRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Delta": {
+      "type": "object",
+      "required": [
+        "baseline",
+        "current",
+        "pct",
+        "ratio",
+        "regression",
+        "status"
+      ],
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "pct": {
+          "description": "(current - baseline) / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "ratio": {
+          "description": "current / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "regression": {
+          "description": "Positive regression amount, normalized as a fraction.",
+          "type": "number",
+          "format": "double"
+        },
+        "status": {
+          "$ref": "#/definitions/MetricStatus"
+        }
+      }
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "Verdict": {
+      "type": "object",
+      "required": [
+        "counts",
+        "reasons",
+        "status"
+      ],
+      "properties": {
+        "counts": {
+          "$ref": "#/definitions/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/definitions/VerdictStatus"
+        }
+      }
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "required": [
+        "fail",
+        "pass",
+        "warn"
+      ],
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    }
+  }
+}

@@ -6,12 +6,18 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+arbitrary = ["dep:arbitrary"]
+
 [dependencies]
 serde.workspace = true
 schemars.workspace = true
+arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 insta.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 proptest = "1"
 proptest-derive = "0.4"
