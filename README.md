@@ -96,6 +96,19 @@ Workspace structure:
 - Supports optional `work_units` to compute `throughput_per_s`.
 - On Unix, attempts to collect `ru_maxrss` via `wait4()`.
 
+## Testing
+
+See [TESTING.md](TESTING.md) for the comprehensive testing guide covering:
+- Unit and integration tests
+- BDD tests with Cucumber
+- Property-based tests with proptest
+- Fuzz testing with cargo-fuzz
+- Mutation testing with cargo-mutants
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
 ## License
 
 Dual-licensed under MIT or Apache-2.0.

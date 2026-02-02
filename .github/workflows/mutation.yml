@@ -8,11 +8,12 @@ on:
   workflow_dispatch:
     inputs:
       crate:
-        description: "Specific crate to test (leave empty for all)"
+        description: "Specific crate to test, or 'all' for all crates"
         required: false
         type: choice
+        default: all
         options:
-          - ""
+          - all
           - perfgate-domain
           - perfgate-types
           - perfgate-app
@@ -34,8 +35,8 @@ jobs:
 
       - name: Run mutation testing
         run: |
-          if [ -n "${{ github.event.inputs.crate }}" ]; then
-            cargo run -p xtask -- mutants --crate ${{ github.event.inputs.crate }} --summary
+          if [ "${{ inputs.crate }}" != "all" ]; then
+            cargo run -p xtask -- mutants --crate ${{ inputs.crate }} --summary
           else
             cargo run -p xtask -- mutants --summary
           fi
@@ -58,9 +59,9 @@ jobs:
           if [ -f mutants.out/outcomes.json ]; then
             # Parse outcomes and generate summary
             TOTAL=$(jq 'length' mutants.out/outcomes.json)
-            KILLED=$(jq '[.[] | select(.outcome == "Killed")] | length' mutants.out/outcomes.json)
-            SURVIVED=$(jq '[.[] | select(.outcome == "Missed")] | length' mutants.out/outcomes.json)
-            TIMEOUT=$(jq '[.[] | select(.outcome == "Timeout")] | length' mutants.out/outcomes.json)
+            KILLED=$(jq '[.[] | select(.summary == "CaughtMutant")] | length' mutants.out/outcomes.json)
+            SURVIVED=$(jq '[.[] | select(.summary == "MissedMutant")] | length' mutants.out/outcomes.json)
+            TIMEOUT=$(jq '[.[] | select(.summary == "Timeout")] | length' mutants.out/outcomes.json)
             
             if [ "$TOTAL" -gt 0 ]; then
               KILL_RATE=$(echo "scale=1; $KILLED * 100 / $TOTAL" | bc)
