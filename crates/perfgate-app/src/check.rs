@@ -17,7 +17,7 @@ use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
     BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData, Metric,
     MetricStatus, PerfgateReport, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
-    VerdictStatus, REPORT_SCHEMA_V1,
+    Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1, REPORT_SCHEMA_V1,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -74,11 +74,11 @@ pub struct CheckOutcome {
     /// Path where compare receipt was written (None if no baseline).
     pub compare_path: Option<PathBuf>,
 
-    /// The report (None if no baseline).
-    pub report: Option<PerfgateReport>,
+    /// The report (always present for cockpit integration).
+    pub report: PerfgateReport,
 
-    /// Path where report was written (None if no baseline).
-    pub report_path: Option<PathBuf>,
+    /// Path where report was written.
+    pub report_path: PathBuf,
 
     /// The markdown content.
     pub markdown: String,
@@ -141,9 +141,8 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let run_path = req.out_dir.join("run.json");
 
         // 5. Handle baseline
-        let (compare_receipt, compare_path, report, report_path) = if let Some(baseline) =
-            &req.baseline
-        {
+        let report_path = req.out_dir.join("report.json");
+        let (compare_receipt, compare_path, report) = if let Some(baseline) = &req.baseline {
             // Build budgets from config
             let budgets = self.build_budgets(bench_config, &req.config, baseline, &run_receipt)?;
 
@@ -169,14 +168,8 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             let report = build_report(&compare);
 
             let compare_path = req.out_dir.join("compare.json");
-            let report_path = req.out_dir.join("report.json");
 
-            (
-                Some(compare),
-                Some(compare_path),
-                Some(report),
-                Some(report_path),
-            )
+            (Some(compare), Some(compare_path), report)
         } else {
             // No baseline
             if req.require_baseline {
@@ -189,7 +182,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                 "no baseline found for bench '{}', skipping comparison",
                 req.bench_name
             ));
-            (None, None, None, None)
+
+            // Build a no-baseline report for cockpit integration
+            let report = build_no_baseline_report(&run_receipt, &req.tool, &run_path);
+
+            (None, None, report)
         };
 
         // 6. Generate markdown
@@ -399,6 +396,57 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
     }
 }
 
+/// Build a PerfgateReport for the case when there is no baseline.
+///
+/// This creates a synthetic CompareReceipt that compares the run against itself
+/// (baseline = current), resulting in a Pass verdict with zero deltas. This allows
+/// cockpit integration to always receive a report.json file.
+fn build_no_baseline_report(
+    run: &RunReceipt,
+    tool: &ToolInfo,
+    run_path: &std::path::Path,
+) -> PerfgateReport {
+    // Create a synthetic compare receipt where baseline = current
+    // This results in 0% delta across all metrics, which is a Pass.
+    let synthetic_compare = CompareReceipt {
+        schema: COMPARE_SCHEMA_V1.to_string(),
+        tool: tool.clone(),
+        bench: run.bench.clone(),
+        baseline_ref: CompareRef {
+            path: None,
+            run_id: None,
+        },
+        current_ref: CompareRef {
+            path: Some(run_path.display().to_string()),
+            run_id: Some(run.run.id.clone()),
+        },
+        budgets: BTreeMap::new(),
+        deltas: BTreeMap::new(),
+        verdict: Verdict {
+            status: VerdictStatus::Pass,
+            counts: VerdictCounts {
+                pass: 0,
+                warn: 0,
+                fail: 0,
+            },
+            reasons: vec!["no baseline available; comparison skipped".to_string()],
+        },
+    };
+
+    PerfgateReport {
+        report_type: REPORT_SCHEMA_V1.to_string(),
+        verdict: synthetic_compare.verdict.clone(),
+        compare: synthetic_compare,
+        findings: Vec::new(),
+        summary: ReportSummary {
+            pass_count: 0,
+            warn_count: 0,
+            fail_count: 0,
+            total_count: 0,
+        },
+    }
+}
+
 /// Render markdown for the case when there is no baseline.
 fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String {
     let mut out = String::new();
@@ -580,5 +628,52 @@ mod tests {
         assert!(md.contains("test-bench"));
         assert!(md.contains("wall_ms"));
         assert!(md.contains("no baseline found"));
+    }
+
+    #[test]
+    fn test_build_no_baseline_report() {
+        let run = make_run_receipt(1000);
+        let tool = ToolInfo {
+            name: "perfgate".to_string(),
+            version: "0.1.0".to_string(),
+        };
+        let run_path = PathBuf::from("/tmp/run.json");
+
+        let report = build_no_baseline_report(&run, &tool, &run_path);
+
+        // Verify report structure
+        assert_eq!(report.report_type, REPORT_SCHEMA_V1);
+
+        // Verify verdict is Pass with the skip reason
+        assert_eq!(report.verdict.status, VerdictStatus::Pass);
+        assert_eq!(report.verdict.counts.pass, 0);
+        assert_eq!(report.verdict.counts.warn, 0);
+        assert_eq!(report.verdict.counts.fail, 0);
+        assert_eq!(report.verdict.reasons.len(), 1);
+        assert!(report.verdict.reasons[0].contains("no baseline available"));
+
+        // Verify findings is empty
+        assert!(report.findings.is_empty());
+
+        // Verify summary has all zeros
+        assert_eq!(report.summary.pass_count, 0);
+        assert_eq!(report.summary.warn_count, 0);
+        assert_eq!(report.summary.fail_count, 0);
+        assert_eq!(report.summary.total_count, 0);
+
+        // Verify compare receipt structure
+        assert_eq!(report.compare.schema, COMPARE_SCHEMA_V1);
+        assert!(report.compare.baseline_ref.path.is_none());
+        assert!(report.compare.baseline_ref.run_id.is_none());
+        assert!(report.compare.current_ref.path.is_some());
+        assert_eq!(
+            report.compare.current_ref.run_id,
+            Some(run.run.id.clone())
+        );
+        assert!(report.compare.budgets.is_empty());
+        assert!(report.compare.deltas.is_empty());
+
+        // Verify bench meta is preserved
+        assert_eq!(report.compare.bench.name, "test-bench");
     }
 }

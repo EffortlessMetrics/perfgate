@@ -585,10 +585,8 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
         write_json(path, compare, pretty)?;
     }
 
-    // Write report if present
-    if let (Some(ref report), Some(ref path)) = (&outcome.report, &outcome.report_path) {
-        write_json(path, report, pretty)?;
-    }
+    // Write report (always present for cockpit integration)
+    write_json(&outcome.report_path, &outcome.report, pretty)?;
 
     // Write markdown
     fs::write(&outcome.markdown_path, &outcome.markdown)

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `perfgate check` - Config-driven one-command workflow that runs bench, compares to baseline, and generates all artifacts
+- `perfgate report` - Generate perfgate.report.v1 envelope from compare receipt for cockpit integration
+- `perfgate promote` - Copy/normalize a run receipt to become a new baseline
+- `perfgate export` - Export run receipt data to CSV or JSONL format
+- `perfgate.report.v1` schema for cockpit-compatible report envelopes
+- `perfgate.config.v1` schema for TOML configuration files
+- Canonical artifact layout: `artifacts/perfgate/{run.json, compare.json, report.json, comment.md}`
+- `--require-baseline` flag for check command to fail when baseline is missing
+- `--out-dir` option for check command to specify artifact output directory
+
+### Changed
+
+- Check command now generates all artifacts in one invocation (run.json, compare.json, report.json, comment.md)
+
 ## [0.1.0] - 2026-02-01
 
 Initial release of perfgate, a CLI tool for performance budgets and baseline diffs in CI.

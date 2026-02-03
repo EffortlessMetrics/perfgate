@@ -213,6 +213,42 @@ fn test_check_missing_baseline_warns() {
         "compare.json should not exist when no baseline"
     );
 
+    // report.json should always exist for cockpit integration
+    assert!(
+        out_dir.join("report.json").exists(),
+        "report.json should exist even without baseline (for cockpit integration)"
+    );
+
+    // Verify report.json has expected no-baseline structure
+    let report_content = fs::read_to_string(out_dir.join("report.json")).expect("read report.json");
+    let report_json: serde_json::Value =
+        serde_json::from_str(&report_content).expect("report.json should be valid JSON");
+    assert_eq!(
+        report_json["report_type"].as_str(),
+        Some("perfgate.report.v1"),
+        "report.json should have correct report_type"
+    );
+    assert_eq!(
+        report_json["verdict"]["status"].as_str(),
+        Some("pass"),
+        "verdict should be pass when no baseline"
+    );
+    // Check that the reason mentions no baseline
+    let reasons = report_json["verdict"]["reasons"]
+        .as_array()
+        .expect("reasons should be an array");
+    assert!(
+        reasons.iter().any(|r| r.as_str().map(|s| s.contains("no baseline")).unwrap_or(false)),
+        "verdict reasons should mention no baseline: {:?}",
+        reasons
+    );
+    // Summary counts should all be zero
+    assert_eq!(
+        report_json["summary"]["total_count"].as_u64(),
+        Some(0),
+        "total_count should be 0 when no baseline"
+    );
+
     // comment.md should mention no baseline
     let md_content =
         fs::read_to_string(out_dir.join("comment.md")).expect("failed to read comment.md");
