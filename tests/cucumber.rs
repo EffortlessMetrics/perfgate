@@ -356,6 +356,9 @@ async fn given_current_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u
 // ============================================================================
 
 /// Helper function to get the perfgate binary command
+///
+/// Note: Uses deprecated API because cargo_bin! macro requires compile-time
+/// environment variables that aren't available for cross-crate testing.
 #[allow(deprecated)]
 fn perfgate_cmd() -> Command {
     Command::cargo_bin("perfgate").expect("Failed to find perfgate binary")

@@ -2,8 +2,6 @@
 //!
 //! **Validates: Config-driven one-command workflow**
 
-#![allow(deprecated)]
-
 use assert_cmd::Command;
 use std::fs;
 use tempfile::tempdir;
@@ -107,7 +105,7 @@ fn test_check_basic_with_config() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "test-bench");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -144,7 +142,7 @@ fn test_check_with_baseline() {
     let config_path = create_config_file(temp_dir.path(), "with-baseline");
     let _baseline_path = create_baseline_receipt(temp_dir.path(), "with-baseline");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -187,7 +185,7 @@ fn test_check_missing_baseline_warns() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "no-baseline");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -265,7 +263,7 @@ fn test_check_require_baseline_fails() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "required-baseline");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -304,7 +302,7 @@ fn test_check_unknown_bench_fails() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "existing-bench");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -338,7 +336,7 @@ fn test_check_produces_valid_json() {
     let config_path = create_config_file(temp_dir.path(), "json-test");
     let _baseline_path = create_baseline_receipt(temp_dir.path(), "json-test");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")

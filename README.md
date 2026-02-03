@@ -112,8 +112,8 @@ After merging to main, promote the current run to become the new baseline:
 
 ```bash
 perfgate promote \
-  --run artifacts/perfgate/run.json \
-  --out baselines/pst_extract.json
+  --current artifacts/perfgate/run.json \
+  --to baselines/pst_extract.json
 ```
 
 ### 7) Export for trend analysis
@@ -139,27 +139,23 @@ perfgate export \
 Run the entire workflow from a single config file:
 
 ```bash
-perfgate check --config perfgate.toml
+perfgate check --config perfgate.toml --bench pst_extract
 ```
 
 Example `perfgate.toml`:
 
 ```toml
-[benchmark]
-name = "pst_extract"
-command = ["sh", "-c", "sleep 0.02"]
+[defaults]
 repeat = 7
 warmup = 1
-work_units = 1000
-
-[policy]
 threshold = 0.20
 warn_factor = 0.90
-fail_on_warn = false
+baseline_dir = "baselines"
 
-[artifacts]
-baseline = "baselines/pst_extract.json"
-out_dir = "artifacts/perfgate"
+[[bench]]
+name = "pst_extract"
+command = ["sh", "-c", "sleep 0.02"]
+work = 1000
 ```
 
 ## Baseline Workflow
@@ -180,7 +176,7 @@ out_dir = "artifacts/perfgate"
 ```bash
 # After merge to main
 perfgate run --name mybench --out run.json -- ./my-benchmark
-perfgate promote --run run.json --out baselines/mybench.json
+perfgate promote --current run.json --to baselines/mybench.json
 git add baselines/mybench.json
 git commit -m "Update performance baseline"
 ```

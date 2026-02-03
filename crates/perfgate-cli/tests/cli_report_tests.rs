@@ -6,7 +6,7 @@ use std::fs;
 use tempfile::tempdir;
 
 fn perfgate_cmd() -> Command {
-    Command::cargo_bin("perfgate").unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("perfgate"))
 }
 
 /// Creates a minimal compare receipt JSON for testing.
