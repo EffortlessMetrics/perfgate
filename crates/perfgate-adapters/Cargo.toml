@@ -10,6 +10,7 @@ repository.workspace = true
 perfgate-types = { path = "../perfgate-types" }
 anyhow.workspace = true
 thiserror.workspace = true
+hostname = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

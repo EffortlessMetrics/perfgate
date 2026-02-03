@@ -11,6 +11,9 @@ perfgate-types = { path = "../perfgate-types" }
 perfgate-domain = { path = "../perfgate-domain" }
 perfgate-adapters = { path = "../perfgate-adapters" }
 anyhow.workspace = true
+humantime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 time.workspace = true
 uuid.workspace = true
 

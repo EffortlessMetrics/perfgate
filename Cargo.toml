@@ -32,6 +32,7 @@ tempfile.workspace = true
 assert_cmd.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json.workspace = true
+toml.workspace = true
 perfgate-types = { path = "crates/perfgate-types" }
 
 [[test]]

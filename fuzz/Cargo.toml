@@ -52,3 +52,9 @@ name = "compare_stats"
 path = "fuzz_targets/compare_stats.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "parse_report_receipt"
+path = "fuzz_targets/parse_report_receipt.rs"
+test = false
+doc = false

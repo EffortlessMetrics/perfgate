@@ -13,6 +13,8 @@ use std::collections::BTreeMap;
 
 pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
+pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
+pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -24,8 +26,24 @@ pub struct ToolInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct HostInfo {
+    /// Operating system (e.g., "linux", "macos", "windows")
     pub os: String,
+
+    /// CPU architecture (e.g., "x86_64", "aarch64")
     pub arch: String,
+
+    /// Number of logical CPUs (best-effort, None if unavailable)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cpu_count: Option<u32>,
+
+    /// Total system memory in bytes (best-effort, None if unavailable)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub memory_bytes: Option<u64>,
+
+    /// Hashed hostname for fingerprinting (opt-in, privacy-preserving).
+    /// When present, this is a SHA-256 hash of the actual hostname.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub hostname_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -256,6 +274,107 @@ pub struct CompareReceipt {
 }
 
 // ----------------------------
+// Report types (perfgate.report.v1)
+// ----------------------------
+
+/// Severity level for a finding.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    Warn,
+    Fail,
+}
+
+/// Data associated with a metric finding.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct FindingData {
+    /// Name of the metric (e.g., "wall_ms", "max_rss_kb").
+    #[serde(rename = "metric_name")]
+    pub metric_name: String,
+
+    /// Baseline value.
+    pub baseline: f64,
+
+    /// Current value.
+    pub current: f64,
+
+    /// Regression percentage (positive means regression).
+    #[serde(rename = "regression_pct")]
+    pub regression_pct: f64,
+
+    /// Threshold that was exceeded (as a fraction, e.g., 0.20 for 20%).
+    pub threshold: f64,
+
+    /// Whether lower is better or higher is better.
+    pub direction: Direction,
+}
+
+/// A single finding from the performance check.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ReportFinding {
+    /// Unique identifier for the check type (e.g., "perf.budget").
+    #[serde(rename = "check_id")]
+    pub check_id: String,
+
+    /// Machine-readable code for the finding (e.g., "metric_warn", "metric_fail").
+    pub code: String,
+
+    /// Severity level (warn or fail).
+    pub severity: Severity,
+
+    /// Human-readable message describing the finding.
+    pub message: String,
+
+    /// Structured data about the finding.
+    pub data: FindingData,
+}
+
+/// Summary counts and key metrics for the report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ReportSummary {
+    /// Number of metrics that passed.
+    #[serde(rename = "pass_count")]
+    pub pass_count: u32,
+
+    /// Number of metrics that warned.
+    #[serde(rename = "warn_count")]
+    pub warn_count: u32,
+
+    /// Number of metrics that failed.
+    #[serde(rename = "fail_count")]
+    pub fail_count: u32,
+
+    /// Total number of metrics checked.
+    #[serde(rename = "total_count")]
+    pub total_count: u32,
+}
+
+/// A performance report wrapping compare results in a cockpit-compatible envelope.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct PerfgateReport {
+    /// Schema identifier, always "perfgate.report.v1".
+    #[serde(rename = "report_type")]
+    pub report_type: String,
+
+    /// Overall verdict for the report.
+    pub verdict: Verdict,
+
+    /// The full compare receipt.
+    pub compare: CompareReceipt,
+
+    /// List of findings (warnings and failures).
+    pub findings: Vec<ReportFinding>,
+
+    /// Summary counts.
+    pub summary: ReportSummary,
+}
+
+// ----------------------------
 // Optional config file schema
 // ----------------------------
 
@@ -309,6 +428,14 @@ pub struct BenchConfigFile {
     /// argv vector (no shell parsing).
     pub command: Vec<String>,
 
+    /// Number of measured samples (overrides defaults.repeat).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<u32>,
+
+    /// Warmup samples excluded from stats (overrides defaults.warmup).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warmup: Option<u32>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<Vec<Metric>>,
 
@@ -348,13 +475,108 @@ mod tests {
         let json = serde_json::to_string(&m).unwrap();
         assert!(json.contains("\"wall_ms\""));
     }
+
+    /// Test backward compatibility: receipts without new host fields still parse
+    #[test]
+    fn backward_compat_host_info_without_new_fields() {
+        // Old format with only os and arch
+        let json = r#"{"os":"linux","arch":"x86_64"}"#;
+        let info: HostInfo = serde_json::from_str(json).expect("should parse old format");
+        assert_eq!(info.os, "linux");
+        assert_eq!(info.arch, "x86_64");
+        assert!(info.cpu_count.is_none());
+        assert!(info.memory_bytes.is_none());
+        assert!(info.hostname_hash.is_none());
+    }
+
+    /// Test that new fields are serialized when present
+    #[test]
+    fn host_info_with_new_fields_serializes() {
+        let info = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: Some(8),
+            memory_bytes: Some(16 * 1024 * 1024 * 1024),
+            hostname_hash: Some("abc123".to_string()),
+        };
+
+        let json = serde_json::to_string(&info).expect("should serialize");
+        assert!(json.contains("\"cpu_count\":8"));
+        assert!(json.contains("\"memory_bytes\":"));
+        assert!(json.contains("\"hostname_hash\":\"abc123\""));
+    }
+
+    /// Test that new fields are omitted when None (skip_serializing_if)
+    #[test]
+    fn host_info_omits_none_fields() {
+        let info = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+
+        let json = serde_json::to_string(&info).expect("should serialize");
+        assert!(!json.contains("cpu_count"));
+        assert!(!json.contains("memory_bytes"));
+        assert!(!json.contains("hostname_hash"));
+    }
+
+    /// Test round-trip serialization with all fields
+    #[test]
+    fn host_info_round_trip_with_all_fields() {
+        let original = HostInfo {
+            os: "macos".to_string(),
+            arch: "aarch64".to_string(),
+            cpu_count: Some(10),
+            memory_bytes: Some(32 * 1024 * 1024 * 1024),
+            hostname_hash: Some("deadbeef".repeat(8)),
+        };
+
+        let json = serde_json::to_string(&original).expect("should serialize");
+        let parsed: HostInfo = serde_json::from_str(&json).expect("should deserialize");
+
+        assert_eq!(original, parsed);
+    }
+
+    /// Test backward compatibility: full RunReceipt without new host fields parses
+    #[test]
+    fn backward_compat_run_receipt_old_format() {
+        let json = r#"{
+            "schema": "perfgate.run.v1",
+            "tool": {"name": "perfgate", "version": "0.1.0"},
+            "run": {
+                "id": "test-id",
+                "started_at": "2024-01-01T00:00:00Z",
+                "ended_at": "2024-01-01T00:01:00Z",
+                "host": {"os": "linux", "arch": "x86_64"}
+            },
+            "bench": {
+                "name": "test",
+                "command": ["echo", "hello"],
+                "repeat": 5,
+                "warmup": 0
+            },
+            "samples": [{"wall_ms": 100, "exit_code": 0}],
+            "stats": {
+                "wall_ms": {"median": 100, "min": 90, "max": 110}
+            }
+        }"#;
+
+        let receipt: RunReceipt = serde_json::from_str(json).expect("should parse old format");
+        assert_eq!(receipt.run.host.os, "linux");
+        assert_eq!(receipt.run.host.arch, "x86_64");
+        assert!(receipt.run.host.cpu_count.is_none());
+        assert!(receipt.run.host.memory_bytes.is_none());
+        assert!(receipt.run.host.hostname_hash.is_none());
+    }
 }
 
 #[cfg(test)]
 mod property_tests {
     use super::*;
     use proptest::prelude::*;
-    use toml;
 
     // Strategy for generating valid non-empty strings (for names, IDs, etc.)
     fn non_empty_string() -> impl Strategy<Value = String> {
@@ -387,7 +609,22 @@ mod property_tests {
 
     // Strategy for HostInfo
     fn host_info_strategy() -> impl Strategy<Value = HostInfo> {
-        (non_empty_string(), non_empty_string()).prop_map(|(os, arch)| HostInfo { os, arch })
+        (
+            non_empty_string(),
+            non_empty_string(),
+            proptest::option::of(1u32..256),
+            proptest::option::of(1u64..68719476736), // Up to 64GB
+            proptest::option::of("[a-f0-9]{64}"),    // SHA-256 hex hash
+        )
+            .prop_map(
+                |(os, arch, cpu_count, memory_bytes, hostname_hash)| HostInfo {
+                    os,
+                    arch,
+                    cpu_count,
+                    memory_bytes,
+                    hostname_hash,
+                },
+            )
     }
 
     // Strategy for RunMeta
@@ -840,20 +1077,26 @@ mod property_tests {
             proptest::option::of(1u64..10000),
             proptest::option::of("[0-9]+[smh]"), // humantime-like duration strings
             proptest::collection::vec(non_empty_string(), 1..5),
+            proptest::option::of(1u32..100),
+            proptest::option::of(0u32..10),
             proptest::option::of(proptest::collection::vec(metric_strategy(), 1..4)),
             proptest::option::of(budget_overrides_map_strategy()),
         )
-            .prop_map(|(name, cwd, work, timeout, command, metrics, budgets)| {
-                BenchConfigFile {
-                    name,
-                    cwd,
-                    work,
-                    timeout,
-                    command,
-                    metrics,
-                    budgets,
-                }
-            })
+            .prop_map(
+                |(name, cwd, work, timeout, command, repeat, warmup, metrics, budgets)| {
+                    BenchConfigFile {
+                        name,
+                        cwd,
+                        work,
+                        timeout,
+                        command,
+                        repeat,
+                        warmup,
+                        metrics,
+                        budgets,
+                    }
+                },
+            )
     }
 
     // Strategy for DefaultsConfig

@@ -3,12 +3,22 @@
 //! The app layer coordinates adapters and domain logic.
 //! It does not parse CLI flags and it does not do filesystem I/O.
 
+mod check;
+mod export;
+mod promote;
+mod report;
+
+pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
+pub use export::{ExportFormat, ExportUseCase};
+pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
+pub use report::{ReportRequest, ReportResult, ReportUseCase};
+
 use anyhow::Context;
-use perfgate_adapters::{CommandSpec, ProcessRunner, RunResult};
+use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
 use perfgate_domain::{compare_stats, compute_stats, Comparison};
 use perfgate_types::{
-    BenchMeta, Budget, CompareReceipt, CompareRef, Direction, HostInfo, Metric, MetricStatus,
-    RunMeta, RunReceipt, Sample, ToolInfo,
+    BenchMeta, Budget, CompareReceipt, CompareRef, Direction, Metric, MetricStatus, RunMeta,
+    RunReceipt, Sample, ToolInfo,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -30,7 +40,7 @@ impl Clock for SystemClock {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RunBenchRequest {
     pub name: String,
     pub cwd: Option<PathBuf>,
@@ -45,6 +55,10 @@ pub struct RunBenchRequest {
     /// If true, do not treat nonzero exit codes as a tool error.
     /// The receipt will still record exit codes.
     pub allow_nonzero: bool,
+
+    /// If true, include a hashed hostname in the host fingerprint.
+    /// This is opt-in for privacy reasons.
+    pub include_hostname_hash: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -58,16 +72,18 @@ pub struct RunBenchOutcome {
     pub reasons: Vec<String>,
 }
 
-pub struct RunBenchUseCase<R: ProcessRunner, C: Clock> {
+pub struct RunBenchUseCase<R: ProcessRunner, H: HostProbe, C: Clock> {
     runner: R,
+    host_probe: H,
     clock: C,
     tool: ToolInfo,
 }
 
-impl<R: ProcessRunner, C: Clock> RunBenchUseCase<R, C> {
-    pub fn new(runner: R, clock: C, tool: ToolInfo) -> Self {
+impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
+    pub fn new(runner: R, host_probe: H, clock: C, tool: ToolInfo) -> Self {
         Self {
             runner,
+            host_probe,
             clock,
             tool,
         }
@@ -77,10 +93,10 @@ impl<R: ProcessRunner, C: Clock> RunBenchUseCase<R, C> {
         let run_id = uuid::Uuid::new_v4().to_string();
         let started_at = self.clock.now_rfc3339();
 
-        let host = HostInfo {
-            os: std::env::consts::OS.to_string(),
-            arch: std::env::consts::ARCH.to_string(),
+        let host_options = HostProbeOptions {
+            include_hostname_hash: req.include_hostname_hash,
         };
+        let host = self.host_probe.probe(&host_options);
 
         let bench = BenchMeta {
             name: req.name.clone(),

@@ -1,0 +1,446 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PerfgateReport",
+  "description": "A performance report wrapping compare results in a cockpit-compatible envelope.",
+  "type": "object",
+  "required": [
+    "compare",
+    "findings",
+    "report_type",
+    "summary",
+    "verdict"
+  ],
+  "properties": {
+    "compare": {
+      "description": "The full compare receipt.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/CompareReceipt"
+        }
+      ]
+    },
+    "findings": {
+      "description": "List of findings (warnings and failures).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportFinding"
+      }
+    },
+    "report_type": {
+      "description": "Schema identifier, always \"perfgate.report.v1\".",
+      "type": "string"
+    },
+    "summary": {
+      "description": "Summary counts.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ReportSummary"
+        }
+      ]
+    },
+    "verdict": {
+      "description": "Overall verdict for the report.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Verdict"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "BenchMeta": {
+      "type": "object",
+      "required": [
+        "command",
+        "name",
+        "repeat",
+        "warmup"
+      ],
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Budget": {
+      "type": "object",
+      "required": [
+        "direction",
+        "threshold",
+        "warn_threshold"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/Direction"
+        },
+        "threshold": {
+          "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
+          "type": "number",
+          "format": "double"
+        },
+        "warn_threshold": {
+          "description": "Warn threshold, as a fraction.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "CompareReceipt": {
+      "type": "object",
+      "required": [
+        "baseline_ref",
+        "bench",
+        "budgets",
+        "current_ref",
+        "deltas",
+        "schema",
+        "tool",
+        "verdict"
+      ],
+      "properties": {
+        "baseline_ref": {
+          "$ref": "#/definitions/CompareRef"
+        },
+        "bench": {
+          "$ref": "#/definitions/BenchMeta"
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Budget"
+          }
+        },
+        "current_ref": {
+          "$ref": "#/definitions/CompareRef"
+        },
+        "deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Delta"
+          }
+        },
+        "schema": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/definitions/ToolInfo"
+        },
+        "verdict": {
+          "$ref": "#/definitions/Verdict"
+        }
+      }
+    },
+    "CompareRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Delta": {
+      "type": "object",
+      "required": [
+        "baseline",
+        "current",
+        "pct",
+        "ratio",
+        "regression",
+        "status"
+      ],
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "pct": {
+          "description": "(current - baseline) / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "ratio": {
+          "description": "current / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "regression": {
+          "description": "Positive regression amount, normalized as a fraction.",
+          "type": "number",
+          "format": "double"
+        },
+        "status": {
+          "$ref": "#/definitions/MetricStatus"
+        }
+      }
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "FindingData": {
+      "description": "Data associated with a metric finding.",
+      "type": "object",
+      "required": [
+        "baseline",
+        "current",
+        "direction",
+        "metric_name",
+        "regression_pct",
+        "threshold"
+      ],
+      "properties": {
+        "baseline": {
+          "description": "Baseline value.",
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "description": "Current value.",
+          "type": "number",
+          "format": "double"
+        },
+        "direction": {
+          "description": "Whether lower is better or higher is better.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Direction"
+            }
+          ]
+        },
+        "metric_name": {
+          "description": "Name of the metric (e.g., \"wall_ms\", \"max_rss_kb\").",
+          "type": "string"
+        },
+        "regression_pct": {
+          "description": "Regression percentage (positive means regression).",
+          "type": "number",
+          "format": "double"
+        },
+        "threshold": {
+          "description": "Threshold that was exceeded (as a fraction, e.g., 0.20 for 20%).",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "ReportFinding": {
+      "description": "A single finding from the performance check.",
+      "type": "object",
+      "required": [
+        "check_id",
+        "code",
+        "data",
+        "message",
+        "severity"
+      ],
+      "properties": {
+        "check_id": {
+          "description": "Unique identifier for the check type (e.g., \"perf.budget\").",
+          "type": "string"
+        },
+        "code": {
+          "description": "Machine-readable code for the finding (e.g., \"metric_warn\", \"metric_fail\").",
+          "type": "string"
+        },
+        "data": {
+          "description": "Structured data about the finding.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FindingData"
+            }
+          ]
+        },
+        "message": {
+          "description": "Human-readable message describing the finding.",
+          "type": "string"
+        },
+        "severity": {
+          "description": "Severity level (warn or fail).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Severity"
+            }
+          ]
+        }
+      }
+    },
+    "ReportSummary": {
+      "description": "Summary counts and key metrics for the report.",
+      "type": "object",
+      "required": [
+        "fail_count",
+        "pass_count",
+        "total_count",
+        "warn_count"
+      ],
+      "properties": {
+        "fail_count": {
+          "description": "Number of metrics that failed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pass_count": {
+          "description": "Number of metrics that passed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "total_count": {
+          "description": "Total number of metrics checked.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn_count": {
+          "description": "Number of metrics that warned.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Severity": {
+      "description": "Severity level for a finding.",
+      "type": "string",
+      "enum": [
+        "warn",
+        "fail"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "Verdict": {
+      "type": "object",
+      "required": [
+        "counts",
+        "reasons",
+        "status"
+      ],
+      "properties": {
+        "counts": {
+          "$ref": "#/definitions/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/definitions/VerdictStatus"
+        }
+      }
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "required": [
+        "fail",
+        "pass",
+        "warn"
+      ],
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    }
+  }
+}

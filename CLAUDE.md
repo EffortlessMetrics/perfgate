@@ -44,6 +44,10 @@ cargo run -p perfgate -- run --name bench --out out.json -- echo hello
 cargo run -p perfgate -- compare --baseline base.json --current cur.json --out cmp.json
 cargo run -p perfgate -- md --compare cmp.json
 cargo run -p perfgate -- github-annotations --compare cmp.json
+cargo run -p perfgate -- report --compare cmp.json --out report.json
+cargo run -p perfgate -- promote --current out.json --to baselines/bench.json
+cargo run -p perfgate -- export --run out.json --format csv --out data.csv
+cargo run -p perfgate -- check --config perfgate.toml --bench my-bench
 ```
 
 ## Fuzzing (requires nightly)
@@ -75,14 +79,23 @@ perfgate-cli (clap CLI, JSON I/O)
 **Key design principles:**
 - `perfgate-domain` is intentionally I/O-free: it does statistics and budget policy only
 - `perfgate-adapters` contains platform-specific code (Unix `wait4()` for `max_rss_kb`)
-- Receipt types are versioned (`perfgate.run.v1`, `perfgate.compare.v1`) and have JSON Schema support via `schemars`
+- Receipt types are versioned (`perfgate.run.v1`, `perfgate.compare.v1`, `perfgate.report.v1`) and have JSON Schema support via `schemars`
 - The `arbitrary` feature flag enables structure-aware fuzzing
 
-**Exit codes for `compare` command:**
-- `0`: pass (or warn without `--fail-on-warn`)
-- `1`: tool error (I/O, parse, spawn failures)
-- `2`: fail (budget violated)
+**Exit codes (all commands):**
+- `0`: success (or warn without `--fail-on-warn`)
+- `1`: tool/runtime error (I/O, parse, spawn failures)
+- `2`: policy fail (budget violated)
 - `3`: warn treated as failure (with `--fail-on-warn`)
+
+**Canonical artifact layout:**
+```
+artifacts/perfgate/
+├── run.json        # perfgate.run.v1
+├── compare.json    # perfgate.compare.v1
+├── report.json     # perfgate.report.v1 (cockpit ingestion)
+└── comment.md      # PR comment markdown
+```
 
 ## Testing Strategy
 
