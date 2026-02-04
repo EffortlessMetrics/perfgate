@@ -249,7 +249,7 @@ mod tests {
                     warn: 1,
                     fail: 0,
                 },
-                reasons: vec!["wall_ms: near budget".to_string()],
+                reasons: vec!["wall_ms_warn".to_string()],
             },
         }
     }
@@ -310,7 +310,7 @@ mod tests {
                     warn: 0,
                     fail: 1,
                 },
-                reasons: vec!["wall_ms: +50% exceeds 20% threshold".to_string()],
+                reasons: vec!["wall_ms_fail".to_string()],
             },
         }
     }

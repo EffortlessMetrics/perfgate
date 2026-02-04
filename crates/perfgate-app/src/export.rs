@@ -383,7 +383,7 @@ mod tests {
                     warn: 0,
                     fail: 1,
                 },
-                reasons: vec!["max_rss_kb: +25% exceeds 15% threshold".to_string()],
+                reasons: vec!["max_rss_kb_fail".to_string()],
             },
         }
     }

@@ -26,6 +26,7 @@ Feature: Check Command
     Then the exit code should be 0
     And the run.json artifact should exist
     And the compare.json artifact should not exist
+    And the report.json artifact should exist
     And the comment.md artifact should exist
     And the comment.md should contain "no baseline"
 

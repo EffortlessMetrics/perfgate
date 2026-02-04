@@ -105,13 +105,13 @@ Feature: Markdown Command
     Given a compare receipt with fail verdict
     When I run perfgate md
     Then the exit code should be 0
-    And the markdown should contain "threshold"
+    And the markdown should contain "wall_ms_fail"
 
   Scenario: Warn verdict includes reasons in markdown
     Given a compare receipt with warn verdict
     When I run perfgate md
     Then the exit code should be 0
-    And the markdown should contain "warn"
+    And the markdown should contain "wall_ms_warn"
 
   # File output preserves all content
   Scenario: File output contains verdict emoji

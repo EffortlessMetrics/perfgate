@@ -59,6 +59,7 @@ Compares a current run receipt against a baseline.
 - `max_rss_kb` MUST be included only if present in both receipts
 - `throughput_per_s` MUST be included only if present in both receipts
 - Comparison MUST use median values for all metrics
+- Verdict reasons MUST be stable tokens (e.g., `wall_ms_warn`, `wall_ms_fail`)
 - Output MUST conform to `perfgate.compare.v1` schema
 
 **Exit Codes:**
@@ -80,7 +81,7 @@ Renders a Markdown summary from a compare receipt.
 - Output MUST include verdict header with emoji (pass/warn/fail)
 - Output MUST include bench name
 - Output MUST include a table with all metrics, values, deltas, and status
-- Output MUST include verdict reasons if any exist
+- Output MUST include verdict reason tokens if any exist
 
 ### github-annotations
 
@@ -200,7 +201,7 @@ The `check` command MUST write artifacts in the following structure:
 artifacts/perfgate/
 ├── run.json        # perfgate.run.v1
 ├── compare.json    # perfgate.compare.v1 (if baseline exists)
-├── report.json     # perfgate.report.v1 (if baseline exists)
+├── report.json     # perfgate.report.v1 (always written by check)
 └── comment.md      # PR comment markdown
 ```
 
@@ -221,7 +222,7 @@ When a baseline is not found:
 
 | Flag | Behavior |
 |------|----------|
-| Neither flag | Warn to stderr, exit 0, write run receipt and "no baseline" markdown |
+| Neither flag | Warn to stderr, exit 0, write run receipt, report.json, and "no baseline" markdown; omit compare.json; include `no_baseline` reason token |
 | `--require-baseline` | Exit 1 with error message |
 
 ## Determinism Requirements

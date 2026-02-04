@@ -595,7 +595,7 @@ mod tests {
                     warn: 0,
                     fail: 1,
                 },
-                reasons: vec!["wall_ms: +25.00% exceeds 20.0% threshold".to_string()],
+                reasons: vec!["wall_ms_fail".to_string()],
             },
         };
 

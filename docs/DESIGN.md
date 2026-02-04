@@ -147,6 +147,22 @@ let status = if counts.fail > 0 {
 };
 ```
 
+### Verdict Reasons (Stable Tokens)
+
+`verdict.reasons` stores stable tokens for downstream tooling. Tokens are not prose.
+
+Format:
+```
+<metric>_<warn|fail>
+```
+
+Examples:
+- `wall_ms_warn`
+- `max_rss_kb_fail`
+- `throughput_per_s_warn`
+
+When no baseline is available, `check` uses the token `no_baseline`.
+
 ## Delta Structure
 
 Each compared metric produces a Delta record:

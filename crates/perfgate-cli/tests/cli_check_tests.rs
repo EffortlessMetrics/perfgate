@@ -286,6 +286,45 @@ fn test_check_missing_baseline_warns() {
     );
 }
 
+/// Test check command removes stale compare.json when baseline is missing
+#[test]
+fn test_check_missing_baseline_removes_stale_compare() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "stale-compare");
+
+    // Create a stale compare.json before running check
+    fs::create_dir_all(&out_dir).expect("Failed to create artifacts dir");
+    let stale_compare = out_dir.join("compare.json");
+    fs::write(&stale_compare, "{\"stale\": true}").expect("Failed to write stale compare.json");
+    assert!(stale_compare.exists(), "stale compare.json should exist");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("stale-compare")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    // Should succeed (warning only)
+    assert!(
+        output.status.success(),
+        "check without baseline should succeed with warning: {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Stale compare.json should be removed
+    assert!(
+        !stale_compare.exists(),
+        "stale compare.json should be removed when no baseline"
+    );
+}
+
 /// Test check command with --require-baseline fails when baseline missing
 #[test]
 fn test_check_require_baseline_fails() {

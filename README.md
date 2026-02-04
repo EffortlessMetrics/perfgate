@@ -58,6 +58,11 @@ artifacts/perfgate/
 └── comment.md      # PR comment markdown
 ```
 
+Baseline-missing semantics for `check`:
+- `report.json` and `comment.md` are always written
+- `compare.json` is omitted when no baseline exists
+- `report.json` uses verdict reason token `no_baseline`
+
 ## Quickstart
 
 ### 1) Run a command and write a receipt

@@ -285,7 +285,7 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
     if !compare.verdict.reasons.is_empty() {
         out.push_str("\n**Notes:**\n");
         for r in &compare.verdict.reasons {
-            out.push_str(&format!("- {}\n", r));
+            out.push_str(&render_reason_line(compare, r));
         }
     }
 
@@ -324,6 +324,49 @@ fn format_metric(metric: Metric) -> &'static str {
         Metric::MaxRssKb => "max_rss_kb",
         Metric::ThroughputPerS => "throughput_per_s",
     }
+}
+
+fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
+    let (metric_part, status_part) = token.rsplit_once('_')?;
+
+    let status = match status_part {
+        "warn" => MetricStatus::Warn,
+        "fail" => MetricStatus::Fail,
+        _ => return None,
+    };
+
+    let metric = match metric_part {
+        "wall_ms" => Metric::WallMs,
+        "max_rss_kb" => Metric::MaxRssKb,
+        "throughput_per_s" => Metric::ThroughputPerS,
+        _ => return None,
+    };
+
+    Some((metric, status))
+}
+
+fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
+    if let Some((metric, status)) = parse_reason_token(token) {
+        if let (Some(delta), Some(budget)) =
+            (compare.deltas.get(&metric), compare.budgets.get(&metric))
+        {
+            let pct = format_pct(delta.pct);
+            let warn_pct = budget.warn_threshold * 100.0;
+            let fail_pct = budget.threshold * 100.0;
+
+            return match status {
+                MetricStatus::Warn => format!(
+                    "- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n"
+                ),
+                MetricStatus::Fail => {
+                    format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
+                }
+                MetricStatus::Pass => format!("- {token}\n"),
+            };
+        }
+    }
+
+    format!("- {token}\n")
 }
 
 fn format_value(metric: Metric, v: f64) -> String {

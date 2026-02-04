@@ -20,7 +20,7 @@ fn create_compare_receipt(verdict_status: &str, metric_status: &str) -> String {
   "current_ref": {{"path": "current.json", "run_id": "c456"}},
   "budgets": {{"wall_ms": {{"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}}}},
   "deltas": {{"wall_ms": {{"baseline": 100.0, "current": 150.0, "ratio": 1.5, "pct": 0.5, "regression": 0.5, "status": "{}"}}}},
-  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1}}, "reasons": ["wall_ms: 50% regression"]}}
+  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1}}, "reasons": ["wall_ms_fail"]}}
 }}"#,
         metric_status, verdict_status
     )
@@ -105,7 +105,7 @@ fn test_report_warn_verdict_has_finding() {
   "current_ref": {"path": "c.json", "run_id": "c456"},
   "budgets": {"wall_ms": {"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}},
   "deltas": {"wall_ms": {"baseline": 100.0, "current": 119.0, "ratio": 1.19, "pct": 0.19, "regression": 0.19, "status": "warn"}},
-  "verdict": {"status": "warn", "counts": {"pass": 0, "warn": 1, "fail": 0}, "reasons": ["wall_ms: near budget"]}
+  "verdict": {"status": "warn", "counts": {"pass": 0, "warn": 1, "fail": 0}, "reasons": ["wall_ms_warn"]}
 }"#;
 
     fs::write(&compare_path, warn_compare).unwrap();

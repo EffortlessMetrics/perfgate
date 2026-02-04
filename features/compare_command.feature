@@ -40,7 +40,7 @@ Feature: Compare Command
     When I run perfgate compare with threshold 0.20
     Then the exit code should be 2
     And the verdict should be fail
-    And the reasons should mention regression percentage
+    And the reasons should include token "wall_ms_fail"
 
   Scenario: Fail verdict at exact threshold boundary
     Given a baseline receipt with wall_ms median of 1000
@@ -55,7 +55,7 @@ Feature: Compare Command
     When I run perfgate compare with threshold 0.20
     Then the exit code should be 2
     And the verdict should be fail
-    And the reasons should mention regression percentage
+    And the reasons should include token "wall_ms_fail"
 
   # Warn verdict scenarios - near threshold
   # Note: warn_threshold = threshold * warn_factor

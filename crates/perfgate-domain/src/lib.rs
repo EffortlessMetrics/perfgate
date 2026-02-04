@@ -166,22 +166,11 @@ pub fn compare_stats(
             MetricStatus::Pass => counts.pass += 1,
             MetricStatus::Warn => {
                 counts.warn += 1;
-                reasons.push(format!(
-                    "{metric:?} near budget: {pct:.2}% (warn ≥ {warn:.2}%, fail > {fail:.2}%)",
-                    metric = metric,
-                    pct = pct * 100.0,
-                    warn = budget.warn_threshold * 100.0,
-                    fail = budget.threshold * 100.0
-                ));
+                reasons.push(reason_token(*metric, MetricStatus::Warn));
             }
             MetricStatus::Fail => {
                 counts.fail += 1;
-                reasons.push(format!(
-                    "{metric:?} regression: {pct:.2}% (budget {fail:.2}%)",
-                    metric = metric,
-                    pct = pct * 100.0,
-                    fail = budget.threshold * 100.0
-                ));
+                reasons.push(reason_token(*metric, MetricStatus::Fail));
             }
         }
 
@@ -331,6 +320,22 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
     }
+}
+
+fn reason_token(metric: Metric, status: MetricStatus) -> String {
+    let metric_str = match metric {
+        Metric::WallMs => "wall_ms",
+        Metric::MaxRssKb => "max_rss_kb",
+        Metric::ThroughputPerS => "throughput_per_s",
+    };
+
+    let status_str = match status {
+        MetricStatus::Warn => "warn",
+        MetricStatus::Fail => "fail",
+        MetricStatus::Pass => "pass",
+    };
+
+    format!("{metric_str}_{status_str}")
 }
 
 #[cfg(test)]

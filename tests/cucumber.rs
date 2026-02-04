@@ -177,8 +177,8 @@ impl PerfgateWorld {
 
         let reasons = match verdict_status {
             VerdictStatus::Pass => vec![],
-            VerdictStatus::Warn => vec!["wall_ms: +15.0% (warn threshold: 18.0%)".to_string()],
-            VerdictStatus::Fail => vec!["wall_ms: +50.0% exceeds 20.0% threshold".to_string()],
+            VerdictStatus::Warn => vec!["wall_ms_warn".to_string()],
+            VerdictStatus::Fail => vec!["wall_ms_fail".to_string()],
         };
 
         let counts = match verdict_status {
@@ -687,9 +687,9 @@ async fn then_compare_receipt_contains_wall_ms_delta(world: &mut PerfgateWorld) 
     );
 }
 
-/// Assert the reasons mention regression percentage
-#[then("the reasons should mention regression percentage")]
-async fn then_reasons_mention_regression(world: &mut PerfgateWorld) {
+/// Assert the reasons include a specific token
+#[then(expr = "the reasons should include token {string}")]
+async fn then_reasons_include_token(world: &mut PerfgateWorld, token: String) {
     let output_path = world.output_path.as_ref().expect("No output path set");
     let content = fs::read_to_string(output_path).expect("Failed to read output file");
     let receipt: CompareReceipt =
@@ -697,18 +697,13 @@ async fn then_reasons_mention_regression(world: &mut PerfgateWorld) {
 
     assert!(
         !receipt.verdict.reasons.is_empty(),
-        "Verdict should have reasons for regression"
+        "Verdict should have reason tokens"
     );
 
-    let has_percentage = receipt
-        .verdict
-        .reasons
-        .iter()
-        .any(|r: &String| r.contains('%') || r.contains("threshold"));
-
     assert!(
-        has_percentage,
-        "Reasons should mention regression percentage: {:?}",
+        receipt.verdict.reasons.iter().any(|r| r == &token),
+        "Reasons should include token '{}': {:?}",
+        token,
         receipt.verdict.reasons
     );
 }

@@ -583,6 +583,22 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
     // Write compare receipt if present
     if let (Some(ref compare), Some(ref path)) = (&outcome.compare_receipt, &outcome.compare_path) {
         write_json(path, compare, pretty)?;
+    } else if outcome.compare_receipt.is_none() {
+        // Ensure compare.json is absent when no baseline is available.
+        if let Some(parent) = outcome.run_path.parent() {
+            let stale = parent.join("compare.json");
+            match fs::remove_file(&stale) {
+                Ok(_) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to remove stale compare.json {}: {}",
+                        stale.display(),
+                        err
+                    ));
+                }
+            }
+        }
     }
 
     // Write report (always present for cockpit integration)
