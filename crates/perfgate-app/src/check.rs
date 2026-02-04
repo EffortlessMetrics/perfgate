@@ -17,7 +17,7 @@ use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
     BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData, Metric,
     MetricStatus, PerfgateReport, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
-    Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1, REPORT_SCHEMA_V1,
+    Verdict, VerdictCounts, VerdictStatus, REPORT_SCHEMA_V1,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -184,7 +184,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             ));
 
             // Build a no-baseline report for cockpit integration
-            let report = build_no_baseline_report(&run_receipt, &req.tool, &run_path);
+            let report = build_no_baseline_report(&run_receipt);
 
             (None, None, report)
         };
@@ -367,14 +367,14 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
             code,
             severity,
             message,
-            data: FindingData {
+            data: Some(FindingData {
                 metric_name,
                 baseline: delta.baseline,
                 current: delta.current,
                 regression_pct: delta.pct * 100.0,
                 threshold,
                 direction,
-            },
+            }),
         });
     }
 
@@ -390,7 +390,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
     PerfgateReport {
         report_type: REPORT_SCHEMA_V1.to_string(),
         verdict: compare.verdict.clone(),
-        compare: compare.clone(),
+        compare: Some(compare.clone()),
         findings,
         summary,
     }
@@ -398,51 +398,44 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
 
 /// Build a PerfgateReport for the case when there is no baseline.
 ///
-/// This creates a synthetic CompareReceipt that compares the run against itself
-/// (baseline = current), resulting in a Pass verdict with zero deltas. This allows
-/// cockpit integration to always receive a report.json file.
-fn build_no_baseline_report(
-    run: &RunReceipt,
-    tool: &ToolInfo,
-    run_path: &std::path::Path,
-) -> PerfgateReport {
-    // Create a synthetic compare receipt where baseline = current
-    // This results in 0% delta across all metrics, which is a Pass.
-    let synthetic_compare = CompareReceipt {
-        schema: COMPARE_SCHEMA_V1.to_string(),
-        tool: tool.clone(),
-        bench: run.bench.clone(),
-        baseline_ref: CompareRef {
-            path: None,
-            run_id: None,
+/// Returns a report with Warn status (not Pass) to indicate that while
+/// the check is non-blocking by default, no actual performance evaluation
+/// occurred. The cockpit can highlight this as "baseline missing" rather
+/// than incorrectly showing "pass".
+fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
+    // Warn verdict: the sensor ran but no comparison was possible
+    let verdict = Verdict {
+        status: VerdictStatus::Warn,
+        counts: VerdictCounts {
+            pass: 0,
+            warn: 1,
+            fail: 0,
         },
-        current_ref: CompareRef {
-            path: Some(run_path.display().to_string()),
-            run_id: Some(run.run.id.clone()),
-        },
-        budgets: BTreeMap::new(),
-        deltas: BTreeMap::new(),
-        verdict: Verdict {
-            status: VerdictStatus::Pass,
-            counts: VerdictCounts {
-                pass: 0,
-                warn: 0,
-                fail: 0,
-            },
-            reasons: vec!["no baseline available; comparison skipped".to_string()],
-        },
+        reasons: vec!["no_baseline".to_string()],
+    };
+
+    // Single finding for the baseline-missing condition
+    let finding = ReportFinding {
+        check_id: "perf.baseline".to_string(),
+        code: "missing".to_string(),
+        severity: Severity::Warn,
+        message: format!(
+            "No baseline found for bench '{}'; comparison skipped",
+            run.bench.name
+        ),
+        data: None, // No metric data for structural findings
     };
 
     PerfgateReport {
         report_type: REPORT_SCHEMA_V1.to_string(),
-        verdict: synthetic_compare.verdict.clone(),
-        compare: synthetic_compare,
-        findings: Vec::new(),
+        verdict,
+        compare: None, // No synthetic compare receipt
+        findings: vec![finding],
         summary: ReportSummary {
             pass_count: 0,
-            warn_count: 0,
+            warn_count: 1,
             fail_count: 0,
-            total_count: 0,
+            total_count: 1,
         },
     }
 }
@@ -488,8 +481,8 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Delta, Direction, HostInfo, RunMeta, Sample, Stats, U64Summary, Verdict,
-        VerdictCounts, COMPARE_SCHEMA_V1,
+        BenchMeta, CompareReceipt, Delta, Direction, HostInfo, RunMeta, Sample, Stats, U64Summary,
+        Verdict, VerdictCounts, COMPARE_SCHEMA_V1,
     };
 
     fn make_run_receipt(wall_ms_median: u64) -> RunReceipt {
@@ -633,47 +626,37 @@ mod tests {
     #[test]
     fn test_build_no_baseline_report() {
         let run = make_run_receipt(1000);
-        let tool = ToolInfo {
-            name: "perfgate".to_string(),
-            version: "0.1.0".to_string(),
-        };
-        let run_path = PathBuf::from("/tmp/run.json");
 
-        let report = build_no_baseline_report(&run, &tool, &run_path);
+        let report = build_no_baseline_report(&run);
 
         // Verify report structure
         assert_eq!(report.report_type, REPORT_SCHEMA_V1);
 
-        // Verify verdict is Pass with the skip reason
-        assert_eq!(report.verdict.status, VerdictStatus::Pass);
+        // Verify verdict is Warn (not Pass) - baseline missing is not "green"
+        assert_eq!(report.verdict.status, VerdictStatus::Warn);
         assert_eq!(report.verdict.counts.pass, 0);
-        assert_eq!(report.verdict.counts.warn, 0);
+        assert_eq!(report.verdict.counts.warn, 1);
         assert_eq!(report.verdict.counts.fail, 0);
         assert_eq!(report.verdict.reasons.len(), 1);
-        assert!(report.verdict.reasons[0].contains("no baseline available"));
+        assert_eq!(report.verdict.reasons[0], "no_baseline");
 
-        // Verify findings is empty
-        assert!(report.findings.is_empty());
+        // Verify single finding for baseline-missing condition
+        assert_eq!(report.findings.len(), 1);
+        let finding = &report.findings[0];
+        assert_eq!(finding.check_id, "perf.baseline");
+        assert_eq!(finding.code, "missing");
+        assert_eq!(finding.severity, Severity::Warn);
+        assert!(finding.message.contains("No baseline found"));
+        assert!(finding.message.contains("test-bench"));
+        assert!(finding.data.is_none()); // No metric data for structural findings
 
-        // Verify summary has all zeros
+        // Verify summary reflects the warning
         assert_eq!(report.summary.pass_count, 0);
-        assert_eq!(report.summary.warn_count, 0);
+        assert_eq!(report.summary.warn_count, 1);
         assert_eq!(report.summary.fail_count, 0);
-        assert_eq!(report.summary.total_count, 0);
+        assert_eq!(report.summary.total_count, 1);
 
-        // Verify compare receipt structure
-        assert_eq!(report.compare.schema, COMPARE_SCHEMA_V1);
-        assert!(report.compare.baseline_ref.path.is_none());
-        assert!(report.compare.baseline_ref.run_id.is_none());
-        assert!(report.compare.current_ref.path.is_some());
-        assert_eq!(
-            report.compare.current_ref.run_id,
-            Some(run.run.id.clone())
-        );
-        assert!(report.compare.budgets.is_empty());
-        assert!(report.compare.deltas.is_empty());
-
-        // Verify bench meta is preserved
-        assert_eq!(report.compare.bench.name, "test-bench");
+        // Verify no compare receipt (no synthetic comparison)
+        assert!(report.compare.is_none());
     }
 }

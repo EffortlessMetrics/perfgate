@@ -315,11 +315,11 @@ pub struct FindingData {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ReportFinding {
-    /// Unique identifier for the check type (e.g., "perf.budget").
+    /// Unique identifier for the check type (e.g., "perf.budget", "perf.baseline").
     #[serde(rename = "check_id")]
     pub check_id: String,
 
-    /// Machine-readable code for the finding (e.g., "metric_warn", "metric_fail").
+    /// Machine-readable code for the finding (e.g., "metric_warn", "metric_fail", "missing").
     pub code: String,
 
     /// Severity level (warn or fail).
@@ -328,8 +328,9 @@ pub struct ReportFinding {
     /// Human-readable message describing the finding.
     pub message: String,
 
-    /// Structured data about the finding.
-    pub data: FindingData,
+    /// Structured data about the finding (present for metric findings, absent for structural findings).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<FindingData>,
 }
 
 /// Summary counts and key metrics for the report.
@@ -364,8 +365,9 @@ pub struct PerfgateReport {
     /// Overall verdict for the report.
     pub verdict: Verdict,
 
-    /// The full compare receipt.
-    pub compare: CompareReceipt,
+    /// The full compare receipt (absent when baseline is missing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compare: Option<CompareReceipt>,
 
     /// List of findings (warnings and failures).
     pub findings: Vec<ReportFinding>,

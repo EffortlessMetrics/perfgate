@@ -5,11 +5,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["performance", "benchmarking", "application", "use-cases"]
+categories = ["development-tools"]
 
 [dependencies]
-perfgate-types = { path = "../perfgate-types" }
-perfgate-domain = { path = "../perfgate-domain" }
-perfgate-adapters = { path = "../perfgate-adapters" }
+perfgate-types.workspace = true
+perfgate-domain.workspace = true
+perfgate-adapters.workspace = true
 anyhow.workspace = true
 humantime.workspace = true
 serde.workspace = true

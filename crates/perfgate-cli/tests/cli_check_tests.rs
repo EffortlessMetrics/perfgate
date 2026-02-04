@@ -226,25 +226,55 @@ fn test_check_missing_baseline_warns() {
         Some("perfgate.report.v1"),
         "report.json should have correct report_type"
     );
+    // Verdict should be Warn (not Pass) - baseline missing means comparison didn't happen
     assert_eq!(
         report_json["verdict"]["status"].as_str(),
-        Some("pass"),
-        "verdict should be pass when no baseline"
+        Some("warn"),
+        "verdict should be warn when no baseline (not pass)"
     );
-    // Check that the reason mentions no baseline
+    // Check that the reason uses stable token
     let reasons = report_json["verdict"]["reasons"]
         .as_array()
         .expect("reasons should be an array");
     assert!(
-        reasons.iter().any(|r| r.as_str().map(|s| s.contains("no baseline")).unwrap_or(false)),
-        "verdict reasons should mention no baseline: {:?}",
+        reasons.iter().any(|r| r.as_str() == Some("no_baseline")),
+        "verdict reasons should contain 'no_baseline' token: {:?}",
         reasons
     );
-    // Summary counts should all be zero
+    // Summary should reflect 1 warning
+    assert_eq!(
+        report_json["summary"]["warn_count"].as_u64(),
+        Some(1),
+        "warn_count should be 1 when no baseline"
+    );
     assert_eq!(
         report_json["summary"]["total_count"].as_u64(),
-        Some(0),
-        "total_count should be 0 when no baseline"
+        Some(1),
+        "total_count should be 1 when no baseline"
+    );
+    // No compare receipt should be present
+    assert!(
+        report_json["compare"].is_null() || report_json.get("compare").is_none(),
+        "compare should be absent when no baseline"
+    );
+    // Should have a finding with check_id="perf.baseline" and code="missing"
+    let findings = report_json["findings"]
+        .as_array()
+        .expect("findings should be an array");
+    assert_eq!(
+        findings.len(),
+        1,
+        "should have 1 finding for missing baseline"
+    );
+    assert_eq!(
+        findings[0]["check_id"].as_str(),
+        Some("perf.baseline"),
+        "finding check_id should be perf.baseline"
+    );
+    assert_eq!(
+        findings[0]["code"].as_str(),
+        Some("missing"),
+        "finding code should be missing"
     );
 
     // comment.md should mention no baseline

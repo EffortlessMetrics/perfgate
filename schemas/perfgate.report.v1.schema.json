@@ -4,7 +4,6 @@
   "description": "A performance report wrapping compare results in a cockpit-compatible envelope.",
   "type": "object",
   "required": [
-    "compare",
     "findings",
     "report_type",
     "summary",
@@ -12,10 +11,13 @@
   ],
   "properties": {
     "compare": {
-      "description": "The full compare receipt.",
-      "allOf": [
+      "description": "The full compare receipt (absent when baseline is missing).",
+      "anyOf": [
         {
           "$ref": "#/definitions/CompareReceipt"
+        },
+        {
+          "type": "null"
         }
       ]
     },
@@ -293,24 +295,26 @@
       "required": [
         "check_id",
         "code",
-        "data",
         "message",
         "severity"
       ],
       "properties": {
         "check_id": {
-          "description": "Unique identifier for the check type (e.g., \"perf.budget\").",
+          "description": "Unique identifier for the check type (e.g., \"perf.budget\", \"perf.baseline\").",
           "type": "string"
         },
         "code": {
-          "description": "Machine-readable code for the finding (e.g., \"metric_warn\", \"metric_fail\").",
+          "description": "Machine-readable code for the finding (e.g., \"metric_warn\", \"metric_fail\", \"missing\").",
           "type": "string"
         },
         "data": {
-          "description": "Structured data about the finding.",
-          "allOf": [
+          "description": "Structured data about the finding (present for metric findings, absent for structural findings).",
+          "anyOf": [
             {
               "$ref": "#/definitions/FindingData"
+            },
+            {
+              "type": "null"
             }
           ]
         },

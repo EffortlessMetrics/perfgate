@@ -81,14 +81,14 @@ impl ReportUseCase {
                     code: f.code,
                     severity,
                     message,
-                    data: FindingData {
+                    data: Some(FindingData {
                         metric_name: f.data.metric_name,
                         baseline: f.data.baseline,
                         current: f.data.current,
                         regression_pct: f.data.regression_pct,
                         threshold: f.data.threshold,
                         direction,
-                    },
+                    }),
                 }
             })
             .collect();
@@ -105,7 +105,7 @@ impl ReportUseCase {
         let report = PerfgateReport {
             report_type: REPORT_SCHEMA_V1.to_string(),
             verdict: req.compare.verdict.clone(),
-            compare: req.compare,
+            compare: Some(req.compare),
             findings,
             summary,
         };

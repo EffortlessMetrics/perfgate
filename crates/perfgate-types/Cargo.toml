@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["performance", "benchmarking", "types", "schema"]
+categories = ["development-tools", "data-structures"]
 
 [features]
 default = []
