@@ -99,6 +99,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: Some(1024),
                 stdout: None,
                 stderr: None,
@@ -109,6 +110,7 @@ mod tests {
                     min: 98,
                     max: 102,
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1020,

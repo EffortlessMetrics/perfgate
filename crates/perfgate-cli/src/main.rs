@@ -3,12 +3,14 @@ use clap::{Parser, Subcommand};
 use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::{
     github_annotations, render_markdown, CheckOutcome, CheckRequest, CheckUseCase, CompareRequest,
-    CompareUseCase, ExportFormat, ExportUseCase, PromoteRequest, PromoteUseCase, ReportRequest,
-    ReportUseCase, RunBenchRequest, RunBenchUseCase, SystemClock,
+    CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase,
+    PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SystemClock,
 };
 use perfgate_domain::DomainError;
 use perfgate_types::{
-    Budget, CompareReceipt, CompareRef, ConfigFile, Metric, RunReceipt, ToolInfo,
+    Budget, CompareReceipt, CompareRef, ConfigFile, HostMismatchPolicy, Metric, RunReceipt,
+    ToolInfo,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -112,6 +114,13 @@ enum Command {
         /// Treat WARN verdict as a failing exit code
         #[arg(long, default_value_t = false)]
         fail_on_warn: bool,
+
+        /// Policy for handling host mismatches between baseline and current runs.
+        /// - warn (default): Warn but continue with comparison
+        /// - error: Exit 1 on mismatch
+        /// - ignore: Suppress warnings
+        #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
+        host_mismatch: HostMismatchPolicy,
 
         /// Output compare receipt
         #[arg(long, default_value = "perfgate-compare.json")]
@@ -261,6 +270,77 @@ enum Command {
         #[arg(long, default_value_t = false)]
         allow_nonzero: bool,
 
+        /// Policy for handling host mismatches between baseline and current runs.
+        /// - warn (default): Warn but continue with comparison
+        /// - error: Exit 1 on mismatch
+        /// - ignore: Suppress warnings
+        #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
+        host_mismatch: HostMismatchPolicy,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
+
+    /// Run paired benchmark: interleave baseline and current commands for reduced noise.
+    ///
+    /// Executes baseline-1, current-1, baseline-2, current-2, etc. to minimize
+    /// environmental variation between measurements.
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    Paired {
+        /// Bench identifier (used for baselines and reporting)
+        #[arg(long)]
+        name: String,
+
+        /// Baseline command (argv)
+        #[arg(long, required = true, num_args = 1..)]
+        baseline_cmd: Vec<String>,
+
+        /// Current command (argv)
+        #[arg(long, required = true, num_args = 1..)]
+        current_cmd: Vec<String>,
+
+        /// Number of measured pairs
+        #[arg(long, default_value_t = 5)]
+        repeat: u32,
+
+        /// Warmup pairs (excluded from stats)
+        #[arg(long, default_value_t = 0)]
+        warmup: u32,
+
+        /// Units of work completed per run (enables throughput_per_s)
+        #[arg(long)]
+        work: Option<u64>,
+
+        /// Working directory
+        #[arg(long)]
+        cwd: Option<PathBuf>,
+
+        /// Per-run timeout (e.g. "2s")
+        #[arg(long)]
+        timeout: Option<String>,
+
+        /// Environment variable (KEY=VALUE). Repeatable.
+        #[arg(long, value_parser = parse_key_val_string)]
+        env: Vec<(String, String)>,
+
+        /// Max bytes captured from stdout/stderr per run
+        #[arg(long, default_value_t = 8192)]
+        output_cap_bytes: usize,
+
+        /// Do not fail the tool when the command returns nonzero.
+        #[arg(long, default_value_t = false)]
+        allow_nonzero: bool,
+
+        /// Include a hashed hostname in the host fingerprint for noise mitigation.
+        #[arg(long, default_value_t = false)]
+        include_hostname_hash: bool,
+
+        /// Output file path
+        #[arg(long, default_value = "perfgate-paired.json")]
+        out: PathBuf,
+
         /// Pretty-print JSON
         #[arg(long, default_value_t = false)]
         pretty: bool,
@@ -335,6 +415,7 @@ fn real_main() -> anyhow::Result<()> {
             metric_threshold,
             direction,
             fail_on_warn,
+            host_mismatch,
             out,
             pretty,
         } => {
@@ -350,7 +431,7 @@ fn real_main() -> anyhow::Result<()> {
                 direction,
             )?;
 
-            let compare = CompareUseCase::execute(CompareRequest {
+            let compare_result = CompareUseCase::execute(CompareRequest {
                 baseline: baseline_receipt.clone(),
                 current: current_receipt.clone(),
                 budgets,
@@ -363,12 +444,20 @@ fn real_main() -> anyhow::Result<()> {
                     run_id: Some(current_receipt.run.id.clone()),
                 },
                 tool: tool_info(),
+                host_mismatch_policy: host_mismatch,
             })
             .map_err(map_domain_err)?;
 
-            write_json(&out, &compare, pretty)?;
+            // Print host mismatch warnings if detected (for Warn policy)
+            if let Some(ref mismatch) = compare_result.host_mismatch {
+                for reason in &mismatch.reasons {
+                    eprintln!("warning: host mismatch: {}", reason);
+                }
+            }
 
-            match compare.verdict.status {
+            write_json(&out, &compare_result.receipt, pretty)?;
+
+            match compare_result.receipt.verdict.status {
                 perfgate_types::VerdictStatus::Pass => Ok(()),
                 perfgate_types::VerdictStatus::Warn => {
                     if fail_on_warn {
@@ -491,6 +580,7 @@ fn real_main() -> anyhow::Result<()> {
             env,
             output_cap_bytes,
             allow_nonzero,
+            host_mismatch,
             pretty,
         } => {
             // Load config file
@@ -564,6 +654,7 @@ fn real_main() -> anyhow::Result<()> {
                     env: env.clone(),
                     output_cap_bytes,
                     allow_nonzero,
+                    host_mismatch_policy: host_mismatch,
                 })?;
 
                 // Write artifacts
@@ -595,6 +686,54 @@ fn real_main() -> anyhow::Result<()> {
             // Exit with aggregate code
             if max_exit_code != 0 {
                 std::process::exit(max_exit_code);
+            }
+
+            Ok(())
+        }
+
+        Command::Paired {
+            name,
+            baseline_cmd,
+            current_cmd,
+            repeat,
+            warmup,
+            work,
+            cwd,
+            timeout,
+            env,
+            output_cap_bytes,
+            allow_nonzero,
+            include_hostname_hash,
+            out,
+            pretty,
+        } => {
+            let timeout = timeout.as_deref().map(parse_duration).transpose()?;
+
+            let tool = tool_info();
+            let runner = StdProcessRunner;
+            let host_probe = StdHostProbe;
+            let clock = SystemClock;
+            let usecase = PairedRunUseCase::new(runner, host_probe, clock, tool);
+
+            let outcome = usecase.execute(PairedRunRequest {
+                name,
+                cwd,
+                baseline_command: baseline_cmd,
+                current_command: current_cmd,
+                repeat,
+                warmup,
+                work_units: work,
+                timeout,
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+                include_hostname_hash,
+            })?;
+
+            write_json(&out, &outcome.receipt, pretty)?;
+
+            if outcome.failed && !allow_nonzero {
+                anyhow::bail!("paired benchmark failed: {}", outcome.reasons.join(", "));
             }
 
             Ok(())
@@ -692,6 +831,18 @@ fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
         .ok_or_else(|| "expected KEY=VALUE".to_string())?;
     let f: f64 = v.parse().map_err(|_| format!("invalid float value: {v}"))?;
     Ok((k.to_string(), f))
+}
+
+fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
+    match s {
+        "warn" => Ok(HostMismatchPolicy::Warn),
+        "error" => Ok(HostMismatchPolicy::Error),
+        "ignore" => Ok(HostMismatchPolicy::Ignore),
+        _ => Err(format!(
+            "invalid host mismatch policy: {} (expected warn, error, or ignore)",
+            s
+        )),
+    }
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {

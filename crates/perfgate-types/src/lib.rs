@@ -26,10 +26,13 @@ pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
 pub const CHECK_ID_BASELINE: &str = "perf.baseline";
+pub const CHECK_ID_HOST: &str = "perf.host";
 pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
 pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
+pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
+pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -59,6 +62,43 @@ pub struct HostInfo {
     /// When present, this is a SHA-256 hash of the actual hostname.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hostname_hash: Option<String>,
+}
+
+/// Policy for handling host mismatches when comparing receipts from different machines.
+///
+/// Host mismatches are detected when:
+/// - Different `os` or `arch`
+/// - Significant difference in `cpu_count` (> 2x)
+/// - Significant difference in `memory_bytes` (> 2x)
+/// - Different `hostname_hash` (if both present)
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum HostMismatchPolicy {
+    /// Warn about host mismatch but continue with comparison (default).
+    #[default]
+    Warn,
+    /// Treat host mismatch as an error (exit 1).
+    Error,
+    /// Ignore host mismatches completely (suppress warnings).
+    Ignore,
+}
+
+impl HostMismatchPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HostMismatchPolicy::Warn => "warn",
+            HostMismatchPolicy::Error => "error",
+            HostMismatchPolicy::Ignore => "ignore",
+        }
+    }
+}
+
+/// Details about a detected host mismatch between baseline and current runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostMismatchInfo {
+    /// Human-readable description of the mismatch.
+    pub reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -104,6 +144,10 @@ pub struct Sample {
     #[serde(default)]
     pub timed_out: bool,
 
+    /// CPU time (user + system) in milliseconds (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_ms: Option<u64>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rss_kb: Option<u64>,
 
@@ -137,6 +181,10 @@ pub struct F64Summary {
 pub struct Stats {
     pub wall_ms: U64Summary,
 
+    /// CPU time (user + system) summary in milliseconds (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_ms: Option<U64Summary>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rss_kb: Option<U64Summary>,
 
@@ -161,34 +209,38 @@ pub struct RunReceipt {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum Metric {
-    WallMs,
+    CpuMs,
     MaxRssKb,
     ThroughputPerS,
+    WallMs,
 }
 
 impl Metric {
     pub fn as_str(self) -> &'static str {
         match self {
-            Metric::WallMs => "wall_ms",
+            Metric::CpuMs => "cpu_ms",
             Metric::MaxRssKb => "max_rss_kb",
             Metric::ThroughputPerS => "throughput_per_s",
+            Metric::WallMs => "wall_ms",
         }
     }
 
     pub fn parse_key(key: &str) -> Option<Self> {
         match key {
-            "wall_ms" => Some(Metric::WallMs),
+            "cpu_ms" => Some(Metric::CpuMs),
             "max_rss_kb" => Some(Metric::MaxRssKb),
             "throughput_per_s" => Some(Metric::ThroughputPerS),
+            "wall_ms" => Some(Metric::WallMs),
             _ => None,
         }
     }
 
     pub fn default_direction(self) -> Direction {
         match self {
-            Metric::WallMs => Direction::Lower,
+            Metric::CpuMs => Direction::Lower,
             Metric::MaxRssKb => Direction::Lower,
             Metric::ThroughputPerS => Direction::Higher,
+            Metric::WallMs => Direction::Lower,
         }
     }
 
@@ -199,9 +251,10 @@ impl Metric {
 
     pub fn display_unit(self) -> &'static str {
         match self {
-            Metric::WallMs => "ms",
+            Metric::CpuMs => "ms",
             Metric::MaxRssKb => "KB",
             Metric::ThroughputPerS => "/s",
+            Metric::WallMs => "ms",
         }
     }
 }
@@ -718,19 +771,23 @@ mod property_tests {
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..1000000), // cpu_ms
+            proptest::option::of(0u64..1000000), // max_rss_kb
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
         )
             .prop_map(
-                |(wall_ms, exit_code, warmup, timed_out, max_rss_kb, stdout, stderr)| Sample {
-                    wall_ms,
-                    exit_code,
-                    warmup,
-                    timed_out,
-                    max_rss_kb,
-                    stdout,
-                    stderr,
+                |(wall_ms, exit_code, warmup, timed_out, cpu_ms, max_rss_kb, stdout, stderr)| {
+                    Sample {
+                        wall_ms,
+                        exit_code,
+                        warmup,
+                        timed_out,
+                        cpu_ms,
+                        max_rss_kb,
+                        stdout,
+                        stderr,
+                    }
                 },
             )
     }
@@ -765,11 +822,13 @@ mod property_tests {
     fn stats_strategy() -> impl Strategy<Value = Stats> {
         (
             u64_summary_strategy(),
-            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()), // cpu_ms
+            proptest::option::of(u64_summary_strategy()), // max_rss_kb
             proptest::option::of(f64_summary_strategy()),
         )
-            .prop_map(|(wall_ms, max_rss_kb, throughput_per_s)| Stats {
+            .prop_map(|(wall_ms, cpu_ms, max_rss_kb, throughput_per_s)| Stats {
                 wall_ms,
+                cpu_ms,
                 max_rss_kb,
                 throughput_per_s,
             })
@@ -826,6 +885,7 @@ mod property_tests {
                 prop_assert_eq!(orig.exit_code, deser.exit_code);
                 prop_assert_eq!(orig.warmup, deser.warmup);
                 prop_assert_eq!(orig.timed_out, deser.timed_out);
+                prop_assert_eq!(orig.cpu_ms, deser.cpu_ms);
                 prop_assert_eq!(orig.max_rss_kb, deser.max_rss_kb);
                 prop_assert_eq!(&orig.stdout, &deser.stdout);
                 prop_assert_eq!(&orig.stderr, &deser.stderr);
@@ -833,6 +893,7 @@ mod property_tests {
 
             // Compare stats
             prop_assert_eq!(&receipt.stats.wall_ms, &deserialized.stats.wall_ms);
+            prop_assert_eq!(&receipt.stats.cpu_ms, &deserialized.stats.cpu_ms);
             prop_assert_eq!(&receipt.stats.max_rss_kb, &deserialized.stats.max_rss_kb);
 
             // For f64 throughput, compare with tolerance for floating point
@@ -955,9 +1016,10 @@ mod property_tests {
     // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
-            Just(Metric::WallMs),
+            Just(Metric::CpuMs),
             Just(Metric::MaxRssKb),
             Just(Metric::ThroughputPerS),
+            Just(Metric::WallMs),
         ]
     }
 

@@ -84,6 +84,13 @@ pub fn compute_stats(
     let wall: Vec<u64> = measured.iter().map(|s| s.wall_ms).collect();
     let wall_ms = summarize_u64(&wall)?;
 
+    let cpu_vals: Vec<u64> = measured.iter().filter_map(|s| s.cpu_ms).collect();
+    let cpu_ms = if cpu_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&cpu_vals)?)
+    };
+
     let rss_vals: Vec<u64> = measured.iter().filter_map(|s| s.max_rss_kb).collect();
     let max_rss_kb = if rss_vals.is_empty() {
         None
@@ -111,6 +118,7 @@ pub fn compute_stats(
 
     Ok(Stats {
         wall_ms,
+        cpu_ms,
         max_rss_kb,
         throughput_per_s,
     })
@@ -317,9 +325,10 @@ fn metric_to_string(metric: Metric) -> String {
 
 fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
     match metric {
-        Metric::WallMs => Some(stats.wall_ms.median as f64),
+        Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
+        Metric::WallMs => Some(stats.wall_ms.median as f64),
     }
 }
 
@@ -327,6 +336,88 @@ fn reason_token(metric: Metric, status: MetricStatus) -> String {
     let metric_str = metric.as_str();
     let status_str = status.as_str();
     format!("{metric_str}_{status_str}")
+}
+
+// ============================================================================
+// Host Mismatch Detection
+// ============================================================================
+
+use perfgate_types::{HostInfo, HostMismatchInfo};
+
+/// Detect host mismatches between baseline and current runs.
+///
+/// Returns `Some(HostMismatchInfo)` if any mismatch is detected, `None` otherwise.
+///
+/// Detection criteria:
+/// - Different `os` or `arch`
+/// - Significant difference in `cpu_count` (> 2x)
+/// - Significant difference in `memory_bytes` (> 2x)
+/// - Different `hostname_hash` (if both present)
+pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<HostMismatchInfo> {
+    let mut reasons = Vec::new();
+
+    // Check os mismatch
+    if baseline.os != current.os {
+        reasons.push(format!(
+            "OS mismatch: baseline={}, current={}",
+            baseline.os, current.os
+        ));
+    }
+
+    // Check arch mismatch
+    if baseline.arch != current.arch {
+        reasons.push(format!(
+            "architecture mismatch: baseline={}, current={}",
+            baseline.arch, current.arch
+        ));
+    }
+
+    // Check cpu_count mismatch (> 2x difference)
+    if let (Some(base_cpu), Some(curr_cpu)) = (baseline.cpu_count, current.cpu_count) {
+        let ratio = if base_cpu > 0 && curr_cpu > 0 {
+            (base_cpu as f64 / curr_cpu as f64).max(curr_cpu as f64 / base_cpu as f64)
+        } else {
+            1.0
+        };
+        if ratio > 2.0 {
+            reasons.push(format!(
+                "CPU count differs significantly: baseline={}, current={} ({:.1}x)",
+                base_cpu, curr_cpu, ratio
+            ));
+        }
+    }
+
+    // Check memory_bytes mismatch (> 2x difference)
+    if let (Some(base_mem), Some(curr_mem)) = (baseline.memory_bytes, current.memory_bytes) {
+        let ratio = if base_mem > 0 && curr_mem > 0 {
+            (base_mem as f64 / curr_mem as f64).max(curr_mem as f64 / base_mem as f64)
+        } else {
+            1.0
+        };
+        if ratio > 2.0 {
+            let base_gb = base_mem as f64 / (1024.0 * 1024.0 * 1024.0);
+            let curr_gb = curr_mem as f64 / (1024.0 * 1024.0 * 1024.0);
+            reasons.push(format!(
+                "memory differs significantly: baseline={:.1}GB, current={:.1}GB ({:.1}x)",
+                base_gb, curr_gb, ratio
+            ));
+        }
+    }
+
+    // Check hostname_hash mismatch (if both present)
+    if let (Some(ref base_hash), Some(ref curr_hash)) =
+        (&baseline.hostname_hash, &current.hostname_hash)
+    {
+        if base_hash != curr_hash {
+            reasons.push("hostname mismatch (different machines)".to_string());
+        }
+    }
+
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(HostMismatchInfo { reasons })
+    }
 }
 
 #[cfg(test)]
@@ -342,6 +433,136 @@ mod tests {
     fn summarize_u64_median_even_rounds_down() {
         let s = summarize_u64(&[10, 20]).unwrap();
         assert_eq!(s.median, 15);
+    }
+
+    // =========================================================================
+    // Host Mismatch Detection Tests
+    // =========================================================================
+
+    fn make_host_info(os: &str, arch: &str) -> HostInfo {
+        HostInfo {
+            os: os.to_string(),
+            arch: arch.to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        }
+    }
+
+    #[test]
+    fn host_mismatch_none_when_identical() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("linux", "x86_64");
+        assert!(detect_host_mismatch(&baseline, &current).is_none());
+    }
+
+    #[test]
+    fn host_mismatch_detects_os_difference() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("windows", "x86_64");
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("OS mismatch")));
+    }
+
+    #[test]
+    fn host_mismatch_detects_arch_difference() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("linux", "aarch64");
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("architecture mismatch")));
+    }
+
+    #[test]
+    fn host_mismatch_detects_cpu_count_significant_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(4);
+        current.cpu_count = Some(16); // 4x difference
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("CPU count differs")));
+    }
+
+    #[test]
+    fn host_mismatch_ignores_cpu_count_minor_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(8);
+        current.cpu_count = Some(12); // 1.5x difference, below 2x threshold
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_none());
+    }
+
+    #[test]
+    fn host_mismatch_detects_memory_significant_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.memory_bytes = Some(8 * 1024 * 1024 * 1024); // 8GB
+        current.memory_bytes = Some(32 * 1024 * 1024 * 1024); // 32GB (4x)
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("memory differs")));
+    }
+
+    #[test]
+    fn host_mismatch_ignores_memory_minor_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.memory_bytes = Some(16 * 1024 * 1024 * 1024); // 16GB
+        current.memory_bytes = Some(24 * 1024 * 1024 * 1024); // 24GB (1.5x)
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_none());
+    }
+
+    #[test]
+    fn host_mismatch_detects_hostname_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.hostname_hash = Some("abc123".to_string());
+        current.hostname_hash = Some("def456".to_string());
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("hostname mismatch")));
+    }
+
+    #[test]
+    fn host_mismatch_ignores_hostname_when_only_one_present() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("linux", "x86_64");
+        baseline.hostname_hash = Some("abc123".to_string());
+        // current has no hostname_hash
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_none());
+    }
+
+    #[test]
+    fn host_mismatch_multiple_reasons() {
+        let baseline = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: Some(4),
+            memory_bytes: Some(8 * 1024 * 1024 * 1024),
+            hostname_hash: Some("abc".to_string()),
+        };
+        let current = HostInfo {
+            os: "windows".to_string(),
+            arch: "aarch64".to_string(),
+            cpu_count: Some(32),
+            memory_bytes: Some(64 * 1024 * 1024 * 1024),
+            hostname_hash: Some("def".to_string()),
+        };
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        // Should have 5 reasons: OS, arch, CPU, memory, hostname
+        assert_eq!(reasons.len(), 5);
     }
 
     // =========================================================================
@@ -914,6 +1135,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -927,6 +1149,7 @@ mod tests {
                 exit_code: 0,
                 warmup: true,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -1146,6 +1369,7 @@ mod tests {
                         min: baseline as u64,
                         max: baseline as u64,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: None,
                 };
@@ -1156,6 +1380,7 @@ mod tests {
                         min: current as u64,
                         max: current as u64,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: None,
                 };
@@ -1216,6 +1441,7 @@ mod tests {
                         min: 1000,
                         max: 1000,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline,
@@ -1230,6 +1456,7 @@ mod tests {
                         min: 1000,
                         max: 1000,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: Some(F64Summary {
                         median: current,
@@ -1291,6 +1518,7 @@ mod tests {
                             min: baseline as u64,
                             max: baseline as u64,
                         },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: None,
                     };
@@ -1300,6 +1528,7 @@ mod tests {
                             min: current as u64,
                             max: current as u64,
                         },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: None,
                     };
@@ -1309,6 +1538,7 @@ mod tests {
                 } else {
                     let bs = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: Some(F64Summary {
                             median: baseline,
@@ -1318,6 +1548,7 @@ mod tests {
                     };
                     let cs = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: Some(F64Summary {
                             median: current,
@@ -1360,6 +1591,7 @@ mod tests {
             ) {
                 let baseline_stats = Stats {
                     wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline,
@@ -1377,6 +1609,7 @@ mod tests {
                 if current_at_threshold_higher > 0.0 {
                     let current_stats = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: Some(F64Summary {
                             median: current_at_threshold_higher,
@@ -1448,6 +1681,7 @@ mod tests {
                     min: median,
                     max: median,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: None,
             }
@@ -1553,6 +1787,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1571,6 +1806,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1633,6 +1869,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1671,6 +1908,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1743,6 +1981,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1761,6 +2000,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1821,6 +2061,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1839,6 +2080,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1899,6 +2141,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: if num_metrics >= 2 {
                         Some(U64Summary {
                             median: baseline,
@@ -1987,6 +2230,7 @@ mod tests {
                 exit_code: 0,
                 warmup: true,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -1996,6 +2240,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -2021,6 +2266,7 @@ mod tests {
                 min: 1000,
                 max: 1000,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: None,
         };
@@ -2030,6 +2276,7 @@ mod tests {
                 min: 1100,
                 max: 1100,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: None,
         };
@@ -2058,6 +2305,7 @@ mod tests {
                 min: 1000,
                 max: 1000,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: Some(F64Summary {
                 median: 100.0,
@@ -2071,6 +2319,7 @@ mod tests {
                 min: 1000,
                 max: 1000,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: Some(F64Summary {
                 median: 92.0,
@@ -2170,6 +2419,7 @@ mod tests {
                     exit_code: 0,
                     warmup: true,
                     timed_out: false,
+                    cpu_ms: None,
                     max_rss_kb: Some(1024),
                     stdout: None,
                     stderr: None,
@@ -2179,6 +2429,7 @@ mod tests {
                     exit_code: 0,
                     warmup: true,
                     timed_out: false,
+                    cpu_ms: None,
                     max_rss_kb: Some(2048),
                     stdout: None,
                     stderr: None,
@@ -2188,6 +2439,7 @@ mod tests {
                     exit_code: 0,
                     warmup: true,
                     timed_out: false,
+                    cpu_ms: None,
                     max_rss_kb: Some(1536),
                     stdout: None,
                     stderr: None,
@@ -2216,6 +2468,7 @@ mod tests {
                 exit_code: 0,
                 warmup: true,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -2250,6 +2503,7 @@ mod tests {
                     min: 0,
                     max: 0,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: None,
             };
@@ -2260,6 +2514,7 @@ mod tests {
                     min: 100,
                     max: 100,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: None,
             };
@@ -2303,6 +2558,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: 0.0,
@@ -2317,6 +2573,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: 100.0,
@@ -2364,6 +2621,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 0,
                     min: 0,
@@ -2378,6 +2636,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1024,
@@ -2426,6 +2685,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: -10.0,
@@ -2440,6 +2700,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: 100.0,

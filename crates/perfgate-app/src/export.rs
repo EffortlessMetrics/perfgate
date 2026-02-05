@@ -32,6 +32,7 @@ pub struct RunExportRow {
     pub wall_ms_median: u64,
     pub wall_ms_min: u64,
     pub wall_ms_max: u64,
+    pub cpu_ms_median: Option<u64>,
     pub max_rss_kb_median: Option<u64>,
     pub throughput_median: Option<f64>,
     pub sample_count: usize,
@@ -86,6 +87,7 @@ impl ExportUseCase {
             wall_ms_median: receipt.stats.wall_ms.median,
             wall_ms_min: receipt.stats.wall_ms.min,
             wall_ms_max: receipt.stats.wall_ms.max,
+            cpu_ms_median: receipt.stats.cpu_ms.as_ref().map(|s| s.median),
             max_rss_kb_median: receipt.stats.max_rss_kb.as_ref().map(|s| s.median),
             throughput_median: receipt.stats.throughput_per_s.as_ref().map(|s| s.median),
             sample_count,
@@ -127,7 +129,7 @@ impl ExportUseCase {
         let mut output = String::new();
 
         // Header row
-        output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,max_rss_kb_median,throughput_median,sample_count,timestamp\n");
+        output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,cpu_ms_median,max_rss_kb_median,throughput_median,sample_count,timestamp\n");
 
         // Data row
         output.push_str(&csv_escape(&row.bench_name));
@@ -137,6 +139,8 @@ impl ExportUseCase {
         output.push_str(&row.wall_ms_min.to_string());
         output.push(',');
         output.push_str(&row.wall_ms_max.to_string());
+        output.push(',');
+        output.push_str(&row.cpu_ms_median.map_or(String::new(), |v| v.to_string()));
         output.push(',');
         output.push_str(
             &row.max_rss_kb_median
@@ -209,9 +213,10 @@ impl ExportUseCase {
 /// Convert Metric enum to snake_case string.
 fn metric_to_string(metric: Metric) -> String {
     match metric {
-        Metric::WallMs => "wall_ms".to_string(),
+        Metric::CpuMs => "cpu_ms".to_string(),
         Metric::MaxRssKb => "max_rss_kb".to_string(),
         Metric::ThroughputPerS => "throughput_per_s".to_string(),
+        Metric::WallMs => "wall_ms".to_string(),
     }
 }
 
@@ -278,6 +283,7 @@ mod tests {
                     exit_code: 0,
                     warmup: false,
                     timed_out: false,
+                    cpu_ms: Some(50),
                     max_rss_kb: Some(1024),
                     stdout: None,
                     stderr: None,
@@ -287,6 +293,7 @@ mod tests {
                     exit_code: 0,
                     warmup: false,
                     timed_out: false,
+                    cpu_ms: Some(52),
                     max_rss_kb: Some(1028),
                     stdout: None,
                     stderr: None,
@@ -298,6 +305,11 @@ mod tests {
                     min: 98,
                     max: 102,
                 },
+                cpu_ms: Some(U64Summary {
+                    median: 50,
+                    min: 48,
+                    max: 52,
+                }),
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1020,
@@ -573,14 +585,16 @@ mod property_tests {
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..1000000), // cpu_ms
+            proptest::option::of(0u64..1000000), // max_rss_kb
         )
             .prop_map(
-                |(wall_ms, exit_code, warmup, timed_out, max_rss_kb)| Sample {
+                |(wall_ms, exit_code, warmup, timed_out, cpu_ms, max_rss_kb)| Sample {
                     wall_ms,
                     exit_code,
                     warmup,
                     timed_out,
+                    cpu_ms,
                     max_rss_kb,
                     stdout: None,
                     stderr: None,
@@ -618,11 +632,13 @@ mod property_tests {
     fn stats_strategy() -> impl Strategy<Value = Stats> {
         (
             u64_summary_strategy(),
-            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()), // cpu_ms
+            proptest::option::of(u64_summary_strategy()), // max_rss_kb
             proptest::option::of(f64_summary_strategy()),
         )
-            .prop_map(|(wall_ms, max_rss_kb, throughput_per_s)| Stats {
+            .prop_map(|(wall_ms, cpu_ms, max_rss_kb, throughput_per_s)| Stats {
                 wall_ms,
+                cpu_ms,
                 max_rss_kb,
                 throughput_per_s,
             })
@@ -729,9 +745,10 @@ mod property_tests {
     // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
-            Just(Metric::WallMs),
+            Just(Metric::CpuMs),
             Just(Metric::MaxRssKb),
             Just(Metric::ThroughputPerS),
+            Just(Metric::WallMs),
         ]
     }
 
@@ -790,7 +807,7 @@ mod property_tests {
             let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
 
             // Check header is present
-            prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,max_rss_kb_median,throughput_median,sample_count,timestamp\n"));
+            prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,cpu_ms_median,max_rss_kb_median,throughput_median,sample_count,timestamp\n"));
 
             // Check we have exactly 2 lines (header + data)
             let lines: Vec<&str> = csv.trim().split('\n').collect();

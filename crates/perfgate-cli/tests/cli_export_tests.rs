@@ -66,7 +66,7 @@ fn test_export_run_to_csv() {
 
     // Verify CSV header
     assert!(
-        content.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,max_rss_kb_median,throughput_median,sample_count,timestamp\n"),
+        content.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,cpu_ms_median,max_rss_kb_median,throughput_median,sample_count,timestamp\n"),
         "CSV should have correct header. Got: {}",
         content.lines().next().unwrap_or("")
     );

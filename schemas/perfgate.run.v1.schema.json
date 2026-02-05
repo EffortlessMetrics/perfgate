@@ -182,6 +182,15 @@
         "wall_ms"
       ],
       "properties": {
+        "cpu_ms": {
+          "description": "CPU time (user + system) in milliseconds (Unix only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
         "exit_code": {
           "type": "integer",
           "format": "int32"
@@ -229,6 +238,17 @@
         "wall_ms"
       ],
       "properties": {
+        "cpu_ms": {
+          "description": "CPU time (user + system) summary in milliseconds (Unix only).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "max_rss_kb": {
           "anyOf": [
             {

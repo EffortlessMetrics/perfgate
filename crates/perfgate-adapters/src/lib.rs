@@ -20,6 +20,8 @@ pub struct RunResult {
     pub wall_ms: u64,
     pub exit_code: i32,
     pub timed_out: bool,
+    /// CPU time (user + system) in milliseconds (Unix only).
+    pub cpu_ms: Option<u64>,
     pub max_rss_kb: Option<u64>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
@@ -105,6 +107,7 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         wall_ms,
         exit_code,
         timed_out: false,
+        cpu_ms: None, // Not available on non-Unix platforms
         max_rss_kb: None,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),
@@ -164,12 +167,14 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     let exit_status = std::process::ExitStatus::from_raw(status_raw);
     let exit_code = exit_status.code().unwrap_or(-1);
 
+    let cpu_ms = rusage.map(|ru| ru_cpu_ms(&ru));
     let max_rss_kb = rusage.map(|ru| ru_maxrss_kb(&ru));
 
     Ok(RunResult {
         wall_ms,
         exit_code,
         timed_out,
+        cpu_ms,
         max_rss_kb,
         stdout,
         stderr,
@@ -259,6 +264,14 @@ fn wait4_with_timeout(
     }
 
     Ok((status, Some(ru), timed_out))
+}
+
+#[cfg(unix)]
+fn ru_cpu_ms(ru: &libc::rusage) -> u64 {
+    // ru_utime and ru_stime are timeval structs with tv_sec (seconds) and tv_usec (microseconds)
+    let user_ms = (ru.ru_utime.tv_sec as u64) * 1000 + (ru.ru_utime.tv_usec as u64) / 1000;
+    let sys_ms = (ru.ru_stime.tv_sec as u64) * 1000 + (ru.ru_stime.tv_usec as u64) / 1000;
+    user_ms + sys_ms
 }
 
 #[cfg(unix)]

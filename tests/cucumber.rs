@@ -127,6 +127,7 @@ impl PerfgateWorld {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: Some(1024),
                 stdout: None,
                 stderr: None,
@@ -137,6 +138,7 @@ impl PerfgateWorld {
                     min: wall_ms_median.saturating_sub(10),
                     max: wall_ms_median.saturating_add(10),
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1000,

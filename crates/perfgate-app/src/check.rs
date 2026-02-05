@@ -15,11 +15,11 @@ use crate::{
 use anyhow::{bail, Context};
 use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
-    BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData, Metric,
-    MetricStatus, PerfgateReport, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
-    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BASELINE, CHECK_ID_BUDGET,
-    FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
-    REPORT_SCHEMA_V1, VERDICT_REASON_NO_BASELINE,
+    BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData,
+    HostMismatchPolicy, Metric, MetricStatus, PerfgateReport, ReportFinding, ReportSummary,
+    RunReceipt, Severity, ToolInfo, Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BASELINE,
+    CHECK_ID_BUDGET, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1, VERDICT_REASON_NO_BASELINE,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -59,6 +59,9 @@ pub struct CheckRequest {
 
     /// If true, do not treat nonzero exit codes as a tool error.
     pub allow_nonzero: bool,
+
+    /// Policy for handling host mismatches when comparing against baseline.
+    pub host_mismatch_policy: HostMismatchPolicy,
 }
 
 /// Outcome of the check use case.
@@ -162,16 +165,24 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                     run_id: Some(run_receipt.run.id.clone()),
                 },
                 tool: req.tool.clone(),
+                host_mismatch_policy: req.host_mismatch_policy,
             };
 
-            let compare = CompareUseCase::execute(compare_req)?;
+            let compare_result = CompareUseCase::execute(compare_req)?;
+
+            // Add host mismatch warnings if detected (for Warn policy)
+            if let Some(ref mismatch) = compare_result.host_mismatch {
+                for reason in &mismatch.reasons {
+                    warnings.push(format!("host mismatch: {}", reason));
+                }
+            }
 
             // Build report
-            let report = build_report(&compare);
+            let report = build_report(&compare_result.receipt);
 
             let compare_path = req.out_dir.join("compare.json");
 
-            (Some(compare), Some(compare_path), report)
+            (Some(compare_result.receipt), Some(compare_path), report)
         } else {
             // No baseline
             if req.require_baseline {
@@ -520,6 +531,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: Some(1024),
                 stdout: None,
                 stderr: None,
@@ -530,6 +542,7 @@ mod tests {
                     min: wall_ms_median.saturating_sub(10),
                     max: wall_ms_median.saturating_add(10),
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1000,

@@ -448,3 +448,271 @@ fn test_check_produces_valid_json() {
         "report.json should have correct report_type"
     );
 }
+
+// ======================================================================
+// --all flag tests
+// ======================================================================
+
+/// Create a config file with multiple benches.
+fn create_multi_bench_config(
+    temp_dir: &std::path::Path,
+    bench_names: &[&str],
+) -> std::path::PathBuf {
+    let config_path = temp_dir.join("perfgate.toml");
+    let success_cmd = success_command();
+
+    let cmd_str = success_cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let mut config_content = String::from(
+        r#"
+[defaults]
+repeat = 2
+warmup = 0
+threshold = 0.20
+"#,
+    );
+
+    for name in bench_names {
+        config_content.push_str(&format!(
+            r#"
+[[bench]]
+name = "{}"
+command = [{}]
+"#,
+            name, cmd_str
+        ));
+    }
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+    config_path
+}
+
+/// Test --all flag runs all benches and creates per-bench subdirectories
+#[test]
+fn test_check_all_runs_all_benches() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path =
+        create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b", "bench-c"]);
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    // Should succeed
+    assert!(
+        output.status.success(),
+        "check --all should succeed: exit code {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Each bench should have its own subdirectory with artifacts
+    for bench_name in &["bench-a", "bench-b", "bench-c"] {
+        let bench_dir = out_dir.join(bench_name);
+        assert!(
+            bench_dir.exists(),
+            "subdirectory for {} should exist",
+            bench_name
+        );
+        assert!(
+            bench_dir.join("run.json").exists(),
+            "run.json should exist for {}",
+            bench_name
+        );
+        assert!(
+            bench_dir.join("report.json").exists(),
+            "report.json should exist for {}",
+            bench_name
+        );
+        assert!(
+            bench_dir.join("comment.md").exists(),
+            "comment.md should exist for {}",
+            bench_name
+        );
+    }
+}
+
+/// Test --all flag with baselines
+#[test]
+fn test_check_all_with_baselines() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-x", "bench-y"]);
+
+    // Create baselines for both benches
+    create_baseline_receipt(temp_dir.path(), "bench-x");
+    create_baseline_receipt(temp_dir.path(), "bench-y");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    assert!(
+        output.status.success(),
+        "check --all with baselines should succeed: exit code {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Each bench should have compare.json since baselines exist
+    for bench_name in &["bench-x", "bench-y"] {
+        let bench_dir = out_dir.join(bench_name);
+        assert!(
+            bench_dir.join("compare.json").exists(),
+            "compare.json should exist for {} when baseline is present",
+            bench_name
+        );
+    }
+}
+
+/// Test --all fails on empty config
+#[test]
+fn test_check_all_empty_config_fails() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+
+    // Create config with no benches
+    let config_path = temp_dir.path().join("perfgate.toml");
+    fs::write(
+        &config_path,
+        r#"
+[defaults]
+repeat = 2
+"#,
+    )
+    .expect("Failed to write config file");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    assert!(
+        !output.status.success(),
+        "check --all with empty config should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no benchmarks"),
+        "stderr should mention no benchmarks: {}",
+        stderr
+    );
+}
+
+/// Test that --bench and --all are mutually exclusive
+#[test]
+fn test_check_bench_and_all_mutually_exclusive() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "test-bench");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("test-bench")
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    assert!(
+        !output.status.success(),
+        "check with both --bench and --all should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "stderr should mention conflict: {}",
+        stderr
+    );
+}
+
+/// Test that neither --bench nor --all is specified fails
+#[test]
+fn test_check_no_bench_or_all_fails() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "test-bench");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    assert!(
+        !output.status.success(),
+        "check without --bench or --all should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--bench") || stderr.contains("--all"),
+        "stderr should mention --bench or --all required: {}",
+        stderr
+    );
+}
+
+/// Test --baseline is not allowed with --all
+#[test]
+fn test_check_baseline_and_all_mutually_exclusive() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
+    let baseline_path = create_baseline_receipt(temp_dir.path(), "bench-a");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    assert!(
+        !output.status.success(),
+        "check with both --all and --baseline should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "stderr should mention conflict: {}",
+        stderr
+    );
+}

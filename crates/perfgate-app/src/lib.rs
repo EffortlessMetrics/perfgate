@@ -17,10 +17,10 @@ pub use report::{ReportRequest, ReportResult, ReportUseCase};
 
 use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
-use perfgate_domain::{compare_stats, compute_stats, Comparison};
+use perfgate_domain::{compare_stats, compute_stats, detect_host_mismatch, Comparison};
 use perfgate_types::{
-    BenchMeta, Budget, CompareReceipt, CompareRef, Direction, Metric, MetricStatus, RunMeta,
-    RunReceipt, Sample, ToolInfo,
+    BenchMeta, Budget, CompareReceipt, CompareRef, Direction, HostMismatchInfo, HostMismatchPolicy,
+    Metric, MetricStatus, RunMeta, RunReceipt, Sample, ToolInfo,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -186,6 +186,7 @@ fn sample_from_run(run: RunResult, warmup: bool) -> Sample {
         exit_code: run.exit_code,
         warmup,
         timed_out: run.timed_out,
+        cpu_ms: run.cpu_ms,
         max_rss_kb: run.max_rss_kb,
         stdout: if run.stdout.is_empty() {
             None
@@ -208,16 +209,44 @@ pub struct CompareRequest {
     pub baseline_ref: CompareRef,
     pub current_ref: CompareRef,
     pub tool: ToolInfo,
+    /// Policy for handling host mismatches.
+    #[allow(dead_code)]
+    pub host_mismatch_policy: HostMismatchPolicy,
+}
+
+/// Result from CompareUseCase including host mismatch information.
+#[derive(Debug, Clone)]
+pub struct CompareResult {
+    pub receipt: CompareReceipt,
+    /// Host mismatch info if detected (only populated when policy is not Ignore).
+    pub host_mismatch: Option<HostMismatchInfo>,
 }
 
 pub struct CompareUseCase;
 
 impl CompareUseCase {
-    pub fn execute(req: CompareRequest) -> anyhow::Result<CompareReceipt> {
+    pub fn execute(req: CompareRequest) -> anyhow::Result<CompareResult> {
+        // Check for host mismatch
+        let host_mismatch = if req.host_mismatch_policy != HostMismatchPolicy::Ignore {
+            detect_host_mismatch(&req.baseline.run.host, &req.current.run.host)
+        } else {
+            None
+        };
+
+        // If policy is Error and there's a mismatch, fail immediately
+        if req.host_mismatch_policy == HostMismatchPolicy::Error {
+            if let Some(ref mismatch) = host_mismatch {
+                anyhow::bail!(
+                    "host mismatch detected (--host-mismatch=error): {}",
+                    mismatch.reasons.join("; ")
+                );
+            }
+        }
+
         let Comparison { deltas, verdict } =
             compare_stats(&req.baseline.stats, &req.current.stats, &req.budgets)?;
 
-        Ok(CompareReceipt {
+        let receipt = CompareReceipt {
             schema: perfgate_types::COMPARE_SCHEMA_V1.to_string(),
             tool: req.tool,
             bench: req.current.bench,
@@ -226,6 +255,11 @@ impl CompareUseCase {
             budgets: req.budgets,
             deltas,
             verdict,
+        };
+
+        Ok(CompareResult {
+            receipt,
+            host_mismatch,
         })
     }
 }
@@ -364,7 +398,7 @@ fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
 
 fn format_value(metric: Metric, v: f64) -> String {
     match metric {
-        Metric::WallMs | Metric::MaxRssKb => format!("{:.0}", v),
+        Metric::CpuMs | Metric::MaxRssKb | Metric::WallMs => format!("{:.0}", v),
         Metric::ThroughputPerS => format!("{:.3}", v),
     }
 }
@@ -688,9 +722,10 @@ mod property_tests {
             // Verify a table row exists for each metric in deltas (Requirement 7.4)
             for metric in receipt.deltas.keys() {
                 let metric_name = match metric {
-                    Metric::WallMs => "wall_ms",
+                    Metric::CpuMs => "cpu_ms",
                     Metric::MaxRssKb => "max_rss_kb",
                     Metric::ThroughputPerS => "throughput_per_s",
+                    Metric::WallMs => "wall_ms",
                 };
                 prop_assert!(
                     md.contains(metric_name),
@@ -801,9 +836,10 @@ mod property_tests {
                 }
 
                 let metric_name = match metric {
-                    Metric::WallMs => "wall_ms",
+                    Metric::CpuMs => "cpu_ms",
                     Metric::MaxRssKb => "max_rss_kb",
                     Metric::ThroughputPerS => "throughput_per_s",
+                    Metric::WallMs => "wall_ms",
                 };
 
                 // Find the annotation for this metric

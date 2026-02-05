@@ -44,13 +44,20 @@ pub struct PairedRunUseCase<R: ProcessRunner, H: HostProbe, C: Clock> {
 
 impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
     pub fn new(runner: R, host_probe: H, clock: C, tool: ToolInfo) -> Self {
-        Self { runner, host_probe, clock, tool }
+        Self {
+            runner,
+            host_probe,
+            clock,
+            tool,
+        }
     }
 
     pub fn execute(&self, req: PairedRunRequest) -> anyhow::Result<PairedRunOutcome> {
         let run_id = uuid::Uuid::new_v4().to_string();
         let started_at = self.clock.now_rfc3339();
-        let host = self.host_probe.probe(&HostProbeOptions { include_hostname_hash: req.include_hostname_hash });
+        let host = self.host_probe.probe(&HostProbeOptions {
+            include_hostname_hash: req.include_hostname_hash,
+        });
 
         let bench = PairedBenchMeta {
             name: req.name.clone(),
@@ -77,7 +84,9 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
                 timeout: req.timeout,
                 output_cap_bytes: req.output_cap_bytes,
             };
-            let baseline_run = self.runner.run(&baseline_spec)
+            let baseline_run = self
+                .runner
+                .run(&baseline_spec)
                 .with_context(|| format!("failed to run baseline (pair {})", i + 1))?;
 
             let current_spec = CommandSpec {
@@ -87,7 +96,9 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
                 timeout: req.timeout,
                 output_cap_bytes: req.output_cap_bytes,
             };
-            let current_run = self.runner.run(&current_spec)
+            let current_run = self
+                .runner
+                .run(&current_spec)
                 .with_context(|| format!("failed to run current (pair {})", i + 1))?;
 
             let baseline = sample_half(&baseline_run);
@@ -100,13 +111,32 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             };
 
             if !is_warmup {
-                if baseline.timed_out { reasons.push(format!("pair {} baseline timed out", i + 1)); }
-                if baseline.exit_code != 0 { reasons.push(format!("pair {} baseline exit {}", i + 1, baseline.exit_code)); }
-                if current.timed_out { reasons.push(format!("pair {} current timed out", i + 1)); }
-                if current.exit_code != 0 { reasons.push(format!("pair {} current exit {}", i + 1, current.exit_code)); }
+                if baseline.timed_out {
+                    reasons.push(format!("pair {} baseline timed out", i + 1));
+                }
+                if baseline.exit_code != 0 {
+                    reasons.push(format!(
+                        "pair {} baseline exit {}",
+                        i + 1,
+                        baseline.exit_code
+                    ));
+                }
+                if current.timed_out {
+                    reasons.push(format!("pair {} current timed out", i + 1));
+                }
+                if current.exit_code != 0 {
+                    reasons.push(format!("pair {} current exit {}", i + 1, current.exit_code));
+                }
             }
 
-            samples.push(PairedSample { pair_index: i, warmup: is_warmup, baseline, current, wall_diff_ms, rss_diff_kb });
+            samples.push(PairedSample {
+                pair_index: i,
+                warmup: is_warmup,
+                baseline,
+                current,
+                wall_diff_ms,
+                rss_diff_kb,
+            });
         }
 
         let stats = compute_paired_stats(&samples, req.work_units)?;
@@ -115,14 +145,23 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
         let receipt = PairedRunReceipt {
             schema: PAIRED_SCHEMA_V1.to_string(),
             tool: self.tool.clone(),
-            run: RunMeta { id: run_id, started_at, ended_at, host },
+            run: RunMeta {
+                id: run_id,
+                started_at,
+                ended_at,
+                host,
+            },
             bench,
             samples,
             stats,
         };
 
         let failed = !reasons.is_empty();
-        Ok(PairedRunOutcome { receipt, failed, reasons })
+        Ok(PairedRunOutcome {
+            receipt,
+            failed,
+            reasons,
+        })
     }
 }
 
@@ -132,7 +171,15 @@ fn sample_half(run: &perfgate_adapters::RunResult) -> PairedSampleHalf {
         exit_code: run.exit_code,
         timed_out: run.timed_out,
         max_rss_kb: run.max_rss_kb,
-        stdout: if run.stdout.is_empty() { None } else { Some(String::from_utf8_lossy(&run.stdout).to_string()) },
-        stderr: if run.stderr.is_empty() { None } else { Some(String::from_utf8_lossy(&run.stderr).to_string()) },
+        stdout: if run.stdout.is_empty() {
+            None
+        } else {
+            Some(String::from_utf8_lossy(&run.stdout).to_string())
+        },
+        stderr: if run.stderr.is_empty() {
+            None
+        } else {
+            Some(String::from_utf8_lossy(&run.stderr).to_string())
+        },
     }
 }
