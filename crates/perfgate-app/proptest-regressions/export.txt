@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1bbd7dead45e62cf966157c307bb47eb5ed17c06310d76f8d07ffd4ba1743b5e # shrinks to receipt = CompareReceipt { schema: "perfgate.compare.v1", tool: ToolInfo { name: "a", version: "_" }, bench: BenchMeta { name: "a", cwd: None, command: ["_"], repeat: 1, warmup: 0, work_units: None, timeout_ms: None }, baseline_ref: CompareRef { path: None, run_id: None }, current_ref: CompareRef { path: None, run_id: None }, budgets: {WallMs: Budget { threshold: 0.01, warn_threshold: 0.0001, direction: Lower }}, deltas: {WallMs: Delta { baseline: 0.1, current: 0.1, ratio: 1.0, pct: 0.0, regression: 0.0, status: Pass }, MaxRssKb: Delta { baseline: 0.1, current: 0.1, ratio: 1.0, pct: 0.0, regression: 0.0, status: Pass }}, verdict: Verdict { status: Pass, counts: VerdictCounts { pass: 0, warn: 0, fail: 0 }, reasons: [] } }

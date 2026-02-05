@@ -3,12 +3,22 @@
 //! The app layer coordinates adapters and domain logic.
 //! It does not parse CLI flags and it does not do filesystem I/O.
 
+mod check;
+mod export;
+mod promote;
+mod report;
+
+pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
+pub use export::{ExportFormat, ExportUseCase};
+pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
+pub use report::{ReportRequest, ReportResult, ReportUseCase};
+
 use anyhow::Context;
-use perfgate_adapters::{CommandSpec, ProcessRunner, RunResult};
+use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
 use perfgate_domain::{compare_stats, compute_stats, Comparison};
 use perfgate_types::{
-    BenchMeta, Budget, CompareReceipt, CompareRef, Direction, HostInfo, Metric, MetricStatus,
-    RunMeta, RunReceipt, Sample, ToolInfo,
+    BenchMeta, Budget, CompareReceipt, CompareRef, Direction, Metric, MetricStatus, RunMeta,
+    RunReceipt, Sample, ToolInfo,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -30,7 +40,7 @@ impl Clock for SystemClock {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RunBenchRequest {
     pub name: String,
     pub cwd: Option<PathBuf>,
@@ -45,6 +55,10 @@ pub struct RunBenchRequest {
     /// If true, do not treat nonzero exit codes as a tool error.
     /// The receipt will still record exit codes.
     pub allow_nonzero: bool,
+
+    /// If true, include a hashed hostname in the host fingerprint.
+    /// This is opt-in for privacy reasons.
+    pub include_hostname_hash: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -58,16 +72,18 @@ pub struct RunBenchOutcome {
     pub reasons: Vec<String>,
 }
 
-pub struct RunBenchUseCase<R: ProcessRunner, C: Clock> {
+pub struct RunBenchUseCase<R: ProcessRunner, H: HostProbe, C: Clock> {
     runner: R,
+    host_probe: H,
     clock: C,
     tool: ToolInfo,
 }
 
-impl<R: ProcessRunner, C: Clock> RunBenchUseCase<R, C> {
-    pub fn new(runner: R, clock: C, tool: ToolInfo) -> Self {
+impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
+    pub fn new(runner: R, host_probe: H, clock: C, tool: ToolInfo) -> Self {
         Self {
             runner,
+            host_probe,
             clock,
             tool,
         }
@@ -77,10 +93,10 @@ impl<R: ProcessRunner, C: Clock> RunBenchUseCase<R, C> {
         let run_id = uuid::Uuid::new_v4().to_string();
         let started_at = self.clock.now_rfc3339();
 
-        let host = HostInfo {
-            os: std::env::consts::OS.to_string(),
-            arch: std::env::consts::ARCH.to_string(),
+        let host_options = HostProbeOptions {
+            include_hostname_hash: req.include_hostname_hash,
         };
+        let host = self.host_probe.probe(&host_options);
 
         let bench = BenchMeta {
             name: req.name.clone(),
@@ -269,7 +285,7 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
     if !compare.verdict.reasons.is_empty() {
         out.push_str("\n**Notes:**\n");
         for r in &compare.verdict.reasons {
-            out.push_str(&format!("- {}\n", r));
+            out.push_str(&render_reason_line(compare, r));
         }
     }
 
@@ -303,11 +319,45 @@ pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
 }
 
 fn format_metric(metric: Metric) -> &'static str {
-    match metric {
-        Metric::WallMs => "wall_ms",
-        Metric::MaxRssKb => "max_rss_kb",
-        Metric::ThroughputPerS => "throughput_per_s",
+    metric.as_str()
+}
+
+fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
+    let (metric_part, status_part) = token.rsplit_once('_')?;
+
+    let status = match status_part {
+        "warn" => MetricStatus::Warn,
+        "fail" => MetricStatus::Fail,
+        _ => return None,
+    };
+
+    let metric = Metric::parse_key(metric_part)?;
+
+    Some((metric, status))
+}
+
+fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
+    if let Some((metric, status)) = parse_reason_token(token) {
+        if let (Some(delta), Some(budget)) =
+            (compare.deltas.get(&metric), compare.budgets.get(&metric))
+        {
+            let pct = format_pct(delta.pct);
+            let warn_pct = budget.warn_threshold * 100.0;
+            let fail_pct = budget.threshold * 100.0;
+
+            return match status {
+                MetricStatus::Warn => {
+                    format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
+                }
+                MetricStatus::Fail => {
+                    format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
+                }
+                MetricStatus::Pass => format!("- {token}\n"),
+            };
+        }
     }
+
+    format!("- {token}\n")
 }
 
 fn format_value(metric: Metric, v: f64) -> String {

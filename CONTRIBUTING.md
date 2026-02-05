@@ -6,6 +6,10 @@
 cargo run -p xtask -- ci
 ```
 
+## Changelog
+
+When adding features or fixing bugs, update [CHANGELOG.md](CHANGELOG.md) under the `[Unreleased]` section following the [Keep a Changelog](https://keepachangelog.com/) format.
+
 ## Schemas
 
 ```bash

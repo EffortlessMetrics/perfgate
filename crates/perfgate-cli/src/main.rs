@@ -1,12 +1,15 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use perfgate_adapters::StdProcessRunner;
+use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::{
-    github_annotations, render_markdown, CompareRequest, CompareUseCase, RunBenchRequest,
-    RunBenchUseCase, SystemClock,
+    github_annotations, render_markdown, CheckOutcome, CheckRequest, CheckUseCase, CompareRequest,
+    CompareUseCase, ExportFormat, ExportUseCase, PromoteRequest, PromoteUseCase, ReportRequest,
+    ReportUseCase, RunBenchRequest, RunBenchUseCase, SystemClock,
 };
 use perfgate_domain::DomainError;
-use perfgate_types::{Budget, CompareRef, Metric, RunReceipt, ToolInfo};
+use perfgate_types::{
+    Budget, CompareReceipt, CompareRef, ConfigFile, Metric, RunReceipt, ToolInfo,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -63,6 +66,11 @@ enum Command {
         /// Do not fail the tool when the command returns nonzero.
         #[arg(long, default_value_t = false)]
         allow_nonzero: bool,
+
+        /// Include a hashed hostname in the host fingerprint for noise mitigation.
+        /// The hostname is SHA-256 hashed for privacy.
+        #[arg(long, default_value_t = false)]
+        include_hostname_hash: bool,
 
         /// Output file path
         #[arg(long, default_value = "perfgate.json")]
@@ -129,6 +137,129 @@ enum Command {
         #[arg(long)]
         compare: PathBuf,
     },
+
+    /// Export a run or compare receipt to CSV or JSONL format.
+    Export {
+        /// Path to a run receipt (mutually exclusive with --compare)
+        #[arg(long, conflicts_with = "compare")]
+        run: Option<PathBuf>,
+
+        /// Path to a compare receipt (mutually exclusive with --run)
+        #[arg(long, conflicts_with = "run")]
+        compare: Option<PathBuf>,
+
+        /// Output format: csv or jsonl
+        #[arg(long, default_value = "csv")]
+        format: String,
+
+        /// Output file path
+        #[arg(long)]
+        out: PathBuf,
+    },
+
+    /// Promote a run receipt to become the new baseline.
+    ///
+    /// This command copies a run receipt to a baseline location, optionally
+    /// normalizing run-specific fields (run_id, timestamps) to make baselines
+    /// more stable across runs. Typically used on trusted branches (e.g., main)
+    /// after successful benchmark runs.
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    Promote {
+        /// Path to the current run receipt to promote
+        #[arg(long)]
+        current: PathBuf,
+
+        /// Path where the baseline should be written
+        #[arg(long)]
+        to: PathBuf,
+
+        /// Strip run-specific fields (run_id, timestamps) for stable baselines
+        #[arg(long, default_value_t = false)]
+        normalize: bool,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
+
+    /// Generate a cockpit-compatible report from a compare receipt.
+    ///
+    /// Wraps a CompareReceipt into a `perfgate.report.v1` envelope with
+    /// verdict, findings, and summary counts.
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    Report {
+        /// Path to the compare receipt
+        #[arg(long)]
+        compare: PathBuf,
+
+        /// Output report JSON path
+        #[arg(long, default_value = "perfgate-report.json")]
+        out: PathBuf,
+
+        /// Also write markdown summary to this path
+        #[arg(long)]
+        md: Option<PathBuf>,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
+
+    /// Config-driven one-command workflow.
+    ///
+    /// Reads a config file, runs a benchmark, compares against baseline,
+    /// and produces all artifacts (run.json, compare.json, report.json, comment.md).
+    ///
+    /// This is the main adoption lever for perfgate in CI pipelines.
+    ///
+    /// Exit codes:
+    /// - 0: pass (or warn without --fail-on-warn, or no baseline without --require-baseline)
+    /// - 1: tool error (I/O, parse, spawn failures)
+    /// - 2: fail (budget violated)
+    /// - 3: warn treated as failure (with --fail-on-warn)
+    Check {
+        /// Path to the config file (TOML or JSON)
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+
+        /// Name of the benchmark to run (must match a [[bench]] in config)
+        #[arg(long)]
+        bench: String,
+
+        /// Output directory for artifacts
+        #[arg(long, default_value = "artifacts/perfgate")]
+        out_dir: PathBuf,
+
+        /// Path to the baseline file. If not specified, looks in baseline_dir/{bench}.json
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+
+        /// Fail if baseline is missing (default: warn and continue)
+        #[arg(long, default_value_t = false)]
+        require_baseline: bool,
+
+        /// Treat WARN verdict as a failing exit code
+        #[arg(long, default_value_t = false)]
+        fail_on_warn: bool,
+
+        /// Environment variable (KEY=VALUE). Repeatable.
+        #[arg(long, value_parser = parse_key_val_string)]
+        env: Vec<(String, String)>,
+
+        /// Max bytes captured from stdout/stderr per run
+        #[arg(long, default_value_t = 8192)]
+        output_cap_bytes: usize,
+
+        /// Do not fail the tool when the command returns nonzero.
+        #[arg(long, default_value_t = false)]
+        allow_nonzero: bool,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -153,6 +284,7 @@ fn real_main() -> anyhow::Result<()> {
             env,
             output_cap_bytes,
             allow_nonzero,
+            include_hostname_hash,
             out,
             pretty,
             command,
@@ -161,8 +293,9 @@ fn real_main() -> anyhow::Result<()> {
 
             let tool = tool_info();
             let runner = StdProcessRunner;
+            let host_probe = StdHostProbe;
             let clock = SystemClock;
-            let usecase = RunBenchUseCase::new(runner, clock, tool);
+            let usecase = RunBenchUseCase::new(runner, host_probe, clock, tool);
 
             let outcome = usecase.execute(RunBenchRequest {
                 name,
@@ -175,6 +308,7 @@ fn real_main() -> anyhow::Result<()> {
                 env,
                 output_cap_bytes,
                 allow_nonzero,
+                include_hostname_hash,
             })?;
 
             write_json(&out, &outcome.receipt, pretty)?;
@@ -265,7 +399,216 @@ fn real_main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+
+        Command::Export {
+            run,
+            compare,
+            format,
+            out,
+        } => {
+            let export_format = ExportFormat::from_str(&format).ok_or_else(|| {
+                anyhow::anyhow!("invalid format: {} (expected csv or jsonl)", format)
+            })?;
+
+            let content = match (run, compare) {
+                (Some(run_path), None) => {
+                    let run_receipt: RunReceipt = read_json(&run_path)?;
+                    ExportUseCase::export_run(&run_receipt, export_format)?
+                }
+                (None, Some(compare_path)) => {
+                    let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare_path)?;
+                    ExportUseCase::export_compare(&compare_receipt, export_format)?
+                }
+                (None, None) => {
+                    anyhow::bail!("either --run or --compare must be specified");
+                }
+                (Some(_), Some(_)) => {
+                    unreachable!("clap prevents both --run and --compare");
+                }
+            };
+
+            atomic_write(&out, content.as_bytes())?;
+            Ok(())
+        }
+
+        Command::Promote {
+            current,
+            to,
+            normalize,
+            pretty,
+        } => {
+            let receipt: RunReceipt = read_json(&current)?;
+
+            let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
+
+            write_json(&to, &result.receipt, pretty)?;
+            Ok(())
+        }
+
+        Command::Report {
+            compare,
+            out,
+            md,
+            pretty,
+        } => {
+            let compare_receipt: CompareReceipt = read_json(&compare)?;
+
+            let result = ReportUseCase::execute(ReportRequest {
+                compare: compare_receipt.clone(),
+            });
+
+            write_json(&out, &result.report, pretty)?;
+
+            // Optionally write markdown summary
+            if let Some(md_path) = md {
+                let md_content = render_markdown(&compare_receipt);
+                if let Some(parent) = md_path.parent() {
+                    if !parent.as_os_str().is_empty() {
+                        fs::create_dir_all(parent)
+                            .with_context(|| format!("create dir {}", parent.display()))?;
+                    }
+                }
+                fs::write(&md_path, md_content)
+                    .with_context(|| format!("write {}", md_path.display()))?;
+            }
+
+            Ok(())
+        }
+
+        Command::Check {
+            config,
+            bench,
+            out_dir,
+            baseline,
+            require_baseline,
+            fail_on_warn,
+            env,
+            output_cap_bytes,
+            allow_nonzero,
+            pretty,
+        } => {
+            // Load config file
+            let config_content = fs::read_to_string(&config)
+                .with_context(|| format!("read {}", config.display()))?;
+
+            let config_file: ConfigFile =
+                if config.extension().map(|e| e == "json").unwrap_or(false) {
+                    serde_json::from_str(&config_content)
+                        .with_context(|| format!("parse JSON config {}", config.display()))?
+                } else {
+                    toml::from_str(&config_content)
+                        .with_context(|| format!("parse TOML config {}", config.display()))?
+                };
+
+            // Resolve baseline path
+            let baseline_path = resolve_baseline_path(&baseline, &bench, &config_file);
+            let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
+                if path.exists() {
+                    Some(read_json(path)?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Create output directory
+            fs::create_dir_all(&out_dir)
+                .with_context(|| format!("create output dir {}", out_dir.display()))?;
+
+            // Execute check
+            let runner = StdProcessRunner;
+            let host_probe = StdHostProbe;
+            let clock = SystemClock;
+            let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+            let outcome = usecase.execute(CheckRequest {
+                config: config_file,
+                bench_name: bench,
+                out_dir: out_dir.clone(),
+                baseline: baseline_receipt,
+                baseline_path,
+                require_baseline,
+                fail_on_warn,
+                tool: tool_info(),
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+            })?;
+
+            // Write artifacts
+            write_check_artifacts(&outcome, pretty)?;
+
+            // Print warnings
+            for warning in &outcome.warnings {
+                eprintln!("warning: {}", warning);
+            }
+
+            // Exit with appropriate code
+            if outcome.exit_code != 0 {
+                std::process::exit(outcome.exit_code);
+            }
+
+            Ok(())
+        }
     }
+}
+
+/// Resolve the baseline path from CLI args or config defaults.
+fn resolve_baseline_path(
+    cli_baseline: &Option<PathBuf>,
+    bench_name: &str,
+    config: &ConfigFile,
+) -> Option<PathBuf> {
+    // 1. CLI takes precedence
+    if let Some(path) = cli_baseline {
+        return Some(path.clone());
+    }
+
+    // 2. Fall back to baseline_dir from config defaults
+    if let Some(ref baseline_dir) = config.defaults.baseline_dir {
+        let path = PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
+        return Some(path);
+    }
+
+    // 3. Default convention: baselines/{bench_name}.json
+    Some(PathBuf::from("baselines").join(format!("{}.json", bench_name)))
+}
+
+/// Write all artifacts from a check outcome.
+fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result<()> {
+    // Write run receipt
+    write_json(&outcome.run_path, &outcome.run_receipt, pretty)?;
+
+    // Write compare receipt if present
+    if let (Some(ref compare), Some(ref path)) = (&outcome.compare_receipt, &outcome.compare_path) {
+        write_json(path, compare, pretty)?;
+    } else if outcome.compare_receipt.is_none() {
+        // Ensure compare.json is absent when no baseline is available.
+        if let Some(parent) = outcome.run_path.parent() {
+            let stale = parent.join("compare.json");
+            match fs::remove_file(&stale) {
+                Ok(_) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to remove stale compare.json {}: {}",
+                        stale.display(),
+                        err
+                    ));
+                }
+            }
+        }
+    }
+
+    // Write report (always present for cockpit integration)
+    write_json(&outcome.report_path, &outcome.report, pretty)?;
+
+    // Write markdown
+    fs::write(&outcome.markdown_path, &outcome.markdown)
+        .with_context(|| format!("write {}", outcome.markdown_path.display()))?;
+
+    Ok(())
 }
 
 fn tool_info() -> ToolInfo {
@@ -397,9 +740,5 @@ fn build_budgets(
 }
 
 fn metric_key(metric: Metric) -> &'static str {
-    match metric {
-        Metric::WallMs => "wall_ms",
-        Metric::MaxRssKb => "max_rss_kb",
-        Metric::ThroughputPerS => "throughput_per_s",
-    }
+    metric.as_str()
 }

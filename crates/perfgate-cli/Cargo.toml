@@ -5,17 +5,22 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-perfgate-types = { path = "../perfgate-types" }
-perfgate-domain = { path = "../perfgate-domain" }
-perfgate-adapters = { path = "../perfgate-adapters" }
-perfgate-app = { path = "../perfgate-app" }
+perfgate-types.workspace = true
+perfgate-domain.workspace = true
+perfgate-adapters.workspace = true
+perfgate-app.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 humantime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

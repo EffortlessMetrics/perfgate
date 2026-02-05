@@ -118,9 +118,36 @@
       ],
       "properties": {
         "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
           "type": "string"
         },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving). When present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
         "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
           "type": "string"
         }
       }

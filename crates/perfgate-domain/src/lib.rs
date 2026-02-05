@@ -3,8 +3,9 @@
 //! This crate is intentionally I/O-free: it does math and policy.
 
 use perfgate_types::{
-    Budget, Delta, Direction, F64Summary, Metric, MetricStatus, Stats, U64Summary, Verdict,
-    VerdictCounts, VerdictStatus,
+    Budget, CompareReceipt, Delta, Direction, F64Summary, Metric, MetricStatus, Stats, U64Summary,
+    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BUDGET, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN,
 };
 use std::collections::BTreeMap;
 
@@ -166,22 +167,11 @@ pub fn compare_stats(
             MetricStatus::Pass => counts.pass += 1,
             MetricStatus::Warn => {
                 counts.warn += 1;
-                reasons.push(format!(
-                    "{metric:?} near budget: {pct:.2}% (warn ≥ {warn:.2}%, fail > {fail:.2}%)",
-                    metric = metric,
-                    pct = pct * 100.0,
-                    warn = budget.warn_threshold * 100.0,
-                    fail = budget.threshold * 100.0
-                ));
+                reasons.push(reason_token(*metric, MetricStatus::Warn));
             }
             MetricStatus::Fail => {
                 counts.fail += 1;
-                reasons.push(format!(
-                    "{metric:?} regression: {pct:.2}% (budget {fail:.2}%)",
-                    metric = metric,
-                    pct = pct * 100.0,
-                    fail = budget.threshold * 100.0
-                ));
+                reasons.push(reason_token(*metric, MetricStatus::Fail));
             }
         }
 
@@ -216,12 +206,123 @@ pub fn compare_stats(
     })
 }
 
+// ============================================================================
+// Report Derivation
+// ============================================================================
+
+/// Data for a single finding in a report.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FindingData {
+    /// The metric name (e.g., "wall_ms", "max_rss_kb", "throughput_per_s").
+    pub metric_name: String,
+    /// The benchmark name.
+    pub bench_name: String,
+    /// Baseline value for the metric.
+    pub baseline: f64,
+    /// Current value for the metric.
+    pub current: f64,
+    /// Regression percentage (e.g., 0.15 means 15% regression).
+    pub regression_pct: f64,
+    /// The threshold that was exceeded (for fail) or approached (for warn).
+    pub threshold: f64,
+}
+
+/// A single finding in a report.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Finding {
+    /// Finding code: "metric_warn" or "metric_fail".
+    pub code: String,
+    /// Check identifier: always "perf.budget".
+    pub check_id: String,
+    /// Finding data containing metric details.
+    pub data: FindingData,
+}
+
+/// Report derived from a CompareReceipt.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Report {
+    /// The overall verdict status, matching the compare verdict.
+    pub verdict: VerdictStatus,
+    /// Findings for metrics that have Warn or Fail status.
+    /// Ordered deterministically by metric name, then bench name.
+    pub findings: Vec<Finding>,
+}
+
+/// Derives a report from a CompareReceipt.
+///
+/// Creates findings for each metric delta with status Warn or Fail.
+/// Findings are ordered deterministically by metric name (then bench name if
+/// multiple benches were compared, though currently CompareReceipt is per-bench).
+///
+/// # Invariants
+///
+/// - Number of findings equals count of warn + fail status deltas
+/// - Report verdict matches compare verdict
+/// - Findings are ordered deterministically (by metric name)
+pub fn derive_report(receipt: &CompareReceipt) -> Report {
+    let mut findings = Vec::new();
+
+    // Iterate over deltas in deterministic order (BTreeMap is sorted by key)
+    for (metric, delta) in &receipt.deltas {
+        match delta.status {
+            MetricStatus::Pass => continue,
+            MetricStatus::Warn | MetricStatus::Fail => {
+                let code = match delta.status {
+                    MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
+                    MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
+                    MetricStatus::Pass => unreachable!(),
+                };
+
+                // Get the threshold from budgets if available
+                let threshold = receipt
+                    .budgets
+                    .get(metric)
+                    .map(|b| b.threshold)
+                    .unwrap_or(0.0);
+
+                findings.push(Finding {
+                    code,
+                    check_id: CHECK_ID_BUDGET.to_string(),
+                    data: FindingData {
+                        metric_name: metric_to_string(*metric),
+                        bench_name: receipt.bench.name.clone(),
+                        baseline: delta.baseline,
+                        current: delta.current,
+                        regression_pct: delta.regression,
+                        threshold,
+                    },
+                });
+            }
+        }
+    }
+
+    // Findings are already sorted by metric name since we iterate over BTreeMap
+    // For multi-bench scenarios (future), we would also sort by bench_name
+    // Currently sorting is: metric name (from BTreeMap order)
+
+    Report {
+        verdict: receipt.verdict.status,
+        findings,
+    }
+}
+
+/// Converts a Metric enum to its string representation.
+fn metric_to_string(metric: Metric) -> String {
+    metric.as_str().to_string()
+}
+
 fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
     match metric {
         Metric::WallMs => Some(stats.wall_ms.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
     }
+}
+
+fn reason_token(metric: Metric, status: MetricStatus) -> String {
+    let metric_str = metric.as_str();
+    let status_str = status.as_str();
+    format!("{metric_str}_{status_str}")
 }
 
 #[cfg(test)]
@@ -654,7 +755,7 @@ mod tests {
             ) {
                 // Flatten pairs into a single vector (guaranteed even length)
                 let values: Vec<u64> = pairs.into_iter().flat_map(|(a, b)| vec![a, b]).collect();
-                prop_assert!(values.len() % 2 == 0, "length should be even");
+                prop_assert!(values.len().is_multiple_of(2), "length should be even");
 
                 let summary = summarize_u64(&values).expect("non-empty vec should succeed");
 
@@ -2396,6 +2497,384 @@ mod tests {
             let error3 = DomainError::InvalidBaseline(Metric::MaxRssKb);
             let message3 = format!("{}", error3);
             assert_eq!(message3, "baseline value for MaxRssKb must be > 0");
+        }
+    }
+
+    // =========================================================================
+    // derive_report Tests
+    // =========================================================================
+
+    mod derive_report_tests {
+        use super::*;
+        use perfgate_types::{
+            BenchMeta, Budget, CompareReceipt, CompareRef, Delta, Direction, Metric, MetricStatus,
+            ToolInfo, Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1,
+        };
+
+        /// Helper to create a minimal CompareReceipt for testing.
+        fn make_receipt(
+            deltas: BTreeMap<Metric, Delta>,
+            budgets: BTreeMap<Metric, Budget>,
+            verdict_status: VerdictStatus,
+            counts: VerdictCounts,
+        ) -> CompareReceipt {
+            CompareReceipt {
+                schema: COMPARE_SCHEMA_V1.to_string(),
+                tool: ToolInfo {
+                    name: "perfgate".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+                bench: BenchMeta {
+                    name: "test_bench".to_string(),
+                    cwd: None,
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    repeat: 5,
+                    warmup: 1,
+                    work_units: None,
+                    timeout_ms: None,
+                },
+                baseline_ref: CompareRef {
+                    path: Some("baseline.json".to_string()),
+                    run_id: None,
+                },
+                current_ref: CompareRef {
+                    path: Some("current.json".to_string()),
+                    run_id: None,
+                },
+                budgets,
+                deltas,
+                verdict: Verdict {
+                    status: verdict_status,
+                    counts,
+                    reasons: vec![],
+                },
+            }
+        }
+
+        /// Helper to create a Delta with given values.
+        fn make_delta(baseline: f64, current: f64, status: MetricStatus) -> Delta {
+            let ratio = current / baseline;
+            let pct = (current - baseline) / baseline;
+            let regression = pct.max(0.0);
+            Delta {
+                baseline,
+                current,
+                ratio,
+                pct,
+                regression,
+                status,
+            }
+        }
+
+        /// Helper to create a Budget with given threshold.
+        fn make_budget(threshold: f64) -> Budget {
+            Budget {
+                threshold,
+                warn_threshold: threshold * 0.9,
+                direction: Direction::Lower,
+            }
+        }
+
+        /// Test: Empty deltas produces no findings.
+        #[test]
+        fn test_empty_deltas_no_findings() {
+            let receipt = make_receipt(
+                BTreeMap::new(),
+                BTreeMap::new(),
+                VerdictStatus::Pass,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 0,
+                },
+            );
+
+            let report = derive_report(&receipt);
+
+            assert!(report.findings.is_empty());
+            assert_eq!(report.verdict, VerdictStatus::Pass);
+        }
+
+        /// Test: All pass status deltas produce no findings.
+        #[test]
+        fn test_all_pass_no_findings() {
+            let mut deltas = BTreeMap::new();
+            deltas.insert(Metric::WallMs, make_delta(100.0, 105.0, MetricStatus::Pass));
+            deltas.insert(
+                Metric::MaxRssKb,
+                make_delta(1000.0, 1050.0, MetricStatus::Pass),
+            );
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+            budgets.insert(Metric::MaxRssKb, make_budget(0.2));
+
+            let receipt = make_receipt(
+                deltas,
+                budgets,
+                VerdictStatus::Pass,
+                VerdictCounts {
+                    pass: 2,
+                    warn: 0,
+                    fail: 0,
+                },
+            );
+
+            let report = derive_report(&receipt);
+
+            assert!(report.findings.is_empty());
+            assert_eq!(report.verdict, VerdictStatus::Pass);
+        }
+
+        /// Test: Mix of pass/warn/fail produces correct finding count and codes.
+        #[test]
+        fn test_mixed_status_correct_findings() {
+            let mut deltas = BTreeMap::new();
+            deltas.insert(Metric::WallMs, make_delta(100.0, 105.0, MetricStatus::Pass));
+            deltas.insert(
+                Metric::MaxRssKb,
+                make_delta(1000.0, 1150.0, MetricStatus::Warn),
+            );
+            deltas.insert(
+                Metric::ThroughputPerS,
+                make_delta(500.0, 350.0, MetricStatus::Fail),
+            );
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+            budgets.insert(Metric::MaxRssKb, make_budget(0.2));
+            budgets.insert(Metric::ThroughputPerS, make_budget(0.2));
+
+            let receipt = make_receipt(
+                deltas,
+                budgets,
+                VerdictStatus::Fail,
+                VerdictCounts {
+                    pass: 1,
+                    warn: 1,
+                    fail: 1,
+                },
+            );
+
+            let report = derive_report(&receipt);
+
+            // Should have 2 findings (1 warn + 1 fail, not the pass)
+            assert_eq!(report.findings.len(), 2);
+
+            // Verify finding codes
+            let codes: Vec<&str> = report.findings.iter().map(|f| f.code.as_str()).collect();
+            assert!(codes.contains(&"metric_warn"));
+            assert!(codes.contains(&"metric_fail"));
+
+            // Verify all findings have check_id = "perf.budget"
+            for finding in &report.findings {
+                assert_eq!(finding.check_id, "perf.budget");
+            }
+
+            // Verify verdict matches
+            assert_eq!(report.verdict, VerdictStatus::Fail);
+        }
+
+        /// Test: Finding count equals warn + fail count.
+        #[test]
+        fn test_finding_count_equals_warn_plus_fail() {
+            let mut deltas = BTreeMap::new();
+            deltas.insert(Metric::WallMs, make_delta(100.0, 125.0, MetricStatus::Warn));
+            deltas.insert(
+                Metric::MaxRssKb,
+                make_delta(1000.0, 1300.0, MetricStatus::Fail),
+            );
+            deltas.insert(
+                Metric::ThroughputPerS,
+                make_delta(500.0, 300.0, MetricStatus::Fail),
+            );
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+            budgets.insert(Metric::MaxRssKb, make_budget(0.2));
+            budgets.insert(Metric::ThroughputPerS, make_budget(0.2));
+
+            let receipt = make_receipt(
+                deltas,
+                budgets,
+                VerdictStatus::Fail,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 2,
+                },
+            );
+
+            let report = derive_report(&receipt);
+
+            // Invariant: finding count = warn + fail
+            let expected_count = receipt.verdict.counts.warn + receipt.verdict.counts.fail;
+            assert_eq!(report.findings.len(), expected_count as usize);
+        }
+
+        /// Test: Report verdict matches compare verdict.
+        #[test]
+        fn test_verdict_matches() {
+            // Test with Warn verdict
+            let mut deltas_warn = BTreeMap::new();
+            deltas_warn.insert(Metric::WallMs, make_delta(100.0, 115.0, MetricStatus::Warn));
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+
+            let receipt_warn = make_receipt(
+                deltas_warn,
+                budgets.clone(),
+                VerdictStatus::Warn,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 0,
+                },
+            );
+
+            let report_warn = derive_report(&receipt_warn);
+            assert_eq!(report_warn.verdict, VerdictStatus::Warn);
+
+            // Test with Fail verdict
+            let mut deltas_fail = BTreeMap::new();
+            deltas_fail.insert(Metric::WallMs, make_delta(100.0, 130.0, MetricStatus::Fail));
+
+            let receipt_fail = make_receipt(
+                deltas_fail,
+                budgets,
+                VerdictStatus::Fail,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 1,
+                },
+            );
+
+            let report_fail = derive_report(&receipt_fail);
+            assert_eq!(report_fail.verdict, VerdictStatus::Fail);
+        }
+
+        /// Test: Findings are ordered deterministically by metric name.
+        #[test]
+        fn test_deterministic_ordering() {
+            // Insert in reverse order to verify ordering is by metric name
+            let mut deltas = BTreeMap::new();
+            deltas.insert(
+                Metric::ThroughputPerS,
+                make_delta(500.0, 300.0, MetricStatus::Fail),
+            );
+            deltas.insert(Metric::WallMs, make_delta(100.0, 130.0, MetricStatus::Fail));
+            deltas.insert(
+                Metric::MaxRssKb,
+                make_delta(1000.0, 1300.0, MetricStatus::Warn),
+            );
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+            budgets.insert(Metric::MaxRssKb, make_budget(0.2));
+            budgets.insert(Metric::ThroughputPerS, make_budget(0.2));
+
+            let receipt = make_receipt(
+                deltas,
+                budgets,
+                VerdictStatus::Fail,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 2,
+                },
+            );
+
+            let report = derive_report(&receipt);
+
+            // BTreeMap orders by Metric enum order (WallMs < MaxRssKb < ThroughputPerS based on derive order)
+            // Verify the ordering is deterministic by checking metric names
+            let metric_names: Vec<&str> = report
+                .findings
+                .iter()
+                .map(|f| f.data.metric_name.as_str())
+                .collect();
+
+            // Run twice to ensure deterministic
+            let report2 = derive_report(&receipt);
+            let metric_names2: Vec<&str> = report2
+                .findings
+                .iter()
+                .map(|f| f.data.metric_name.as_str())
+                .collect();
+
+            assert_eq!(metric_names, metric_names2);
+        }
+
+        /// Test: Finding data contains correct values.
+        #[test]
+        fn test_finding_data_values() {
+            let mut deltas = BTreeMap::new();
+            deltas.insert(Metric::WallMs, make_delta(100.0, 125.0, MetricStatus::Fail));
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+
+            let mut receipt = make_receipt(
+                deltas,
+                budgets,
+                VerdictStatus::Fail,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 1,
+                },
+            );
+            receipt.bench.name = "my_benchmark".to_string();
+
+            let report = derive_report(&receipt);
+
+            assert_eq!(report.findings.len(), 1);
+            let finding = &report.findings[0];
+
+            assert_eq!(finding.code, "metric_fail");
+            assert_eq!(finding.check_id, "perf.budget");
+            assert_eq!(finding.data.metric_name, "wall_ms");
+            assert_eq!(finding.data.bench_name, "my_benchmark");
+            assert!((finding.data.baseline - 100.0).abs() < f64::EPSILON);
+            assert!((finding.data.current - 125.0).abs() < f64::EPSILON);
+            assert!((finding.data.regression_pct - 0.25).abs() < f64::EPSILON);
+            assert!((finding.data.threshold - 0.2).abs() < f64::EPSILON);
+        }
+
+        /// Test: Warn finding has correct code.
+        #[test]
+        fn test_warn_finding_code() {
+            let mut deltas = BTreeMap::new();
+            deltas.insert(Metric::WallMs, make_delta(100.0, 115.0, MetricStatus::Warn));
+
+            let mut budgets = BTreeMap::new();
+            budgets.insert(Metric::WallMs, make_budget(0.2));
+
+            let receipt = make_receipt(
+                deltas,
+                budgets,
+                VerdictStatus::Warn,
+                VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 0,
+                },
+            );
+
+            let report = derive_report(&receipt);
+
+            assert_eq!(report.findings.len(), 1);
+            assert_eq!(report.findings[0].code, "metric_warn");
+        }
+
+        /// Test: metric_to_string helper function.
+        #[test]
+        fn test_metric_to_string() {
+            assert_eq!(metric_to_string(Metric::WallMs), "wall_ms");
+            assert_eq!(metric_to_string(Metric::MaxRssKb), "max_rss_kb");
+            assert_eq!(metric_to_string(Metric::ThroughputPerS), "throughput_per_s");
         }
     }
 }

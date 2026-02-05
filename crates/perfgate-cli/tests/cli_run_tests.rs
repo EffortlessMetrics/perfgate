@@ -2,8 +2,6 @@
 //!
 //! **Validates: Requirements 1.1, 1.2, 9.1**
 
-#![allow(deprecated)]
-
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
@@ -32,7 +30,7 @@ fn test_run_basic_command() {
     let output_path = temp_dir.path().join("output.json");
 
     // Run perfgate with a simple command that always succeeds
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("run")
         .arg("--name")
         .arg("test")
@@ -92,7 +90,7 @@ fn test_run_default_repeat_count() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("run")
         .arg("--name")
         .arg("default-repeat-test")
@@ -122,7 +120,7 @@ fn test_run_default_repeat_count() {
 /// **Validates: Requirements 1.1**
 #[test]
 fn test_run_missing_name_fails() {
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("run").arg("--");
 
     for arg in success_command() {
@@ -139,7 +137,7 @@ fn test_run_missing_name_fails() {
 /// **Validates: Requirements 1.1**
 #[test]
 fn test_run_missing_command_fails() {
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("run").arg("--name").arg("test");
 
     cmd.assert()
@@ -155,7 +153,7 @@ fn test_run_receipt_contains_tool_info() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("run")
         .arg("--name")
         .arg("tool-info-test")
@@ -195,7 +193,7 @@ fn test_run_samples_contain_required_fields() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::cargo_bin("perfgate").expect("failed to find perfgate binary");
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
     cmd.arg("run")
         .arg("--name")
         .arg("sample-fields-test")

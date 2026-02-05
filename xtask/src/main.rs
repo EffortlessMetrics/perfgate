@@ -128,13 +128,17 @@ fn cmd_mutants(
     }
 
     let status = cmd.status().context("running cargo mutants")?;
-    if !status.success() {
-        anyhow::bail!("cargo mutants failed: {status}");
-    }
 
-    // Generate summary report if requested
+    // Generate summary report if requested, regardless of exit status
+    // cargo-mutants exits 2 for missed mutants, 3 for timeouts - we still want the summary
     if summary {
         generate_mutation_summary(crate_name)?;
+    }
+
+    // Propagate cargo-mutants exit code
+    if !status.success() {
+        let code = status.code().unwrap_or(1);
+        std::process::exit(code);
     }
 
     Ok(())
@@ -181,9 +185,10 @@ fn generate_mutation_summary(crate_name: Option<MutantsCrate>) -> anyhow::Result
     if let Some(outcomes_array) = outcomes.as_array() {
         for outcome in outcomes_array {
             if let Some(summary) = outcome.get("summary").and_then(|s| s.as_str()) {
+                // cargo-mutants uses: CaughtMutant, MissedMutant, Timeout, Unviable
                 match summary {
-                    "Killed" | "CaughtMutant" => killed += 1,
-                    "Survived" | "MissedMutant" => survived += 1,
+                    "CaughtMutant" => killed += 1,
+                    "MissedMutant" => survived += 1,
                     "Timeout" => timeout += 1,
                     "Unviable" => unviable += 1,
                     _ => {}
@@ -302,6 +307,12 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
         out_dir,
         "perfgate.config.v1.schema.json",
         schema_for!(perfgate_types::ConfigFile),
+    )?;
+
+    write_schema(
+        out_dir,
+        "perfgate.report.v1.schema.json",
+        schema_for!(perfgate_types::PerfgateReport),
     )?;
 
     Ok(())

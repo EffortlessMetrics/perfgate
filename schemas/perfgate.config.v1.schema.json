@@ -61,12 +61,30 @@
         "name": {
           "type": "string"
         },
+        "repeat": {
+          "description": "Number of measured samples (overrides defaults.repeat).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
         "timeout": {
           "description": "Duration string parseable by humantime, e.g. \"2s\".",
           "type": [
             "string",
             "null"
           ]
+        },
+        "warmup": {
+          "description": "Warmup samples excluded from stats (overrides defaults.warmup).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
         },
         "work": {
           "type": [
