@@ -1,0 +1,69 @@
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-01T00:00:00Z",
+    "ended_at": "2024-01-01T00:01:00Z",
+    "duration_ms": 60000,
+    "capabilities": {
+      "baseline": {
+        "status": "available"
+      }
+    }
+  },
+  "verdict": {
+    "status": "fail",
+    "counts": {
+      "info": 1,
+      "warn": 0,
+      "error": 1
+    },
+    "reasons": ["wall_ms_fail"]
+  },
+  "findings": [
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "wall_ms regression: +50.00% (threshold: 20.0%)",
+      "data": {
+        "metric_name": "wall_ms",
+        "baseline": 1000.0,
+        "current": 1500.0,
+        "regression_pct": 50.0,
+        "threshold": 0.2,
+        "direction": "lower"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "extras/run.json",
+      "type": "run_receipt"
+    },
+    {
+      "path": "extras/compare.json",
+      "type": "compare_receipt"
+    },
+    {
+      "path": "extras/report.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "comment.md",
+      "type": "markdown"
+    }
+  ],
+  "data": {
+    "compare": null,
+    "summary": {
+      "pass_count": 1,
+      "warn_count": 0,
+      "fail_count": 1,
+      "total_count": 2
+    }
+  }
+}

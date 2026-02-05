@@ -1,0 +1,598 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SensorReport",
+  "description": "The sensor.report.v1 envelope for cockpit integration.\n\nThis wraps PerfgateReport in a cockpit-compatible format with: - Run metadata including capabilities - Verdict using cockpit vocabulary (error instead of fail) - Artifacts list - Native perfgate data",
+  "type": "object",
+  "required": [
+    "data",
+    "findings",
+    "run",
+    "schema",
+    "tool",
+    "verdict"
+  ],
+  "properties": {
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SensorArtifact"
+      }
+    },
+    "data": {
+      "$ref": "#/definitions/SensorReportData"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SensorFinding"
+      }
+    },
+    "run": {
+      "$ref": "#/definitions/SensorRunMeta"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/definitions/ToolInfo"
+    },
+    "verdict": {
+      "$ref": "#/definitions/SensorVerdict"
+    }
+  },
+  "definitions": {
+    "BenchMeta": {
+      "type": "object",
+      "required": [
+        "command",
+        "name",
+        "repeat",
+        "warmup"
+      ],
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Budget": {
+      "type": "object",
+      "required": [
+        "direction",
+        "threshold",
+        "warn_threshold"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/Direction"
+        },
+        "threshold": {
+          "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
+          "type": "number",
+          "format": "double"
+        },
+        "warn_threshold": {
+          "description": "Warn threshold, as a fraction.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "Capability": {
+      "description": "A capability with its status and optional reason.",
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/CapabilityStatus"
+        }
+      }
+    },
+    "CapabilityStatus": {
+      "description": "Capability status for \"No Green By Omission\" principle.",
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ]
+    },
+    "CompareReceipt": {
+      "type": "object",
+      "required": [
+        "baseline_ref",
+        "bench",
+        "budgets",
+        "current_ref",
+        "deltas",
+        "schema",
+        "tool",
+        "verdict"
+      ],
+      "properties": {
+        "baseline_ref": {
+          "$ref": "#/definitions/CompareRef"
+        },
+        "bench": {
+          "$ref": "#/definitions/BenchMeta"
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Budget"
+          }
+        },
+        "current_ref": {
+          "$ref": "#/definitions/CompareRef"
+        },
+        "deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Delta"
+          }
+        },
+        "schema": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/definitions/ToolInfo"
+        },
+        "verdict": {
+          "$ref": "#/definitions/Verdict"
+        }
+      }
+    },
+    "CompareRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Delta": {
+      "type": "object",
+      "required": [
+        "baseline",
+        "current",
+        "pct",
+        "ratio",
+        "regression",
+        "status"
+      ],
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "pct": {
+          "description": "(current - baseline) / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "ratio": {
+          "description": "current / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "regression": {
+          "description": "Positive regression amount, normalized as a fraction.",
+          "type": "number",
+          "format": "double"
+        },
+        "status": {
+          "$ref": "#/definitions/MetricStatus"
+        }
+      }
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "FindingData": {
+      "description": "Data associated with a metric finding.",
+      "type": "object",
+      "required": [
+        "baseline",
+        "current",
+        "direction",
+        "metric_name",
+        "regression_pct",
+        "threshold"
+      ],
+      "properties": {
+        "baseline": {
+          "description": "Baseline value.",
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "description": "Current value.",
+          "type": "number",
+          "format": "double"
+        },
+        "direction": {
+          "description": "Whether lower is better or higher is better.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Direction"
+            }
+          ]
+        },
+        "metric_name": {
+          "description": "Name of the metric (e.g., \"wall_ms\", \"max_rss_kb\").",
+          "type": "string"
+        },
+        "regression_pct": {
+          "description": "Regression percentage (positive means regression).",
+          "type": "number",
+          "format": "double"
+        },
+        "threshold": {
+          "description": "Threshold that was exceeded (as a fraction, e.g., 0.20 for 20%).",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    },
+    "ReportSummary": {
+      "description": "Summary counts and key metrics for the report.",
+      "type": "object",
+      "required": [
+        "fail_count",
+        "pass_count",
+        "total_count",
+        "warn_count"
+      ],
+      "properties": {
+        "fail_count": {
+          "description": "Number of metrics that failed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pass_count": {
+          "description": "Number of metrics that passed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "total_count": {
+          "description": "Total number of metrics checked.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn_count": {
+          "description": "Number of metrics that warned.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "SensorArtifact": {
+      "description": "An artifact produced by the sensor.",
+      "type": "object",
+      "required": [
+        "path",
+        "type"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "SensorCapabilities": {
+      "description": "Capabilities available to the sensor.",
+      "type": "object",
+      "required": [
+        "baseline"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/Capability"
+        }
+      }
+    },
+    "SensorFinding": {
+      "description": "A finding from the sensor.",
+      "type": "object",
+      "required": [
+        "check_id",
+        "code",
+        "message",
+        "severity"
+      ],
+      "properties": {
+        "check_id": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FindingData"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/definitions/SensorSeverity"
+        }
+      }
+    },
+    "SensorReportData": {
+      "description": "Data section of the sensor report.",
+      "type": "object",
+      "required": [
+        "summary"
+      ],
+      "properties": {
+        "compare": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CompareReceipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "$ref": "#/definitions/ReportSummary"
+        }
+      }
+    },
+    "SensorRunMeta": {
+      "description": "Run metadata for the sensor report.",
+      "type": "object",
+      "required": [
+        "capabilities",
+        "started_at"
+      ],
+      "properties": {
+        "capabilities": {
+          "$ref": "#/definitions/SensorCapabilities"
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "ended_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        }
+      }
+    },
+    "SensorSeverity": {
+      "description": "Severity level for sensor findings (cockpit vocabulary).",
+      "type": "string",
+      "enum": [
+        "info",
+        "warn",
+        "error"
+      ]
+    },
+    "SensorVerdict": {
+      "description": "Verdict for the sensor report.",
+      "type": "object",
+      "required": [
+        "counts",
+        "reasons",
+        "status"
+      ],
+      "properties": {
+        "counts": {
+          "$ref": "#/definitions/SensorVerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/definitions/SensorVerdictStatus"
+        }
+      }
+    },
+    "SensorVerdictCounts": {
+      "description": "Verdict counts for the sensor report.",
+      "type": "object",
+      "required": [
+        "error",
+        "info",
+        "warn"
+      ],
+      "properties": {
+        "error": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "info": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "SensorVerdictStatus": {
+      "description": "Verdict status for the sensor report.",
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "Verdict": {
+      "type": "object",
+      "required": [
+        "counts",
+        "reasons",
+        "status"
+      ],
+      "properties": {
+        "counts": {
+          "$ref": "#/definitions/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/definitions/VerdictStatus"
+        }
+      }
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "required": [
+        "fail",
+        "pass",
+        "warn"
+      ],
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ]
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-01T00:00:00Z",
+    "ended_at": "2024-01-01T00:01:00Z",
+    "duration_ms": 60000,
+    "capabilities": {
+      "baseline": {
+        "status": "available"
+      }
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "counts": {
+      "info": 2,
+      "warn": 0,
+      "error": 0
+    },
+    "reasons": []
+  },
+  "findings": [],
+  "artifacts": [
+    {
+      "path": "extras/run.json",
+      "type": "run_receipt"
+    },
+    {
+      "path": "extras/compare.json",
+      "type": "compare_receipt"
+    },
+    {
+      "path": "extras/report.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "comment.md",
+      "type": "markdown"
+    }
+  ],
+  "data": {
+    "compare": null,
+    "summary": {
+      "pass_count": 2,
+      "warn_count": 0,
+      "fail_count": 0,
+      "total_count": 2
+    }
+  }
+}

@@ -8,12 +8,14 @@ mod export;
 mod paired;
 mod promote;
 mod report;
+mod sensor_report;
 
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
 pub use export::{ExportFormat, ExportUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
+pub use sensor_report::SensorReportBuilder;
 
 use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};

@@ -34,6 +34,139 @@ pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 
+// Sensor report schema for cockpit integration
+pub const SENSOR_REPORT_SCHEMA_V1: &str = "sensor.report.v1";
+
+// ----------------------------
+// Sensor report types (sensor.report.v1)
+// ----------------------------
+
+/// Capability status for "No Green By Omission" principle.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityStatus {
+    Available,
+    Unavailable,
+}
+
+/// A capability with its status and optional reason.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Capability {
+    pub status: CapabilityStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Capabilities available to the sensor.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorCapabilities {
+    pub baseline: Capability,
+}
+
+/// Run metadata for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorRunMeta {
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    pub capabilities: SensorCapabilities,
+}
+
+/// Verdict status for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum SensorVerdictStatus {
+    Pass,
+    Warn,
+    Fail,
+    Skip,
+}
+
+/// Verdict counts for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorVerdictCounts {
+    pub info: u32,
+    pub warn: u32,
+    pub error: u32,
+}
+
+/// Verdict for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorVerdict {
+    pub status: SensorVerdictStatus,
+    pub counts: SensorVerdictCounts,
+    pub reasons: Vec<String>,
+}
+
+/// Severity level for sensor findings (cockpit vocabulary).
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum SensorSeverity {
+    Info,
+    Warn,
+    Error,
+}
+
+/// A finding from the sensor.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorFinding {
+    pub check_id: String,
+    pub code: String,
+    pub severity: SensorSeverity,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<FindingData>,
+}
+
+/// An artifact produced by the sensor.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorArtifact {
+    pub path: String,
+    #[serde(rename = "type")]
+    pub artifact_type: String,
+}
+
+/// Data section of the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorReportData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compare: Option<CompareReceipt>,
+    pub summary: ReportSummary,
+}
+
+/// The sensor.report.v1 envelope for cockpit integration.
+///
+/// This wraps PerfgateReport in a cockpit-compatible format with:
+/// - Run metadata including capabilities
+/// - Verdict using cockpit vocabulary (error instead of fail)
+/// - Artifacts list
+/// - Native perfgate data
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorReport {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: SensorRunMeta,
+    pub verdict: SensorVerdict,
+    pub findings: Vec<SensorFinding>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub artifacts: Vec<SensorArtifact>,
+    pub data: SensorReportData,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ToolInfo {

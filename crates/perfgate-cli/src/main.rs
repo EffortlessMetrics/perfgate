@@ -1,11 +1,11 @@
 use anyhow::Context;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::{
-    github_annotations, render_markdown, CheckOutcome, CheckRequest, CheckUseCase, CompareRequest,
-    CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase,
-    PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
-    SystemClock,
+    github_annotations, render_markdown, CheckOutcome, CheckRequest, CheckUseCase, Clock,
+    CompareRequest, CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
+    PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase,
+    RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock,
 };
 use perfgate_domain::DomainError;
 use perfgate_types::{
@@ -16,7 +16,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// Output mode for the check command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum OutputMode {
+    /// Standard mode: exit codes reflect verdict (0=pass, 2=fail, 3=warn with --fail-on-warn)
+    #[default]
+    Standard,
+    /// Cockpit mode: always write receipt, exit 0 unless catastrophic failure
+    Cockpit,
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -280,6 +290,16 @@ enum Command {
         /// Pretty-print JSON
         #[arg(long, default_value_t = false)]
         pretty: bool,
+
+        /// Output mode (standard or cockpit).
+        ///
+        /// In cockpit mode:
+        /// - Always writes sensor.report.v1 envelope to report.json
+        /// - Writes native artifacts to extras/ subdirectory
+        /// - Exits 0 unless catastrophic failure (cannot write receipt)
+        /// - Errors are captured in the report rather than causing exit 1
+        #[arg(long, default_value = "standard", value_enum)]
+        mode: OutputMode,
     },
 
     /// Run paired benchmark: interleave baseline and current commands for reduced noise.
@@ -582,114 +602,37 @@ fn real_main() -> anyhow::Result<()> {
             allow_nonzero,
             host_mismatch,
             pretty,
-        } => {
-            // Load config file
-            let config_content = fs::read_to_string(&config)
-                .with_context(|| format!("read {}", config.display()))?;
-
-            let config_file: ConfigFile =
-                if config.extension().map(|e| e == "json").unwrap_or(false) {
-                    serde_json::from_str(&config_content)
-                        .with_context(|| format!("parse JSON config {}", config.display()))?
-                } else {
-                    toml::from_str(&config_content)
-                        .with_context(|| format!("parse TOML config {}", config.display()))?
-                };
-
-            // Determine which benches to run
-            let bench_names: Vec<String> = if all {
-                if config_file.benches.is_empty() {
-                    anyhow::bail!("no benchmarks defined in config file");
-                }
-                config_file.benches.iter().map(|b| b.name.clone()).collect()
-            } else if let Some(ref name) = bench {
-                vec![name.clone()]
-            } else {
-                anyhow::bail!("either --bench or --all must be specified");
-            };
-
-            // Track aggregate exit code: fail (2) > warn-as-fail (3) > pass (0)
-            let mut max_exit_code: i32 = 0;
-            let mut all_warnings: Vec<String> = Vec::new();
-
-            for bench_name in &bench_names {
-                // For --all mode, use per-bench subdirectories
-                let bench_out_dir = if all {
-                    out_dir.join(bench_name)
-                } else {
-                    out_dir.clone()
-                };
-
-                // Resolve baseline path (--baseline flag only valid for single bench mode)
-                let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
-                let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
-                    if path.exists() {
-                        Some(read_json(path)?)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                // Create output directory
-                fs::create_dir_all(&bench_out_dir)
-                    .with_context(|| format!("create output dir {}", bench_out_dir.display()))?;
-
-                // Execute check
-                let runner = StdProcessRunner;
-                let host_probe = StdHostProbe;
-                let clock = SystemClock;
-                let usecase = CheckUseCase::new(runner, host_probe, clock);
-
-                let outcome = usecase.execute(CheckRequest {
-                    config: config_file.clone(),
-                    bench_name: bench_name.clone(),
-                    out_dir: bench_out_dir.clone(),
-                    baseline: baseline_receipt,
-                    baseline_path,
-                    require_baseline,
-                    fail_on_warn,
-                    tool: tool_info(),
-                    env: env.clone(),
-                    output_cap_bytes,
-                    allow_nonzero,
-                    host_mismatch_policy: host_mismatch,
-                })?;
-
-                // Write artifacts
-                write_check_artifacts(&outcome, pretty)?;
-
-                // Collect warnings (prefix with bench name in --all mode)
-                for warning in &outcome.warnings {
-                    if all {
-                        all_warnings.push(format!("[{}] {}", bench_name, warning));
-                    } else {
-                        all_warnings.push(warning.clone());
-                    }
-                }
-
-                // Update aggregate exit code (worst wins)
-                // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
-                if outcome.exit_code == 2 {
-                    max_exit_code = 2;
-                } else if outcome.exit_code == 3 && max_exit_code != 2 {
-                    max_exit_code = 3;
-                }
-            }
-
-            // Print all warnings
-            for warning in &all_warnings {
-                eprintln!("warning: {}", warning);
-            }
-
-            // Exit with aggregate code
-            if max_exit_code != 0 {
-                std::process::exit(max_exit_code);
-            }
-
-            Ok(())
-        }
+            mode,
+        } => match mode {
+            OutputMode::Standard => run_check_standard(
+                config,
+                bench,
+                all,
+                out_dir,
+                baseline,
+                require_baseline,
+                fail_on_warn,
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+                host_mismatch,
+                pretty,
+            ),
+            OutputMode::Cockpit => run_check_cockpit(
+                config,
+                bench,
+                all,
+                out_dir,
+                baseline,
+                require_baseline,
+                fail_on_warn,
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+                host_mismatch,
+                pretty,
+            ),
+        },
 
         Command::Paired {
             name,
@@ -739,6 +682,345 @@ fn real_main() -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+/// Run check in standard mode (exit codes reflect verdict).
+#[allow(clippy::too_many_arguments)]
+fn run_check_standard(
+    config: PathBuf,
+    bench: Option<String>,
+    all: bool,
+    out_dir: PathBuf,
+    baseline: Option<PathBuf>,
+    require_baseline: bool,
+    fail_on_warn: bool,
+    env: Vec<(String, String)>,
+    output_cap_bytes: usize,
+    allow_nonzero: bool,
+    host_mismatch: HostMismatchPolicy,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    // Load config file
+    let config_content =
+        fs::read_to_string(&config).with_context(|| format!("read {}", config.display()))?;
+
+    let config_file: ConfigFile = if config.extension().map(|e| e == "json").unwrap_or(false) {
+        serde_json::from_str(&config_content)
+            .with_context(|| format!("parse JSON config {}", config.display()))?
+    } else {
+        toml::from_str(&config_content)
+            .with_context(|| format!("parse TOML config {}", config.display()))?
+    };
+
+    // Determine which benches to run
+    let bench_names: Vec<String> = if all {
+        if config_file.benches.is_empty() {
+            anyhow::bail!("no benchmarks defined in config file");
+        }
+        config_file.benches.iter().map(|b| b.name.clone()).collect()
+    } else if let Some(ref name) = bench {
+        vec![name.clone()]
+    } else {
+        anyhow::bail!("either --bench or --all must be specified");
+    };
+
+    // Track aggregate exit code: fail (2) > warn-as-fail (3) > pass (0)
+    let mut max_exit_code: i32 = 0;
+    let mut all_warnings: Vec<String> = Vec::new();
+
+    for bench_name in &bench_names {
+        // For --all mode, use per-bench subdirectories
+        let bench_out_dir = if all {
+            out_dir.join(bench_name)
+        } else {
+            out_dir.clone()
+        };
+
+        // Resolve baseline path (--baseline flag only valid for single bench mode)
+        let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
+        let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
+            if path.exists() {
+                Some(read_json(path)?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Create output directory
+        fs::create_dir_all(&bench_out_dir)
+            .with_context(|| format!("create output dir {}", bench_out_dir.display()))?;
+
+        // Execute check
+        let runner = StdProcessRunner;
+        let host_probe = StdHostProbe;
+        let clock = SystemClock;
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase.execute(CheckRequest {
+            config: config_file.clone(),
+            bench_name: bench_name.clone(),
+            out_dir: bench_out_dir.clone(),
+            baseline: baseline_receipt,
+            baseline_path,
+            require_baseline,
+            fail_on_warn,
+            tool: tool_info(),
+            env: env.clone(),
+            output_cap_bytes,
+            allow_nonzero,
+            host_mismatch_policy: host_mismatch,
+        })?;
+
+        // Write artifacts
+        write_check_artifacts(&outcome, pretty)?;
+
+        // Collect warnings (prefix with bench name in --all mode)
+        for warning in &outcome.warnings {
+            if all {
+                all_warnings.push(format!("[{}] {}", bench_name, warning));
+            } else {
+                all_warnings.push(warning.clone());
+            }
+        }
+
+        // Update aggregate exit code (worst wins)
+        // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
+        if outcome.exit_code == 2 {
+            max_exit_code = 2;
+        } else if outcome.exit_code == 3 && max_exit_code != 2 {
+            max_exit_code = 3;
+        }
+    }
+
+    // Print all warnings
+    for warning in &all_warnings {
+        eprintln!("warning: {}", warning);
+    }
+
+    // Exit with aggregate code
+    if max_exit_code != 0 {
+        std::process::exit(max_exit_code);
+    }
+
+    Ok(())
+}
+
+/// Run check in cockpit mode (always write receipt, exit 0 unless catastrophic).
+///
+/// In cockpit mode:
+/// - Captures start time at beginning
+/// - Wraps execution in error recovery
+/// - Always writes sensor.report.v1 envelope to report.json
+/// - Writes native artifacts to extras/ subdirectory
+/// - Exits 0 if receipt written, 1 only on catastrophic failure
+#[allow(clippy::too_many_arguments)]
+fn run_check_cockpit(
+    config: PathBuf,
+    bench: Option<String>,
+    all: bool,
+    out_dir: PathBuf,
+    baseline: Option<PathBuf>,
+    require_baseline: bool,
+    fail_on_warn: bool,
+    env: Vec<(String, String)>,
+    output_cap_bytes: usize,
+    allow_nonzero: bool,
+    host_mismatch: HostMismatchPolicy,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    let clock = SystemClock;
+    let started_at = clock.now_rfc3339();
+    let start_instant = Instant::now();
+
+    // Ensure base output directory exists (catastrophic failure if we can't)
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("create output dir {}", out_dir.display()))?;
+
+    // Try to run the check; capture errors
+    let result = run_check_cockpit_inner(
+        &config,
+        &bench,
+        all,
+        &out_dir,
+        &baseline,
+        require_baseline,
+        fail_on_warn,
+        &env,
+        output_cap_bytes,
+        allow_nonzero,
+        host_mismatch,
+        pretty,
+        &started_at,
+        start_instant,
+    );
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            // Error during execution - still try to write an error report
+            let ended_at = clock.now_rfc3339();
+            let duration_ms = start_instant.elapsed().as_millis() as u64;
+
+            let baseline_available = baseline.as_ref().map(|p| p.exists()).unwrap_or(false);
+
+            let builder = SensorReportBuilder::new(tool_info(), started_at)
+                .ended_at(ended_at, duration_ms)
+                .baseline(baseline_available, None);
+
+            let error_report = builder.build_error(&format!("{:#}", err));
+
+            // Try to write the error report
+            let report_path = out_dir.join("report.json");
+            if write_json(&report_path, &error_report, pretty).is_ok() {
+                // Report written successfully - exit 0 per cockpit contract
+                eprintln!("error: {:#}", err);
+                eprintln!("note: error recorded in {}", report_path.display());
+                Ok(())
+            } else {
+                // Catastrophic: can't even write the report
+                Err(err)
+            }
+        }
+    }
+}
+
+/// Inner implementation of cockpit mode that may return errors.
+#[allow(clippy::too_many_arguments)]
+fn run_check_cockpit_inner(
+    config: &PathBuf,
+    bench: &Option<String>,
+    all: bool,
+    out_dir: &PathBuf,
+    baseline: &Option<PathBuf>,
+    require_baseline: bool,
+    fail_on_warn: bool,
+    env: &[(String, String)],
+    output_cap_bytes: usize,
+    allow_nonzero: bool,
+    host_mismatch: HostMismatchPolicy,
+    pretty: bool,
+    started_at: &str,
+    start_instant: Instant,
+) -> anyhow::Result<()> {
+    let clock = SystemClock;
+
+    // Load config file
+    let config_content =
+        fs::read_to_string(config).with_context(|| format!("read {}", config.display()))?;
+
+    let config_file: ConfigFile = if config.extension().map(|e| e == "json").unwrap_or(false) {
+        serde_json::from_str(&config_content)
+            .with_context(|| format!("parse JSON config {}", config.display()))?
+    } else {
+        toml::from_str(&config_content)
+            .with_context(|| format!("parse TOML config {}", config.display()))?
+    };
+
+    // Determine which benches to run (cockpit mode only supports single bench for now)
+    let bench_name = if all {
+        if config_file.benches.is_empty() {
+            anyhow::bail!("no benchmarks defined in config file");
+        }
+        // In --all mode, just use the first bench for now
+        // TODO: Consider supporting multiple benches with aggregated report
+        config_file.benches[0].name.clone()
+    } else if let Some(ref name) = bench {
+        name.clone()
+    } else {
+        anyhow::bail!("either --bench or --all must be specified");
+    };
+
+    // Create extras directory for native artifacts
+    let extras_dir = out_dir.join("extras");
+    fs::create_dir_all(&extras_dir)
+        .with_context(|| format!("create extras dir {}", extras_dir.display()))?;
+
+    // Resolve baseline path
+    let baseline_path = resolve_baseline_path(baseline, &bench_name, &config_file);
+    let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
+        if path.exists() {
+            Some(read_json(path)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let baseline_available = baseline_receipt.is_some();
+
+    // Execute check
+    let runner = StdProcessRunner;
+    let host_probe = StdHostProbe;
+    let usecase = CheckUseCase::new(runner, host_probe, clock.clone());
+
+    let outcome = usecase.execute(CheckRequest {
+        config: config_file.clone(),
+        bench_name: bench_name.clone(),
+        out_dir: extras_dir.clone(),
+        baseline: baseline_receipt,
+        baseline_path: baseline_path.clone(),
+        require_baseline,
+        fail_on_warn,
+        tool: tool_info(),
+        env: env.to_vec(),
+        output_cap_bytes,
+        allow_nonzero,
+        host_mismatch_policy: host_mismatch,
+    })?;
+
+    // Write native artifacts to extras/
+    write_check_artifacts(&outcome, pretty)?;
+
+    // Build sensor report
+    let ended_at = clock.now_rfc3339();
+    let duration_ms = start_instant.elapsed().as_millis() as u64;
+
+    let baseline_reason = if !baseline_available {
+        baseline_path.map(|p| format!("{} not found", p.display()))
+    } else {
+        None
+    };
+
+    let mut builder = SensorReportBuilder::new(tool_info(), started_at.to_string())
+        .ended_at(ended_at, duration_ms)
+        .baseline(baseline_available, baseline_reason);
+
+    // Add artifacts
+    builder = builder
+        .artifact("extras/run.json".to_string(), "run_receipt".to_string())
+        .artifact(
+            "extras/report.json".to_string(),
+            "perfgate_report".to_string(),
+        )
+        .artifact("comment.md".to_string(), "markdown".to_string());
+
+    if outcome.compare_receipt.is_some() {
+        builder = builder.artifact(
+            "extras/compare.json".to_string(),
+            "compare_receipt".to_string(),
+        );
+    }
+
+    let sensor_report = builder.build(&outcome.report);
+
+    // Write sensor report to out_dir/report.json
+    let report_path = out_dir.join("report.json");
+    write_json(&report_path, &sensor_report, pretty)?;
+
+    // Copy markdown to out_dir root
+    let md_dest = out_dir.join("comment.md");
+    fs::write(&md_dest, &outcome.markdown)
+        .with_context(|| format!("write {}", md_dest.display()))?;
+
+    // Print warnings but don't affect exit code
+    for warning in &outcome.warnings {
+        eprintln!("warning: {}", warning);
+    }
+
+    // Cockpit mode: always exit 0 if we got here
+    Ok(())
 }
 
 /// Resolve the baseline path from CLI args or config defaults.

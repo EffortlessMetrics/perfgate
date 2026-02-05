@@ -315,6 +315,12 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
         schema_for!(perfgate_types::PerfgateReport),
     )?;
 
+    write_schema(
+        out_dir,
+        "sensor.report.v1.schema.json",
+        schema_for!(perfgate_types::SensorReport),
+    )?;
+
     Ok(())
 }
 
