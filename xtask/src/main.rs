@@ -315,11 +315,16 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
         schema_for!(perfgate_types::PerfgateReport),
     )?;
 
-    write_schema(
-        out_dir,
-        "sensor.report.v1.schema.json",
-        schema_for!(perfgate_types::SensorReport),
-    )?;
+    // Sensor report schema is vendored from contracts/, not generated.
+    let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
+    let dest = out_dir.join("sensor.report.v1.schema.json");
+    fs::copy(&vendored_schema, &dest).with_context(|| {
+        format!(
+            "copy vendored schema {} -> {}",
+            vendored_schema.display(),
+            dest.display()
+        )
+    })?;
 
     Ok(())
 }

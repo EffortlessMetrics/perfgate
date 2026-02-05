@@ -10,7 +10,8 @@ use perfgate_app::{
 use perfgate_domain::DomainError;
 use perfgate_types::{
     Budget, CompareReceipt, CompareRef, ConfigFile, HostMismatchPolicy, Metric, RunReceipt,
-    ToolInfo,
+    ToolInfo, BASELINE_REASON_NO_BASELINE, ERROR_KIND_EXEC, ERROR_KIND_IO, ERROR_KIND_PARSE,
+    STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -865,11 +866,13 @@ fn run_check_cockpit(
 
             let baseline_available = baseline.as_ref().map(|p| p.exists()).unwrap_or(false);
 
+            let (stage, error_kind) = classify_error(&err);
+
             let builder = SensorReportBuilder::new(tool_info(), started_at)
                 .ended_at(ended_at, duration_ms)
                 .baseline(baseline_available, None);
 
-            let error_report = builder.build_error(&format!("{:#}", err));
+            let error_report = builder.build_error(&format!("{:#}", err), stage, error_kind);
 
             // Try to write the error report
             let report_path = out_dir.join("report.json");
@@ -918,108 +921,339 @@ fn run_check_cockpit_inner(
             .with_context(|| format!("parse TOML config {}", config.display()))?
     };
 
-    // Determine which benches to run (cockpit mode only supports single bench for now)
-    let bench_name = if all {
+    // Determine which benches to run
+    let bench_names: Vec<String> = if all {
         if config_file.benches.is_empty() {
             anyhow::bail!("no benchmarks defined in config file");
         }
-        // In --all mode, just use the first bench for now
-        // TODO: Consider supporting multiple benches with aggregated report
-        config_file.benches[0].name.clone()
+        config_file.benches.iter().map(|b| b.name.clone()).collect()
     } else if let Some(ref name) = bench {
-        name.clone()
+        vec![name.clone()]
     } else {
         anyhow::bail!("either --bench or --all must be specified");
     };
 
-    // Create extras directory for native artifacts
-    let extras_dir = out_dir.join("extras");
-    fs::create_dir_all(&extras_dir)
-        .with_context(|| format!("create extras dir {}", extras_dir.display()))?;
+    let multi_bench = bench_names.len() > 1;
 
-    // Resolve baseline path
-    let baseline_path = resolve_baseline_path(baseline, &bench_name, &config_file);
-    let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
-        if path.exists() {
-            Some(read_json(path)?)
+    // Collect per-bench outcomes
+    let mut all_outcomes: Vec<(String, CheckOutcome, bool)> = Vec::new(); // (bench_name, outcome, baseline_available)
+
+    for bench_name in &bench_names {
+        // Create extras directory for native artifacts
+        let extras_dir = if multi_bench {
+            out_dir.join("extras").join(bench_name)
+        } else {
+            out_dir.join("extras")
+        };
+        fs::create_dir_all(&extras_dir)
+            .with_context(|| format!("create extras dir {}", extras_dir.display()))?;
+
+        // Resolve baseline path
+        let baseline_path = resolve_baseline_path(baseline, bench_name, &config_file);
+        let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
+            if path.exists() {
+                Some(read_json(path)?)
+            } else {
+                None
+            }
         } else {
             None
-        }
-    } else {
-        None
-    };
-    let baseline_available = baseline_receipt.is_some();
+        };
+        let baseline_available = baseline_receipt.is_some();
 
-    // Execute check
-    let runner = StdProcessRunner;
-    let host_probe = StdHostProbe;
-    let usecase = CheckUseCase::new(runner, host_probe, clock.clone());
+        // Execute check
+        let runner = StdProcessRunner;
+        let host_probe = StdHostProbe;
+        let usecase = CheckUseCase::new(runner, host_probe, clock.clone());
 
-    let outcome = usecase.execute(CheckRequest {
-        config: config_file.clone(),
-        bench_name: bench_name.clone(),
-        out_dir: extras_dir.clone(),
-        baseline: baseline_receipt,
-        baseline_path: baseline_path.clone(),
-        require_baseline,
-        fail_on_warn,
-        tool: tool_info(),
-        env: env.to_vec(),
-        output_cap_bytes,
-        allow_nonzero,
-        host_mismatch_policy: host_mismatch,
-    })?;
+        let outcome = usecase.execute(CheckRequest {
+            config: config_file.clone(),
+            bench_name: bench_name.clone(),
+            out_dir: extras_dir.clone(),
+            baseline: baseline_receipt,
+            baseline_path: baseline_path.clone(),
+            require_baseline,
+            fail_on_warn,
+            tool: tool_info(),
+            env: env.to_vec(),
+            output_cap_bytes,
+            allow_nonzero,
+            host_mismatch_policy: host_mismatch,
+        })?;
 
-    // Write native artifacts to extras/
-    write_check_artifacts(&outcome, pretty)?;
+        // Write native artifacts to extras/
+        write_check_artifacts(&outcome, pretty)?;
+
+        // Rename extras files to versioned names
+        rename_extras_to_versioned(&extras_dir)?;
+
+        all_outcomes.push((bench_name.clone(), outcome, baseline_available));
+    }
 
     // Build sensor report
     let ended_at = clock.now_rfc3339();
     let duration_ms = start_instant.elapsed().as_millis() as u64;
 
-    let baseline_reason = if !baseline_available {
-        baseline_path.map(|p| format!("{} not found", p.display()))
+    // Aggregate across all benches
+    let any_baseline_available = all_outcomes.iter().any(|(_, _, avail)| *avail);
+    let all_baseline_available = all_outcomes.iter().all(|(_, _, avail)| *avail);
+
+    let baseline_reason = if !any_baseline_available {
+        Some(BASELINE_REASON_NO_BASELINE.to_string())
     } else {
         None
     };
 
     let mut builder = SensorReportBuilder::new(tool_info(), started_at.to_string())
-        .ended_at(ended_at, duration_ms)
-        .baseline(baseline_available, baseline_reason);
+        .ended_at(ended_at.clone(), duration_ms)
+        .baseline(all_baseline_available, baseline_reason);
 
-    // Add artifacts
-    builder = builder
-        .artifact("extras/run.json".to_string(), "run_receipt".to_string())
-        .artifact(
-            "extras/report.json".to_string(),
-            "perfgate_report".to_string(),
-        )
-        .artifact("comment.md".to_string(), "markdown".to_string());
+    // Aggregate findings, verdict, counts, reasons, and artifacts
+    use perfgate_types::{SensorFinding, SensorSeverity, SensorVerdictCounts, SensorVerdictStatus};
+    let mut aggregated_findings: Vec<SensorFinding> = Vec::new();
+    let mut total_info = 0u32;
+    let mut total_warn = 0u32;
+    let mut total_error = 0u32;
+    let mut worst_status = SensorVerdictStatus::Pass;
+    let mut all_reasons: Vec<String> = Vec::new();
+    let mut combined_markdown = String::new();
 
-    if outcome.compare_receipt.is_some() {
+    for (bench_name, outcome, baseline_available) in &all_outcomes {
+        // Map findings from this bench's report
+        for f in &outcome.report.findings {
+            let severity = match f.severity {
+                perfgate_types::Severity::Warn => SensorSeverity::Warn,
+                perfgate_types::Severity::Fail => SensorSeverity::Error,
+            };
+            let mut finding_data = f.data.as_ref().and_then(|d| serde_json::to_value(d).ok());
+            // In multi-bench mode, include bench name in finding data
+            if multi_bench {
+                if let Some(ref mut val) = finding_data {
+                    if let Some(obj) = val.as_object_mut() {
+                        obj.insert(
+                            "bench_name".to_string(),
+                            serde_json::Value::String(bench_name.clone()),
+                        );
+                    }
+                } else {
+                    finding_data = Some(serde_json::json!({ "bench_name": bench_name }));
+                }
+            }
+            aggregated_findings.push(SensorFinding {
+                check_id: f.check_id.clone(),
+                code: f.code.clone(),
+                severity,
+                message: if multi_bench {
+                    format!("[{}] {}", bench_name, f.message)
+                } else {
+                    f.message.clone()
+                },
+                data: finding_data,
+            });
+        }
+
+        // Aggregate counts
+        total_info += outcome.report.summary.pass_count;
+        total_warn += outcome.report.summary.warn_count;
+        total_error += outcome.report.summary.fail_count;
+
+        // Aggregate worst verdict status
+        match outcome.report.verdict.status {
+            perfgate_types::VerdictStatus::Fail => {
+                worst_status = SensorVerdictStatus::Fail;
+            }
+            perfgate_types::VerdictStatus::Warn => {
+                if worst_status != SensorVerdictStatus::Fail {
+                    worst_status = SensorVerdictStatus::Warn;
+                }
+            }
+            perfgate_types::VerdictStatus::Pass => {}
+        }
+
+        // Aggregate reasons (union)
+        for reason in &outcome.report.verdict.reasons {
+            if !all_reasons.contains(reason) {
+                all_reasons.push(reason.clone());
+            }
+        }
+
+        // Add per-bench artifacts
+        let extras_prefix = if multi_bench {
+            format!("extras/{}", bench_name)
+        } else {
+            "extras".to_string()
+        };
+
         builder = builder.artifact(
-            "extras/compare.json".to_string(),
-            "compare_receipt".to_string(),
+            format!("{}/perfgate.run.v1.json", extras_prefix),
+            "run_receipt".to_string(),
         );
+        builder = builder.artifact(
+            format!("{}/perfgate.report.v1.json", extras_prefix),
+            "perfgate_report".to_string(),
+        );
+
+        if outcome.compare_receipt.is_some() {
+            builder = builder.artifact(
+                format!("{}/perfgate.compare.v1.json", extras_prefix),
+                "compare_receipt".to_string(),
+            );
+        }
+
+        // Collect markdown
+        if multi_bench {
+            if !combined_markdown.is_empty() {
+                combined_markdown.push_str("\n---\n\n");
+            }
+        }
+        combined_markdown.push_str(&outcome.markdown);
+
+        // Baseline reason per bench
+        if !baseline_available && !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string()) {
+            all_reasons.push(BASELINE_REASON_NO_BASELINE.to_string());
+        }
     }
 
-    let sensor_report = builder.build(&outcome.report);
+    builder = builder.artifact("comment.md".to_string(), "markdown".to_string());
+
+    // Build aggregated data section
+    let data = serde_json::json!({
+        "summary": {
+            "pass_count": total_info,
+            "warn_count": total_warn,
+            "fail_count": total_error,
+            "total_count": total_info + total_warn + total_error,
+        }
+    });
+
+    // Build the report manually since we have aggregated data
+    let sensor_report = perfgate_types::SensorReport {
+        schema: perfgate_types::SENSOR_REPORT_SCHEMA_V1.to_string(),
+        tool: tool_info(),
+        run: perfgate_types::SensorRunMeta {
+            started_at: started_at.to_string(),
+            ended_at: Some(ended_at),
+            duration_ms: Some(duration_ms),
+            capabilities: perfgate_types::SensorCapabilities {
+                baseline: perfgate_types::Capability {
+                    status: if all_baseline_available {
+                        perfgate_types::CapabilityStatus::Available
+                    } else {
+                        perfgate_types::CapabilityStatus::Unavailable
+                    },
+                    reason: if !any_baseline_available {
+                        Some(BASELINE_REASON_NO_BASELINE.to_string())
+                    } else {
+                        None
+                    },
+                },
+            },
+        },
+        verdict: perfgate_types::SensorVerdict {
+            status: worst_status,
+            counts: SensorVerdictCounts {
+                info: total_info,
+                warn: total_warn,
+                error: total_error,
+            },
+            reasons: all_reasons,
+        },
+        findings: aggregated_findings,
+        artifacts: {
+            let mut arts = builder.take_artifacts();
+            arts.sort_by(|a, b| (&a.artifact_type, &a.path).cmp(&(&b.artifact_type, &b.path)));
+            arts
+        },
+        data,
+    };
 
     // Write sensor report to out_dir/report.json
     let report_path = out_dir.join("report.json");
     write_json(&report_path, &sensor_report, pretty)?;
 
-    // Copy markdown to out_dir root
+    // Write combined markdown to out_dir root
     let md_dest = out_dir.join("comment.md");
-    fs::write(&md_dest, &outcome.markdown)
+    fs::write(&md_dest, &combined_markdown)
         .with_context(|| format!("write {}", md_dest.display()))?;
 
     // Print warnings but don't affect exit code
-    for warning in &outcome.warnings {
-        eprintln!("warning: {}", warning);
+    for (_, outcome, _) in &all_outcomes {
+        for warning in &outcome.warnings {
+            eprintln!("warning: {}", warning);
+        }
     }
 
     // Cockpit mode: always exit 0 if we got here
+    Ok(())
+}
+
+/// Classify an error into (stage, error_kind) for structured error reporting.
+fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
+    let msg = format!("{:#}", err);
+    let msg_lower = msg.to_lowercase();
+
+    if msg_lower.contains("parse")
+        && (msg_lower.contains("config")
+            || msg_lower.contains("toml")
+            || msg_lower.contains("json config"))
+    {
+        (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
+    } else if msg_lower.contains("baseline") || msg_lower.contains("not found") {
+        (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO)
+    } else if msg_lower.contains("failed to run")
+        || msg_lower.contains("spawn")
+        || msg_lower.contains("exec")
+    {
+        (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+    } else if msg_lower.contains("write")
+        || msg_lower.contains("create dir")
+        || msg_lower.contains("rename")
+    {
+        (STAGE_WRITE_ARTIFACTS, ERROR_KIND_IO)
+    } else if err.downcast_ref::<std::io::Error>().is_some() {
+        (STAGE_RUN_COMMAND, ERROR_KIND_IO)
+    } else {
+        (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+    }
+}
+
+/// Rename extras files to versioned names.
+fn rename_extras_to_versioned(extras_dir: &Path) -> anyhow::Result<()> {
+    let renames = [
+        ("run.json", "perfgate.run.v1.json"),
+        ("compare.json", "perfgate.compare.v1.json"),
+        ("report.json", "perfgate.report.v1.json"),
+    ];
+
+    for (old_name, new_name) in &renames {
+        let old_path = extras_dir.join(old_name);
+        let new_path = extras_dir.join(new_name);
+        if old_path.exists() {
+            fs::rename(&old_path, &new_path).with_context(|| {
+                format!("rename {} -> {}", old_path.display(), new_path.display())
+            })?;
+        }
+    }
+
+    // Clean up stale files that might exist from previous runs
+    let stale_files = ["run.json", "compare.json", "report.json"];
+    for name in &stale_files {
+        let stale = extras_dir.join(name);
+        if stale.exists() {
+            match fs::remove_file(&stale) {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to remove stale {}: {}",
+                        stale.display(),
+                        e
+                    ));
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 

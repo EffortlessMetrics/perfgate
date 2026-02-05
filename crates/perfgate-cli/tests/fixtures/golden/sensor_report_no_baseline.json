@@ -11,7 +11,7 @@
     "capabilities": {
       "baseline": {
         "status": "unavailable",
-        "reason": "baselines/test-bench.json not found"
+        "reason": "no_baseline"
       }
     }
   },
@@ -34,20 +34,19 @@
   ],
   "artifacts": [
     {
-      "path": "extras/run.json",
-      "type": "run_receipt"
+      "path": "comment.md",
+      "type": "markdown"
     },
     {
-      "path": "extras/report.json",
+      "path": "extras/perfgate.report.v1.json",
       "type": "perfgate_report"
     },
     {
-      "path": "comment.md",
-      "type": "markdown"
+      "path": "extras/perfgate.run.v1.json",
+      "type": "run_receipt"
     }
   ],
   "data": {
-    "compare": null,
     "summary": {
       "pass_count": 0,
       "warn_count": 1,

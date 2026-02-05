@@ -4,10 +4,10 @@
 //! a `sensor.report.v1` envelope suitable for cockpit integration.
 
 use perfgate_types::{
-    Capability, CapabilityStatus, PerfgateReport, ReportSummary, SensorArtifact,
-    SensorCapabilities, SensorFinding, SensorReport, SensorReportData, SensorRunMeta,
-    SensorSeverity, SensorVerdict, SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo,
-    VerdictStatus, SENSOR_REPORT_SCHEMA_V1,
+    Capability, CapabilityStatus, PerfgateReport, SensorArtifact, SensorCapabilities,
+    SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict, SensorVerdictCounts,
+    SensorVerdictStatus, Severity, ToolInfo, VerdictStatus, CHECK_ID_TOOL_RUNTIME,
+    FINDING_CODE_RUNTIME_ERROR, SENSOR_REPORT_SCHEMA_V1, VERDICT_REASON_TOOL_ERROR,
 };
 
 /// Builder for constructing a SensorReport from a PerfgateReport.
@@ -58,8 +58,13 @@ impl SensorReportBuilder {
         self
     }
 
+    /// Take ownership of accumulated artifacts (for manual report building).
+    pub fn take_artifacts(&mut self) -> Vec<SensorArtifact> {
+        std::mem::take(&mut self.artifacts)
+    }
+
     /// Build the SensorReport from a PerfgateReport.
-    pub fn build(self, report: &PerfgateReport) -> SensorReport {
+    pub fn build(mut self, report: &PerfgateReport) -> SensorReport {
         // Map VerdictStatus -> SensorVerdictStatus
         let status = match report.verdict.status {
             VerdictStatus::Pass => SensorVerdictStatus::Pass,
@@ -92,7 +97,7 @@ impl SensorReportBuilder {
                     Severity::Fail => SensorSeverity::Error,
                 },
                 message: f.message.clone(),
-                data: f.data.clone(),
+                data: f.data.as_ref().and_then(|d| serde_json::to_value(d).ok()),
             })
             .collect();
 
@@ -116,11 +121,19 @@ impl SensorReportBuilder {
             capabilities,
         };
 
-        // Build data section
-        let data = SensorReportData {
-            compare: report.compare.clone(),
-            summary: report.summary.clone(),
-        };
+        // Build data section (summary only, no compare receipt)
+        let data = serde_json::json!({
+            "summary": {
+                "pass_count": report.summary.pass_count,
+                "warn_count": report.summary.warn_count,
+                "fail_count": report.summary.fail_count,
+                "total_count": report.summary.total_count,
+            }
+        });
+
+        // Sort artifacts by (type, path)
+        self.artifacts
+            .sort_by(|a, b| (&a.artifact_type, &a.path).cmp(&(&b.artifact_type, &b.path)));
 
         SensorReport {
             schema: SENSOR_REPORT_SCHEMA_V1.to_string(),
@@ -136,7 +149,14 @@ impl SensorReportBuilder {
     /// Build an error SensorReport for catastrophic failures.
     ///
     /// This creates a report when the sensor itself failed to run properly.
-    pub fn build_error(self, error_message: &str) -> SensorReport {
+    /// `stage` indicates which phase failed (e.g. "config_parse", "run_command").
+    /// `error_kind` classifies the error (e.g. "io_error", "parse_error", "exec_error").
+    pub fn build_error(
+        mut self,
+        error_message: &str,
+        stage: &str,
+        error_kind: &str,
+    ) -> SensorReport {
         let verdict = SensorVerdict {
             status: SensorVerdictStatus::Fail,
             counts: SensorVerdictCounts {
@@ -144,15 +164,18 @@ impl SensorReportBuilder {
                 warn: 0,
                 error: 1,
             },
-            reasons: vec![error_message.to_string()],
+            reasons: vec![VERDICT_REASON_TOOL_ERROR.to_string()],
         };
 
         let finding = SensorFinding {
-            check_id: "sensor.error".to_string(),
-            code: "internal_error".to_string(),
+            check_id: CHECK_ID_TOOL_RUNTIME.to_string(),
+            code: FINDING_CODE_RUNTIME_ERROR.to_string(),
             severity: SensorSeverity::Error,
             message: error_message.to_string(),
-            data: None,
+            data: Some(serde_json::json!({
+                "stage": stage,
+                "error_kind": error_kind,
+            })),
         };
 
         let capabilities = SensorCapabilities {
@@ -173,15 +196,18 @@ impl SensorReportBuilder {
             capabilities,
         };
 
-        let data = SensorReportData {
-            compare: None,
-            summary: ReportSummary {
-                pass_count: 0,
-                warn_count: 0,
-                fail_count: 1,
-                total_count: 1,
-            },
-        };
+        let data = serde_json::json!({
+            "summary": {
+                "pass_count": 0,
+                "warn_count": 0,
+                "fail_count": 1,
+                "total_count": 1,
+            }
+        });
+
+        // Sort artifacts by (type, path)
+        self.artifacts
+            .sort_by(|a, b| (&a.artifact_type, &a.path).cmp(&(&b.artifact_type, &b.path)));
 
         SensorReport {
             schema: SENSOR_REPORT_SCHEMA_V1.to_string(),
@@ -199,8 +225,8 @@ impl SensorReportBuilder {
 mod tests {
     use super::*;
     use perfgate_types::{
-        ReportFinding, Verdict, VerdictCounts, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
-        REPORT_SCHEMA_V1,
+        ReportFinding, ReportSummary, Verdict, VerdictCounts, ERROR_KIND_PARSE,
+        FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1, STAGE_CONFIG_PARSE,
     };
 
     fn make_tool_info() -> ToolInfo {
@@ -311,6 +337,9 @@ mod tests {
             sensor_report.run.capabilities.baseline.status,
             CapabilityStatus::Available
         );
+        // Data should only have summary, no compare key
+        assert!(sensor_report.data.get("summary").is_some());
+        assert!(sensor_report.data.get("compare").is_none());
     }
 
     #[test]
@@ -368,18 +397,22 @@ mod tests {
     }
 
     #[test]
-    fn test_build_with_artifacts() {
+    fn test_build_with_artifacts_sorted() {
         let report = make_pass_report();
         let builder =
             SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
-                .artifact("extras/run.json".to_string(), "run_receipt".to_string())
+                .artifact(
+                    "extras/perfgate.run.v1.json".to_string(),
+                    "run_receipt".to_string(),
+                )
                 .artifact("comment.md".to_string(), "markdown".to_string());
 
         let sensor_report = builder.build(&report);
 
         assert_eq!(sensor_report.artifacts.len(), 2);
-        assert_eq!(sensor_report.artifacts[0].path, "extras/run.json");
-        assert_eq!(sensor_report.artifacts[0].artifact_type, "run_receipt");
+        // Sorted by (type, path): markdown < run_receipt
+        assert_eq!(sensor_report.artifacts[0].artifact_type, "markdown");
+        assert_eq!(sensor_report.artifacts[1].artifact_type, "run_receipt");
     }
 
     #[test]
@@ -389,17 +422,26 @@ mod tests {
                 .ended_at("2024-01-01T00:00:01Z".to_string(), 1000)
                 .baseline(false, None);
 
-        let sensor_report = builder.build_error("config file not found");
+        let sensor_report = builder.build_error(
+            "config file not found",
+            STAGE_CONFIG_PARSE,
+            ERROR_KIND_PARSE,
+        );
 
         assert_eq!(sensor_report.schema, SENSOR_REPORT_SCHEMA_V1);
         assert_eq!(sensor_report.verdict.status, SensorVerdictStatus::Fail);
         assert_eq!(sensor_report.verdict.counts.error, 1);
+        assert_eq!(sensor_report.verdict.reasons, vec!["tool_error"]);
         assert_eq!(sensor_report.findings.len(), 1);
-        assert_eq!(sensor_report.findings[0].check_id, "sensor.error");
-        assert_eq!(sensor_report.findings[0].code, "internal_error");
+        assert_eq!(sensor_report.findings[0].check_id, "tool.runtime");
+        assert_eq!(sensor_report.findings[0].code, "runtime_error");
         assert!(sensor_report.findings[0]
             .message
             .contains("config file not found"));
+        // Verify structured data
+        let data = sensor_report.findings[0].data.as_ref().unwrap();
+        assert_eq!(data["stage"], "config_parse");
+        assert_eq!(data["error_kind"], "parse_error");
     }
 
     #[test]

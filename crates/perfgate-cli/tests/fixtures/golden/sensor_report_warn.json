@@ -41,24 +41,23 @@
   ],
   "artifacts": [
     {
-      "path": "extras/run.json",
-      "type": "run_receipt"
-    },
-    {
-      "path": "extras/compare.json",
+      "path": "extras/perfgate.compare.v1.json",
       "type": "compare_receipt"
-    },
-    {
-      "path": "extras/report.json",
-      "type": "perfgate_report"
     },
     {
       "path": "comment.md",
       "type": "markdown"
+    },
+    {
+      "path": "extras/perfgate.report.v1.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "extras/perfgate.run.v1.json",
+      "type": "run_receipt"
     }
   ],
   "data": {
-    "compare": null,
     "summary": {
       "pass_count": 1,
       "warn_count": 1,

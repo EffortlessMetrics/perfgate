@@ -173,24 +173,27 @@ fn test_cockpit_mode_artifact_layout() {
 
     // Verify cockpit artifact layout:
     // artifacts/perfgate/
-    // ├── report.json        # sensor.report.v1 envelope
-    // ├── comment.md         # Markdown summary
+    // ├── report.json                    # sensor.report.v1 envelope
+    // ├── comment.md                     # Markdown summary
     // └── extras/
-    //     ├── run.json       # perfgate.run.v1
-    //     ├── compare.json   # perfgate.compare.v1 (if baseline)
-    //     └── report.json    # perfgate.report.v1 (native)
+    //     ├── perfgate.run.v1.json       # perfgate.run.v1
+    //     ├── perfgate.compare.v1.json   # perfgate.compare.v1 (if baseline)
+    //     └── perfgate.report.v1.json    # perfgate.report.v1 (native)
 
     assert!(out_dir.join("report.json").exists(), "report.json at root");
     assert!(out_dir.join("comment.md").exists(), "comment.md at root");
     assert!(out_dir.join("extras").is_dir(), "extras/ directory");
-    assert!(out_dir.join("extras/run.json").exists(), "extras/run.json");
     assert!(
-        out_dir.join("extras/compare.json").exists(),
-        "extras/compare.json (baseline present)"
+        out_dir.join("extras/perfgate.run.v1.json").exists(),
+        "extras/perfgate.run.v1.json"
     );
     assert!(
-        out_dir.join("extras/report.json").exists(),
-        "extras/report.json"
+        out_dir.join("extras/perfgate.compare.v1.json").exists(),
+        "extras/perfgate.compare.v1.json (baseline present)"
+    );
+    assert!(
+        out_dir.join("extras/perfgate.report.v1.json").exists(),
+        "extras/perfgate.report.v1.json"
     );
 
     // Verify the root report.json has sensor.report.v1 schema
@@ -198,10 +201,11 @@ fn test_cockpit_mode_artifact_layout() {
         serde_json::from_str(&fs::read_to_string(out_dir.join("report.json")).unwrap()).unwrap();
     assert_eq!(root_report["schema"], "sensor.report.v1");
 
-    // Verify extras/report.json has perfgate.report.v1 schema
-    let native_report: Value =
-        serde_json::from_str(&fs::read_to_string(out_dir.join("extras/report.json")).unwrap())
-            .unwrap();
+    // Verify extras/perfgate.report.v1.json has perfgate.report.v1 schema
+    let native_report: Value = serde_json::from_str(
+        &fs::read_to_string(out_dir.join("extras/perfgate.report.v1.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(native_report["report_type"], "perfgate.report.v1");
 }
 
@@ -345,9 +349,13 @@ fn test_cockpit_mode_report_structure() {
     assert!(counts.get("warn").is_some(), "counts.warn missing");
     assert!(counts.get("error").is_some(), "counts.error missing");
 
-    // Verify data section
+    // Verify data section: has summary, no compare key
     let data = &report["data"];
     assert!(data.get("summary").is_some(), "data.summary missing");
+    assert!(
+        data.get("compare").is_none(),
+        "data should not have compare key"
+    );
 }
 
 /// Test cockpit mode no baseline shows unavailable capability
@@ -388,13 +396,13 @@ fn test_cockpit_mode_no_baseline_capability() {
         "unavailable"
     );
 
-    // Reason should mention the missing baseline
+    // Reason should be the normalized token
     let reason = report["run"]["capabilities"]["baseline"]["reason"]
         .as_str()
         .unwrap_or("");
-    assert!(
-        reason.contains("not found"),
-        "reason should mention baseline not found: {}",
+    assert_eq!(
+        reason, "no_baseline",
+        "reason should be 'no_baseline' token, got: {}",
         reason
     );
 }
@@ -443,11 +451,24 @@ fn test_cockpit_mode_config_error_produces_report() {
 
     assert_eq!(report["schema"], "sensor.report.v1");
     assert_eq!(report["verdict"]["status"], "fail");
+    assert_eq!(report["verdict"]["reasons"][0], "tool_error");
 
-    // Should have error finding
+    // Should have error finding with tool.runtime check_id
     let findings = report["findings"].as_array().expect("findings array");
     assert!(!findings.is_empty(), "should have at least one finding");
     assert_eq!(findings[0]["severity"], "error");
+    assert_eq!(findings[0]["check_id"], "tool.runtime");
+    assert_eq!(findings[0]["code"], "runtime_error");
+    // Finding should have structured data with stage and error_kind
+    let finding_data = &findings[0]["data"];
+    assert!(
+        finding_data.get("stage").is_some(),
+        "finding should have stage"
+    );
+    assert!(
+        finding_data.get("error_kind").is_some(),
+        "finding should have error_kind"
+    );
 }
 
 /// Test standard mode still works (not affected by cockpit changes)

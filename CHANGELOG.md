@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **ABI hardening for sensor.report.v1** — Cockpit output conforms to the fleet contract:
+  - `SensorReport.data` and `SensorFinding.data` changed from typed structs to opaque `serde_json::Value`
+  - Removed `SensorReportData` struct; data section now contains only `summary` (no `compare` key)
+  - Added `Skipped` variant to `CapabilityStatus`
+  - Error reports use `tool.runtime` check_id, `runtime_error` code, and structured `{stage, error_kind}` data
+  - Baseline reason normalized to `no_baseline` token instead of freeform path strings
+  - Extras files renamed to versioned format: `perfgate.run.v1.json`, `perfgate.compare.v1.json`, `perfgate.report.v1.json`
+  - Artifacts sorted by `(type, path)` for deterministic output
+  - Cockpit `--all` mode properly aggregates across multiple benchmarks with per-bench extras subdirectories
+  - Sensor report schema vendored at `contracts/schemas/sensor.report.v1.schema.json` (no longer auto-generated)
+  - Added `serde_json` as regular dependency of `perfgate-types` (was dev-only)
+  - Added constants: `CHECK_ID_TOOL_RUNTIME`, `FINDING_CODE_RUNTIME_ERROR`, `VERDICT_REASON_TOOL_ERROR`, stage/error_kind constants, `BASELINE_REASON_NO_BASELINE`
+
 ## [0.2.0] - 2026-02-05
 
 ### Added

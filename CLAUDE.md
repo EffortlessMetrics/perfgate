@@ -90,13 +90,43 @@ perfgate-cli (clap CLI, JSON I/O)
 - `2`: policy fail (budget violated)
 - `3`: warn treated as failure (with `--fail-on-warn`)
 
-**Canonical artifact layout:**
+**Canonical artifact layout (standard mode):**
 ```
 artifacts/perfgate/
 ├── run.json        # perfgate.run.v1
 ├── compare.json    # perfgate.compare.v1
-├── report.json     # perfgate.report.v1 (cockpit ingestion)
+├── report.json     # perfgate.report.v1
 └── comment.md      # PR comment markdown
+```
+
+**Cockpit mode artifact layout (single bench):**
+```
+artifacts/perfgate/
+├── report.json                         # sensor.report.v1 envelope
+├── comment.md                          # PR comment markdown
+└── extras/
+    ├── perfgate.run.v1.json            # perfgate.run.v1
+    ├── perfgate.compare.v1.json        # perfgate.compare.v1 (if baseline)
+    └── perfgate.report.v1.json         # perfgate.report.v1
+```
+
+**Cockpit mode artifact layout (multi-bench `--all`):**
+```
+artifacts/perfgate/
+├── report.json                         # aggregated sensor.report.v1
+├── comment.md
+└── extras/
+    ├── bench-a/perfgate.run.v1.json
+    ├── bench-a/perfgate.compare.v1.json
+    ├── bench-a/perfgate.report.v1.json
+    ├── bench-b/perfgate.run.v1.json
+    └── ...
+```
+
+**Vendored schemas:**
+```
+contracts/schemas/
+└── sensor.report.v1.schema.json        # Hand-written generic schema (not auto-generated)
 ```
 
 ## Testing Strategy

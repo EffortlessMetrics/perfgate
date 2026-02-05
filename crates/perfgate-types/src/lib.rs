@@ -27,12 +27,29 @@ pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
 pub const CHECK_ID_BASELINE: &str = "perf.baseline";
 pub const CHECK_ID_HOST: &str = "perf.host";
+pub const CHECK_ID_TOOL_RUNTIME: &str = "tool.runtime";
 pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
 pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
 pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
+pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
+pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
+
+// Error classification stages.
+pub const STAGE_CONFIG_PARSE: &str = "config_parse";
+pub const STAGE_BASELINE_RESOLVE: &str = "baseline_resolve";
+pub const STAGE_RUN_COMMAND: &str = "run_command";
+pub const STAGE_WRITE_ARTIFACTS: &str = "write_artifacts";
+
+// Error kind constants.
+pub const ERROR_KIND_IO: &str = "io_error";
+pub const ERROR_KIND_PARSE: &str = "parse_error";
+pub const ERROR_KIND_EXEC: &str = "exec_error";
+
+// Baseline reason tokens.
+pub const BASELINE_REASON_NO_BASELINE: &str = "no_baseline";
 
 // Sensor report schema for cockpit integration
 pub const SENSOR_REPORT_SCHEMA_V1: &str = "sensor.report.v1";
@@ -48,6 +65,7 @@ pub const SENSOR_REPORT_SCHEMA_V1: &str = "sensor.report.v1";
 pub enum CapabilityStatus {
     Available,
     Unavailable,
+    Skipped,
 }
 
 /// A capability with its status and optional reason.
@@ -118,15 +136,14 @@ pub enum SensorSeverity {
 }
 
 /// A finding from the sensor.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SensorFinding {
     pub check_id: String,
     pub code: String,
     pub severity: SensorSeverity,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<FindingData>,
+    pub data: Option<serde_json::Value>,
 }
 
 /// An artifact produced by the sensor.
@@ -138,15 +155,6 @@ pub struct SensorArtifact {
     pub artifact_type: String,
 }
 
-/// Data section of the sensor report.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct SensorReportData {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub compare: Option<CompareReceipt>,
-    pub summary: ReportSummary,
-}
-
 /// The sensor.report.v1 envelope for cockpit integration.
 ///
 /// This wraps PerfgateReport in a cockpit-compatible format with:
@@ -154,8 +162,7 @@ pub struct SensorReportData {
 /// - Verdict using cockpit vocabulary (error instead of fail)
 /// - Artifacts list
 /// - Native perfgate data
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SensorReport {
     pub schema: String,
     pub tool: ToolInfo,
@@ -164,7 +171,7 @@ pub struct SensorReport {
     pub findings: Vec<SensorFinding>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub artifacts: Vec<SensorArtifact>,
-    pub data: SensorReportData,
+    pub data: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
