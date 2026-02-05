@@ -7,7 +7,7 @@
 use perfgate_domain::derive_report;
 use perfgate_types::{
     CompareReceipt, Direction, FindingData, PerfgateReport, ReportFinding, ReportSummary, Severity,
-    REPORT_SCHEMA_V1,
+    FINDING_CODE_METRIC_FAIL, REPORT_SCHEMA_V1,
 };
 
 /// Request for generating a report from a compare receipt.
@@ -50,7 +50,7 @@ impl ReportUseCase {
             .findings
             .into_iter()
             .map(|f| {
-                let severity = if f.code == "metric_fail" {
+                let severity = if f.code == FINDING_CODE_METRIC_FAIL {
                     Severity::Fail
                 } else {
                     Severity::Warn
@@ -116,11 +116,7 @@ impl ReportUseCase {
 
 /// Converts a Metric enum to its string representation.
 fn metric_to_string(metric: perfgate_types::Metric) -> String {
-    match metric {
-        perfgate_types::Metric::WallMs => "wall_ms".to_string(),
-        perfgate_types::Metric::MaxRssKb => "max_rss_kb".to_string(),
-        perfgate_types::Metric::ThroughputPerS => "throughput_per_s".to_string(),
-    }
+    metric.as_str().to_string()
 }
 
 #[cfg(test)]

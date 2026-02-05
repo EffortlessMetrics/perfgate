@@ -67,6 +67,20 @@ When adding a new metric type:
 
 ## Future Work
 
+### Ecosystem Alignment Checklist
+
+P0 contract hardening expectations to keep in sync with docs and artifacts:
+- Stable `verdict.reasons` tokens in receipts
+- Baseline-missing is `warn` with a structured finding
+- `compare.json` is absent when baseline is missing, and stale compare artifacts are removed
+- Deterministic ordering for metrics, findings, and exports is preserved
+
+### Envelope Alignment (Optional)
+
+If the ecosystem standardizes on a universal sensor envelope, align perfgate output as a future enhancement:
+- Option A: Keep `perfgate.report.v1` as-is and teach cockpitctl to ingest it directly
+- Option B: Add a `sensor.report.v1` wrapper that embeds `perfgate.report.v1` under `data`
+
 ### Paired Mode
 
 **Status:** Planned

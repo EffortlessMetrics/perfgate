@@ -16,6 +16,14 @@ pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 
+// Stable contract identifiers and tokens.
+pub const CHECK_ID_BUDGET: &str = "perf.budget";
+pub const CHECK_ID_BASELINE: &str = "perf.baseline";
+pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
+pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
+pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
+pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ToolInfo {
@@ -152,6 +160,23 @@ pub enum Metric {
 }
 
 impl Metric {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Metric::WallMs => "wall_ms",
+            Metric::MaxRssKb => "max_rss_kb",
+            Metric::ThroughputPerS => "throughput_per_s",
+        }
+    }
+
+    pub fn parse_key(key: &str) -> Option<Self> {
+        match key {
+            "wall_ms" => Some(Metric::WallMs),
+            "max_rss_kb" => Some(Metric::MaxRssKb),
+            "throughput_per_s" => Some(Metric::ThroughputPerS),
+            _ => None,
+        }
+    }
+
     pub fn default_direction(self) -> Direction {
         match self {
             Metric::WallMs => Direction::Lower,
@@ -201,6 +226,16 @@ pub enum MetricStatus {
     Pass,
     Warn,
     Fail,
+}
+
+impl MetricStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MetricStatus::Pass => "pass",
+            MetricStatus::Warn => "warn",
+            MetricStatus::Fail => "fail",
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]

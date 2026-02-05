@@ -319,11 +319,7 @@ pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
 }
 
 fn format_metric(metric: Metric) -> &'static str {
-    match metric {
-        Metric::WallMs => "wall_ms",
-        Metric::MaxRssKb => "max_rss_kb",
-        Metric::ThroughputPerS => "throughput_per_s",
-    }
+    metric.as_str()
 }
 
 fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
@@ -335,12 +331,7 @@ fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
         _ => return None,
     };
 
-    let metric = match metric_part {
-        "wall_ms" => Metric::WallMs,
-        "max_rss_kb" => Metric::MaxRssKb,
-        "throughput_per_s" => Metric::ThroughputPerS,
-        _ => return None,
-    };
+    let metric = Metric::parse_key(metric_part)?;
 
     Some((metric, status))
 }
@@ -355,9 +346,9 @@ fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
             let fail_pct = budget.threshold * 100.0;
 
             return match status {
-                MetricStatus::Warn => format!(
-                    "- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n"
-                ),
+                MetricStatus::Warn => {
+                    format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
+                }
                 MetricStatus::Fail => {
                     format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
                 }

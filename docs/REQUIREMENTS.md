@@ -4,6 +4,26 @@ This document specifies the functional requirements for perfgate commands, artif
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
 
+## External Interface Contracts
+
+Receipt schemas are public API. The following schema IDs are stable:
+- `perfgate.run.v1`
+- `perfgate.compare.v1`
+- `perfgate.report.v1`
+- `perfgate.config.v1`
+
+Within a `v1` schema, changes MUST be additive and backward compatible. Fields, codes, and reason tokens MUST NOT be renamed or repurposed.
+
+CLI surface stability: the following commands are considered stable and MUST remain available in v1:
+- `run`
+- `compare`
+- `report`
+- `md`
+- `github-annotations`
+- `check`
+- `promote`
+- `export`
+
 ## Commands
 
 perfgate provides eight commands for the performance budget workflow.
@@ -216,6 +236,20 @@ All commands MUST use consistent exit codes:
 | `2` | Policy fail | Budget violated (regression exceeds threshold) |
 | `3` | Warn as failure | Warn verdict with `--fail-on-warn` flag |
 
+## Findings Model (Stable IDs)
+
+Findings in `perfgate.report.v1` MUST use stable identifiers.
+
+Baseline-missing finding:
+- `check_id = "perf.baseline"`
+- `code = "missing"`
+- `severity = "warn"`
+
+Budget findings:
+- `check_id = "perf.budget"`
+- `code = "metric_warn"` for warn metrics
+- `code = "metric_fail"` for fail metrics
+
 ## Baseline-Missing Behavior
 
 When a baseline is not found:
@@ -224,6 +258,12 @@ When a baseline is not found:
 |------|----------|
 | Neither flag | Warn to stderr, exit 0, write run receipt, report.json, and "no baseline" markdown; omit compare.json; include `no_baseline` reason token |
 | `--require-baseline` | Exit 1 with error message |
+
+Additional requirements:
+- `report.json` MUST always be written by `check`
+- For missing baseline without `--require-baseline`, `report.json` MUST have verdict status `warn` and `verdict.reasons` MUST include `no_baseline`
+- For missing baseline without `--require-baseline`, `report.json` MUST include exactly one baseline-missing finding as specified above
+- `compare.json` MUST be absent when baseline is missing, and stale compare artifacts MUST be removed if present
 
 ## Determinism Requirements
 

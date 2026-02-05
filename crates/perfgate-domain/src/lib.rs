@@ -4,7 +4,8 @@
 
 use perfgate_types::{
     Budget, CompareReceipt, Delta, Direction, F64Summary, Metric, MetricStatus, Stats, U64Summary,
-    Verdict, VerdictCounts, VerdictStatus,
+    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BUDGET, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN,
 };
 use std::collections::BTreeMap;
 
@@ -267,8 +268,8 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
             MetricStatus::Pass => continue,
             MetricStatus::Warn | MetricStatus::Fail => {
                 let code = match delta.status {
-                    MetricStatus::Warn => "metric_warn".to_string(),
-                    MetricStatus::Fail => "metric_fail".to_string(),
+                    MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
+                    MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
                     MetricStatus::Pass => unreachable!(),
                 };
 
@@ -281,7 +282,7 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
 
                 findings.push(Finding {
                     code,
-                    check_id: "perf.budget".to_string(),
+                    check_id: CHECK_ID_BUDGET.to_string(),
                     data: FindingData {
                         metric_name: metric_to_string(*metric),
                         bench_name: receipt.bench.name.clone(),
@@ -307,11 +308,7 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
 
 /// Converts a Metric enum to its string representation.
 fn metric_to_string(metric: Metric) -> String {
-    match metric {
-        Metric::WallMs => "wall_ms".to_string(),
-        Metric::MaxRssKb => "max_rss_kb".to_string(),
-        Metric::ThroughputPerS => "throughput_per_s".to_string(),
-    }
+    metric.as_str().to_string()
 }
 
 fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
@@ -323,18 +320,8 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
 }
 
 fn reason_token(metric: Metric, status: MetricStatus) -> String {
-    let metric_str = match metric {
-        Metric::WallMs => "wall_ms",
-        Metric::MaxRssKb => "max_rss_kb",
-        Metric::ThroughputPerS => "throughput_per_s",
-    };
-
-    let status_str = match status {
-        MetricStatus::Warn => "warn",
-        MetricStatus::Fail => "fail",
-        MetricStatus::Pass => "pass",
-    };
-
+    let metric_str = metric.as_str();
+    let status_str = status.as_str();
     format!("{metric_str}_{status_str}")
 }
 

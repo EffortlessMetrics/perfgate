@@ -17,7 +17,9 @@ use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
     BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData, Metric,
     MetricStatus, PerfgateReport, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
-    Verdict, VerdictCounts, VerdictStatus, REPORT_SCHEMA_V1,
+    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BASELINE, CHECK_ID_BUDGET,
+    FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
+    REPORT_SCHEMA_V1, VERDICT_REASON_NO_BASELINE,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -349,8 +351,8 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
             .unwrap_or((0.20, metric.default_direction()));
 
         let code = match delta.status {
-            MetricStatus::Warn => "metric_warn".to_string(),
-            MetricStatus::Fail => "metric_fail".to_string(),
+            MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
+            MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
             MetricStatus::Pass => unreachable!(),
         };
 
@@ -363,7 +365,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
         );
 
         findings.push(ReportFinding {
-            check_id: "perf.budget".to_string(),
+            check_id: CHECK_ID_BUDGET.to_string(),
             code,
             severity,
             message,
@@ -411,13 +413,13 @@ fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
             warn: 1,
             fail: 0,
         },
-        reasons: vec!["no_baseline".to_string()],
+        reasons: vec![VERDICT_REASON_NO_BASELINE.to_string()],
     };
 
     // Single finding for the baseline-missing condition
     let finding = ReportFinding {
-        check_id: "perf.baseline".to_string(),
-        code: "missing".to_string(),
+        check_id: CHECK_ID_BASELINE.to_string(),
+        code: FINDING_CODE_BASELINE_MISSING.to_string(),
         severity: Severity::Warn,
         message: format!(
             "No baseline found for bench '{}'; comparison skipped",

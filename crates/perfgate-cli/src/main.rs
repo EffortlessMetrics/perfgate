@@ -740,9 +740,5 @@ fn build_budgets(
 }
 
 fn metric_key(metric: Metric) -> &'static str {
-    match metric {
-        Metric::WallMs => "wall_ms",
-        Metric::MaxRssKb => "max_rss_kb",
-        Metric::ThroughputPerS => "throughput_per_s",
-    }
+    metric.as_str()
 }

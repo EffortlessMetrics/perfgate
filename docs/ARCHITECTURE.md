@@ -8,6 +8,27 @@ This document describes the architectural design of perfgate, a selective build-
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
 
+## Ecosystem Role and Cockpit Integration
+
+perfgate is the selective performance gate sensor. It answers one question: "Did this change regress end-to-end performance beyond an explicit budget?"
+
+Default lane posture:
+- Label-gated or opt-in by workflow
+- Non-blocking by default, but visible when it runs
+- Missing baselines are warnings, not passes
+
+Cockpit ingest contract:
+- Cockpit reads `artifacts/perfgate/report.json` as the canonical output
+- `artifacts/perfgate/compare.json` is absent when no baseline exists
+
+Recommended cockpit policy defaults:
+```toml
+[sensors.perfgate]
+blocking = false
+missing = "skip"
+require_label = "run-perf"
+```
+
 ## Truth Layer
 
 perfgate operates as a **build truth** component: it measures and reports performance characteristics of arbitrary commands without understanding their internals. This is a selective sensor approach:
