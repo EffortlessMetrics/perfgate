@@ -225,15 +225,20 @@ enum Command {
         config: PathBuf,
 
         /// Name of the benchmark to run (must match a [[bench]] in config)
-        #[arg(long)]
-        bench: String,
+        #[arg(long, conflicts_with = "all")]
+        bench: Option<String>,
+
+        /// Run all benchmarks defined in the config file
+        #[arg(long, default_value_t = false)]
+        all: bool,
 
         /// Output directory for artifacts
         #[arg(long, default_value = "artifacts/perfgate")]
         out_dir: PathBuf,
 
         /// Path to the baseline file. If not specified, looks in baseline_dir/{bench}.json
-        #[arg(long)]
+        /// (only valid when --bench is specified, not with --all)
+        #[arg(long, conflicts_with = "all")]
         baseline: Option<PathBuf>,
 
         /// Fail if baseline is missing (default: warn and continue)
@@ -478,6 +483,7 @@ fn real_main() -> anyhow::Result<()> {
         Command::Check {
             config,
             bench,
+            all,
             out_dir,
             baseline,
             require_baseline,
@@ -500,53 +506,95 @@ fn real_main() -> anyhow::Result<()> {
                         .with_context(|| format!("parse TOML config {}", config.display()))?
                 };
 
-            // Resolve baseline path
-            let baseline_path = resolve_baseline_path(&baseline, &bench, &config_file);
-            let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
-                if path.exists() {
-                    Some(read_json(path)?)
-                } else {
-                    None
+            // Determine which benches to run
+            let bench_names: Vec<String> = if all {
+                if config_file.benches.is_empty() {
+                    anyhow::bail!("no benchmarks defined in config file");
                 }
+                config_file.benches.iter().map(|b| b.name.clone()).collect()
+            } else if let Some(ref name) = bench {
+                vec![name.clone()]
             } else {
-                None
+                anyhow::bail!("either --bench or --all must be specified");
             };
 
-            // Create output directory
-            fs::create_dir_all(&out_dir)
-                .with_context(|| format!("create output dir {}", out_dir.display()))?;
+            // Track aggregate exit code: fail (2) > warn-as-fail (3) > pass (0)
+            let mut max_exit_code: i32 = 0;
+            let mut all_warnings: Vec<String> = Vec::new();
 
-            // Execute check
-            let runner = StdProcessRunner;
-            let host_probe = StdHostProbe;
-            let clock = SystemClock;
-            let usecase = CheckUseCase::new(runner, host_probe, clock);
+            for bench_name in &bench_names {
+                // For --all mode, use per-bench subdirectories
+                let bench_out_dir = if all {
+                    out_dir.join(bench_name)
+                } else {
+                    out_dir.clone()
+                };
 
-            let outcome = usecase.execute(CheckRequest {
-                config: config_file,
-                bench_name: bench,
-                out_dir: out_dir.clone(),
-                baseline: baseline_receipt,
-                baseline_path,
-                require_baseline,
-                fail_on_warn,
-                tool: tool_info(),
-                env,
-                output_cap_bytes,
-                allow_nonzero,
-            })?;
+                // Resolve baseline path (--baseline flag only valid for single bench mode)
+                let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
+                let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
+                    if path.exists() {
+                        Some(read_json(path)?)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
 
-            // Write artifacts
-            write_check_artifacts(&outcome, pretty)?;
+                // Create output directory
+                fs::create_dir_all(&bench_out_dir)
+                    .with_context(|| format!("create output dir {}", bench_out_dir.display()))?;
 
-            // Print warnings
-            for warning in &outcome.warnings {
+                // Execute check
+                let runner = StdProcessRunner;
+                let host_probe = StdHostProbe;
+                let clock = SystemClock;
+                let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+                let outcome = usecase.execute(CheckRequest {
+                    config: config_file.clone(),
+                    bench_name: bench_name.clone(),
+                    out_dir: bench_out_dir.clone(),
+                    baseline: baseline_receipt,
+                    baseline_path,
+                    require_baseline,
+                    fail_on_warn,
+                    tool: tool_info(),
+                    env: env.clone(),
+                    output_cap_bytes,
+                    allow_nonzero,
+                })?;
+
+                // Write artifacts
+                write_check_artifacts(&outcome, pretty)?;
+
+                // Collect warnings (prefix with bench name in --all mode)
+                for warning in &outcome.warnings {
+                    if all {
+                        all_warnings.push(format!("[{}] {}", bench_name, warning));
+                    } else {
+                        all_warnings.push(warning.clone());
+                    }
+                }
+
+                // Update aggregate exit code (worst wins)
+                // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
+                if outcome.exit_code == 2 {
+                    max_exit_code = 2;
+                } else if outcome.exit_code == 3 && max_exit_code != 2 {
+                    max_exit_code = 3;
+                }
+            }
+
+            // Print all warnings
+            for warning in &all_warnings {
                 eprintln!("warning: {}", warning);
             }
 
-            // Exit with appropriate code
-            if outcome.exit_code != 0 {
-                std::process::exit(outcome.exit_code);
+            // Exit with aggregate code
+            if max_exit_code != 0 {
+                std::process::exit(max_exit_code);
             }
 
             Ok(())

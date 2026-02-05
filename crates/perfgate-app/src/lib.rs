@@ -5,11 +5,13 @@
 
 mod check;
 mod export;
+mod paired;
 mod promote;
 mod report;
 
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
 pub use export::{ExportFormat, ExportUseCase};
+pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
 

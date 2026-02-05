@@ -2,6 +2,10 @@
 //!
 //! This crate is intentionally I/O-free: it does math and policy.
 
+mod paired;
+
+pub use paired::{compare_paired_stats, compute_paired_stats, PairedComparison};
+
 use perfgate_types::{
     Budget, CompareReceipt, Delta, Direction, F64Summary, Metric, MetricStatus, Stats, U64Summary,
     Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BUDGET, FINDING_CODE_METRIC_FAIL,

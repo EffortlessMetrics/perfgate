@@ -7,6 +7,13 @@
 //!
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
+mod paired;
+
+pub use paired::{
+    PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample, PairedSampleHalf,
+    PairedStats, PAIRED_SCHEMA_V1,
+};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
