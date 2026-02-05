@@ -2258,6 +2258,430 @@ mod tests {
         );
     }
 
+    // =========================================================================
+    // CPU Time (cpu_ms) Tests
+    // =========================================================================
+
+    /// Test that compute_stats correctly computes cpu_ms summary from samples.
+    #[test]
+    fn compute_stats_computes_cpu_ms_summary() {
+        let samples = vec![
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(50),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 110,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(60),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 105,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(55),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        let stats = compute_stats(&samples, None).unwrap();
+
+        // cpu_ms should be present with correct statistics
+        assert!(stats.cpu_ms.is_some(), "cpu_ms stats should be present");
+        let cpu_stats = stats.cpu_ms.unwrap();
+        assert_eq!(cpu_stats.min, 50, "cpu_ms min should be 50");
+        assert_eq!(cpu_stats.max, 60, "cpu_ms max should be 60");
+        assert_eq!(cpu_stats.median, 55, "cpu_ms median should be 55");
+    }
+
+    /// Test that compute_stats returns None for cpu_ms when samples don't have it.
+    #[test]
+    fn compute_stats_cpu_ms_none_when_samples_missing_cpu() {
+        let samples = vec![
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                max_rss_kb: Some(1024),
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 110,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                max_rss_kb: Some(1028),
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        let stats = compute_stats(&samples, None).unwrap();
+
+        // cpu_ms should be None since samples don't have cpu_ms
+        assert!(
+            stats.cpu_ms.is_none(),
+            "cpu_ms stats should be None when samples lack cpu_ms"
+        );
+        // max_rss_kb should still be computed
+        assert!(
+            stats.max_rss_kb.is_some(),
+            "max_rss_kb should still be present"
+        );
+    }
+
+    /// Test that compute_stats excludes warmup samples from cpu_ms calculation.
+    #[test]
+    fn compute_stats_cpu_ms_excludes_warmup() {
+        let samples = vec![
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: true, // warmup - should be excluded
+                timed_out: false,
+                cpu_ms: Some(1000), // High value that would skew results
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(50),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(60),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        let stats = compute_stats(&samples, None).unwrap();
+
+        let cpu_stats = stats.cpu_ms.expect("cpu_ms should be present");
+        // Warmup sample with cpu_ms=1000 should be excluded
+        assert_eq!(
+            cpu_stats.min, 50,
+            "cpu_ms min should be 50 (excluding warmup)"
+        );
+        assert_eq!(
+            cpu_stats.max, 60,
+            "cpu_ms max should be 60 (excluding warmup)"
+        );
+    }
+
+    /// Test that compare_stats correctly compares cpu_ms values.
+    #[test]
+    fn compare_stats_cpu_ms_regression_detection() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        // Current has 100% increase in cpu_ms (50 -> 100)
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20, // 20% threshold
+                warn_threshold: 0.10,
+                direction: Direction::Lower, // Lower cpu_ms is better
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        // Should have cpu_ms delta
+        let cpu_delta = comparison
+            .deltas
+            .get(&Metric::CpuMs)
+            .expect("cpu_ms delta should exist");
+
+        // 100% regression should fail the 20% threshold
+        assert_eq!(
+            cpu_delta.status,
+            MetricStatus::Fail,
+            "100% cpu_ms regression should fail 20% threshold"
+        );
+        assert!(
+            (cpu_delta.regression - 1.0).abs() < 0.001,
+            "regression should be ~1.0 (100%)"
+        );
+        assert_eq!(cpu_delta.baseline, 50.0, "baseline should be 50");
+        assert_eq!(cpu_delta.current, 100.0, "current should be 100");
+    }
+
+    /// Test that compare_stats passes when cpu_ms improvement (decrease).
+    #[test]
+    fn compare_stats_cpu_ms_improvement_passes() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        // Current has 50% decrease in cpu_ms (100 -> 50) - improvement!
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        let cpu_delta = comparison
+            .deltas
+            .get(&Metric::CpuMs)
+            .expect("cpu_ms delta should exist");
+
+        // Improvement should pass (regression = 0 since current < baseline for Lower direction)
+        assert_eq!(
+            cpu_delta.status,
+            MetricStatus::Pass,
+            "cpu_ms improvement should pass"
+        );
+        assert_eq!(
+            cpu_delta.regression, 0.0,
+            "regression should be 0 for improvement"
+        );
+    }
+
+    /// Test that compare_stats skips cpu_ms when only baseline has it.
+    #[test]
+    fn compare_stats_skips_cpu_ms_when_only_baseline_has_it() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: None, // No cpu_ms in current
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        // cpu_ms delta should NOT exist (skipped because current lacks it)
+        assert!(
+            comparison.deltas.get(&Metric::CpuMs).is_none(),
+            "cpu_ms delta should be skipped when current lacks cpu_ms"
+        );
+    }
+
+    /// Test that compare_stats skips cpu_ms when only current has it.
+    #[test]
+    fn compare_stats_skips_cpu_ms_when_only_current_has_it() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: None, // No cpu_ms in baseline
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        // cpu_ms delta should NOT exist (skipped because baseline lacks it)
+        assert!(
+            comparison.deltas.get(&Metric::CpuMs).is_none(),
+            "cpu_ms delta should be skipped when baseline lacks cpu_ms"
+        );
+    }
+
+    /// Test that compare_stats warns on cpu_ms when within warn threshold.
+    #[test]
+    fn compare_stats_cpu_ms_warns_within_threshold() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        // Current has 15% increase in cpu_ms (100 -> 115)
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 115,
+                min: 115,
+                max: 115,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,      // 20% fail threshold
+                warn_threshold: 0.10, // 10% warn threshold
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        let cpu_delta = comparison
+            .deltas
+            .get(&Metric::CpuMs)
+            .expect("cpu_ms delta should exist");
+
+        // 15% regression should warn (between 10% and 20%)
+        assert_eq!(
+            cpu_delta.status,
+            MetricStatus::Warn,
+            "15% cpu_ms regression should warn (10% < 15% < 20%)"
+        );
+    }
+
     #[test]
     fn compare_lower_is_worse_regression_is_positive_pct() {
         let baseline = Stats {

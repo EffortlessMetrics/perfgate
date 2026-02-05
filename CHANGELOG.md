@@ -7,17 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-05
+
 ### Added
 
-- `perfgate check` - Config-driven one-command workflow that runs bench, compares to baseline, and generates all artifacts
-- `perfgate report` - Generate perfgate.report.v1 envelope from compare receipt for cockpit integration
-- `perfgate promote` - Copy/normalize a run receipt to become a new baseline
-- `perfgate export` - Export run receipt data to CSV or JSONL format
-- `perfgate.report.v1` schema for cockpit-compatible report envelopes
-- `perfgate.config.v1` schema for TOML configuration files
-- Canonical artifact layout: `artifacts/perfgate/{run.json, compare.json, report.json, comment.md}`
-- `--require-baseline` flag for check command to fail when baseline is missing
-- `--out-dir` option for check command to specify artifact output directory
+- **New CLI commands**
+  - `perfgate check` - Config-driven one-command workflow that runs bench, compares to baseline, and generates all artifacts
+  - `perfgate report` - Generate perfgate.report.v1 envelope from compare receipt for cockpit integration
+  - `perfgate promote` - Copy/normalize a run receipt to become a new baseline
+  - `perfgate export` - Export run receipt data to CSV or JSONL format
+
+- **Paired benchmarking mode** - Run baseline and current benchmarks in interleaved pairs for more accurate comparisons on noisy systems
+
+- **CPU time tracking** - Collect user and system CPU time metrics on Unix platforms via `rusage`
+
+- **Host mismatch detection** - Warn when baseline and current runs were executed on different hosts
+
+- **New schemas**
+  - `perfgate.report.v1` schema for cockpit-compatible report envelopes
+  - `perfgate.config.v1` schema for TOML configuration files
+  - `sensor.report.v1` schema for sensor integration
+
+- **Configuration options**
+  - Canonical artifact layout: `artifacts/perfgate/{run.json, compare.json, report.json, comment.md}`
+  - `--require-baseline` flag for check command to fail when baseline is missing
+  - `--out-dir` option for check command to specify artifact output directory
+  - `--paired` flag for paired benchmarking mode
+  - `--cockpit` flag for cockpit-compatible output format
 
 ### Changed
 
@@ -83,5 +99,6 @@ Initial release of perfgate, a CLI tool for performance budgets and baseline dif
 - `max_rss_kb` collection only works on Unix via `rusage`
 - BDD tests skip `@unix` tagged scenarios on Windows
 
-[Unreleased]: https://github.com/EffortlessMetrics/perfgate/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/EffortlessMetrics/perfgate/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/EffortlessMetrics/perfgate/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/EffortlessMetrics/perfgate/releases/tag/v0.1.0

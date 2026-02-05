@@ -1182,6 +1182,9 @@ fn build_budgets(
     // Determine candidate metrics: those present in both baseline+current.
     let mut candidates = Vec::new();
     candidates.push(Metric::WallMs);
+    if baseline.stats.cpu_ms.is_some() && current.stats.cpu_ms.is_some() {
+        candidates.push(Metric::CpuMs);
+    }
     if baseline.stats.max_rss_kb.is_some() && current.stats.max_rss_kb.is_some() {
         candidates.push(Metric::MaxRssKb);
     }

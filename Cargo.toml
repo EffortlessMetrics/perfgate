@@ -13,7 +13,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/EffortlessMetrics/perfgate"
@@ -67,7 +67,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 libc = "0.2"
 
 # Internal crates
-perfgate-types = { path = "crates/perfgate-types", version = "0.1.0" }
-perfgate-domain = { path = "crates/perfgate-domain", version = "0.1.0" }
-perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.1.0" }
-perfgate-app = { path = "crates/perfgate-app", version = "0.1.0" }
+perfgate-types = { path = "crates/perfgate-types", version = "0.2.0" }
+perfgate-domain = { path = "crates/perfgate-domain", version = "0.2.0" }
+perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.2.0" }
+perfgate-app = { path = "crates/perfgate-app", version = "0.2.0" }

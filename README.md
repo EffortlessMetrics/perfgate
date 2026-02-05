@@ -34,6 +34,7 @@ cargo run -p perfgate -- --help
 | `promote` | Promote a run receipt to become the new baseline |
 | `export` | Export data to CSV/JSONL for trend analysis |
 | `check` | Config-driven one-command workflow |
+| `paired` | Paired benchmarking with interleaved baseline/current runs |
 
 ## Exit Codes
 
@@ -147,6 +148,26 @@ Run the entire workflow from a single config file:
 perfgate check --config perfgate.toml --bench pst_extract
 ```
 
+#### Cockpit Mode
+
+The `check` command supports a `--mode cockpit` flag for integration with monitoring dashboards. In cockpit mode, the output follows the `sensor.report.v1` schema and includes additional artifacts:
+
+```bash
+perfgate check --config perfgate.toml --bench pst_extract --mode cockpit
+```
+
+Cockpit mode artifact layout:
+
+```
+artifacts/perfgate/
+├── run.json        # perfgate.run.v1
+├── compare.json    # perfgate.compare.v1
+├── report.json     # sensor.report.v1 (cockpit ingestion format)
+├── comment.md      # PR comment markdown
+└── extras/         # Additional cockpit artifacts
+    └── ...
+```
+
 Example `perfgate.toml`:
 
 ```toml
@@ -162,6 +183,29 @@ name = "pst_extract"
 command = ["sh", "-c", "sleep 0.02"]
 work = 1000
 ```
+
+### 9) Paired benchmarking mode
+
+Paired benchmarking runs baseline and current commands in interleaved fashion to reduce noise from environmental variations. This is especially useful in noisy CI environments where system load can fluctuate.
+
+```bash
+perfgate paired \
+  --baseline "sleep 0.01" \
+  --current "sleep 0.02" \
+  --samples 10 \
+  --threshold 0.20 \
+  --out artifacts/perfgate/compare.json
+```
+
+How it works:
+1. Runs baseline and current commands alternately (B, C, B, C, ...)
+2. Each pair is measured back-to-back to minimize environmental variance
+3. Results are compared using the same statistical methods as `compare`
+
+When to use paired mode:
+- Noisy CI runners with variable system load
+- When you need high-confidence measurements
+- Comparing two different implementations directly
 
 ## Baseline Workflow
 
@@ -222,6 +266,33 @@ Workspace structure:
 - Uses wall-clock time (median) for gating.
 - Supports optional `work_units` to compute `throughput_per_s`.
 - On Unix, attempts to collect `ru_maxrss` via `wait4()`.
+
+### CPU Time Tracking (Unix only)
+
+On Unix platforms, perfgate collects CPU time metrics via `rusage`:
+- `user_time_ms`: Time spent in user mode
+- `system_time_ms`: Time spent in kernel mode
+
+These metrics are included in the run receipt when available and can help identify whether performance changes are due to CPU-bound work or I/O wait.
+
+### Host Mismatch Detection
+
+When comparing runs from different hosts, perfgate can detect and warn about potential inconsistencies. Use the `--host-mismatch` flag to control behavior:
+
+```bash
+perfgate compare \
+  --baseline baselines/bench.json \
+  --current run.json \
+  --host-mismatch warn \
+  --out compare.json
+```
+
+Options for `--host-mismatch`:
+- `ignore`: Silently allow comparisons across different hosts (default)
+- `warn`: Emit a warning but continue with comparison
+- `fail`: Treat host mismatch as an error and exit with code 1
+
+This is useful when baselines are generated on dedicated benchmark machines but CI runs on different hardware.
 
 ## Testing
 
