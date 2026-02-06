@@ -10,7 +10,8 @@ use perfgate_app::{
 use perfgate_domain::DomainError;
 use perfgate_types::{
     Budget, CompareReceipt, CompareRef, ConfigFile, HostMismatchPolicy, Metric, RunReceipt,
-    ToolInfo, BASELINE_REASON_NO_BASELINE, ERROR_KIND_EXEC, ERROR_KIND_IO, ERROR_KIND_PARSE,
+    ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
+    ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
     STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS,
 };
 use std::collections::BTreeMap;
@@ -1039,6 +1040,19 @@ fn run_check_cockpit_inner(
                     finding_data = Some(serde_json::json!({ "bench_name": bench_name }));
                 }
             }
+            let metric_name = f
+                .data
+                .as_ref()
+                .map(|d| d.metric_name.as_str())
+                .unwrap_or("");
+            let fingerprint = if multi_bench {
+                Some(format!(
+                    "{}:{}:{}:{}",
+                    bench_name, f.check_id, f.code, metric_name
+                ))
+            } else {
+                Some(format!("{}:{}:{}", f.check_id, f.code, metric_name))
+            };
             aggregated_findings.push(SensorFinding {
                 check_id: f.check_id.clone(),
                 code: f.code.clone(),
@@ -1048,6 +1062,7 @@ fn run_check_cockpit_inner(
                 } else {
                     f.message.clone()
                 },
+                fingerprint,
                 data: finding_data,
             });
         }
@@ -1115,6 +1130,33 @@ fn run_check_cockpit_inner(
     }
 
     builder = builder.artifact("comment.md".to_string(), "markdown".to_string());
+
+    // Apply truncation to aggregated findings
+    let limit = MAX_FINDINGS_DEFAULT;
+    if aggregated_findings.len() > limit {
+        let total = aggregated_findings.len();
+        let shown = limit.saturating_sub(1);
+        aggregated_findings.truncate(shown);
+        aggregated_findings.push(SensorFinding {
+            check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
+            code: FINDING_CODE_TRUNCATED.to_string(),
+            severity: SensorSeverity::Info,
+            message: format!(
+                "Showing {} of {} findings; {} omitted",
+                shown,
+                total,
+                total - shown
+            ),
+            fingerprint: Some(format!(
+                "{}:{}",
+                CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED
+            )),
+            data: Some(serde_json::json!({
+                "total_findings": total,
+                "shown_findings": shown,
+            })),
+        });
+    }
 
     // Build aggregated data section
     let data = serde_json::json!({

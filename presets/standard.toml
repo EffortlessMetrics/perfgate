@@ -1,0 +1,7 @@
+# Standard preset: balanced accuracy and speed.
+# Suitable for regular PR checks.
+
+[defaults]
+repeat = 5
+warmup = 1
+threshold = 0.20

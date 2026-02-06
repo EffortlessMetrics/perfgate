@@ -1,0 +1,47 @@
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-01T00:00:00Z",
+    "ended_at": "2024-01-01T00:00:01Z",
+    "duration_ms": 1000,
+    "capabilities": {
+      "baseline": {
+        "status": "unavailable"
+      }
+    }
+  },
+  "verdict": {
+    "status": "fail",
+    "counts": {
+      "info": 0,
+      "warn": 0,
+      "error": 1
+    },
+    "reasons": ["tool_error"]
+  },
+  "findings": [
+    {
+      "check_id": "tool.runtime",
+      "code": "runtime_error",
+      "severity": "error",
+      "message": "config file not found: perfgate.toml",
+      "fingerprint": "tool.runtime:runtime_error:config_parse",
+      "data": {
+        "stage": "config_parse",
+        "error_kind": "parse_error"
+      }
+    }
+  ],
+  "data": {
+    "summary": {
+      "pass_count": 0,
+      "warn_count": 0,
+      "fail_count": 1,
+      "total_count": 1
+    }
+  }
+}

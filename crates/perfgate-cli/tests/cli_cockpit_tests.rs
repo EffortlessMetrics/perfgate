@@ -538,3 +538,96 @@ fn test_default_mode_is_standard() {
         "default mode should produce perfgate.report.v1"
     );
 }
+
+/// Test cockpit mode with missing bench produces error report
+#[test]
+fn test_cockpit_mode_missing_bench_produces_error_report() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_config_file(temp_dir.path(), "real-bench");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("nonexistent-bench") // Not in config
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+
+    // Should exit 0 in cockpit mode (error recorded in report)
+    assert!(
+        output.status.success(),
+        "cockpit mode should exit 0 on missing bench: stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Report should exist with error
+    let report_path = out_dir.join("report.json");
+    assert!(report_path.exists(), "report.json should exist");
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("read report"))
+            .expect("parse report");
+
+    assert_eq!(report["schema"], "sensor.report.v1");
+    assert_eq!(report["verdict"]["status"], "fail");
+}
+
+/// Test cockpit mode error report validates against schema
+#[test]
+fn test_cockpit_mode_error_report_validates_schema() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = temp_dir.path().join("broken.toml");
+    fs::write(&config_path, "not valid toml {{{").expect("write broken config");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("test-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(output.status.success());
+
+    // Load vendored schema
+    let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/schemas/sensor.report.v1.schema.json");
+    let schema_content = fs::read_to_string(&schema_path).expect("read schema");
+    let schema_value: Value = serde_json::from_str(&schema_content).expect("parse schema");
+    let validator = jsonschema::validator_for(&schema_value).expect("compile schema");
+
+    let report_path = out_dir.join("report.json");
+    let content = fs::read_to_string(&report_path).expect("read report");
+    let instance: Value = serde_json::from_str(&content).expect("parse report");
+
+    let errors: Vec<_> = validator.iter_errors(&instance).collect();
+    assert!(
+        errors.is_empty(),
+        "error report failed schema validation:\n{}",
+        errors
+            .iter()
+            .map(|e| format!("  - {}", e))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    // Verify fingerprint is present on error findings
+    let findings = instance["findings"].as_array().expect("findings");
+    for finding in findings {
+        assert!(
+            finding.get("fingerprint").is_some(),
+            "error finding should have fingerprint"
+        );
+    }
+}

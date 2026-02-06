@@ -57,8 +57,19 @@ enum Command {
         out_dir: PathBuf,
     },
 
-    /// Run the "usual" repo checks (fmt, clippy, test, schema).
+    /// Run the "usual" repo checks (fmt, clippy, test, schema, conform).
     Ci,
+
+    /// Validate JSON fixtures against the vendored sensor.report.v1 schema.
+    Conform {
+        /// Directory of fixtures to validate (default: golden fixtures)
+        #[arg(long)]
+        fixtures: Option<PathBuf>,
+
+        /// Validate a single file
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
 
     /// Run mutation testing via cargo-mutants (must be installed).
     Mutants {
@@ -82,6 +93,7 @@ fn main() -> anyhow::Result<()> {
     match cli.cmd {
         Command::Schema { out_dir } => cmd_schema(&out_dir),
         Command::Ci => cmd_ci(),
+        Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::Mutants {
             crate_name,
             summary,
@@ -105,6 +117,88 @@ fn cmd_ci() -> anyhow::Result<()> {
     )?;
     run("cargo", ["test", "--all"])?;
     run("cargo", ["run", "-p", "xtask", "--", "schema"])?;
+    run("cargo", ["run", "-p", "xtask", "--", "conform"])?;
+    Ok(())
+}
+
+fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> anyhow::Result<()> {
+    // Load vendored schema
+    let schema_path = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
+    let schema_content = fs::read_to_string(&schema_path)
+        .with_context(|| format!("read {}", schema_path.display()))?;
+    let schema_value: serde_json::Value =
+        serde_json::from_str(&schema_content).context("parse vendored schema")?;
+    let validator = jsonschema::validator_for(&schema_value)
+        .map_err(|e| anyhow::anyhow!("compile schema: {}", e))?;
+
+    let mut files_to_validate: Vec<PathBuf> = Vec::new();
+
+    if let Some(path) = single_file {
+        files_to_validate.push(path);
+    } else {
+        // Default: golden fixtures + contracts/fixtures
+        let default_dirs = [
+            fixtures_dir
+                .unwrap_or_else(|| PathBuf::from("crates/perfgate-cli/tests/fixtures/golden")),
+            PathBuf::from("contracts/fixtures"),
+        ];
+
+        for dir in &default_dirs {
+            if dir.is_dir() {
+                for entry in
+                    fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))?
+                {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "json").unwrap_or(false)
+                        && path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|n| n.starts_with("sensor_report_"))
+                            .unwrap_or(false)
+                    {
+                        files_to_validate.push(path);
+                    }
+                }
+            }
+        }
+    }
+
+    if files_to_validate.is_empty() {
+        anyhow::bail!("no fixture files found to validate");
+    }
+
+    files_to_validate.sort();
+
+    let mut errors = 0u32;
+    for path in &files_to_validate {
+        let content =
+            fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+        let instance: serde_json::Value =
+            serde_json::from_str(&content).with_context(|| format!("parse {}", path.display()))?;
+
+        let validation_errors: Vec<_> = validator.iter_errors(&instance).collect();
+        if validation_errors.is_empty() {
+            println!("  OK  {}", path.display());
+        } else {
+            errors += 1;
+            println!("  FAIL  {}", path.display());
+            for err in &validation_errors {
+                println!("        - {}", err);
+            }
+        }
+    }
+
+    println!(
+        "\nValidated {} files, {} errors",
+        files_to_validate.len(),
+        errors
+    );
+
+    if errors > 0 {
+        anyhow::bail!("{} fixture(s) failed schema validation", errors);
+    }
+
     Ok(())
 }
 

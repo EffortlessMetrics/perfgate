@@ -1,0 +1,7 @@
+# Tier-1 fast preset: quick validation with wide threshold.
+# Suitable for draft PRs and fast feedback loops.
+
+[defaults]
+repeat = 3
+warmup = 1
+threshold = 0.30

@@ -2,13 +2,121 @@
 //!
 //! This module provides functionality for wrapping a PerfgateReport into
 //! a `sensor.report.v1` envelope suitable for cockpit integration.
+//!
+//! Also provides `run_sensor_check()`, a library-linkable convenience function
+//! so the cockpit binary can `use perfgate_app::run_sensor_check`.
 
+use crate::{CheckRequest, CheckUseCase, Clock};
+use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
-    Capability, CapabilityStatus, PerfgateReport, SensorArtifact, SensorCapabilities,
-    SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict, SensorVerdictCounts,
-    SensorVerdictStatus, Severity, ToolInfo, VerdictStatus, CHECK_ID_TOOL_RUNTIME,
-    FINDING_CODE_RUNTIME_ERROR, SENSOR_REPORT_SCHEMA_V1, VERDICT_REASON_TOOL_ERROR,
+    Capability, CapabilityStatus, ConfigFile, HostMismatchPolicy, PerfgateReport, RunReceipt,
+    SensorArtifact, SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity,
+    SensorVerdict, SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo, VerdictStatus,
+    BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
+    FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
+    SENSOR_REPORT_SCHEMA_V1, STAGE_RUN_COMMAND, VERDICT_REASON_TOOL_ERROR,
 };
+
+/// Options for `run_sensor_check`.
+#[derive(Debug, Clone)]
+pub struct SensorCheckOptions {
+    pub require_baseline: bool,
+    pub fail_on_warn: bool,
+    pub env: Vec<(String, String)>,
+    pub output_cap_bytes: usize,
+    pub allow_nonzero: bool,
+    pub host_mismatch_policy: HostMismatchPolicy,
+    pub max_findings: Option<usize>,
+}
+
+impl Default for SensorCheckOptions {
+    fn default() -> Self {
+        Self {
+            require_baseline: false,
+            fail_on_warn: false,
+            env: Vec::new(),
+            output_cap_bytes: 8192,
+            allow_nonzero: false,
+            host_mismatch_policy: HostMismatchPolicy::Warn,
+            max_findings: Some(MAX_FINDINGS_DEFAULT),
+        }
+    }
+}
+
+/// Run a sensor check and return a `SensorReport` directly.
+///
+/// This is the library convenience API for cockpit linking. It delegates to
+/// `CheckUseCase::execute()`, wraps the result in a `SensorReportBuilder`,
+/// and catches errors to produce an error report.
+///
+/// Returns `SensorReport` directly — no I/O, no file writing.
+pub fn run_sensor_check<R, H, C>(
+    runner: &R,
+    host_probe: &H,
+    clock: &C,
+    config: &ConfigFile,
+    bench_name: &str,
+    baseline: Option<&RunReceipt>,
+    tool: ToolInfo,
+    options: SensorCheckOptions,
+) -> SensorReport
+where
+    R: ProcessRunner + Clone,
+    H: HostProbe + Clone,
+    C: Clock + Clone,
+{
+    let started_at = clock.now_rfc3339();
+    let start_instant = std::time::Instant::now();
+
+    let baseline_available = baseline.is_some();
+
+    let result = CheckUseCase::new(runner.clone(), host_probe.clone(), clock.clone()).execute(
+        CheckRequest {
+            config: config.clone(),
+            bench_name: bench_name.to_string(),
+            out_dir: std::path::PathBuf::from("."), // artifacts not written
+            baseline: baseline.cloned(),
+            baseline_path: None,
+            require_baseline: options.require_baseline,
+            fail_on_warn: options.fail_on_warn,
+            tool: tool.clone(),
+            env: options.env.clone(),
+            output_cap_bytes: options.output_cap_bytes,
+            allow_nonzero: options.allow_nonzero,
+            host_mismatch_policy: options.host_mismatch_policy,
+        },
+    );
+
+    let ended_at = clock.now_rfc3339();
+    let duration_ms = start_instant.elapsed().as_millis() as u64;
+
+    let baseline_reason = if !baseline_available {
+        Some(BASELINE_REASON_NO_BASELINE.to_string())
+    } else {
+        None
+    };
+
+    match result {
+        Ok(outcome) => {
+            let mut builder = SensorReportBuilder::new(tool, started_at)
+                .ended_at(ended_at, duration_ms)
+                .baseline(baseline_available, baseline_reason);
+
+            if let Some(limit) = options.max_findings {
+                builder = builder.max_findings(limit);
+            }
+
+            builder.build(&outcome.report)
+        }
+        Err(err) => {
+            let builder = SensorReportBuilder::new(tool, started_at)
+                .ended_at(ended_at, duration_ms)
+                .baseline(baseline_available, baseline_reason);
+
+            builder.build_error(&format!("{:#}", err), STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+        }
+    }
+}
 
 /// Builder for constructing a SensorReport from a PerfgateReport.
 pub struct SensorReportBuilder {
@@ -19,6 +127,7 @@ pub struct SensorReportBuilder {
     baseline_available: bool,
     baseline_reason: Option<String>,
     artifacts: Vec<SensorArtifact>,
+    max_findings: Option<usize>,
 }
 
 impl SensorReportBuilder {
@@ -32,6 +141,7 @@ impl SensorReportBuilder {
             baseline_available: false,
             baseline_reason: None,
             artifacts: Vec::new(),
+            max_findings: None,
         }
     }
 
@@ -55,6 +165,12 @@ impl SensorReportBuilder {
             path,
             artifact_type,
         });
+        self
+    }
+
+    /// Set the maximum number of findings before truncation.
+    pub fn max_findings(mut self, limit: usize) -> Self {
+        self.max_findings = Some(limit);
         self
     }
 
@@ -86,20 +202,56 @@ impl SensorReportBuilder {
         };
 
         // Map findings: Severity::Fail -> SensorSeverity::Error
-        let findings: Vec<SensorFinding> = report
+        let mut findings: Vec<SensorFinding> = report
             .findings
             .iter()
-            .map(|f| SensorFinding {
-                check_id: f.check_id.clone(),
-                code: f.code.clone(),
-                severity: match f.severity {
-                    Severity::Warn => SensorSeverity::Warn,
-                    Severity::Fail => SensorSeverity::Error,
-                },
-                message: f.message.clone(),
-                data: f.data.as_ref().and_then(|d| serde_json::to_value(d).ok()),
+            .map(|f| {
+                let metric_name = f
+                    .data
+                    .as_ref()
+                    .map(|d| d.metric_name.as_str())
+                    .unwrap_or("");
+                SensorFinding {
+                    check_id: f.check_id.clone(),
+                    code: f.code.clone(),
+                    severity: match f.severity {
+                        Severity::Warn => SensorSeverity::Warn,
+                        Severity::Fail => SensorSeverity::Error,
+                    },
+                    message: f.message.clone(),
+                    fingerprint: Some(format!("{}:{}:{}", f.check_id, f.code, metric_name)),
+                    data: f.data.as_ref().and_then(|d| serde_json::to_value(d).ok()),
+                }
             })
             .collect();
+
+        // Apply truncation if configured
+        if let Some(limit) = self.max_findings {
+            if findings.len() > limit {
+                let total = findings.len();
+                let shown = limit.saturating_sub(1);
+                findings.truncate(shown);
+                findings.push(SensorFinding {
+                    check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
+                    code: FINDING_CODE_TRUNCATED.to_string(),
+                    severity: SensorSeverity::Info,
+                    message: format!(
+                        "Showing {} of {} findings; {} omitted",
+                        shown,
+                        total,
+                        total - shown
+                    ),
+                    fingerprint: Some(format!(
+                        "{}:{}",
+                        CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED
+                    )),
+                    data: Some(serde_json::json!({
+                        "total_findings": total,
+                        "shown_findings": shown,
+                    })),
+                });
+            }
+        }
 
         // Build capabilities
         let capabilities = SensorCapabilities {
@@ -172,6 +324,10 @@ impl SensorReportBuilder {
             code: FINDING_CODE_RUNTIME_ERROR.to_string(),
             severity: SensorSeverity::Error,
             message: error_message.to_string(),
+            fingerprint: Some(format!(
+                "{}:{}:{}",
+                CHECK_ID_TOOL_RUNTIME, FINDING_CODE_RUNTIME_ERROR, stage
+            )),
             data: Some(serde_json::json!({
                 "stage": stage,
                 "error_kind": error_kind,
@@ -442,6 +598,245 @@ mod tests {
         let data = sensor_report.findings[0].data.as_ref().unwrap();
         assert_eq!(data["stage"], "config_parse");
         assert_eq!(data["error_kind"], "parse_error");
+    }
+
+    #[test]
+    fn test_fingerprint_format_for_metric_finding() {
+        let report = make_fail_report();
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None);
+
+        let sensor_report = builder.build(&report);
+
+        assert_eq!(sensor_report.findings.len(), 1);
+        // No FindingData on this report finding, so metric_name is ""
+        assert_eq!(
+            sensor_report.findings[0].fingerprint,
+            Some("perf.budget:metric_fail:".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fingerprint_format_for_metric_finding_with_data() {
+        use perfgate_types::{Direction, FindingData};
+
+        let report = PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 1,
+                },
+                reasons: vec![],
+            },
+            compare: None,
+            findings: vec![ReportFinding {
+                check_id: "perf.budget".to_string(),
+                code: FINDING_CODE_METRIC_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: "wall_ms regression".to_string(),
+                data: Some(FindingData {
+                    metric_name: "wall_ms".to_string(),
+                    baseline: 100.0,
+                    current: 150.0,
+                    regression_pct: 50.0,
+                    threshold: 0.2,
+                    direction: Direction::Lower,
+                }),
+            }],
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 1,
+                total_count: 1,
+            },
+        };
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None);
+
+        let sensor_report = builder.build(&report);
+
+        assert_eq!(
+            sensor_report.findings[0].fingerprint,
+            Some("perf.budget:metric_fail:wall_ms".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fingerprint_format_for_error_finding() {
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(false, None);
+
+        let sensor_report = builder.build_error(
+            "config file not found",
+            STAGE_CONFIG_PARSE,
+            ERROR_KIND_PARSE,
+        );
+
+        assert_eq!(
+            sensor_report.findings[0].fingerprint,
+            Some("tool.runtime:runtime_error:config_parse".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fingerprint_absent_when_no_findings() {
+        let report = make_pass_report();
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None);
+
+        let sensor_report = builder.build(&report);
+
+        assert!(sensor_report.findings.is_empty());
+    }
+
+    #[test]
+    fn test_truncation_not_applied_under_limit() {
+        let report = make_fail_report();
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None)
+                .max_findings(100);
+
+        let sensor_report = builder.build(&report);
+
+        // Only 1 finding, well under the limit of 100
+        assert_eq!(sensor_report.findings.len(), 1);
+        assert_ne!(sensor_report.findings[0].check_id, CHECK_ID_TOOL_TRUNCATION);
+    }
+
+    #[test]
+    fn test_truncation_applied_at_limit() {
+        use perfgate_types::FindingData;
+
+        // Build a report with 5 findings
+        let findings: Vec<ReportFinding> = (0..5)
+            .map(|i| ReportFinding {
+                check_id: "perf.budget".to_string(),
+                code: FINDING_CODE_METRIC_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: format!("metric {} regression", i),
+                data: Some(FindingData {
+                    metric_name: format!("metric_{}", i),
+                    baseline: 100.0,
+                    current: 150.0,
+                    regression_pct: 50.0,
+                    threshold: 0.2,
+                    direction: perfgate_types::Direction::Lower,
+                }),
+            })
+            .collect();
+
+        let report = PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 5,
+                },
+                reasons: vec![],
+            },
+            compare: None,
+            findings,
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 5,
+                total_count: 5,
+            },
+        };
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None)
+                .max_findings(3); // Limit to 3
+
+        let sensor_report = builder.build(&report);
+
+        // Should have 3 findings: 2 original + 1 truncation meta-finding
+        assert_eq!(sensor_report.findings.len(), 3);
+
+        // Last finding should be the truncation indicator
+        let last = &sensor_report.findings[2];
+        assert_eq!(last.check_id, CHECK_ID_TOOL_TRUNCATION);
+        assert_eq!(last.code, FINDING_CODE_TRUNCATED);
+        assert_eq!(last.severity, SensorSeverity::Info);
+        assert_eq!(
+            last.fingerprint,
+            Some("tool.truncation:truncated".to_string())
+        );
+
+        // Verify truncation data
+        let data = last.data.as_ref().unwrap();
+        assert_eq!(data["total_findings"], 5);
+        assert_eq!(data["shown_findings"], 2);
+    }
+
+    #[test]
+    fn test_truncation_meta_finding_structure() {
+        use perfgate_types::FindingData;
+
+        // Build a report with 10 findings, limit to 5
+        let findings: Vec<ReportFinding> = (0..10)
+            .map(|i| ReportFinding {
+                check_id: "perf.budget".to_string(),
+                code: FINDING_CODE_METRIC_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: format!("metric {} regression", i),
+                data: Some(FindingData {
+                    metric_name: format!("metric_{}", i),
+                    baseline: 100.0,
+                    current: 150.0,
+                    regression_pct: 50.0,
+                    threshold: 0.2,
+                    direction: perfgate_types::Direction::Lower,
+                }),
+            })
+            .collect();
+
+        let report = PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 10,
+                },
+                reasons: vec![],
+            },
+            compare: None,
+            findings,
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 10,
+                total_count: 10,
+            },
+        };
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None)
+                .max_findings(5);
+
+        let sensor_report = builder.build(&report);
+
+        // 4 original + 1 truncation = 5
+        assert_eq!(sensor_report.findings.len(), 5);
+
+        let meta = &sensor_report.findings[4];
+        assert!(meta.message.contains("Showing 4 of 10"));
+        assert!(meta.message.contains("6 omitted"));
     }
 
     #[test]

@@ -51,6 +51,11 @@ pub const ERROR_KIND_EXEC: &str = "exec_error";
 // Baseline reason tokens.
 pub const BASELINE_REASON_NO_BASELINE: &str = "no_baseline";
 
+// Truncation signaling constants.
+pub const CHECK_ID_TOOL_TRUNCATION: &str = "tool.truncation";
+pub const FINDING_CODE_TRUNCATED: &str = "truncated";
+pub const MAX_FINDINGS_DEFAULT: usize = 100;
+
 // Sensor report schema for cockpit integration
 pub const SENSOR_REPORT_SCHEMA_V1: &str = "sensor.report.v1";
 
@@ -142,6 +147,8 @@ pub struct SensorFinding {
     pub code: String,
     pub severity: SensorSeverity,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
 }

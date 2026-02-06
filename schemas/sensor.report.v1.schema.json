@@ -83,6 +83,7 @@
             "enum": ["info", "warn", "error"]
           },
           "message": { "type": "string" },
+          "fingerprint": { "type": "string" },
           "data": {}
         },
         "additionalProperties": false

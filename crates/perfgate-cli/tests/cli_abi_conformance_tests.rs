@@ -5,6 +5,8 @@
 //! - Data opacity: `data` has no `compare` key
 //! - Error convention: config error → tool.runtime + runtime_error + structured data
 //! - Extras files use versioned names
+//! - Schema validation of golden fixtures against vendored schema
+//! - Determinism of cockpit output
 
 use assert_cmd::Command;
 use serde_json::Value;
@@ -42,6 +44,30 @@ fn create_config(temp_dir: &std::path::Path, bench_names: &[&str]) -> std::path:
 
     fs::write(&config_path, content).expect("Failed to write config");
     config_path
+}
+
+/// Load the vendored schema and compile a validator.
+fn load_vendored_schema_validator() -> jsonschema::Validator {
+    let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/schemas/sensor.report.v1.schema.json");
+    let schema_content = fs::read_to_string(&schema_path).expect("read vendored schema");
+    let schema_value: Value = serde_json::from_str(&schema_content).expect("parse vendored schema");
+    jsonschema::validator_for(&schema_value).expect("compile schema")
+}
+
+/// Validate a JSON value against the vendored schema.
+fn validate_against_schema(validator: &jsonschema::Validator, instance: &Value, name: &str) {
+    let errors: Vec<_> = validator.iter_errors(instance).collect();
+    assert!(
+        errors.is_empty(),
+        "{} failed schema validation:\n{}",
+        name,
+        errors
+            .iter()
+            .map(|e| format!("  - {}", e))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
 }
 
 /// Test that artifacts are sorted by (type, path)
@@ -252,4 +278,225 @@ fn test_baseline_reason_normalized() {
         report["run"]["capabilities"]["baseline"]["reason"], "no_baseline",
         "baseline reason should be normalized 'no_baseline' token"
     );
+}
+
+// --- Schema validation of golden fixtures ---
+
+#[test]
+fn test_golden_pass_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden/sensor_report_pass.json");
+    let content = fs::read_to_string(&fixture_path).expect("read pass fixture");
+    let instance: Value = serde_json::from_str(&content).expect("parse pass fixture");
+    validate_against_schema(&validator, &instance, "sensor_report_pass.json");
+}
+
+#[test]
+fn test_golden_fail_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden/sensor_report_fail.json");
+    let content = fs::read_to_string(&fixture_path).expect("read fail fixture");
+    let instance: Value = serde_json::from_str(&content).expect("parse fail fixture");
+    validate_against_schema(&validator, &instance, "sensor_report_fail.json");
+}
+
+#[test]
+fn test_golden_warn_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden/sensor_report_warn.json");
+    let content = fs::read_to_string(&fixture_path).expect("read warn fixture");
+    let instance: Value = serde_json::from_str(&content).expect("parse warn fixture");
+    validate_against_schema(&validator, &instance, "sensor_report_warn.json");
+}
+
+#[test]
+fn test_golden_no_baseline_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden/sensor_report_no_baseline.json");
+    let content = fs::read_to_string(&fixture_path).expect("read no_baseline fixture");
+    let instance: Value = serde_json::from_str(&content).expect("parse no_baseline fixture");
+    validate_against_schema(&validator, &instance, "sensor_report_no_baseline.json");
+}
+
+#[test]
+fn test_golden_error_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden/sensor_report_error.json");
+    let content = fs::read_to_string(&fixture_path).expect("read error fixture");
+    let instance: Value = serde_json::from_str(&content).expect("parse error fixture");
+    validate_against_schema(&validator, &instance, "sensor_report_error.json");
+}
+
+#[test]
+fn test_golden_multi_bench_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden/sensor_report_multi_bench.json");
+    let content = fs::read_to_string(&fixture_path).expect("read multi_bench fixture");
+    let instance: Value = serde_json::from_str(&content).expect("parse multi_bench fixture");
+    validate_against_schema(&validator, &instance, "sensor_report_multi_bench.json");
+}
+
+/// Test that cockpit mode output validates against vendored schema
+#[test]
+fn test_cockpit_output_validates_against_vendored_schema() {
+    let validator = load_vendored_schema_validator();
+
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_config(temp_dir.path(), &["test-bench"]);
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("test-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(output.status.success());
+
+    let report_path = out_dir.join("report.json");
+    let content = fs::read_to_string(&report_path).expect("read cockpit report");
+    let instance: Value = serde_json::from_str(&content).expect("parse cockpit report");
+    validate_against_schema(&validator, &instance, "cockpit output report.json");
+}
+
+/// Test that error report validates against vendored schema
+#[test]
+fn test_cockpit_error_report_validates_against_schema() {
+    let validator = load_vendored_schema_validator();
+
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = temp_dir.path().join("bad.toml");
+    fs::write(&config_path, "not valid toml {{{").expect("write bad config");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("test-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(output.status.success());
+
+    let report_path = out_dir.join("report.json");
+    let content = fs::read_to_string(&report_path).expect("read error report");
+    let instance: Value = serde_json::from_str(&content).expect("parse error report");
+    validate_against_schema(&validator, &instance, "cockpit error report");
+}
+
+/// Test determinism: run cockpit twice, null out time-varying fields, assert structural identity
+#[test]
+fn test_cockpit_mode_determinism() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let config_path = create_config(temp_dir.path(), &["det-bench"]);
+
+    let mut reports: Vec<Value> = Vec::new();
+
+    for i in 0..2 {
+        let out_dir = temp_dir.path().join(format!("run{}", i));
+
+        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+        cmd.current_dir(temp_dir.path())
+            .arg("check")
+            .arg("--config")
+            .arg(&config_path)
+            .arg("--bench")
+            .arg("det-bench")
+            .arg("--out-dir")
+            .arg(&out_dir)
+            .arg("--mode")
+            .arg("cockpit");
+
+        let output = cmd.output().expect("failed to execute check");
+        assert!(output.status.success());
+
+        let report_path = out_dir.join("report.json");
+        let mut report: Value =
+            serde_json::from_str(&fs::read_to_string(&report_path).expect("read report"))
+                .expect("parse report");
+
+        // Null out time-varying fields
+        report["run"]["started_at"] = Value::Null;
+        report["run"]["ended_at"] = Value::Null;
+        report["run"]["duration_ms"] = Value::Null;
+        report["tool"]["version"] = Value::Null;
+
+        reports.push(report);
+    }
+
+    assert_eq!(
+        reports[0]["schema"], reports[1]["schema"],
+        "schema should be identical"
+    );
+    assert_eq!(
+        reports[0]["verdict"]["status"], reports[1]["verdict"]["status"],
+        "verdict status should be identical"
+    );
+    assert_eq!(
+        reports[0]["artifacts"], reports[1]["artifacts"],
+        "artifacts should be identical"
+    );
+    assert_eq!(
+        reports[0]["findings"].as_array().map(|a| a.len()),
+        reports[1]["findings"].as_array().map(|a| a.len()),
+        "findings count should be identical"
+    );
+}
+
+/// Test that findings have fingerprints in cockpit output
+#[test]
+fn test_cockpit_output_has_fingerprints() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_config(temp_dir.path(), &["fp-bench"]);
+    // No baseline → findings with fingerprints
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("fp-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(output.status.success());
+
+    let report_path = out_dir.join("report.json");
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("read report"))
+            .expect("parse report");
+
+    let findings = report["findings"].as_array().expect("findings array");
+    for finding in findings {
+        assert!(
+            finding.get("fingerprint").is_some(),
+            "finding should have fingerprint: {:?}",
+            finding
+        );
+        let fp = finding["fingerprint"].as_str().unwrap();
+        assert!(!fp.is_empty(), "fingerprint should not be empty");
+    }
 }
