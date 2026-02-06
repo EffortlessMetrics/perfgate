@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
-use perfgate_adapters::{StdHostProbe, StdProcessRunner};
+use perfgate_adapters::{sha256_hex, StdHostProbe, StdProcessRunner};
 use perfgate_app::{
     github_annotations, render_markdown, CheckOutcome, CheckRequest, CheckUseCase, Clock,
     CompareRequest, CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
@@ -13,6 +13,7 @@ use perfgate_types::{
     ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
     ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
     STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS,
+    VERDICT_REASON_TRUNCATED,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -1046,12 +1047,11 @@ fn run_check_cockpit_inner(
                 .map(|d| d.metric_name.as_str())
                 .unwrap_or("");
             let fingerprint = if multi_bench {
-                Some(format!(
-                    "{}:{}:{}:{}",
-                    bench_name, f.check_id, f.code, metric_name
-                ))
+                let preimage = format!("{}:{}:{}:{}", bench_name, f.check_id, f.code, metric_name);
+                Some(sha256_hex(preimage.as_bytes()))
             } else {
-                Some(format!("{}:{}:{}", f.check_id, f.code, metric_name))
+                let preimage = format!("{}:{}:{}", f.check_id, f.code, metric_name);
+                Some(sha256_hex(preimage.as_bytes()))
             };
             aggregated_findings.push(SensorFinding {
                 check_id: f.check_id.clone(),
@@ -1133,10 +1133,12 @@ fn run_check_cockpit_inner(
 
     // Apply truncation to aggregated findings
     let limit = MAX_FINDINGS_DEFAULT;
+    let mut truncation_totals: Option<(usize, usize)> = None;
     if aggregated_findings.len() > limit {
         let total = aggregated_findings.len();
         let shown = limit.saturating_sub(1);
         aggregated_findings.truncate(shown);
+        let trunc_preimage = format!("{}:{}", CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED);
         aggregated_findings.push(SensorFinding {
             check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
             code: FINDING_CODE_TRUNCATED.to_string(),
@@ -1147,19 +1149,20 @@ fn run_check_cockpit_inner(
                 total,
                 total - shown
             ),
-            fingerprint: Some(format!(
-                "{}:{}",
-                CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED
-            )),
+            fingerprint: Some(sha256_hex(trunc_preimage.as_bytes())),
             data: Some(serde_json::json!({
                 "total_findings": total,
                 "shown_findings": shown,
             })),
         });
+        if !all_reasons.contains(&VERDICT_REASON_TRUNCATED.to_string()) {
+            all_reasons.push(VERDICT_REASON_TRUNCATED.to_string());
+        }
+        truncation_totals = Some((total, shown));
     }
 
     // Build aggregated data section
-    let data = serde_json::json!({
+    let mut data = serde_json::json!({
         "summary": {
             "pass_count": total_info,
             "warn_count": total_warn,
@@ -1167,6 +1170,11 @@ fn run_check_cockpit_inner(
             "total_count": total_info + total_warn + total_error,
         }
     });
+
+    if let Some((total, emitted)) = truncation_totals {
+        data["findings_total"] = serde_json::json!(total);
+        data["findings_emitted"] = serde_json::json!(emitted);
+    }
 
     // Build the report manually since we have aggregated data
     let sensor_report = perfgate_types::SensorReport {

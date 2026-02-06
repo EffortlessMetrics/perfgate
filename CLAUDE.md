@@ -37,6 +37,7 @@ cargo run -p xtask -- schema
 # Validate fixtures against vendored schema
 cargo run -p xtask -- conform
 cargo run -p xtask -- conform --file path/to/report.json
+cargo run -p xtask -- conform --fixtures path/to/dir
 
 # Run mutation testing (requires cargo-mutants installed)
 cargo run -p xtask -- mutants

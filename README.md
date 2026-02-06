@@ -284,6 +284,7 @@ Validate fixtures against the vendored schema:
 ```bash
 cargo run -p xtask -- conform
 cargo run -p xtask -- conform --file path/to/report.json
+cargo run -p xtask -- conform --fixtures path/to/dir
 ```
 
 ## Design

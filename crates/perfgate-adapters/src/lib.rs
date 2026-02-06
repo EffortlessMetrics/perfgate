@@ -455,7 +455,7 @@ fn probe_hostname_hash() -> Option<String> {
 
 /// Compute SHA-256 hash and return as hex string.
 /// This is a minimal implementation to avoid adding a crypto dependency.
-fn sha256_hex(data: &[u8]) -> String {
+pub fn sha256_hex(data: &[u8]) -> String {
     use std::fmt::Write;
 
     // SHA-256 constants

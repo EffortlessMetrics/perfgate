@@ -9,12 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Finding fingerprinting** — Each sensor report finding now includes a `fingerprint` field for stable deduplication:
-  - Metric findings: `{check_id}:{code}:{metric_name}` (e.g., `perf.budget:metric_fail:wall_ms`)
-  - Error findings: `{check_id}:{code}:{stage}` (e.g., `tool.runtime:runtime_error:config_parse`)
-  - Truncation findings: `tool.truncation:truncated`
+- **Finding fingerprinting** — Each sensor report finding now includes a `fingerprint` field containing the SHA-256 hex digest of a deterministic preimage for collision-resistant deduplication:
+  - Metric findings: `sha256("{check_id}:{code}:{metric_name}")`
+  - Error findings: `sha256("{check_id}:{code}:{stage}")`
+  - Truncation findings: `sha256("tool.truncation:truncated")`
+  - Multi-bench findings: `sha256("{bench_name}:{check_id}:{code}:{metric_name}")`
 
-- **Finding truncation** — `SensorReportBuilder` supports configurable `max_findings` limit. When exceeded, findings are truncated and a `tool.truncation:truncated` meta-finding is appended with `{total_findings, shown_findings}` data.
+- **Finding truncation** — `SensorReportBuilder` supports configurable `max_findings` limit. When exceeded, findings are truncated and a `tool.truncation:truncated` meta-finding is appended with `{total_findings, shown_findings}` data. Truncation also adds `"truncated"` to `verdict.reasons` and includes `findings_total`/`findings_emitted` in report-level `data`.
 
 - **Schema validation** — New `xtask conform` command validates JSON fixtures against the vendored `sensor.report.v1` schema:
   - `cargo run -p xtask -- conform` validates all golden fixtures
@@ -29,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Contract fixtures** — Golden sensor report fixtures at `contracts/fixtures/` covering pass, fail, warn, error, no-baseline, and multi-bench scenarios
 
-- **Constants** — `CHECK_ID_TOOL_TRUNCATION`, `FINDING_CODE_TRUNCATED`
+- **Constants** — `CHECK_ID_TOOL_TRUNCATION`, `FINDING_CODE_TRUNCATED`, `VERDICT_REASON_TRUNCATED`
 
 ### Changed
 

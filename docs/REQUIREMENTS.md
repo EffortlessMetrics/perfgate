@@ -348,13 +348,14 @@ Truncation finding:
 
 ### Finding Fingerprints
 
-Every sensor report finding MUST include a `fingerprint` field for stable deduplication.
+Every sensor report finding MUST include a `fingerprint` field containing the SHA-256 hex digest of a deterministic preimage.
 
-| Finding type | Format | Example |
-|-------------|--------|---------|
+| Finding type | Preimage | Example preimage |
+|-------------|----------|-----------------|
 | Metric budget | `{check_id}:{code}:{metric_name}` | `perf.budget:metric_fail:wall_ms` |
 | Runtime error | `{check_id}:{code}:{stage}` | `tool.runtime:runtime_error:config_parse` |
 | Truncation | `{check_id}:{code}` | `tool.truncation:truncated` |
+| Multi-bench metric | `{bench_name}:{check_id}:{code}:{metric_name}` | `bench-a:perf.budget:metric_fail:wall_ms` |
 
 ### Finding Truncation
 
@@ -362,6 +363,8 @@ When `max_findings` is configured and the finding count exceeds the limit:
 - The first `limit - 1` findings MUST be preserved
 - A truncation meta-finding MUST be appended with `{total_findings, shown_findings}` data
 - Total finding count after truncation MUST equal `limit`
+- `verdict.reasons` MUST include `"truncated"` when truncation occurs
+- `data` MUST include `findings_total` and `findings_emitted`
 
 ## Baseline-Missing Behavior
 

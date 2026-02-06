@@ -7,7 +7,7 @@
 //! so the cockpit binary can `use perfgate_app::run_sensor_check`.
 
 use crate::{CheckRequest, CheckUseCase, Clock};
-use perfgate_adapters::{HostProbe, ProcessRunner};
+use perfgate_adapters::{sha256_hex, HostProbe, ProcessRunner};
 use perfgate_types::{
     Capability, CapabilityStatus, ConfigFile, HostMismatchPolicy, PerfgateReport, RunReceipt,
     SensorArtifact, SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity,
@@ -15,6 +15,7 @@ use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
     FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
     SENSOR_REPORT_SCHEMA_V1, STAGE_RUN_COMMAND, VERDICT_REASON_TOOL_ERROR,
+    VERDICT_REASON_TRUNCATED,
 };
 
 /// Options for `run_sensor_check`.
@@ -195,11 +196,7 @@ impl SensorReportBuilder {
             error: report.summary.fail_count,
         };
 
-        let verdict = SensorVerdict {
-            status,
-            counts,
-            reasons: report.verdict.reasons.clone(),
-        };
+        let mut reasons = report.verdict.reasons.clone();
 
         // Map findings: Severity::Fail -> SensorSeverity::Error
         let mut findings: Vec<SensorFinding> = report
@@ -211,6 +208,7 @@ impl SensorReportBuilder {
                     .as_ref()
                     .map(|d| d.metric_name.as_str())
                     .unwrap_or("");
+                let preimage = format!("{}:{}:{}", f.check_id, f.code, metric_name);
                 SensorFinding {
                     check_id: f.check_id.clone(),
                     code: f.code.clone(),
@@ -219,18 +217,21 @@ impl SensorReportBuilder {
                         Severity::Fail => SensorSeverity::Error,
                     },
                     message: f.message.clone(),
-                    fingerprint: Some(format!("{}:{}:{}", f.check_id, f.code, metric_name)),
+                    fingerprint: Some(sha256_hex(preimage.as_bytes())),
                     data: f.data.as_ref().and_then(|d| serde_json::to_value(d).ok()),
                 }
             })
             .collect();
 
         // Apply truncation if configured
+        let mut truncation_totals: Option<(usize, usize)> = None;
         if let Some(limit) = self.max_findings {
             if findings.len() > limit {
                 let total = findings.len();
                 let shown = limit.saturating_sub(1);
                 findings.truncate(shown);
+                let trunc_preimage =
+                    format!("{}:{}", CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED);
                 findings.push(SensorFinding {
                     check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
                     code: FINDING_CODE_TRUNCATED.to_string(),
@@ -241,17 +242,22 @@ impl SensorReportBuilder {
                         total,
                         total - shown
                     ),
-                    fingerprint: Some(format!(
-                        "{}:{}",
-                        CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED
-                    )),
+                    fingerprint: Some(sha256_hex(trunc_preimage.as_bytes())),
                     data: Some(serde_json::json!({
                         "total_findings": total,
                         "shown_findings": shown,
                     })),
                 });
+                reasons.push(VERDICT_REASON_TRUNCATED.to_string());
+                truncation_totals = Some((total, shown));
             }
         }
+
+        let verdict = SensorVerdict {
+            status,
+            counts,
+            reasons,
+        };
 
         // Build capabilities
         let capabilities = SensorCapabilities {
@@ -274,7 +280,7 @@ impl SensorReportBuilder {
         };
 
         // Build data section (summary only, no compare receipt)
-        let data = serde_json::json!({
+        let mut data = serde_json::json!({
             "summary": {
                 "pass_count": report.summary.pass_count,
                 "warn_count": report.summary.warn_count,
@@ -282,6 +288,11 @@ impl SensorReportBuilder {
                 "total_count": report.summary.total_count,
             }
         });
+
+        if let Some((total, emitted)) = truncation_totals {
+            data["findings_total"] = serde_json::json!(total);
+            data["findings_emitted"] = serde_json::json!(emitted);
+        }
 
         // Sort artifacts by (type, path)
         self.artifacts
@@ -319,15 +330,16 @@ impl SensorReportBuilder {
             reasons: vec![VERDICT_REASON_TOOL_ERROR.to_string()],
         };
 
+        let preimage = format!(
+            "{}:{}:{}",
+            CHECK_ID_TOOL_RUNTIME, FINDING_CODE_RUNTIME_ERROR, stage
+        );
         let finding = SensorFinding {
             check_id: CHECK_ID_TOOL_RUNTIME.to_string(),
             code: FINDING_CODE_RUNTIME_ERROR.to_string(),
             severity: SensorSeverity::Error,
             message: error_message.to_string(),
-            fingerprint: Some(format!(
-                "{}:{}:{}",
-                CHECK_ID_TOOL_RUNTIME, FINDING_CODE_RUNTIME_ERROR, stage
-            )),
+            fingerprint: Some(sha256_hex(preimage.as_bytes())),
             data: Some(serde_json::json!({
                 "stage": stage,
                 "error_kind": error_kind,
@@ -611,9 +623,10 @@ mod tests {
 
         assert_eq!(sensor_report.findings.len(), 1);
         // No FindingData on this report finding, so metric_name is ""
+        // Preimage: "perf.budget:metric_fail:"
         assert_eq!(
             sensor_report.findings[0].fingerprint,
-            Some("perf.budget:metric_fail:".to_string())
+            Some(perfgate_adapters::sha256_hex(b"perf.budget:metric_fail:"))
         );
     }
 
@@ -663,7 +676,9 @@ mod tests {
 
         assert_eq!(
             sensor_report.findings[0].fingerprint,
-            Some("perf.budget:metric_fail:wall_ms".to_string())
+            Some(perfgate_adapters::sha256_hex(
+                b"perf.budget:metric_fail:wall_ms"
+            ))
         );
     }
 
@@ -681,7 +696,9 @@ mod tests {
 
         assert_eq!(
             sensor_report.findings[0].fingerprint,
-            Some("tool.runtime:runtime_error:config_parse".to_string())
+            Some(perfgate_adapters::sha256_hex(
+                b"tool.runtime:runtime_error:config_parse"
+            ))
         );
     }
 
@@ -710,6 +727,13 @@ mod tests {
         // Only 1 finding, well under the limit of 100
         assert_eq!(sensor_report.findings.len(), 1);
         assert_ne!(sensor_report.findings[0].check_id, CHECK_ID_TOOL_TRUNCATION);
+        assert!(
+            !sensor_report
+                .verdict
+                .reasons
+                .contains(&"truncated".to_string()),
+            "verdict.reasons should NOT contain 'truncated' when under limit"
+        );
     }
 
     #[test]
@@ -772,13 +796,26 @@ mod tests {
         assert_eq!(last.severity, SensorSeverity::Info);
         assert_eq!(
             last.fingerprint,
-            Some("tool.truncation:truncated".to_string())
+            Some(perfgate_adapters::sha256_hex(b"tool.truncation:truncated"))
         );
 
         // Verify truncation data
         let data = last.data.as_ref().unwrap();
         assert_eq!(data["total_findings"], 5);
         assert_eq!(data["shown_findings"], 2);
+
+        // Verify verdict reason includes "truncated"
+        assert!(
+            sensor_report
+                .verdict
+                .reasons
+                .contains(&"truncated".to_string()),
+            "verdict.reasons should contain 'truncated'"
+        );
+
+        // Verify report-level truncation totals in data
+        assert_eq!(sensor_report.data["findings_total"], 5);
+        assert_eq!(sensor_report.data["findings_emitted"], 2);
     }
 
     #[test]
@@ -837,6 +874,19 @@ mod tests {
         let meta = &sensor_report.findings[4];
         assert!(meta.message.contains("Showing 4 of 10"));
         assert!(meta.message.contains("6 omitted"));
+
+        // Verify verdict reason includes "truncated"
+        assert!(
+            sensor_report
+                .verdict
+                .reasons
+                .contains(&"truncated".to_string()),
+            "verdict.reasons should contain 'truncated'"
+        );
+
+        // Verify report-level truncation totals in data
+        assert_eq!(sensor_report.data["findings_total"], 10);
+        assert_eq!(sensor_report.data["findings_emitted"], 4);
     }
 
     #[test]

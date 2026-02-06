@@ -207,13 +207,18 @@ perfgate uses `BTreeMap` for all metric collections to ensure deterministic orde
 
 ### Finding Fingerprinting
 
-Each sensor report finding includes a `fingerprint` for stable deduplication across runs. The format is `{check_id}:{code}:{qualifier}`:
+Each sensor report finding includes a `fingerprint` containing the SHA-256 hex digest of a deterministic preimage. This ensures collision-resistant deduplication across sensors in the fleet.
 
-| Finding type | Fingerprint format | Example |
-|-------------|-------------------|---------|
+**Preimage format:**
+
+| Finding type | Preimage | Example preimage |
+|-------------|----------|-----------------|
 | Metric budget | `{check_id}:{code}:{metric_name}` | `perf.budget:metric_fail:wall_ms` |
 | Runtime error | `{check_id}:{code}:{stage}` | `tool.runtime:runtime_error:config_parse` |
 | Truncation | `{check_id}:{code}` | `tool.truncation:truncated` |
+| Multi-bench metric | `{bench_name}:{check_id}:{code}:{metric_name}` | `bench-a:perf.budget:metric_fail:wall_ms` |
+
+The `fingerprint` field stores `sha256(preimage)` as a 64-character lowercase hex string.
 
 **Invariants:**
 - Fingerprint MUST be present on all findings
@@ -232,7 +237,11 @@ When a sensor report contains many findings (e.g., multi-bench mode with widespr
    - `code = "truncated"`
    - `severity = "info"`
    - `data = { total_findings, shown_findings }`
-   - `fingerprint = "tool.truncation:truncated"`
+   - `fingerprint = sha256("tool.truncation:truncated")`
+4. `verdict.reasons` MUST include `"truncated"`
+5. Report-level `data` MUST include `findings_total` and `findings_emitted`
+
+`contracts/fixtures/` are portable ingestion fixtures for cockpit compiler integration tests; `tests/fixtures/golden/` are perfgate CLI golden tests.
 
 ## Promote Normalization
 

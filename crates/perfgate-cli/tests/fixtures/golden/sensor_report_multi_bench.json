@@ -30,7 +30,7 @@
       "code": "missing",
       "severity": "warn",
       "message": "[bench-a] No baseline found for bench 'bench-a'; comparison skipped",
-      "fingerprint": "bench-a:perf.baseline:missing:",
+      "fingerprint": "c12e5f292f1cae028188292beebf8953ca36256025a23495655e07436ab58914",
       "data": {
         "bench_name": "bench-a"
       }
@@ -40,7 +40,7 @@
       "code": "missing",
       "severity": "warn",
       "message": "[bench-b] No baseline found for bench 'bench-b'; comparison skipped",
-      "fingerprint": "bench-b:perf.baseline:missing:",
+      "fingerprint": "dc1f498bbda397abd90f96d7129ac1be032c9e0eb40a128348d4e92051113867",
       "data": {
         "bench_name": "bench-b"
       }

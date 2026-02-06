@@ -36,6 +36,7 @@ pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
+pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
 
 // Error classification stages.
 pub const STAGE_CONFIG_PARSE: &str = "config_parse";
