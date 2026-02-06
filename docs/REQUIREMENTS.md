@@ -341,6 +341,28 @@ Budget findings:
 - `code = "metric_warn"` for warn metrics
 - `code = "metric_fail"` for fail metrics
 
+Truncation finding:
+- `check_id = "tool.truncation"`
+- `code = "truncated"`
+- `severity = "info"`
+
+### Finding Fingerprints
+
+Every sensor report finding MUST include a `fingerprint` field for stable deduplication.
+
+| Finding type | Format | Example |
+|-------------|--------|---------|
+| Metric budget | `{check_id}:{code}:{metric_name}` | `perf.budget:metric_fail:wall_ms` |
+| Runtime error | `{check_id}:{code}:{stage}` | `tool.runtime:runtime_error:config_parse` |
+| Truncation | `{check_id}:{code}` | `tool.truncation:truncated` |
+
+### Finding Truncation
+
+When `max_findings` is configured and the finding count exceeds the limit:
+- The first `limit - 1` findings MUST be preserved
+- A truncation meta-finding MUST be appended with `{total_findings, shown_findings}` data
+- Total finding count after truncation MUST equal `limit`
+
 ## Baseline-Missing Behavior
 
 When a baseline is not found:

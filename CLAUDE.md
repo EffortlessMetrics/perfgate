@@ -34,6 +34,10 @@ cargo run -p xtask -- ci
 # Generate JSON schemas to schemas/
 cargo run -p xtask -- schema
 
+# Validate fixtures against vendored schema
+cargo run -p xtask -- conform
+cargo run -p xtask -- conform --file path/to/report.json
+
 # Run mutation testing (requires cargo-mutants installed)
 cargo run -p xtask -- mutants
 cargo run -p xtask -- mutants --crate perfgate-domain --summary

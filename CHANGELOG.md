@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Finding fingerprinting** — Each sensor report finding now includes a `fingerprint` field for stable deduplication:
+  - Metric findings: `{check_id}:{code}:{metric_name}` (e.g., `perf.budget:metric_fail:wall_ms`)
+  - Error findings: `{check_id}:{code}:{stage}` (e.g., `tool.runtime:runtime_error:config_parse`)
+  - Truncation findings: `tool.truncation:truncated`
+
+- **Finding truncation** — `SensorReportBuilder` supports configurable `max_findings` limit. When exceeded, findings are truncated and a `tool.truncation:truncated` meta-finding is appended with `{total_findings, shown_findings}` data.
+
+- **Schema validation** — New `xtask conform` command validates JSON fixtures against the vendored `sensor.report.v1` schema:
+  - `cargo run -p xtask -- conform` validates all golden fixtures
+  - `cargo run -p xtask -- conform --file path/to/file.json` validates a single file
+  - `cargo run -p xtask -- conform --fixtures path/to/dir` validates all `sensor_report_*.json` files in a directory
+  - Integrated into the `xtask ci` pipeline
+
+- **Config presets** — Bundled configuration presets at `presets/`:
+  - `standard.toml` — Balanced accuracy and speed (repeat=5, warmup=1, threshold=20%)
+  - `release.toml` — High accuracy with tight threshold (repeat=10, warmup=2, threshold=10%)
+  - `tier1-fast.toml` — Quick validation with wide threshold (repeat=3, warmup=1, threshold=30%)
+
+- **Contract fixtures** — Golden sensor report fixtures at `contracts/fixtures/` covering pass, fail, warn, error, no-baseline, and multi-bench scenarios
+
+- **Constants** — `CHECK_ID_TOOL_TRUNCATION`, `FINDING_CODE_TRUNCATED`
+
 ### Changed
 
 - **ABI hardening for sensor.report.v1** — Cockpit output conforms to the fleet contract:

@@ -7,13 +7,15 @@ Repo automation — schema generation, CI pipeline, and mutation testing. Not pu
 ```bash
 cargo run -p xtask -- schema              # generate JSON schemas
 cargo run -p xtask -- ci                   # full CI check
+cargo run -p xtask -- conform             # validate fixtures against schema
+cargo run -p xtask -- conform --file f.json  # validate a single file
 cargo run -p xtask -- mutants             # run mutation testing
 cargo run -p xtask -- mutants --crate perfgate-domain --summary
 ```
 
 ## What This Crate Contains
 
-A single `src/main.rs` with three commands.
+A single `src/main.rs` with four commands.
 
 ### Commands
 
@@ -29,6 +31,13 @@ A single `src/main.rs` with three commands.
 2. `cargo clippy --all-targets --all-features -- -D warnings`
 3. `cargo test --all`
 4. `cargo run -p xtask -- schema`
+5. `cargo run -p xtask -- conform`
+
+**`conform`** — Validates JSON fixtures against the vendored `sensor.report.v1` schema:
+- Default: validates all `sensor_report_*.json` files in golden fixture directories
+- `--file path/to/file.json`: validate a single file
+- `--fixtures path/to/dir`: validate all matching files in a directory
+- Exits non-zero if any fixture fails validation
 
 **`mutants`** — Runs `cargo-mutants` with per-crate kill rate targets:
 

@@ -205,6 +205,35 @@ perfgate uses `BTreeMap` for all metric collections to ensure deterministic orde
 - This ordering is preserved in JSON serialization (snake_case: `max_rss_kb < throughput_per_s < wall_ms`)
 - Export commands sort metrics alphabetically for user-friendliness
 
+### Finding Fingerprinting
+
+Each sensor report finding includes a `fingerprint` for stable deduplication across runs. The format is `{check_id}:{code}:{qualifier}`:
+
+| Finding type | Fingerprint format | Example |
+|-------------|-------------------|---------|
+| Metric budget | `{check_id}:{code}:{metric_name}` | `perf.budget:metric_fail:wall_ms` |
+| Runtime error | `{check_id}:{code}:{stage}` | `tool.runtime:runtime_error:config_parse` |
+| Truncation | `{check_id}:{code}` | `tool.truncation:truncated` |
+
+**Invariants:**
+- Fingerprint MUST be present on all findings
+- Same logical finding across runs MUST produce the same fingerprint
+- Different findings MUST produce different fingerprints
+
+### Finding Truncation
+
+When a sensor report contains many findings (e.g., multi-bench mode with widespread regressions), findings can be truncated to a configurable limit via `SensorReportBuilder::max_findings(n)`.
+
+**Behavior:**
+1. If finding count <= limit, no truncation occurs
+2. If finding count > limit, keep the first `limit - 1` findings
+3. Append a truncation meta-finding with:
+   - `check_id = "tool.truncation"`
+   - `code = "truncated"`
+   - `severity = "info"`
+   - `data = { total_findings, shown_findings }`
+   - `fingerprint = "tool.truncation:truncated"`
+
 ## Promote Normalization
 
 The promote command can normalize receipts for stable baselines:

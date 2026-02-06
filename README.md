@@ -201,6 +201,16 @@ command = ["sh", "-c", "sleep 0.02"]
 work = 1000
 ```
 
+#### Config Presets
+
+Bundled presets are available in `presets/` for common scenarios:
+
+| Preset | Repeat | Warmup | Threshold | Use case |
+|--------|--------|--------|-----------|----------|
+| `standard.toml` | 5 | 1 | 20% | Regular PR checks |
+| `release.toml` | 10 | 2 | 10% | Release branches, nightly checks |
+| `tier1-fast.toml` | 3 | 1 | 30% | Draft PRs, fast feedback |
+
 ### 9) Paired benchmarking mode
 
 Paired benchmarking runs baseline and current commands in interleaved fashion to reduce noise from environmental variations. This is especially useful in noisy CI environments where system load can fluctuate.
@@ -268,6 +278,13 @@ cargo run -p xtask -- schema
 ```
 
 Schemas are written to `schemas/`.
+
+Validate fixtures against the vendored schema:
+
+```bash
+cargo run -p xtask -- conform
+cargo run -p xtask -- conform --file path/to/report.json
+```
 
 ## Design
 
