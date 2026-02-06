@@ -29,7 +29,7 @@
       "code": "metric_fail",
       "severity": "error",
       "message": "wall_ms regression: +50.00% (threshold: 20.0%)",
-      "fingerprint": "c81cedca8969d2c0d0c5b7537b63f1d91f97941318a02468fabb3e3cc8db8ee8",
+      "fingerprint": "699f59a2cd532d5537950d30017837d8954da861b2f436949880669c65a65e50",
       "data": {
         "metric_name": "wall_ms",
         "baseline": 1000.0,

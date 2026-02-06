@@ -1,19 +1,17 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
-use perfgate_adapters::{sha256_hex, StdHostProbe, StdProcessRunner};
+use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::{
-    github_annotations, render_markdown, CheckOutcome, CheckRequest, CheckUseCase, Clock,
-    CompareRequest, CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
-    PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase,
-    RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock,
+    classify_error, github_annotations, render_markdown, sensor_fingerprint, CheckOutcome,
+    CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase, ExportFormat, ExportUseCase,
+    PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest,
+    ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock,
 };
 use perfgate_domain::DomainError;
 use perfgate_types::{
     Budget, CompareReceipt, CompareRef, ConfigFile, HostMismatchPolicy, Metric, RunReceipt,
-    ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
-    ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
-    STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS,
-    VERDICT_REASON_TRUNCATED,
+    ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED,
+    MAX_FINDINGS_DEFAULT, VERDICT_REASON_TRUNCATED,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -1047,11 +1045,20 @@ fn run_check_cockpit_inner(
                 .map(|d| d.metric_name.as_str())
                 .unwrap_or("");
             let fingerprint = if multi_bench {
-                let preimage = format!("{}:{}:{}:{}", bench_name, f.check_id, f.code, metric_name);
-                Some(sha256_hex(preimage.as_bytes()))
+                Some(sensor_fingerprint(&[
+                    "perfgate",
+                    bench_name,
+                    &f.check_id,
+                    &f.code,
+                    metric_name,
+                ]))
             } else {
-                let preimage = format!("{}:{}:{}", f.check_id, f.code, metric_name);
-                Some(sha256_hex(preimage.as_bytes()))
+                Some(sensor_fingerprint(&[
+                    "perfgate",
+                    &f.check_id,
+                    &f.code,
+                    metric_name,
+                ]))
             };
             aggregated_findings.push(SensorFinding {
                 check_id: f.check_id.clone(),
@@ -1138,7 +1145,6 @@ fn run_check_cockpit_inner(
         let total = aggregated_findings.len();
         let shown = limit.saturating_sub(1);
         aggregated_findings.truncate(shown);
-        let trunc_preimage = format!("{}:{}", CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED);
         aggregated_findings.push(SensorFinding {
             check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
             code: FINDING_CODE_TRUNCATED.to_string(),
@@ -1149,7 +1155,11 @@ fn run_check_cockpit_inner(
                 total,
                 total - shown
             ),
-            fingerprint: Some(sha256_hex(trunc_preimage.as_bytes())),
+            fingerprint: Some(sensor_fingerprint(&[
+                "perfgate",
+                CHECK_ID_TOOL_TRUNCATION,
+                FINDING_CODE_TRUNCATED,
+            ])),
             data: Some(serde_json::json!({
                 "total_findings": total,
                 "shown_findings": shown,
@@ -1235,36 +1245,6 @@ fn run_check_cockpit_inner(
 
     // Cockpit mode: always exit 0 if we got here
     Ok(())
-}
-
-/// Classify an error into (stage, error_kind) for structured error reporting.
-fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
-    let msg = format!("{:#}", err);
-    let msg_lower = msg.to_lowercase();
-
-    if msg_lower.contains("parse")
-        && (msg_lower.contains("config")
-            || msg_lower.contains("toml")
-            || msg_lower.contains("json config"))
-    {
-        (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
-    } else if msg_lower.contains("baseline") || msg_lower.contains("not found") {
-        (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO)
-    } else if msg_lower.contains("failed to run")
-        || msg_lower.contains("spawn")
-        || msg_lower.contains("exec")
-    {
-        (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
-    } else if msg_lower.contains("write")
-        || msg_lower.contains("create dir")
-        || msg_lower.contains("rename")
-    {
-        (STAGE_WRITE_ARTIFACTS, ERROR_KIND_IO)
-    } else if err.downcast_ref::<std::io::Error>().is_some() {
-        (STAGE_RUN_COMMAND, ERROR_KIND_IO)
-    } else {
-        (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
-    }
 }
 
 /// Rename extras files to versioned names.

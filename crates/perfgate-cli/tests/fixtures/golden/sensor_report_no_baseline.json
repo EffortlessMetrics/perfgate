@@ -30,7 +30,7 @@
       "code": "missing",
       "severity": "warn",
       "message": "No baseline found for bench 'test-bench'; comparison skipped",
-      "fingerprint": "f6f951d99554be2b0ea4a8ee24af44888e5de696c808785fb7f3035622e51143"
+      "fingerprint": "adfda61c658b313c6c79f74474df22c8e50a71906a1405104dfb3e5a4a646ba5"
     }
   ],
   "artifacts": [

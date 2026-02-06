@@ -83,7 +83,7 @@
             "enum": ["info", "warn", "error"]
           },
           "message": { "type": "string" },
-          "fingerprint": { "type": "string" },
+          "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "data": {}
         },
         "additionalProperties": false

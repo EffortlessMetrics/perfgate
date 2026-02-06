@@ -29,7 +29,7 @@
       "code": "metric_warn",
       "severity": "warn",
       "message": "wall_ms regression: +15.00% (threshold: 20.0%)",
-      "fingerprint": "1c65fd490e4f54bc878f32c7c5253777de18dca0886ab41eea56114f3c10d80d",
+      "fingerprint": "3c2bd857ac9b42507de67f343f24484ae73c7783ad6a0fb681b02a4d1e075054",
       "data": {
         "metric_name": "wall_ms",
         "baseline": 1000.0,

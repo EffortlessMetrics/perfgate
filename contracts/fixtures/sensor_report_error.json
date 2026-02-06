@@ -29,7 +29,7 @@
       "code": "runtime_error",
       "severity": "error",
       "message": "config file not found: perfgate.toml",
-      "fingerprint": "e4f7120bb0e848911932b596b6489d5255ffce796692f0eb701dde11d8e423a7",
+      "fingerprint": "0317de7f7e8455213856e430fde580b2729f5f77d1baf37f0397bcfd8ddacb2d",
       "data": {
         "stage": "config_parse",
         "error_kind": "parse_error"

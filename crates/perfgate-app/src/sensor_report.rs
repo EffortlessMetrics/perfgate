@@ -13,9 +13,9 @@ use perfgate_types::{
     SensorArtifact, SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity,
     SensorVerdict, SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo, VerdictStatus,
     BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
-    FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
-    SENSOR_REPORT_SCHEMA_V1, STAGE_RUN_COMMAND, VERDICT_REASON_TOOL_ERROR,
-    VERDICT_REASON_TRUNCATED,
+    ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED,
+    MAX_FINDINGS_DEFAULT, SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE,
+    STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
 };
 
 /// Options for `run_sensor_check`.
@@ -110,13 +110,59 @@ where
             builder.build(&outcome.report)
         }
         Err(err) => {
+            let (stage, error_kind) = classify_error(&err);
             let builder = SensorReportBuilder::new(tool, started_at)
                 .ended_at(ended_at, duration_ms)
                 .baseline(baseline_available, baseline_reason);
 
-            builder.build_error(&format!("{:#}", err), STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+            builder.build_error(&format!("{:#}", err), stage, error_kind)
         }
     }
+}
+
+/// Classify an error into (stage, error_kind) for structured error reporting.
+pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
+    let msg = format!("{:#}", err);
+    let msg_lower = msg.to_lowercase();
+
+    if msg_lower.contains("parse")
+        && (msg_lower.contains("config")
+            || msg_lower.contains("toml")
+            || msg_lower.contains("json config"))
+    {
+        (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
+    } else if msg_lower.contains("baseline") || msg_lower.contains("not found") {
+        (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO)
+    } else if msg_lower.contains("failed to run")
+        || msg_lower.contains("spawn")
+        || msg_lower.contains("exec")
+    {
+        (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+    } else if msg_lower.contains("write")
+        || msg_lower.contains("create dir")
+        || msg_lower.contains("rename")
+    {
+        (STAGE_WRITE_ARTIFACTS, ERROR_KIND_IO)
+    } else if err.downcast_ref::<std::io::Error>().is_some() {
+        (STAGE_RUN_COMMAND, ERROR_KIND_IO)
+    } else {
+        (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+    }
+}
+
+/// Build a fleet-standard fingerprint from semantic parts.
+/// Trims trailing empty parts, joins with `|`, returns SHA-256 hex.
+pub fn sensor_fingerprint(parts: &[&str]) -> String {
+    let trimmed: Vec<&str> = parts
+        .iter()
+        .rev()
+        .skip_while(|s| s.is_empty())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .copied()
+        .collect();
+    sha256_hex(trimmed.join("|").as_bytes())
 }
 
 /// Builder for constructing a SensorReport from a PerfgateReport.
@@ -208,7 +254,6 @@ impl SensorReportBuilder {
                     .as_ref()
                     .map(|d| d.metric_name.as_str())
                     .unwrap_or("");
-                let preimage = format!("{}:{}:{}", f.check_id, f.code, metric_name);
                 SensorFinding {
                     check_id: f.check_id.clone(),
                     code: f.code.clone(),
@@ -217,7 +262,12 @@ impl SensorReportBuilder {
                         Severity::Fail => SensorSeverity::Error,
                     },
                     message: f.message.clone(),
-                    fingerprint: Some(sha256_hex(preimage.as_bytes())),
+                    fingerprint: Some(sensor_fingerprint(&[
+                        &self.tool.name,
+                        &f.check_id,
+                        &f.code,
+                        metric_name,
+                    ])),
                     data: f.data.as_ref().and_then(|d| serde_json::to_value(d).ok()),
                 }
             })
@@ -230,8 +280,6 @@ impl SensorReportBuilder {
                 let total = findings.len();
                 let shown = limit.saturating_sub(1);
                 findings.truncate(shown);
-                let trunc_preimage =
-                    format!("{}:{}", CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED);
                 findings.push(SensorFinding {
                     check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
                     code: FINDING_CODE_TRUNCATED.to_string(),
@@ -242,7 +290,11 @@ impl SensorReportBuilder {
                         total,
                         total - shown
                     ),
-                    fingerprint: Some(sha256_hex(trunc_preimage.as_bytes())),
+                    fingerprint: Some(sensor_fingerprint(&[
+                        &self.tool.name,
+                        CHECK_ID_TOOL_TRUNCATION,
+                        FINDING_CODE_TRUNCATED,
+                    ])),
                     data: Some(serde_json::json!({
                         "total_findings": total,
                         "shown_findings": shown,
@@ -330,16 +382,18 @@ impl SensorReportBuilder {
             reasons: vec![VERDICT_REASON_TOOL_ERROR.to_string()],
         };
 
-        let preimage = format!(
-            "{}:{}:{}",
-            CHECK_ID_TOOL_RUNTIME, FINDING_CODE_RUNTIME_ERROR, stage
-        );
         let finding = SensorFinding {
             check_id: CHECK_ID_TOOL_RUNTIME.to_string(),
             code: FINDING_CODE_RUNTIME_ERROR.to_string(),
             severity: SensorSeverity::Error,
             message: error_message.to_string(),
-            fingerprint: Some(sha256_hex(preimage.as_bytes())),
+            fingerprint: Some(sensor_fingerprint(&[
+                &self.tool.name,
+                CHECK_ID_TOOL_RUNTIME,
+                FINDING_CODE_RUNTIME_ERROR,
+                stage,
+                error_kind,
+            ])),
             data: Some(serde_json::json!({
                 "stage": stage,
                 "error_kind": error_kind,
@@ -623,10 +677,15 @@ mod tests {
 
         assert_eq!(sensor_report.findings.len(), 1);
         // No FindingData on this report finding, so metric_name is ""
-        // Preimage: "perf.budget:metric_fail:"
+        // Trailing empty trimmed: "perfgate|perf.budget|metric_fail"
         assert_eq!(
             sensor_report.findings[0].fingerprint,
-            Some(perfgate_adapters::sha256_hex(b"perf.budget:metric_fail:"))
+            Some(sensor_fingerprint(&[
+                "perfgate",
+                "perf.budget",
+                "metric_fail",
+                ""
+            ]))
         );
     }
 
@@ -676,9 +735,12 @@ mod tests {
 
         assert_eq!(
             sensor_report.findings[0].fingerprint,
-            Some(perfgate_adapters::sha256_hex(
-                b"perf.budget:metric_fail:wall_ms"
-            ))
+            Some(sensor_fingerprint(&[
+                "perfgate",
+                "perf.budget",
+                "metric_fail",
+                "wall_ms"
+            ]))
         );
     }
 
@@ -696,9 +758,13 @@ mod tests {
 
         assert_eq!(
             sensor_report.findings[0].fingerprint,
-            Some(perfgate_adapters::sha256_hex(
-                b"tool.runtime:runtime_error:config_parse"
-            ))
+            Some(sensor_fingerprint(&[
+                "perfgate",
+                "tool.runtime",
+                "runtime_error",
+                "config_parse",
+                "parse_error"
+            ]))
         );
     }
 
@@ -796,7 +862,11 @@ mod tests {
         assert_eq!(last.severity, SensorSeverity::Info);
         assert_eq!(
             last.fingerprint,
-            Some(perfgate_adapters::sha256_hex(b"tool.truncation:truncated"))
+            Some(sensor_fingerprint(&[
+                "perfgate",
+                "tool.truncation",
+                "truncated"
+            ]))
         );
 
         // Verify truncation data
@@ -907,5 +977,29 @@ mod tests {
         let deserialized: SensorReport = serde_json::from_str(&json).expect("should deserialize");
 
         assert_eq!(sensor_report, deserialized);
+    }
+
+    #[test]
+    fn test_classify_error_config_parse() {
+        let err = anyhow::anyhow!("parse TOML config perfgate.toml: expected `=`");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_baseline_resolve() {
+        let err = anyhow::anyhow!("baseline file not found");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_BASELINE_RESOLVE);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_default_exec() {
+        let err = anyhow::anyhow!("something unexpected happened");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
     }
 }

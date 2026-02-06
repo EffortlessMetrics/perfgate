@@ -35,6 +35,7 @@ fn cpu_work_command() -> Vec<&'static str> {
     ]
 }
 
+#[allow(dead_code)]
 #[cfg(windows)]
 fn cpu_work_command() -> Vec<&'static str> {
     // Windows doesn't provide CPU time via adapters, so use simple command

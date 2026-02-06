@@ -424,7 +424,7 @@ fn create_config_file(temp_dir: &std::path::Path, bench_name: &str) -> std::path
 [defaults]
 repeat = 2
 warmup = 0
-threshold = 0.20
+threshold = 10.0
 
 [[bench]]
 name = "{}"

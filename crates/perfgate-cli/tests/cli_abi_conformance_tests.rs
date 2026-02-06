@@ -497,6 +497,18 @@ fn test_cockpit_output_has_fingerprints() {
             finding
         );
         let fp = finding["fingerprint"].as_str().unwrap();
-        assert!(!fp.is_empty(), "fingerprint should not be empty");
+        assert_eq!(
+            fp.len(),
+            64,
+            "fingerprint should be 64 chars, got {} chars: {}",
+            fp.len(),
+            fp
+        );
+        assert!(
+            fp.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            "fingerprint should be lowercase hex, got: {}",
+            fp
+        );
     }
 }
