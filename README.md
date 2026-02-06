@@ -146,6 +146,9 @@ Run the entire workflow from a single config file:
 
 ```bash
 perfgate check --config perfgate.toml --bench pst_extract
+
+# Run all benchmarks in the config
+perfgate check --config perfgate.toml --all
 ```
 
 #### Cockpit Mode
@@ -156,15 +159,29 @@ The `check` command supports a `--mode cockpit` flag for integration with monito
 perfgate check --config perfgate.toml --bench pst_extract --mode cockpit
 ```
 
-Cockpit mode artifact layout:
+Cockpit mode artifact layout (single bench):
 
 ```
 artifacts/perfgate/
-├── run.json        # perfgate.run.v1
-├── compare.json    # perfgate.compare.v1
-├── report.json     # sensor.report.v1 (cockpit ingestion format)
-├── comment.md      # PR comment markdown
-└── extras/         # Additional cockpit artifacts
+├── report.json                         # sensor.report.v1 envelope
+├── comment.md                          # PR comment markdown
+└── extras/
+    ├── perfgate.run.v1.json            # perfgate.run.v1
+    ├── perfgate.compare.v1.json        # perfgate.compare.v1 (if baseline)
+    └── perfgate.report.v1.json         # perfgate.report.v1
+```
+
+Multi-bench cockpit mode (`--all`):
+
+```
+artifacts/perfgate/
+├── report.json                         # aggregated sensor.report.v1
+├── comment.md
+└── extras/
+    ├── bench-a/perfgate.run.v1.json
+    ├── bench-a/perfgate.compare.v1.json
+    ├── bench-a/perfgate.report.v1.json
+    ├── bench-b/perfgate.run.v1.json
     └── ...
 ```
 
@@ -242,6 +259,7 @@ Receipts are versioned:
 - `perfgate.run.v1` - run measurement receipt
 - `perfgate.compare.v1` - comparison result
 - `perfgate.report.v1` - cockpit-compatible report
+- `sensor.report.v1` - sensor integration envelope (cockpit mode)
 
 Generate JSON Schemas:
 

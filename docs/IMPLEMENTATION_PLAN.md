@@ -75,56 +75,52 @@ P0 contract hardening expectations to keep in sync with docs and artifacts:
 - `compare.json` is absent when baseline is missing, and stale compare artifacts are removed
 - Deterministic ordering for metrics, findings, and exports is preserved
 
-### Envelope Alignment (Optional)
+### Envelope Alignment
 
-If the ecosystem standardizes on a universal sensor envelope, align perfgate output as a future enhancement:
-- Option A: Keep `perfgate.report.v1` as-is and teach cockpitctl to ingest it directly
-- Option B: Add a `sensor.report.v1` wrapper that embeds `perfgate.report.v1` under `data`
+**Status:** Implemented (v0.2.0, ABI-hardened in Unreleased)
+
+Cockpit mode (`--mode cockpit`) wraps perfgate output in a `sensor.report.v1` envelope:
+- `report.json` conforms to `sensor.report.v1` schema
+- Extras artifacts use versioned names (`perfgate.run.v1.json`, etc.)
+- Schema vendored at `contracts/schemas/sensor.report.v1.schema.json` (hand-written, not auto-generated)
+- ABI hardening: `SensorReport.data` and `SensorFinding.data` use opaque `serde_json::Value`
 
 ### Paired Mode
 
-**Status:** Planned
+**Status:** Implemented (v0.2.0)
 
-Paired mode would interleave baseline and current executions to reduce environmental noise:
+The `perfgate paired` command interleaves baseline and current executions to reduce environmental noise:
 
+```bash
+perfgate paired --baseline "sleep 0.01" --current "sleep 0.02" --samples 10 --out cmp.json
 ```
-baseline-1, current-1, baseline-2, current-2, ...
-```
 
-**Considerations:**
-- Requires both commands to be specified simultaneously
-- May need new CLI interface (e.g., `perfgate paired --baseline-cmd ... --current-cmd ...`)
-- Statistics would be computed per-pair, then aggregated
-- Schema impact: new receipt type or extended run receipt
+- Commands are specified as shell strings via `--baseline` and `--current`
+- Samples are collected in alternating pairs (B, C, B, C, ...)
+- Output conforms to `perfgate.compare.v1` schema
+- Domain logic in `perfgate-domain/src/paired.rs`, app orchestration in `perfgate-app/src/paired.rs`
 
 ### Host Mismatch Policy
 
-**Status:** Planned
+**Status:** Implemented (v0.2.0)
 
-Host mismatch detection would warn when comparing receipts from different machines:
+Host mismatch detection warns or fails when comparing receipts from different machines.
 
-**Detection criteria:**
-- Different `os` or `arch`
-- Significant difference in `cpu_count` (e.g., > 2x)
-- Significant difference in `memory_bytes` (e.g., > 2x)
-- Different `hostname_hash` (if both present)
+The `--host-mismatch` flag on `compare` (and `check`) supports three policies:
+- `ignore` (default): Silently allow cross-host comparisons
+- `warn`: Emit a warning but continue
+- `fail`: Exit 1 on mismatch
 
-**Policy options:**
-1. `--host-mismatch=warn` (default): Warn but continue
-2. `--host-mismatch=error`: Exit 1 on mismatch
-3. `--host-mismatch=ignore`: Suppress warnings
-
-**Schema impact:** None (uses existing `HostInfo` fields)
+Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 ### Additional Metrics
 
-**Status:** Considered
+**Status:** Partially implemented
 
-Potential future metrics:
-
-1. **CPU time** (`cpu_ms`): User + system CPU time from `rusage`
-   - Direction: Lower
-   - Platform: Unix only
+1. **CPU time** (`user_time_ms`, `system_time_ms`): User and system CPU time from `rusage`
+   - **Status:** Implemented (v0.2.0)
+   - Platform: Unix only (optional fields in run receipt)
+   - Collected via `rusage` alongside `max_rss_kb`
 
 2. **Page faults** (`page_faults`): Major page faults from `rusage`
    - Direction: Lower
@@ -164,7 +160,7 @@ Potential future metrics:
    baseline_pattern = "baselines/{bench}.json"
    ```
 
-3. **Multi-bench check:**
+3. **Multi-bench check:** (Implemented in v0.2.0)
    ```bash
    perfgate check --config perfgate.toml --all
    ```

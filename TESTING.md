@@ -51,7 +51,7 @@ perfgate employs a multi-layered testing strategy following the test pyramid:
 | perfgate-domain | Edge cases, errors | Statistics & comparison properties | N/A | `compare_stats` |
 | perfgate-adapters | Mock-based tests | Output truncation property | N/A | N/A |
 | perfgate-app | Rendering examples | Markdown & annotation properties | N/A | `render_markdown` |
-| perfgate-cli | N/A | N/A | Full command coverage | N/A |
+| perfgate-cli | N/A | N/A | Full command coverage + integration tests | N/A |
 
 ## Running Tests
 
@@ -472,6 +472,23 @@ When adding new functionality, follow this checklist:
 - [ ] Run mutation testing on changed code
 - [ ] Address any surviving mutants
 - [ ] Aim for the target kill rate for the crate
+
+## Integration Tests
+
+The `perfgate-cli` crate has integration tests covering key features:
+
+| Test File | Coverage |
+|-----------|----------|
+| `cli_check_tests.rs` | `check` command workflows |
+| `cli_cockpit_tests.rs` | Cockpit mode output and schema validation |
+| `cli_abi_conformance_tests.rs` | `sensor.report.v1` ABI conformance |
+| `cli_paired_tests.rs` | `paired` command interleaved benchmarking |
+| `cli_host_mismatch_tests.rs` | Host mismatch detection policies |
+| `cli_cpu_time_tests.rs` | CPU time metric collection (Unix) |
+| `cli_export_tests.rs` | CSV and JSONL export formats |
+
+Golden fixture files for sensor report validation are at:
+`crates/perfgate-cli/tests/fixtures/golden/sensor_report_*.json`
 
 ## CI Integration
 

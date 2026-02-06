@@ -11,6 +11,7 @@ Receipt schemas are public API. The following schema IDs are stable:
 - `perfgate.compare.v1`
 - `perfgate.report.v1`
 - `perfgate.config.v1`
+- `sensor.report.v1` (cockpit mode envelope, vendored at `contracts/schemas/`)
 
 Within a `v1` schema, changes MUST be additive and backward compatible. Fields, codes, and reason tokens MUST NOT be renamed or repurposed.
 
@@ -23,10 +24,11 @@ CLI surface stability: the following commands are considered stable and MUST rem
 - `check`
 - `promote`
 - `export`
+- `paired`
 
 ## Commands
 
-perfgate provides eight commands for the performance budget workflow.
+perfgate provides nine commands for the performance budget workflow.
 
 ### run
 
@@ -70,6 +72,7 @@ Compares a current run receipt against a baseline.
 - `--metric-threshold`: Per-metric threshold override (e.g., `wall_ms=0.10`)
 - `--direction`: Per-metric direction override (e.g., `throughput_per_s=higher`)
 - `--fail-on-warn`: Treat warn verdict as exit 3
+- `--host-mismatch` (default: "ignore"): Host mismatch policy (`ignore`, `warn`, `fail`)
 - `--out` (default: "perfgate-compare.json"): Output file path
 - `--pretty`: Pretty-print JSON output
 
@@ -151,10 +154,12 @@ Config-driven one-command workflow.
 - `--env`: Environment variables (repeatable)
 - `--output-cap-bytes` (default: 8192): Max bytes captured
 - `--allow-nonzero`: Do not fail when command returns nonzero
+- `--mode` (default: "standard"): Output mode (`standard` or `cockpit`)
+- `--all`: Run all benchmarks defined in config (multi-bench mode)
 - `--pretty`: Pretty-print JSON output
 
 **Behavior:**
-- MUST load config file and find bench by name
+- MUST load config file and find bench by name (or run all with `--all`)
 - MUST run the benchmark using config parameters
 - MUST write all artifacts to `out_dir`
 - If baseline exists, MUST compare and generate report
@@ -212,6 +217,92 @@ Exports a run or compare receipt to CSV or JSONL format.
 
 **Compare Export Columns:**
 `bench_name, metric, baseline_value, current_value, regression_pct, status, threshold`
+
+### paired
+
+Paired benchmarking with interleaved baseline/current runs to reduce environmental noise.
+
+**Required Arguments:**
+- `--baseline`: Baseline command to execute (shell string)
+- `--current`: Current command to execute (shell string)
+
+**Optional Arguments:**
+- `--samples` (default: 10): Number of paired samples
+- `--warmup` (default: 0): Warmup pairs excluded from stats
+- `--threshold` (default: 0.20): Regression threshold (fraction)
+- `--warn-factor` (default: 0.90): Warn threshold = threshold * warn_factor
+- `--fail-on-warn`: Treat warn verdict as exit 3
+- `--out` (default: "perfgate-compare.json"): Output file path
+- `--pretty`: Pretty-print JSON output
+
+**Behavior:**
+- MUST execute baseline and current commands alternately (B, C, B, C, ...)
+- MUST measure each pair back-to-back to minimize environmental variance
+- MUST compute statistics from non-warmup pairs only
+- MUST compare using the same statistical methods as `compare`
+- Output MUST conform to `perfgate.compare.v1` schema
+
+**Exit Codes:**
+- Exit 0: Pass verdict (or warn without `--fail-on-warn`)
+- Exit 2: Fail verdict (budget violated)
+- Exit 3: Warn verdict with `--fail-on-warn`
+
+## Cockpit Mode
+
+The `check` command supports `--mode cockpit` for integration with monitoring dashboards.
+
+**Behavior:**
+- Output `report.json` MUST conform to `sensor.report.v1` schema
+- Extras artifacts MUST use versioned names: `perfgate.run.v1.json`, `perfgate.compare.v1.json`, `perfgate.report.v1.json`
+- Error reports MUST use `tool.runtime` check_id with structured `{stage, error_kind}` data
+- Baseline reason MUST use normalized `no_baseline` token
+- Artifacts MUST be sorted by `(type, path)` for deterministic output
+
+**Cockpit Mode Artifact Layout (single bench):**
+```
+artifacts/perfgate/
+├── report.json                         # sensor.report.v1 envelope
+├── comment.md
+└── extras/
+    ├── perfgate.run.v1.json
+    ├── perfgate.compare.v1.json        (if baseline)
+    └── perfgate.report.v1.json
+```
+
+**Cockpit Mode Artifact Layout (multi-bench `--all`):**
+```
+artifacts/perfgate/
+├── report.json                         # aggregated sensor.report.v1
+├── comment.md
+└── extras/
+    ├── bench-a/perfgate.run.v1.json
+    ├── bench-a/perfgate.compare.v1.json
+    ├── bench-a/perfgate.report.v1.json
+    ├── bench-b/perfgate.run.v1.json
+    └── ...
+```
+
+## Host Mismatch Detection
+
+When comparing runs from different hosts, perfgate detects potential inconsistencies.
+
+**Detection criteria:**
+- Different `os` or `arch`
+- Different `cpu_count`
+- Different `hostname_hash` (if both present)
+
+**Policy (`--host-mismatch`):**
+- `ignore` (default): Silently allow comparisons across different hosts
+- `warn`: Emit a warning but continue with comparison
+- `fail`: Exit 1 on mismatch
+
+## CPU Time Tracking
+
+On Unix platforms, perfgate collects CPU time metrics via `rusage`:
+- `user_time_ms`: Time spent in user mode
+- `system_time_ms`: Time spent in kernel mode
+
+These are optional fields in the run receipt sample. They are `None` on non-Unix platforms.
 
 ## Canonical Artifact Layout
 

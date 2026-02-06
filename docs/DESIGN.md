@@ -16,6 +16,8 @@ perfgate collects raw samples and computes summary statistics:
 - `warmup`: Boolean flag indicating warmup sample
 - `timed_out`: Boolean flag indicating timeout occurred
 - `max_rss_kb`: Maximum resident set size in KB (Unix only, optional)
+- `user_time_ms`: User-mode CPU time in milliseconds (Unix only, optional)
+- `system_time_ms`: Kernel-mode CPU time in milliseconds (Unix only, optional)
 - `stdout`: Truncated stdout (optional, up to `output_cap_bytes`)
 - `stderr`: Truncated stderr (optional, up to `output_cap_bytes`)
 
@@ -306,3 +308,45 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
 - `max_rss_kb` MAY be None (non-Unix or collection failure)
 - `throughput_per_s` MAY be None (no `work_units` specified)
 - Metrics missing from either baseline or current are skipped in comparison
+
+## Paired Benchmarking
+
+Paired mode interleaves baseline and current executions to reduce environmental noise:
+
+```
+baseline-1, current-1, baseline-2, current-2, ...
+```
+
+### Execution Model
+
+1. For each pair `i` in `0..samples`:
+   - Execute baseline command, record `wall_ms`
+   - Execute current command, record `wall_ms`
+2. Compute statistics from all baseline samples and all current samples independently
+3. Compare using the same budget/threshold logic as `compare`
+
+### Advantages
+
+- Back-to-back measurement minimizes environmental variance between baseline and current
+- Interleaving prevents systematic bias from thermal throttling or load changes
+- Uses standard `perfgate.compare.v1` output, compatible with all downstream tools
+
+## Host Mismatch Detection
+
+When comparing runs, perfgate can detect and warn about host differences.
+
+### Detection Criteria
+
+A mismatch is detected when any of the following differ between baseline and current:
+- `os` string
+- `arch` string
+- `cpu_count` value
+- `hostname_hash` value (if both present)
+
+### Policy Behavior
+
+| Policy | Behavior |
+|--------|----------|
+| `ignore` | No check performed (default) |
+| `warn` | Emit warning to stderr, continue comparison |
+| `fail` | Exit 1 with error message |
