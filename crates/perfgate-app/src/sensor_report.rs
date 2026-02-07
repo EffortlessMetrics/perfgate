@@ -9,12 +9,12 @@
 use crate::{CheckRequest, CheckUseCase, Clock};
 use perfgate_adapters::{sha256_hex, HostProbe, ProcessRunner};
 use perfgate_types::{
-    validate_bench_name, Capability, CapabilityStatus, ConfigFile, HostMismatchPolicy,
-    PerfgateReport, RunReceipt, SensorArtifact, SensorCapabilities, SensorFinding, SensorReport,
-    SensorRunMeta, SensorSeverity, SensorVerdict, SensorVerdictCounts, SensorVerdictStatus,
-    Severity, ToolInfo, VerdictStatus, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME,
-    CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC, ERROR_KIND_IO, ERROR_KIND_PARSE,
-    FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
+    validate_bench_name, Capability, CapabilityStatus, ConfigFile, ConfigValidationError,
+    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorArtifact, SensorCapabilities,
+    SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict, SensorVerdictCounts,
+    SensorVerdictStatus, Severity, ToolInfo, VerdictStatus, BASELINE_REASON_NO_BASELINE,
+    CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC, ERROR_KIND_IO,
+    ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
     SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND,
     STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
 };
@@ -148,6 +148,12 @@ where
 
 /// Classify an error into (stage, error_kind) for structured error reporting.
 pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
+    // Structural classification — preferred over string matching.
+    if err.downcast_ref::<ConfigValidationError>().is_some() {
+        return (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE);
+    }
+
+    // Fallback: string heuristics for errors not yet converted to typed errors.
     let msg = format!("{:#}", err);
     let msg_lower = msg.to_lowercase();
 
@@ -1141,6 +1147,26 @@ mod tests {
     #[test]
     fn test_classify_error_config_validation_without_bench_name() {
         let err = anyhow::anyhow!("config validation: some future validation error");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_config_validation_typed_config_file() {
+        let err: anyhow::Error = ConfigValidationError::ConfigFile(
+            "bench name \"Bad\" contains invalid characters".to_string(),
+        )
+        .into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_config_validation_typed_bench_name() {
+        let err: anyhow::Error =
+            ConfigValidationError::BenchName("bench name must not be empty".to_string()).into();
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_CONFIG_PARSE);
         assert_eq!(kind, ERROR_KIND_PARSE);

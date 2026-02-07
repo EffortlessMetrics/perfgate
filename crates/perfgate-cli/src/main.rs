@@ -9,9 +9,9 @@ use perfgate_app::{
 };
 use perfgate_domain::DomainError;
 use perfgate_types::{
-    Budget, CompareReceipt, CompareRef, ConfigFile, HostMismatchPolicy, Metric, RunReceipt,
-    ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED,
-    MAX_FINDINGS_DEFAULT, VERDICT_REASON_TRUNCATED,
+    Budget, CompareReceipt, CompareRef, ConfigFile, ConfigValidationError, HostMismatchPolicy,
+    Metric, RunReceipt, ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION,
+    FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT, VERDICT_REASON_TRUNCATED,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -715,7 +715,7 @@ fn run_check_standard(
 
     config_file
         .validate()
-        .map_err(|e| anyhow::anyhow!("config validation: {}", e))?;
+        .map_err(|e| ConfigValidationError::ConfigFile(e))?;
 
     // Determine which benches to run
     let bench_names: Vec<String> = if all {
@@ -927,7 +927,7 @@ fn run_check_cockpit_inner(
 
     config_file
         .validate()
-        .map_err(|e| anyhow::anyhow!("config validation: {}", e))?;
+        .map_err(|e| ConfigValidationError::ConfigFile(e))?;
 
     // Determine which benches to run
     let bench_names: Vec<String> = if all {

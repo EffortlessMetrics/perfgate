@@ -104,6 +104,15 @@ pub fn validate_bench_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigValidationError {
+    #[error("bench name validation: {0}")]
+    BenchName(String),
+
+    #[error("config validation: {0}")]
+    ConfigFile(String),
+}
+
 // Truncation signaling constants.
 pub const CHECK_ID_TOOL_TRUNCATION: &str = "tool.truncation";
 pub const FINDING_CODE_TRUNCATED: &str = "truncated";

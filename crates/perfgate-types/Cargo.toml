@@ -18,6 +18,7 @@ arbitrary = ["dep:arbitrary"]
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
+thiserror.workspace = true
 arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
