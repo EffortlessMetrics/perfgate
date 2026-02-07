@@ -715,7 +715,7 @@ fn run_check_standard(
 
     config_file
         .validate()
-        .map_err(|e| anyhow::anyhow!("parse config validation: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("config validation: {}", e))?;
 
     // Determine which benches to run
     let bench_names: Vec<String> = if all {
@@ -927,7 +927,7 @@ fn run_check_cockpit_inner(
 
     config_file
         .validate()
-        .map_err(|e| anyhow::anyhow!("parse config validation: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("config validation: {}", e))?;
 
     // Determine which benches to run
     let bench_names: Vec<String> = if all {
@@ -1147,6 +1147,11 @@ fn run_check_cockpit_inner(
     builder = builder.artifact("comment.md".to_string(), "markdown".to_string());
 
     // Apply truncation to aggregated findings
+    // Truncation invariants:
+    // - When applied: findings.len() == findings_emitted + 1
+    //   (findings_emitted real findings + 1 truncation meta-finding)
+    // - findings_total = original real finding count (before truncation)
+    // - When NOT applied: findings_total / findings_emitted are absent from data
     let limit = MAX_FINDINGS_DEFAULT;
     let mut truncation_totals: Option<(usize, usize)> = None;
     if aggregated_findings.len() > limit {

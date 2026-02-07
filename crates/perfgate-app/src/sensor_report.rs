@@ -80,6 +80,21 @@ where
         return builder.build_error(&msg, STAGE_CONFIG_PARSE, ERROR_KIND_PARSE);
     }
 
+    // Validate config (covers other bench names in the file) — defense-in-depth
+    // so library callers can't bypass config-level validation.
+    if let Err(msg) = config.validate() {
+        let ended_at = clock.now_rfc3339();
+        let duration_ms = start_instant.elapsed().as_millis() as u64;
+        let builder = SensorReportBuilder::new(tool, started_at)
+            .ended_at(ended_at, duration_ms)
+            .baseline(baseline.is_some(), None);
+        return builder.build_error(
+            &format!("config validation: {}", msg),
+            STAGE_CONFIG_PARSE,
+            ERROR_KIND_PARSE,
+        );
+    }
+
     let baseline_available = baseline.is_some();
 
     let result = CheckUseCase::new(runner.clone(), host_probe.clone(), clock.clone()).execute(
@@ -136,7 +151,9 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
     let msg = format!("{:#}", err);
     let msg_lower = msg.to_lowercase();
 
-    if msg_lower.contains("parse")
+    if msg_lower.contains("bench name") || msg_lower.contains("config validation") {
+        (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
+    } else if msg_lower.contains("parse")
         && (msg_lower.contains("config")
             || msg_lower.contains("toml")
             || msg_lower.contains("json config"))
@@ -287,6 +304,11 @@ impl SensorReportBuilder {
             .collect();
 
         // Apply truncation if configured
+        // Truncation invariants:
+        // - When applied: findings.len() == findings_emitted + 1
+        //   (findings_emitted real findings + 1 truncation meta-finding)
+        // - findings_total = original real finding count (before truncation)
+        // - When NOT applied: findings_total / findings_emitted are absent from data
         let mut truncation_totals: Option<(usize, usize)> = None;
         if let Some(limit) = self.max_findings {
             if findings.len() > limit {
@@ -1092,6 +1114,33 @@ mod tests {
     #[test]
     fn test_classify_error_json_config() {
         let err = anyhow::anyhow!("parse JSON config perfgate.json: unexpected token");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_bench_name_validation() {
+        let err = anyhow::anyhow!(
+            "bench name \"../evil\" contains a \"..\" path segment (path traversal is forbidden)"
+        );
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_config_validation() {
+        let err =
+            anyhow::anyhow!("config validation: bench name \"Bad\" contains invalid characters");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_config_validation_without_bench_name() {
+        let err = anyhow::anyhow!("config validation: some future validation error");
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_CONFIG_PARSE);
         assert_eq!(kind, ERROR_KIND_PARSE);
