@@ -241,6 +241,12 @@ When a sensor report contains many findings (e.g., multi-bench mode with widespr
 4. `verdict.reasons` MUST include `"truncated"`
 5. Report-level `data` MUST include `findings_total` and `findings_emitted`
 
+**Canonical definitions of truncation counters:**
+- `findings_total`: count of real findings before truncation (excludes the truncation meta-finding itself)
+- `findings_emitted`: count of real findings preserved after truncation (excludes the truncation meta-finding itself)
+- Invariant when truncated: `findings.len() == findings_emitted + 1` (the +1 is the truncation meta-finding)
+- When NOT truncated: both `findings_total` and `findings_emitted` are absent from `data`
+
 `contracts/fixtures/` are portable ingestion fixtures for cockpit compiler integration tests; `tests/fixtures/golden/` are perfgate CLI golden tests.
 
 ## Promote Normalization

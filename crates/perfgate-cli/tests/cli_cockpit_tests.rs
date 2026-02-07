@@ -578,6 +578,80 @@ fn test_cockpit_mode_missing_bench_produces_error_report() {
     assert_eq!(report["verdict"]["status"], "fail");
 }
 
+/// Test cockpit mode rejects path-traversal bench names with error report
+#[test]
+fn test_cockpit_mode_rejects_path_traversal_bench_name() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+
+    // Config with a path-traversal bench name
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let success_cmd = success_command();
+    let cmd_str = success_cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let config_content = format!(
+        r#"
+[defaults]
+repeat = 2
+warmup = 0
+threshold = 0.20
+
+[[bench]]
+name = "../evil"
+command = [{}]
+"#,
+        cmd_str
+    );
+    fs::write(&config_path, config_content).expect("write config");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("../evil")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+
+    // Cockpit mode: exit 0 with error recorded in report
+    assert!(
+        output.status.success(),
+        "cockpit mode should exit 0 on validation error: exit code {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report_path = out_dir.join("report.json");
+    assert!(
+        report_path.exists(),
+        "report.json should exist even on validation error"
+    );
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("read report"))
+            .expect("parse report");
+
+    assert_eq!(report["schema"], "sensor.report.v1");
+    assert_eq!(report["verdict"]["status"], "fail");
+    assert_eq!(report["verdict"]["reasons"][0], "tool_error");
+
+    // Should have error finding with config_parse stage
+    let findings = report["findings"].as_array().expect("findings array");
+    assert!(!findings.is_empty(), "should have at least one finding");
+    assert_eq!(findings[0]["check_id"], "tool.runtime");
+    assert_eq!(findings[0]["code"], "runtime_error");
+    let finding_data = &findings[0]["data"];
+    assert_eq!(finding_data["stage"], "config_parse");
+}
+
 /// Test cockpit mode error report validates against schema
 #[test]
 fn test_cockpit_mode_error_report_validates_schema() {

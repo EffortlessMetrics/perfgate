@@ -52,6 +52,58 @@ pub const ERROR_KIND_EXEC: &str = "exec_error";
 // Baseline reason tokens.
 pub const BASELINE_REASON_NO_BASELINE: &str = "no_baseline";
 
+// Bench name validation.
+/// Maximum length for a bench name.
+pub const BENCH_NAME_MAX_LEN: usize = 64;
+
+/// Pattern for valid bench names: lowercase alphanumeric, dots, underscores, hyphens,
+/// with `/` as a path separator. No path traversal (`..`), empty segments, or uppercase.
+pub const BENCH_NAME_PATTERN: &str = r"^[a-z0-9_.\-]+(/[a-z0-9_.\-]+)*$";
+
+/// Validate a bench name. Returns Err with a descriptive message if invalid.
+///
+/// Rules:
+/// 1. Must not be empty
+/// 2. Must be at most 64 characters
+/// 3. Only lowercase `[a-z0-9_.\-]` per segment, `/` as separator
+/// 4. No empty segments, `.` segments, or `..` segments (path traversal)
+pub fn validate_bench_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("bench name must not be empty".to_string());
+    }
+    if name.len() > BENCH_NAME_MAX_LEN {
+        return Err(format!(
+            "bench name {:?} exceeds maximum length of {} characters",
+            name, BENCH_NAME_MAX_LEN
+        ));
+    }
+    if !name.chars().all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '/' || c == '-'
+    }) {
+        return Err(format!(
+            "bench name {:?} contains invalid characters; \
+             allowed: lowercase alphanumeric, dots, underscores, hyphens, slashes",
+            name
+        ));
+    }
+    for segment in name.split('/') {
+        if segment.is_empty() {
+            return Err(format!(
+                "bench name {:?} contains an empty path segment \
+                 (leading, trailing, or consecutive slashes are forbidden)",
+                name
+            ));
+        }
+        if segment == "." || segment == ".." {
+            return Err(format!(
+                "bench name {:?} contains a {:?} path segment (path traversal is forbidden)",
+                name, segment
+            ));
+        }
+    }
+    Ok(())
+}
+
 // Truncation signaling constants.
 pub const CHECK_ID_TOOL_TRUNCATION: &str = "tool.truncation";
 pub const FINDING_CODE_TRUNCATED: &str = "truncated";
@@ -633,6 +685,16 @@ pub struct ConfigFile {
     pub benches: Vec<BenchConfigFile>,
 }
 
+impl ConfigFile {
+    /// Validate all bench names in this config. Returns an error if any name is invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        for bench in &self.benches {
+            validate_bench_name(&bench.name)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct DefaultsConfig {
@@ -783,6 +845,96 @@ mod tests {
         let parsed: HostInfo = serde_json::from_str(&json).expect("should deserialize");
 
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn validate_bench_name_valid() {
+        assert!(validate_bench_name("my-bench").is_ok());
+        assert!(validate_bench_name("bench_a").is_ok());
+        assert!(validate_bench_name("path/to/bench").is_ok());
+        assert!(validate_bench_name("bench.v2").is_ok());
+        assert!(validate_bench_name("a").is_ok());
+        assert!(validate_bench_name("123").is_ok());
+    }
+
+    #[test]
+    fn validate_bench_name_invalid() {
+        assert!(validate_bench_name("bench|name").is_err());
+        assert!(validate_bench_name("").is_err());
+        assert!(validate_bench_name("bench name").is_err());
+        assert!(validate_bench_name("bench@name").is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_path_traversal() {
+        assert!(validate_bench_name("../bench").is_err());
+        assert!(validate_bench_name("bench/../x").is_err());
+        assert!(validate_bench_name("./bench").is_err());
+        assert!(validate_bench_name("bench/.").is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_empty_segments() {
+        assert!(validate_bench_name("/bench").is_err());
+        assert!(validate_bench_name("bench/").is_err());
+        assert!(validate_bench_name("bench//x").is_err());
+        assert!(validate_bench_name("/").is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_length_cap() {
+        // Exactly 64 chars -> ok
+        let name_64 = "a".repeat(BENCH_NAME_MAX_LEN);
+        assert!(validate_bench_name(&name_64).is_ok());
+
+        // 65 chars -> rejected
+        let name_65 = "a".repeat(BENCH_NAME_MAX_LEN + 1);
+        assert!(validate_bench_name(&name_65).is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_case() {
+        assert!(validate_bench_name("MyBench").is_err());
+        assert!(validate_bench_name("BENCH").is_err());
+        assert!(validate_bench_name("benchA").is_err());
+    }
+
+    #[test]
+    fn config_file_validate_catches_bad_bench_name() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![BenchConfigFile {
+                name: "bad|name".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            }],
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn config_file_validate_passes_good_bench_names() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![BenchConfigFile {
+                name: "my-bench".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            }],
+        };
+        assert!(config.validate().is_ok());
     }
 
     /// Test backward compatibility: full RunReceipt without new host fields parses

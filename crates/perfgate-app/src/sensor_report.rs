@@ -9,13 +9,14 @@
 use crate::{CheckRequest, CheckUseCase, Clock};
 use perfgate_adapters::{sha256_hex, HostProbe, ProcessRunner};
 use perfgate_types::{
-    Capability, CapabilityStatus, ConfigFile, HostMismatchPolicy, PerfgateReport, RunReceipt,
-    SensorArtifact, SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity,
-    SensorVerdict, SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo, VerdictStatus,
-    BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
-    ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED,
-    MAX_FINDINGS_DEFAULT, SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE,
-    STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
+    validate_bench_name, Capability, CapabilityStatus, ConfigFile, HostMismatchPolicy,
+    PerfgateReport, RunReceipt, SensorArtifact, SensorCapabilities, SensorFinding, SensorReport,
+    SensorRunMeta, SensorSeverity, SensorVerdict, SensorVerdictCounts, SensorVerdictStatus,
+    Severity, ToolInfo, VerdictStatus, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME,
+    CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC, ERROR_KIND_IO, ERROR_KIND_PARSE,
+    FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
+    SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND,
+    STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
 };
 
 /// Options for `run_sensor_check`.
@@ -68,6 +69,16 @@ where
 {
     let started_at = clock.now_rfc3339();
     let start_instant = std::time::Instant::now();
+
+    // Validate bench name early — invalid names produce an error report.
+    if let Err(msg) = validate_bench_name(bench_name) {
+        let ended_at = clock.now_rfc3339();
+        let duration_ms = start_instant.elapsed().as_millis() as u64;
+        let builder = SensorReportBuilder::new(tool, started_at)
+            .ended_at(ended_at, duration_ms)
+            .baseline(baseline.is_some(), None);
+        return builder.build_error(&msg, STAGE_CONFIG_PARSE, ERROR_KIND_PARSE);
+    }
 
     let baseline_available = baseline.is_some();
 
@@ -215,7 +226,9 @@ impl SensorReportBuilder {
         self
     }
 
-    /// Set the maximum number of findings before truncation.
+    /// Set the maximum number of findings to include.
+    /// When exceeded, findings are truncated and a meta-finding is appended.
+    /// `findings_emitted` in the output counts real findings only (excluding the truncation meta-finding).
     pub fn max_findings(mut self, limit: usize) -> Self {
         self.max_findings = Some(limit);
         self
@@ -341,6 +354,8 @@ impl SensorReportBuilder {
             }
         });
 
+        // findings_total: total real findings before truncation (excludes the truncation meta-finding)
+        // findings_emitted: number of real findings preserved after truncation (excludes the truncation meta-finding)
         if let Some((total, emitted)) = truncation_totals {
             data["findings_total"] = serde_json::json!(total);
             data["findings_emitted"] = serde_json::json!(emitted);
@@ -980,6 +995,28 @@ mod tests {
     }
 
     #[test]
+    fn test_build_error_report_for_invalid_bench_name() {
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .ended_at("2024-01-01T00:00:01Z".to_string(), 1000)
+                .baseline(false, None);
+
+        let msg =
+            "bench name \"../evil\" contains a \"..\" path segment (path traversal is forbidden)";
+        let sensor_report = builder.build_error(msg, STAGE_CONFIG_PARSE, ERROR_KIND_PARSE);
+
+        assert_eq!(sensor_report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(sensor_report.verdict.status, SensorVerdictStatus::Fail);
+        assert_eq!(sensor_report.verdict.counts.error, 1);
+        assert_eq!(sensor_report.findings.len(), 1);
+        assert_eq!(sensor_report.findings[0].check_id, "tool.runtime");
+        assert_eq!(sensor_report.findings[0].code, "runtime_error");
+        let data = sensor_report.findings[0].data.as_ref().unwrap();
+        assert_eq!(data["stage"], "config_parse");
+        assert_eq!(data["error_kind"], "parse_error");
+    }
+
+    #[test]
     fn test_classify_error_config_parse() {
         let err = anyhow::anyhow!("parse TOML config perfgate.toml: expected `=`");
         let (stage, kind) = classify_error(&err);
@@ -1001,5 +1038,62 @@ mod tests {
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_RUN_COMMAND);
         assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    #[test]
+    fn test_classify_error_spawn_failure() {
+        let err = anyhow::anyhow!("failed to run command: spawn error");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    #[test]
+    fn test_classify_error_exec_failure() {
+        let err = anyhow::anyhow!("exec failed for process");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    #[test]
+    fn test_classify_error_write_artifacts() {
+        let err = anyhow::anyhow!("write output file failed");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_WRITE_ARTIFACTS);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_create_dir() {
+        let err = anyhow::anyhow!("create dir /tmp/out: permission denied");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_WRITE_ARTIFACTS);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_rename() {
+        let err = anyhow::anyhow!("rename temp file: cross-device link");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_WRITE_ARTIFACTS);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_io_downcast() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file gone");
+        let err: anyhow::Error = io_err.into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_json_config() {
+        let err = anyhow::anyhow!("parse JSON config perfgate.json: unexpected token");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
     }
 }

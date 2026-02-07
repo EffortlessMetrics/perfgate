@@ -713,6 +713,10 @@ fn run_check_standard(
             .with_context(|| format!("parse TOML config {}", config.display()))?
     };
 
+    config_file
+        .validate()
+        .map_err(|e| anyhow::anyhow!("parse config validation: {}", e))?;
+
     // Determine which benches to run
     let bench_names: Vec<String> = if all {
         if config_file.benches.is_empty() {
@@ -920,6 +924,10 @@ fn run_check_cockpit_inner(
         toml::from_str(&config_content)
             .with_context(|| format!("parse TOML config {}", config.display()))?
     };
+
+    config_file
+        .validate()
+        .map_err(|e| anyhow::anyhow!("parse config validation: {}", e))?;
 
     // Determine which benches to run
     let bench_names: Vec<String> = if all {

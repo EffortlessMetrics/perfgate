@@ -366,6 +366,12 @@ When `max_findings` is configured and the finding count exceeds the limit:
 - `verdict.reasons` MUST include `"truncated"` when truncation occurs
 - `data` MUST include `findings_total` and `findings_emitted`
 
+**Canonical definitions of truncation counters:**
+- `findings_total`: count of real findings before truncation (excludes the truncation meta-finding itself)
+- `findings_emitted`: count of real findings preserved after truncation (excludes the truncation meta-finding itself)
+- Invariant when truncated: `findings.len() == findings_emitted + 1` (the +1 is the truncation meta-finding)
+- When NOT truncated: both `findings_total` and `findings_emitted` are absent from `data`
+
 ## Baseline-Missing Behavior
 
 When a baseline is not found:
