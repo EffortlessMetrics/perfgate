@@ -12,14 +12,15 @@ use crate::{
     format_metric, format_pct, Clock, CompareRequest, CompareUseCase, RunBenchRequest,
     RunBenchUseCase,
 };
-use anyhow::{bail, Context};
+use anyhow::Context;
 use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
-    BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData,
-    HostMismatchPolicy, Metric, MetricStatus, PerfgateReport, ReportFinding, ReportSummary,
-    RunReceipt, Severity, ToolInfo, Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BASELINE,
-    CHECK_ID_BUDGET, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1, VERDICT_REASON_NO_BASELINE,
+    BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, ConfigValidationError,
+    FindingData, HostMismatchPolicy, Metric, MetricStatus, PerfgateError, PerfgateReport,
+    ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo, Verdict, VerdictCounts,
+    VerdictStatus, CHECK_ID_BASELINE, CHECK_ID_BUDGET, FINDING_CODE_BASELINE_MISSING,
+    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1,
+    VERDICT_REASON_NO_BASELINE,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -127,7 +128,12 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             .benches
             .iter()
             .find(|b| b.name == req.bench_name)
-            .with_context(|| format!("bench '{}' not found in config", req.bench_name))?;
+            .ok_or_else(|| {
+                ConfigValidationError::BenchName(format!(
+                    "bench '{}' not found in config",
+                    req.bench_name
+                ))
+            })?;
 
         // 2. Build run request from config
         let run_request = self.build_run_request(bench_config, &req)?;
@@ -186,10 +192,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         } else {
             // No baseline
             if req.require_baseline {
-                bail!(
+                return Err(PerfgateError::BaselineResolve(format!(
                     "baseline required but not found for bench '{}'",
                     req.bench_name
-                );
+                ))
+                .into());
             }
             warnings.push(format!(
                 "no baseline found for bench '{}', skipping comparison",

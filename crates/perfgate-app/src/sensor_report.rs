@@ -7,16 +7,17 @@
 //! so the cockpit binary can `use perfgate_app::run_sensor_check`.
 
 use crate::{CheckRequest, CheckUseCase, Clock};
+use perfgate_adapters::AdapterError;
 use perfgate_adapters::{sha256_hex, HostProbe, ProcessRunner};
 use perfgate_types::{
     validate_bench_name, Capability, CapabilityStatus, ConfigFile, ConfigValidationError,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorArtifact, SensorCapabilities,
-    SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict, SensorVerdictCounts,
-    SensorVerdictStatus, Severity, ToolInfo, VerdictStatus, BASELINE_REASON_NO_BASELINE,
-    CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC, ERROR_KIND_IO,
-    ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
-    SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND,
-    STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
+    HostMismatchPolicy, PerfgateError, PerfgateReport, RunReceipt, SensorArtifact,
+    SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict,
+    SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo, VerdictStatus,
+    BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
+    ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED,
+    MAX_FINDINGS_DEFAULT, SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE,
+    STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
 };
 
 /// Options for `run_sensor_check`.
@@ -153,6 +154,29 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
         return (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE);
     }
 
+    if let Some(pe) = err.downcast_ref::<PerfgateError>() {
+        return match pe {
+            PerfgateError::BaselineResolve(_) => (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO),
+            PerfgateError::ArtifactWrite(_) => (STAGE_WRITE_ARTIFACTS, ERROR_KIND_IO),
+            PerfgateError::RunCommand(_) => (STAGE_RUN_COMMAND, ERROR_KIND_EXEC),
+        };
+    }
+
+    // Walk the error chain for AdapterError.
+    if let Some(ae) = err.downcast_ref::<AdapterError>() {
+        return match ae {
+            AdapterError::EmptyArgv | AdapterError::Timeout | AdapterError::TimeoutUnsupported => {
+                (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
+            }
+            AdapterError::Other(_) => (STAGE_RUN_COMMAND, ERROR_KIND_IO),
+        };
+    }
+
+    // Walk the chain for DomainError.
+    if err.downcast_ref::<perfgate_domain::DomainError>().is_some() {
+        return (STAGE_RUN_COMMAND, ERROR_KIND_EXEC);
+    }
+
     // Fallback: string heuristics for errors not yet converted to typed errors.
     let msg = format!("{:#}", err);
     let msg_lower = msg.to_lowercase();
@@ -199,6 +223,23 @@ pub fn sensor_fingerprint(parts: &[&str]) -> String {
     sha256_hex(trimmed.join("|").as_bytes())
 }
 
+/// Build a default engine capability based on the current platform.
+/// On Unix: `Available` (cpu_ms, max_rss_kb via wait4).
+/// On non-Unix: `Unavailable` with reason `"platform_limited"`.
+pub fn default_engine_capability() -> Capability {
+    if cfg!(unix) {
+        Capability {
+            status: CapabilityStatus::Available,
+            reason: None,
+        }
+    } else {
+        Capability {
+            status: CapabilityStatus::Unavailable,
+            reason: Some("platform_limited".to_string()),
+        }
+    }
+}
+
 /// Builder for constructing a SensorReport from a PerfgateReport.
 pub struct SensorReportBuilder {
     tool: ToolInfo,
@@ -207,6 +248,7 @@ pub struct SensorReportBuilder {
     duration_ms: Option<u64>,
     baseline_available: bool,
     baseline_reason: Option<String>,
+    engine_capability: Option<Capability>,
     artifacts: Vec<SensorArtifact>,
     max_findings: Option<usize>,
 }
@@ -221,6 +263,7 @@ impl SensorReportBuilder {
             duration_ms: None,
             baseline_available: false,
             baseline_reason: None,
+            engine_capability: Some(default_engine_capability()),
             artifacts: Vec::new(),
             max_findings: None,
         }
@@ -237,6 +280,12 @@ impl SensorReportBuilder {
     pub fn baseline(mut self, available: bool, reason: Option<String>) -> Self {
         self.baseline_available = available;
         self.baseline_reason = reason;
+        self
+    }
+
+    /// Set engine capability explicitly.
+    pub fn engine(mut self, capability: Capability) -> Self {
+        self.engine_capability = Some(capability);
         self
     }
 
@@ -362,6 +411,7 @@ impl SensorReportBuilder {
                 },
                 reason: self.baseline_reason,
             },
+            engine: self.engine_capability,
         };
 
         // Build run metadata
@@ -452,6 +502,7 @@ impl SensorReportBuilder {
                 },
                 reason: self.baseline_reason,
             },
+            engine: self.engine_capability,
         };
 
         let run = SensorRunMeta {
@@ -490,7 +541,7 @@ impl SensorReportBuilder {
 mod tests {
     use super::*;
     use perfgate_types::{
-        ReportFinding, ReportSummary, Verdict, VerdictCounts, ERROR_KIND_PARSE,
+        PerfgateError, ReportFinding, ReportSummary, Verdict, VerdictCounts, ERROR_KIND_PARSE,
         FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1, STAGE_CONFIG_PARSE,
     };
 
@@ -1167,6 +1218,157 @@ mod tests {
     fn test_classify_error_config_validation_typed_bench_name() {
         let err: anyhow::Error =
             ConfigValidationError::BenchName("bench name must not be empty".to_string()).into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    // --- Typed PerfgateError downcast tests ---
+
+    #[test]
+    fn test_classify_error_typed_baseline_resolve() {
+        let err: anyhow::Error =
+            PerfgateError::BaselineResolve("file not found".to_string()).into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_BASELINE_RESOLVE);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_typed_artifact_write() {
+        let err: anyhow::Error =
+            PerfgateError::ArtifactWrite("permission denied".to_string()).into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_WRITE_ARTIFACTS);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    #[test]
+    fn test_classify_error_typed_run_command() {
+        let err: anyhow::Error = PerfgateError::RunCommand("spawn failed".to_string()).into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    // --- AdapterError downcast tests ---
+
+    #[test]
+    fn test_classify_error_adapter_empty_argv() {
+        let err: anyhow::Error = AdapterError::EmptyArgv.into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    #[test]
+    fn test_classify_error_adapter_timeout() {
+        let err: anyhow::Error = AdapterError::Timeout.into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    #[test]
+    fn test_classify_error_adapter_timeout_unsupported() {
+        let err: anyhow::Error = AdapterError::TimeoutUnsupported.into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    #[test]
+    fn test_classify_error_adapter_other() {
+        let inner = anyhow::anyhow!("some IO problem");
+        let err: anyhow::Error = AdapterError::Other(inner).into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_IO);
+    }
+
+    // --- DomainError downcast test ---
+
+    #[test]
+    fn test_classify_error_domain_no_samples() {
+        let err: anyhow::Error = perfgate_domain::DomainError::NoSamples.into();
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_RUN_COMMAND);
+        assert_eq!(kind, ERROR_KIND_EXEC);
+    }
+
+    // --- Engine capability tests ---
+
+    #[test]
+    fn test_build_pass_sensor_report_has_engine_capability() {
+        let report = make_pass_report();
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None);
+
+        let sensor_report = builder.build(&report);
+
+        assert!(
+            sensor_report.run.capabilities.engine.is_some(),
+            "engine capability should be present"
+        );
+    }
+
+    #[test]
+    fn test_build_error_report_has_engine_capability() {
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(false, None);
+
+        let sensor_report = builder.build_error(
+            "config file not found",
+            STAGE_CONFIG_PARSE,
+            ERROR_KIND_PARSE,
+        );
+
+        assert!(
+            sensor_report.run.capabilities.engine.is_some(),
+            "engine capability should be present in error report"
+        );
+    }
+
+    #[test]
+    fn test_engine_capability_explicit_override() {
+        let report = make_pass_report();
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .baseline(true, None)
+                .engine(Capability {
+                    status: CapabilityStatus::Unavailable,
+                    reason: Some("platform_limited".to_string()),
+                });
+
+        let sensor_report = builder.build(&report);
+
+        let engine = sensor_report.run.capabilities.engine.unwrap();
+        assert_eq!(engine.status, CapabilityStatus::Unavailable);
+        assert_eq!(engine.reason, Some("platform_limited".to_string()));
+    }
+
+    #[test]
+    fn test_default_engine_capability_value() {
+        let cap = default_engine_capability();
+        if cfg!(unix) {
+            assert_eq!(cap.status, CapabilityStatus::Available);
+            assert!(cap.reason.is_none());
+        } else {
+            assert_eq!(cap.status, CapabilityStatus::Unavailable);
+            assert_eq!(cap.reason, Some("platform_limited".to_string()));
+        }
+    }
+
+    // --- Bench-not-found misclassification bug regression test ---
+
+    #[test]
+    fn test_classify_error_bench_not_found_typed() {
+        // This was previously misclassified as (baseline_resolve, io_error)
+        // because "not found" matched the string heuristic.
+        let err: anyhow::Error =
+            ConfigValidationError::BenchName("bench 'xyz' not found in config".to_string()).into();
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_CONFIG_PARSE);
         assert_eq!(kind, ERROR_KIND_PARSE);

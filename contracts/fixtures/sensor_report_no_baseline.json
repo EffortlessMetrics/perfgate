@@ -12,6 +12,9 @@
       "baseline": {
         "status": "unavailable",
         "reason": "no_baseline"
+      },
+      "engine": {
+        "status": "available"
       }
     }
   },

@@ -71,6 +71,9 @@ enum Command {
         file: Option<PathBuf>,
     },
 
+    /// Copy golden fixtures to contracts/fixtures/ (golden is source of truth).
+    SyncFixtures,
+
     /// Run mutation testing via cargo-mutants (must be installed).
     Mutants {
         /// Run mutation testing on a specific crate only
@@ -94,6 +97,7 @@ fn main() -> anyhow::Result<()> {
         Command::Schema { out_dir } => cmd_schema(&out_dir),
         Command::Ci => cmd_ci(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
+        Command::SyncFixtures => cmd_sync_fixtures(),
         Command::Mutants {
             crate_name,
             summary,
@@ -122,6 +126,8 @@ fn cmd_ci() -> anyhow::Result<()> {
 }
 
 fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> anyhow::Result<()> {
+    let is_default_run = fixtures_dir.is_none() && single_file.is_none();
+
     // Load vendored schema
     let schema_path = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
     let schema_content = fs::read_to_string(&schema_path)
@@ -199,6 +205,100 @@ fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> a
         anyhow::bail!("{} fixture(s) failed schema validation", errors);
     }
 
+    // When running default conform (no --file / --fixtures), also check fixture mirror
+    if is_default_run {
+        check_fixture_mirror()?;
+    }
+
+    Ok(())
+}
+
+fn cmd_sync_fixtures() -> anyhow::Result<()> {
+    let golden_dir = PathBuf::from("crates/perfgate-cli/tests/fixtures/golden");
+    let contracts_dir = PathBuf::from("contracts/fixtures");
+
+    fs::create_dir_all(&contracts_dir)
+        .with_context(|| format!("create dir {}", contracts_dir.display()))?;
+
+    let mut count = 0u32;
+    for entry in
+        fs::read_dir(&golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("sensor_report_"))
+                .unwrap_or(false)
+        {
+            let dest = contracts_dir.join(path.file_name().unwrap());
+            fs::copy(&path, &dest)
+                .with_context(|| format!("copy {} -> {}", path.display(), dest.display()))?;
+            println!("  synced  {}", dest.display());
+            count += 1;
+        }
+    }
+
+    println!("\nSynced {} fixtures from golden -> contracts", count);
+    Ok(())
+}
+
+/// Check that golden fixtures and contract fixtures are byte-for-byte identical.
+fn check_fixture_mirror() -> anyhow::Result<()> {
+    let golden_dir = PathBuf::from("crates/perfgate-cli/tests/fixtures/golden");
+    let contracts_dir = PathBuf::from("contracts/fixtures");
+
+    if !contracts_dir.is_dir() {
+        anyhow::bail!(
+            "contracts/fixtures/ does not exist. Run: cargo run -p xtask -- sync-fixtures"
+        );
+    }
+
+    let mut drift = 0u32;
+    for entry in
+        fs::read_dir(&golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("sensor_report_"))
+                .unwrap_or(false)
+        {
+            let contract_path = contracts_dir.join(path.file_name().unwrap());
+            if !contract_path.exists() {
+                println!(
+                    "  DRIFT  {} missing in contracts/fixtures/",
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                drift += 1;
+                continue;
+            }
+
+            let golden_bytes = fs::read(&path)?;
+            let contract_bytes = fs::read(&contract_path)?;
+            if golden_bytes != contract_bytes {
+                println!(
+                    "  DRIFT  {} differs between golden and contracts",
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                drift += 1;
+            }
+        }
+    }
+
+    if drift > 0 {
+        anyhow::bail!(
+            "{} fixture(s) drifted. Run: cargo run -p xtask -- sync-fixtures",
+            drift
+        );
+    }
+
+    println!("  OK  golden and contracts fixtures are in sync");
     Ok(())
 }
 

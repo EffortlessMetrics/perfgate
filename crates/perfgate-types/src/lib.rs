@@ -113,6 +113,20 @@ pub enum ConfigValidationError {
     ConfigFile(String),
 }
 
+/// Typed error for non-config failures, enabling structural classification
+/// in `classify_error()` without string heuristics.
+#[derive(Debug, thiserror::Error)]
+pub enum PerfgateError {
+    #[error("baseline resolve: {0}")]
+    BaselineResolve(String),
+
+    #[error("write artifacts: {0}")]
+    ArtifactWrite(String),
+
+    #[error("run command: {0}")]
+    RunCommand(String),
+}
+
 // Truncation signaling constants.
 pub const CHECK_ID_TOOL_TRUNCATION: &str = "tool.truncation";
 pub const FINDING_CODE_TRUNCATED: &str = "truncated";
@@ -149,6 +163,8 @@ pub struct Capability {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct SensorCapabilities {
     pub baseline: Capability,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub engine: Option<Capability>,
 }
 
 /// Run metadata for the sensor report.
@@ -925,6 +941,64 @@ mod tests {
             }],
         };
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn perfgate_error_display_baseline_resolve() {
+        let err = PerfgateError::BaselineResolve("file not found".to_string());
+        assert_eq!(format!("{}", err), "baseline resolve: file not found");
+    }
+
+    #[test]
+    fn perfgate_error_display_artifact_write() {
+        let err = PerfgateError::ArtifactWrite("permission denied".to_string());
+        assert_eq!(format!("{}", err), "write artifacts: permission denied");
+    }
+
+    #[test]
+    fn perfgate_error_display_run_command() {
+        let err = PerfgateError::RunCommand("spawn failed".to_string());
+        assert_eq!(format!("{}", err), "run command: spawn failed");
+    }
+
+    #[test]
+    fn sensor_capabilities_backward_compat_without_engine() {
+        let json = r#"{"baseline":{"status":"available"}}"#;
+        let caps: SensorCapabilities =
+            serde_json::from_str(json).expect("should parse without engine");
+        assert_eq!(caps.baseline.status, CapabilityStatus::Available);
+        assert!(caps.engine.is_none());
+    }
+
+    #[test]
+    fn sensor_capabilities_with_engine() {
+        let caps = SensorCapabilities {
+            baseline: Capability {
+                status: CapabilityStatus::Available,
+                reason: None,
+            },
+            engine: Some(Capability {
+                status: CapabilityStatus::Available,
+                reason: None,
+            }),
+        };
+        let json = serde_json::to_string(&caps).unwrap();
+        assert!(json.contains("\"engine\""));
+        let parsed: SensorCapabilities = serde_json::from_str(&json).unwrap();
+        assert_eq!(caps, parsed);
+    }
+
+    #[test]
+    fn sensor_capabilities_engine_omitted_when_none() {
+        let caps = SensorCapabilities {
+            baseline: Capability {
+                status: CapabilityStatus::Available,
+                reason: None,
+            },
+            engine: None,
+        };
+        let json = serde_json::to_string(&caps).unwrap();
+        assert!(!json.contains("engine"));
     }
 
     #[test]

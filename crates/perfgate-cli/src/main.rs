@@ -10,8 +10,9 @@ use perfgate_app::{
 use perfgate_domain::DomainError;
 use perfgate_types::{
     Budget, CompareReceipt, CompareRef, ConfigFile, ConfigValidationError, HostMismatchPolicy,
-    Metric, RunReceipt, ToolInfo, BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_TRUNCATION,
-    FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT, VERDICT_REASON_TRUNCATED,
+    Metric, PerfgateError, RunReceipt, ToolInfo, BASELINE_REASON_NO_BASELINE,
+    CHECK_ID_TOOL_TRUNCATION, FINDING_CODE_TRUNCATED, MAX_FINDINGS_DEFAULT,
+    VERDICT_REASON_TRUNCATED,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -745,7 +746,10 @@ fn run_check_standard(
         let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
         let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
             if path.exists() {
-                Some(read_json(path)?)
+                Some(
+                    read_json(path)
+                        .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
+                )
             } else {
                 None
             }
@@ -754,8 +758,13 @@ fn run_check_standard(
         };
 
         // Create output directory
-        fs::create_dir_all(&bench_out_dir)
-            .with_context(|| format!("create output dir {}", bench_out_dir.display()))?;
+        fs::create_dir_all(&bench_out_dir).map_err(|e| {
+            PerfgateError::ArtifactWrite(format!(
+                "create output dir {}: {}",
+                bench_out_dir.display(),
+                e
+            ))
+        })?;
 
         // Execute check
         let runner = StdProcessRunner;
@@ -779,7 +788,8 @@ fn run_check_standard(
         })?;
 
         // Write artifacts
-        write_check_artifacts(&outcome, pretty)?;
+        write_check_artifacts(&outcome, pretty)
+            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
         // Collect warnings (prefix with bench name in --all mode)
         for warning in &outcome.warnings {
@@ -953,14 +963,22 @@ fn run_check_cockpit_inner(
         } else {
             out_dir.join("extras")
         };
-        fs::create_dir_all(&extras_dir)
-            .with_context(|| format!("create extras dir {}", extras_dir.display()))?;
+        fs::create_dir_all(&extras_dir).map_err(|e| {
+            PerfgateError::ArtifactWrite(format!(
+                "create extras dir {}: {}",
+                extras_dir.display(),
+                e
+            ))
+        })?;
 
         // Resolve baseline path
         let baseline_path = resolve_baseline_path(baseline, bench_name, &config_file);
         let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
             if path.exists() {
-                Some(read_json(path)?)
+                Some(
+                    read_json(path)
+                        .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
+                )
             } else {
                 None
             }
@@ -990,10 +1008,12 @@ fn run_check_cockpit_inner(
         })?;
 
         // Write native artifacts to extras/
-        write_check_artifacts(&outcome, pretty)?;
+        write_check_artifacts(&outcome, pretty)
+            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
         // Rename extras files to versioned names
-        rename_extras_to_versioned(&extras_dir)?;
+        rename_extras_to_versioned(&extras_dir)
+            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
         all_outcomes.push((bench_name.clone(), outcome, baseline_available));
     }
@@ -1220,6 +1240,7 @@ fn run_check_cockpit_inner(
                         None
                     },
                 },
+                engine: Some(perfgate_app::default_engine_capability()),
             },
         },
         verdict: perfgate_types::SensorVerdict {

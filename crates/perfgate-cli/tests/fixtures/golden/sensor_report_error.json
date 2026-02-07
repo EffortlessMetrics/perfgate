@@ -11,6 +11,9 @@
     "capabilities": {
       "baseline": {
         "status": "unavailable"
+      },
+      "engine": {
+        "status": "available"
       }
     }
   },
