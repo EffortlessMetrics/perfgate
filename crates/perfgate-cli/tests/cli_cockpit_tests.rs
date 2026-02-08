@@ -652,6 +652,651 @@ command = [{}]
     assert_eq!(finding_data["stage"], "config_parse");
 }
 
+// ======================================================================
+// Multi-bench cockpit integration tests
+// ======================================================================
+
+/// Create a config file with multiple benches for cockpit tests.
+fn create_multi_bench_config(
+    temp_dir: &std::path::Path,
+    bench_names: &[&str],
+) -> std::path::PathBuf {
+    let config_path = temp_dir.join("perfgate.toml");
+    let success_cmd = success_command();
+
+    let cmd_str = success_cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let mut config_content = String::from(
+        r#"
+[defaults]
+repeat = 2
+warmup = 0
+threshold = 0.20
+"#,
+    );
+
+    for name in bench_names {
+        config_content.push_str(&format!(
+            r#"
+[[bench]]
+name = "{}"
+command = [{}]
+"#,
+            name, cmd_str
+        ));
+    }
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+    config_path
+}
+
+/// Load the vendored schema validator.
+fn load_vendored_schema_validator() -> jsonschema::Validator {
+    let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/schemas/sensor.report.v1.schema.json");
+    let schema_content = fs::read_to_string(&schema_path).expect("read schema");
+    let schema_value: Value = serde_json::from_str(&schema_content).expect("parse schema");
+    jsonschema::validator_for(&schema_value).expect("compile schema")
+}
+
+/// Run perfgate check --all --mode cockpit and return the parsed report.json.
+fn run_cockpit_multi_bench(
+    temp_dir: &tempfile::TempDir,
+    bench_names: &[&str],
+    create_baselines: bool,
+) -> (Value, std::path::PathBuf) {
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_multi_bench_config(temp_dir.path(), bench_names);
+
+    if create_baselines {
+        for name in bench_names {
+            create_baseline_receipt(temp_dir.path(), name);
+        }
+    }
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "cockpit multi-bench should exit 0: stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report_path = out_dir.join("report.json");
+    let content = fs::read_to_string(&report_path).expect("read report.json");
+    let report: Value = serde_json::from_str(&content).expect("parse report.json");
+
+    (report, out_dir)
+}
+
+/// Test multi-bench cockpit artifact layout (no baselines).
+#[test]
+fn test_cockpit_multi_bench_artifact_layout() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (_report, out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    // Root artifacts
+    assert!(out_dir.join("report.json").exists(), "report.json at root");
+    assert!(out_dir.join("comment.md").exists(), "comment.md at root");
+
+    // Per-bench subdirectories under extras/
+    for name in &["bench-a", "bench-b"] {
+        let prefix = out_dir.join("extras").join(name);
+        assert!(prefix.is_dir(), "extras/{} directory", name);
+        assert!(
+            prefix.join("perfgate.run.v1.json").exists(),
+            "extras/{}/perfgate.run.v1.json",
+            name
+        );
+        assert!(
+            prefix.join("perfgate.report.v1.json").exists(),
+            "extras/{}/perfgate.report.v1.json",
+            name
+        );
+        // No baseline → no compare file
+        assert!(
+            !prefix.join("perfgate.compare.v1.json").exists(),
+            "extras/{}/perfgate.compare.v1.json should NOT exist without baseline",
+            name
+        );
+    }
+}
+
+/// Test multi-bench cockpit artifact layout with baselines.
+#[test]
+fn test_cockpit_multi_bench_artifact_layout_with_baselines() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (_report, out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], true);
+
+    for name in &["bench-a", "bench-b"] {
+        let prefix = out_dir.join("extras").join(name);
+        assert!(
+            prefix.join("perfgate.compare.v1.json").exists(),
+            "extras/{}/perfgate.compare.v1.json should exist with baseline",
+            name
+        );
+    }
+}
+
+/// Test multi-bench cockpit output validates against vendored schema.
+#[test]
+fn test_cockpit_multi_bench_schema_validation() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    let validator = load_vendored_schema_validator();
+    let errors: Vec<_> = validator.iter_errors(&report).collect();
+    assert!(
+        errors.is_empty(),
+        "multi-bench report failed schema validation:\n{}",
+        errors
+            .iter()
+            .map(|e| format!("  - {}", e))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+/// Test multi-bench verdict is worst-of across benches.
+#[test]
+fn test_cockpit_multi_bench_verdict_worst_wins() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
+
+    // Create a baseline with very low wall_ms for bench-a to trigger fail
+    let baselines_dir = temp_dir.path().join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("create baselines dir");
+
+    let fast_baseline = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": { "name": "perfgate", "version": "0.1.0" },
+        "run": {
+            "id": "baseline-id",
+            "started_at": "2024-01-01T00:00:00Z",
+            "ended_at": "2024-01-01T00:01:00Z",
+            "host": { "os": "linux", "arch": "x86_64" }
+        },
+        "bench": {
+            "name": "bench-a",
+            "command": ["echo", "hello"],
+            "repeat": 2,
+            "warmup": 0
+        },
+        "samples": [
+            {"wall_ms": 1, "exit_code": 0, "warmup": false, "timed_out": false},
+            {"wall_ms": 1, "exit_code": 0, "warmup": false, "timed_out": false}
+        ],
+        "stats": { "wall_ms": { "median": 1, "min": 1, "max": 1 } }
+    });
+    fs::write(
+        baselines_dir.join("bench-a.json"),
+        serde_json::to_string_pretty(&fast_baseline).unwrap(),
+    )
+    .expect("write bench-a baseline");
+    // No baseline for bench-b
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(output.status.success());
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("report.json")).unwrap()).unwrap();
+
+    let verdict_status = report["verdict"]["status"].as_str().unwrap();
+    assert!(
+        verdict_status == "fail" || verdict_status == "warn",
+        "aggregated verdict should be fail or warn (worst-of), got: {}",
+        verdict_status
+    );
+}
+
+/// Test multi-bench counts are summed across benches.
+#[test]
+fn test_cockpit_multi_bench_counts_summed() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    // Both benches without baseline: each produces warn=1 (no_baseline)
+    let counts = &report["verdict"]["counts"];
+    let warn = counts["warn"].as_u64().unwrap();
+    let info = counts["info"].as_u64().unwrap();
+    let error = counts["error"].as_u64().unwrap();
+
+    // Two benches, each with 1 warn finding → combined should have 2 warn
+    assert_eq!(warn, 2, "warn counts should be summed");
+    assert_eq!(info, 0, "info counts should be summed");
+    assert_eq!(error, 0, "error counts should be summed");
+
+    // Total in data.summary should match
+    let summary = &report["data"]["summary"];
+    assert_eq!(
+        summary["total_count"].as_u64().unwrap(),
+        (info + warn + error) as u64,
+        "total_count should be sum of counts"
+    );
+}
+
+/// Test multi-bench findings are prefixed with bench name and have bench_name in data.
+#[test]
+fn test_cockpit_multi_bench_findings_prefixed() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    let findings = report["findings"].as_array().expect("findings array");
+    assert!(findings.len() >= 2, "should have at least 2 findings");
+
+    let has_bench_a_prefix = findings
+        .iter()
+        .any(|f| f["message"].as_str().unwrap_or("").starts_with("[bench-a]"));
+    let has_bench_b_prefix = findings
+        .iter()
+        .any(|f| f["message"].as_str().unwrap_or("").starts_with("[bench-b]"));
+    assert!(has_bench_a_prefix, "should have [bench-a] prefix");
+    assert!(has_bench_b_prefix, "should have [bench-b] prefix");
+
+    // Finding data should include bench_name
+    for finding in findings {
+        let data = finding.get("data");
+        if let Some(data) = data {
+            assert!(
+                data.get("bench_name").is_some(),
+                "finding data should have bench_name"
+            );
+        }
+    }
+}
+
+/// Test multi-bench fingerprints are unique and 64-char hex.
+#[test]
+fn test_cockpit_multi_bench_fingerprints_unique() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    let findings = report["findings"].as_array().expect("findings array");
+    let mut fingerprints: Vec<&str> = Vec::new();
+
+    for finding in findings {
+        let fp = finding["fingerprint"]
+            .as_str()
+            .expect("finding should have fingerprint");
+        assert_eq!(fp.len(), 64, "fingerprint should be 64-char hex: {}", fp);
+        assert!(
+            fp.chars().all(|c| c.is_ascii_hexdigit()),
+            "fingerprint should be hex: {}",
+            fp
+        );
+        assert!(
+            !fingerprints.contains(&fp),
+            "fingerprints should be unique: {} seen twice",
+            fp
+        );
+        fingerprints.push(fp);
+    }
+}
+
+/// Test multi-bench reasons: no_baseline appears exactly once.
+#[test]
+fn test_cockpit_multi_bench_reasons_deduped() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    let reasons = report["verdict"]["reasons"]
+        .as_array()
+        .expect("reasons array");
+    let no_baseline_count = reasons
+        .iter()
+        .filter(|r| r.as_str() == Some("no_baseline"))
+        .count();
+    assert_eq!(
+        no_baseline_count, 1,
+        "no_baseline should appear exactly once in reasons"
+    );
+}
+
+/// Test multi-bench baseline capability: available when ALL have baselines.
+#[test]
+fn test_cockpit_multi_bench_baseline_all_available() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], true);
+
+    assert_eq!(
+        report["run"]["capabilities"]["baseline"]["status"], "available",
+        "all baselines → status = available"
+    );
+}
+
+/// Test multi-bench baseline capability: unavailable when some lack baselines.
+#[test]
+fn test_cockpit_multi_bench_baseline_partial() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
+
+    // Only create baseline for bench-a
+    create_baseline_receipt(temp_dir.path(), "bench-a");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(output.status.success());
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("report.json")).unwrap()).unwrap();
+
+    assert_eq!(
+        report["run"]["capabilities"]["baseline"]["status"], "unavailable",
+        "partial baselines → status = unavailable"
+    );
+    // reason should be null when some have baselines
+    assert!(
+        report["run"]["capabilities"]["baseline"]["reason"].is_null(),
+        "partial baselines → reason = null"
+    );
+}
+
+/// Test multi-bench baseline capability: unavailable with no_baseline reason when none.
+#[test]
+fn test_cockpit_multi_bench_baseline_none() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    assert_eq!(
+        report["run"]["capabilities"]["baseline"]["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        report["run"]["capabilities"]["baseline"]["reason"],
+        "no_baseline"
+    );
+}
+
+/// Test multi-bench cockpit exits 0 even on aggregated fail.
+#[test]
+fn test_cockpit_multi_bench_exits_zero_on_fail() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
+
+    // Create fast baseline for both to trigger fail
+    let baselines_dir = temp_dir.path().join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("create baselines dir");
+    for name in &["bench-a", "bench-b"] {
+        let baseline = serde_json::json!({
+            "schema": "perfgate.run.v1",
+            "tool": { "name": "perfgate", "version": "0.1.0" },
+            "run": {
+                "id": "baseline-id",
+                "started_at": "2024-01-01T00:00:00Z",
+                "ended_at": "2024-01-01T00:01:00Z",
+                "host": { "os": "linux", "arch": "x86_64" }
+            },
+            "bench": {
+                "name": name,
+                "command": ["echo", "hello"],
+                "repeat": 2,
+                "warmup": 0
+            },
+            "samples": [
+                {"wall_ms": 1, "exit_code": 0, "warmup": false, "timed_out": false},
+                {"wall_ms": 1, "exit_code": 0, "warmup": false, "timed_out": false}
+            ],
+            "stats": { "wall_ms": { "median": 1, "min": 1, "max": 1 } }
+        });
+        fs::write(
+            baselines_dir.join(format!("{}.json", name)),
+            serde_json::to_string_pretty(&baseline).unwrap(),
+        )
+        .expect("write baseline");
+    }
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "cockpit multi-bench should exit 0 even on fail: exit {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Test multi-bench comment.md contains both bench names and --- separator.
+#[test]
+fn test_cockpit_multi_bench_comment_md_combined() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (_report, out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    let md = fs::read_to_string(out_dir.join("comment.md")).expect("read comment.md");
+    assert!(md.contains("bench-a"), "markdown should contain bench-a");
+    assert!(md.contains("bench-b"), "markdown should contain bench-b");
+    assert!(
+        md.contains("---"),
+        "multi-bench markdown should have --- separator"
+    );
+}
+
+/// Test multi-bench artifacts are sorted by (type, path).
+#[test]
+fn test_cockpit_multi_bench_artifacts_sorted() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], true);
+
+    let artifacts = report["artifacts"].as_array().expect("artifacts array");
+    for window in artifacts.windows(2) {
+        let a_type = window[0]["type"].as_str().unwrap();
+        let a_path = window[0]["path"].as_str().unwrap();
+        let b_type = window[1]["type"].as_str().unwrap();
+        let b_path = window[1]["path"].as_str().unwrap();
+        assert!(
+            (a_type, a_path) <= (b_type, b_path),
+            "artifacts not sorted: ({}, {}) > ({}, {})",
+            a_type,
+            a_path,
+            b_type,
+            b_path
+        );
+    }
+}
+
+/// Test multi-bench empty config produces error sensor report.
+#[test]
+fn test_cockpit_multi_bench_empty_config_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+
+    // Create a config with no benches
+    let config_path = temp_dir.path().join("perfgate.toml");
+    fs::write(
+        &config_path,
+        r#"
+[defaults]
+repeat = 2
+"#,
+    )
+    .expect("write config");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "cockpit should exit 0 even on empty config: stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("report.json")).unwrap()).unwrap();
+
+    assert_eq!(report["schema"], "sensor.report.v1");
+    assert_eq!(report["verdict"]["status"], "fail");
+    assert_eq!(report["verdict"]["reasons"][0], "tool_error");
+}
+
+/// Test multi-bench report structure has all required fields.
+#[test]
+fn test_cockpit_multi_bench_report_structure() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], true);
+
+    // Verify required fields
+    assert_eq!(report["schema"], "sensor.report.v1");
+    assert!(report.get("tool").is_some(), "tool field missing");
+    assert_eq!(report["tool"]["name"], "perfgate");
+    assert!(report.get("run").is_some(), "run field missing");
+    assert!(
+        report["run"].get("started_at").is_some(),
+        "started_at missing"
+    );
+    assert!(report["run"].get("ended_at").is_some(), "ended_at missing");
+    assert!(
+        report["run"].get("duration_ms").is_some(),
+        "duration_ms missing"
+    );
+    assert!(
+        report["run"].get("capabilities").is_some(),
+        "capabilities missing"
+    );
+    assert!(report.get("verdict").is_some(), "verdict field missing");
+    assert!(
+        report["verdict"].get("status").is_some(),
+        "verdict.status missing"
+    );
+    assert!(
+        report["verdict"].get("counts").is_some(),
+        "verdict.counts missing"
+    );
+    assert!(
+        report["verdict"]["counts"].get("info").is_some(),
+        "counts.info missing"
+    );
+    assert!(
+        report["verdict"]["counts"].get("warn").is_some(),
+        "counts.warn missing"
+    );
+    assert!(
+        report["verdict"]["counts"].get("error").is_some(),
+        "counts.error missing"
+    );
+    assert!(report.get("findings").is_some(), "findings field missing");
+    assert!(report.get("data").is_some(), "data field missing");
+    assert!(
+        report["data"].get("summary").is_some(),
+        "data.summary missing"
+    );
+}
+
+/// Test multi-bench report has no truncation fields when under limit.
+#[test]
+fn test_cockpit_multi_bench_no_truncation_fields() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (report, _out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], false);
+
+    assert!(
+        report["data"].get("findings_total").is_none()
+            || report["data"]["findings_total"].is_null(),
+        "findings_total should be absent when under limit"
+    );
+    assert!(
+        report["data"].get("findings_emitted").is_none()
+            || report["data"]["findings_emitted"].is_null(),
+        "findings_emitted should be absent when under limit"
+    );
+}
+
+/// Test multi-bench extras contain valid native schemas.
+#[test]
+fn test_cockpit_multi_bench_extras_valid_native() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let (_report, out_dir) = run_cockpit_multi_bench(&temp_dir, &["bench-a", "bench-b"], true);
+
+    for name in &["bench-a", "bench-b"] {
+        let prefix = out_dir.join("extras").join(name);
+
+        // Run receipt should have correct schema
+        let run_content =
+            fs::read_to_string(prefix.join("perfgate.run.v1.json")).expect("read run receipt");
+        let run: Value = serde_json::from_str(&run_content).expect("parse run receipt");
+        assert_eq!(
+            run["schema"], "perfgate.run.v1",
+            "extras/{}/perfgate.run.v1.json should have correct schema",
+            name
+        );
+
+        // Report should have correct report_type
+        let report_content =
+            fs::read_to_string(prefix.join("perfgate.report.v1.json")).expect("read native report");
+        let native_report: Value =
+            serde_json::from_str(&report_content).expect("parse native report");
+        assert_eq!(
+            native_report["report_type"], "perfgate.report.v1",
+            "extras/{}/perfgate.report.v1.json should have correct report_type",
+            name
+        );
+
+        // Compare receipt should have correct schema
+        let compare_content = fs::read_to_string(prefix.join("perfgate.compare.v1.json"))
+            .expect("read compare receipt");
+        let compare: Value = serde_json::from_str(&compare_content).expect("parse compare receipt");
+        assert_eq!(
+            compare["schema"], "perfgate.compare.v1",
+            "extras/{}/perfgate.compare.v1.json should have correct schema",
+            name
+        );
+    }
+}
+
 /// Test cockpit mode error report validates against schema
 #[test]
 fn test_cockpit_mode_error_report_validates_schema() {

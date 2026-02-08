@@ -16,7 +16,7 @@ pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
 pub use sensor_report::{
-    classify_error, default_engine_capability, run_sensor_check, sensor_fingerprint,
+    classify_error, default_engine_capability, run_sensor_check, sensor_fingerprint, BenchOutcome,
     SensorCheckOptions, SensorReportBuilder,
 };
 

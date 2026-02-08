@@ -240,6 +240,68 @@ pub fn default_engine_capability() -> Capability {
     }
 }
 
+/// Apply truncation to a findings vector if it exceeds the given limit.
+///
+/// When truncation is applied:
+/// - `findings` is truncated to `limit - 1` real findings, then a meta-finding is appended
+/// - `reasons` gets `VERDICT_REASON_TRUNCATED` appended (if not already present)
+/// - Returns `Some((total, shown))` where total is the original count and shown is the emitted count
+///
+/// When not applied (under limit): returns `None` and leaves inputs unchanged.
+fn truncate_findings(
+    findings: &mut Vec<SensorFinding>,
+    reasons: &mut Vec<String>,
+    limit: usize,
+    tool_name: &str,
+) -> Option<(usize, usize)> {
+    if findings.len() <= limit {
+        return None;
+    }
+    let total = findings.len();
+    let shown = limit.saturating_sub(1);
+    findings.truncate(shown);
+    findings.push(SensorFinding {
+        check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
+        code: FINDING_CODE_TRUNCATED.to_string(),
+        severity: SensorSeverity::Info,
+        message: format!(
+            "Showing {} of {} findings; {} omitted",
+            shown,
+            total,
+            total - shown
+        ),
+        fingerprint: Some(sensor_fingerprint(&[
+            tool_name,
+            CHECK_ID_TOOL_TRUNCATION,
+            FINDING_CODE_TRUNCATED,
+        ])),
+        data: Some(serde_json::json!({
+            "total_findings": total,
+            "shown_findings": shown,
+        })),
+    });
+    if !reasons.contains(&VERDICT_REASON_TRUNCATED.to_string()) {
+        reasons.push(VERDICT_REASON_TRUNCATED.to_string());
+    }
+    Some((total, shown))
+}
+
+/// A single bench's outcome for aggregation into a sensor report.
+pub struct BenchOutcome {
+    /// The bench name.
+    pub bench_name: String,
+    /// The PerfgateReport produced by this bench.
+    pub report: PerfgateReport,
+    /// Whether a compare receipt was produced (baseline was available and comparison ran).
+    pub has_compare: bool,
+    /// Whether a baseline was available for this bench.
+    pub baseline_available: bool,
+    /// The rendered markdown for this bench.
+    pub markdown: String,
+    /// The extras path prefix, e.g. "extras/bench-a" or "extras".
+    pub extras_prefix: String,
+}
+
 /// Builder for constructing a SensorReport from a PerfgateReport.
 pub struct SensorReportBuilder {
     tool: ToolInfo,
@@ -359,41 +421,11 @@ impl SensorReportBuilder {
             .collect();
 
         // Apply truncation if configured
-        // Truncation invariants:
-        // - When applied: findings.len() == findings_emitted + 1
-        //   (findings_emitted real findings + 1 truncation meta-finding)
-        // - findings_total = original real finding count (before truncation)
-        // - When NOT applied: findings_total / findings_emitted are absent from data
-        let mut truncation_totals: Option<(usize, usize)> = None;
-        if let Some(limit) = self.max_findings {
-            if findings.len() > limit {
-                let total = findings.len();
-                let shown = limit.saturating_sub(1);
-                findings.truncate(shown);
-                findings.push(SensorFinding {
-                    check_id: CHECK_ID_TOOL_TRUNCATION.to_string(),
-                    code: FINDING_CODE_TRUNCATED.to_string(),
-                    severity: SensorSeverity::Info,
-                    message: format!(
-                        "Showing {} of {} findings; {} omitted",
-                        shown,
-                        total,
-                        total - shown
-                    ),
-                    fingerprint: Some(sensor_fingerprint(&[
-                        &self.tool.name,
-                        CHECK_ID_TOOL_TRUNCATION,
-                        FINDING_CODE_TRUNCATED,
-                    ])),
-                    data: Some(serde_json::json!({
-                        "total_findings": total,
-                        "shown_findings": shown,
-                    })),
-                });
-                reasons.push(VERDICT_REASON_TRUNCATED.to_string());
-                truncation_totals = Some((total, shown));
-            }
-        }
+        let truncation_totals = if let Some(limit) = self.max_findings {
+            truncate_findings(&mut findings, &mut reasons, limit, &self.tool.name)
+        } else {
+            None
+        };
 
         let verdict = SensorVerdict {
             status,
@@ -534,6 +566,225 @@ impl SensorReportBuilder {
             artifacts: self.artifacts,
             data,
         }
+    }
+
+    /// Build an aggregated SensorReport from multiple bench outcomes.
+    ///
+    /// This encapsulates the multi-bench cockpit aggregation logic:
+    /// - Maps findings from each bench's `PerfgateReport` to sensor findings
+    /// - In multi-bench mode: prefixes messages with `[bench_name]`, injects
+    ///   `bench_name` into finding data, includes bench_name in fingerprint seed
+    /// - Aggregates counts (sum), verdict (worst-of), reasons (union/deduped)
+    /// - Registers per-bench artifacts
+    /// - Combines markdown with `\n---\n\n` separator in multi-bench
+    /// - Applies truncation via `truncate_findings()` using `self.max_findings`
+    /// - Returns `(SensorReport, combined_markdown)`
+    pub fn build_aggregated(mut self, outcomes: &[BenchOutcome]) -> (SensorReport, String) {
+        let multi_bench = outcomes.len() > 1;
+
+        let mut aggregated_findings: Vec<SensorFinding> = Vec::new();
+        let mut total_info = 0u32;
+        let mut total_warn = 0u32;
+        let mut total_error = 0u32;
+        let mut worst_status = SensorVerdictStatus::Pass;
+        let mut all_reasons: Vec<String> = Vec::new();
+        let mut combined_markdown = String::new();
+
+        for outcome in outcomes {
+            // Map findings from this bench's report
+            for f in &outcome.report.findings {
+                let severity = match f.severity {
+                    Severity::Warn => SensorSeverity::Warn,
+                    Severity::Fail => SensorSeverity::Error,
+                };
+                let mut finding_data = f.data.as_ref().and_then(|d| serde_json::to_value(d).ok());
+                // In multi-bench mode, include bench name in finding data
+                if multi_bench {
+                    if let Some(ref mut val) = finding_data {
+                        if let Some(obj) = val.as_object_mut() {
+                            obj.insert(
+                                "bench_name".to_string(),
+                                serde_json::Value::String(outcome.bench_name.clone()),
+                            );
+                        }
+                    } else {
+                        finding_data =
+                            Some(serde_json::json!({ "bench_name": &outcome.bench_name }));
+                    }
+                }
+                let metric_name = f
+                    .data
+                    .as_ref()
+                    .map(|d| d.metric_name.as_str())
+                    .unwrap_or("");
+                let fingerprint = if multi_bench {
+                    Some(sensor_fingerprint(&[
+                        &self.tool.name,
+                        &outcome.bench_name,
+                        &f.check_id,
+                        &f.code,
+                        metric_name,
+                    ]))
+                } else {
+                    Some(sensor_fingerprint(&[
+                        &self.tool.name,
+                        &f.check_id,
+                        &f.code,
+                        metric_name,
+                    ]))
+                };
+                aggregated_findings.push(SensorFinding {
+                    check_id: f.check_id.clone(),
+                    code: f.code.clone(),
+                    severity,
+                    message: if multi_bench {
+                        format!("[{}] {}", outcome.bench_name, f.message)
+                    } else {
+                        f.message.clone()
+                    },
+                    fingerprint,
+                    data: finding_data,
+                });
+            }
+
+            // Aggregate counts
+            total_info += outcome.report.summary.pass_count;
+            total_warn += outcome.report.summary.warn_count;
+            total_error += outcome.report.summary.fail_count;
+
+            // Aggregate worst verdict status
+            match outcome.report.verdict.status {
+                VerdictStatus::Fail => {
+                    worst_status = SensorVerdictStatus::Fail;
+                }
+                VerdictStatus::Warn => {
+                    if worst_status != SensorVerdictStatus::Fail {
+                        worst_status = SensorVerdictStatus::Warn;
+                    }
+                }
+                VerdictStatus::Pass => {}
+            }
+
+            // Aggregate reasons (union)
+            for reason in &outcome.report.verdict.reasons {
+                if !all_reasons.contains(reason) {
+                    all_reasons.push(reason.clone());
+                }
+            }
+
+            // Add per-bench artifacts
+            self.artifacts.push(SensorArtifact {
+                path: format!("{}/perfgate.run.v1.json", outcome.extras_prefix),
+                artifact_type: "run_receipt".to_string(),
+            });
+            self.artifacts.push(SensorArtifact {
+                path: format!("{}/perfgate.report.v1.json", outcome.extras_prefix),
+                artifact_type: "perfgate_report".to_string(),
+            });
+            if outcome.has_compare {
+                self.artifacts.push(SensorArtifact {
+                    path: format!("{}/perfgate.compare.v1.json", outcome.extras_prefix),
+                    artifact_type: "compare_receipt".to_string(),
+                });
+            }
+
+            // Collect markdown
+            if multi_bench && !combined_markdown.is_empty() {
+                combined_markdown.push_str("\n---\n\n");
+            }
+            combined_markdown.push_str(&outcome.markdown);
+
+            // Baseline reason per bench
+            if !outcome.baseline_available
+                && !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string())
+            {
+                all_reasons.push(BASELINE_REASON_NO_BASELINE.to_string());
+            }
+        }
+
+        self.artifacts.push(SensorArtifact {
+            path: "comment.md".to_string(),
+            artifact_type: "markdown".to_string(),
+        });
+
+        // Apply truncation to aggregated findings
+        let limit = self.max_findings.unwrap_or(MAX_FINDINGS_DEFAULT);
+        let truncation_totals = truncate_findings(
+            &mut aggregated_findings,
+            &mut all_reasons,
+            limit,
+            &self.tool.name,
+        );
+
+        // Build aggregated data section
+        let mut data = serde_json::json!({
+            "summary": {
+                "pass_count": total_info,
+                "warn_count": total_warn,
+                "fail_count": total_error,
+                "total_count": total_info + total_warn + total_error,
+            }
+        });
+
+        if let Some((total, emitted)) = truncation_totals {
+            data["findings_total"] = serde_json::json!(total);
+            data["findings_emitted"] = serde_json::json!(emitted);
+        }
+
+        // Build capabilities
+        let any_baseline_available = outcomes.iter().any(|o| o.baseline_available);
+        let all_baseline_available = outcomes.iter().all(|o| o.baseline_available);
+
+        let capabilities = SensorCapabilities {
+            baseline: Capability {
+                status: if all_baseline_available {
+                    CapabilityStatus::Available
+                } else {
+                    CapabilityStatus::Unavailable
+                },
+                reason: if !any_baseline_available {
+                    self.baseline_reason
+                        .clone()
+                        .or(Some(BASELINE_REASON_NO_BASELINE.to_string()))
+                } else {
+                    None
+                },
+            },
+            engine: self.engine_capability,
+        };
+
+        let run = SensorRunMeta {
+            started_at: self.started_at,
+            ended_at: self.ended_at,
+            duration_ms: self.duration_ms,
+            capabilities,
+        };
+
+        let verdict = SensorVerdict {
+            status: worst_status,
+            counts: SensorVerdictCounts {
+                info: total_info,
+                warn: total_warn,
+                error: total_error,
+            },
+            reasons: all_reasons,
+        };
+
+        // Sort artifacts by (type, path)
+        self.artifacts
+            .sort_by(|a, b| (&a.artifact_type, &a.path).cmp(&(&b.artifact_type, &b.path)));
+
+        let sensor_report = SensorReport {
+            schema: SENSOR_REPORT_SCHEMA_V1.to_string(),
+            tool: self.tool,
+            run,
+            verdict,
+            findings: aggregated_findings,
+            artifacts: self.artifacts,
+            data,
+        };
+
+        (sensor_report, combined_markdown)
     }
 }
 
@@ -1372,5 +1623,335 @@ mod tests {
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_CONFIG_PARSE);
         assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    // --- build_aggregated() tests ---
+
+    fn make_bench_outcome(
+        bench_name: &str,
+        report: PerfgateReport,
+        has_compare: bool,
+        baseline_available: bool,
+        extras_prefix: &str,
+    ) -> BenchOutcome {
+        BenchOutcome {
+            bench_name: bench_name.to_string(),
+            report,
+            has_compare,
+            baseline_available,
+            markdown: format!("## {}\n\nSome results\n", bench_name),
+            extras_prefix: extras_prefix.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_build_aggregated_single_bench_matches_build() {
+        let report = make_fail_report();
+        let outcome = make_bench_outcome("my-bench", report.clone(), true, true, "extras");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .ended_at("2024-01-01T00:01:00Z".to_string(), 60000)
+                .baseline(true, None);
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome]);
+
+        // Single bench: findings should NOT be prefixed
+        assert_eq!(sensor_report.findings.len(), 1);
+        assert!(
+            !sensor_report.findings[0].message.starts_with("[my-bench]"),
+            "single bench findings should not be prefixed"
+        );
+        assert_eq!(sensor_report.verdict.status, SensorVerdictStatus::Fail);
+        assert_eq!(sensor_report.verdict.counts.error, 1);
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_findings_prefixed() {
+        let report_a = make_fail_report();
+        let report_b = make_warn_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, true, true, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, true, true, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .ended_at("2024-01-01T00:01:00Z".to_string(), 60000);
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        assert_eq!(sensor_report.findings.len(), 2);
+        assert!(
+            sensor_report.findings[0].message.starts_with("[bench-a]"),
+            "multi-bench findings should be prefixed: {}",
+            sensor_report.findings[0].message
+        );
+        assert!(
+            sensor_report.findings[1].message.starts_with("[bench-b]"),
+            "multi-bench findings should be prefixed: {}",
+            sensor_report.findings[1].message
+        );
+        // Finding data should have bench_name
+        let data_0 = sensor_report.findings[0].data.as_ref().unwrap();
+        assert_eq!(data_0["bench_name"], "bench-a");
+        let data_1 = sensor_report.findings[1].data.as_ref().unwrap();
+        assert_eq!(data_1["bench_name"], "bench-b");
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_fingerprints_unique() {
+        let report_a = make_fail_report();
+        let report_b = make_fail_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, true, true, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, true, true, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        let fp_a = sensor_report.findings[0].fingerprint.as_ref().unwrap();
+        let fp_b = sensor_report.findings[1].fingerprint.as_ref().unwrap();
+        assert_ne!(fp_a, fp_b, "fingerprints should differ per bench");
+        assert_eq!(fp_a.len(), 64, "fingerprint should be 64-char hex");
+        assert_eq!(fp_b.len(), 64, "fingerprint should be 64-char hex");
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_verdict_worst_wins() {
+        let report_pass = make_pass_report();
+        let report_fail = make_fail_report();
+        let outcome_pass =
+            make_bench_outcome("bench-a", report_pass, false, false, "extras/bench-a");
+        let outcome_fail = make_bench_outcome("bench-b", report_fail, true, true, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_pass, outcome_fail]);
+
+        assert_eq!(
+            sensor_report.verdict.status,
+            SensorVerdictStatus::Fail,
+            "worst verdict should win"
+        );
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_counts_summed() {
+        let report_a = make_fail_report(); // pass=1, warn=0, fail=1
+        let report_b = make_warn_report(); // pass=1, warn=1, fail=0
+        let outcome_a = make_bench_outcome("bench-a", report_a, true, true, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, true, true, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        assert_eq!(sensor_report.verdict.counts.info, 2, "pass counts summed");
+        assert_eq!(sensor_report.verdict.counts.warn, 1, "warn counts summed");
+        assert_eq!(sensor_report.verdict.counts.error, 1, "fail counts summed");
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_reasons_deduped() {
+        // Both benches have no baseline → should get one `no_baseline` reason
+        let report_a = make_pass_report();
+        let report_b = make_pass_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, false, false, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, false, false, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        let no_baseline_count = sensor_report
+            .verdict
+            .reasons
+            .iter()
+            .filter(|r| r.as_str() == BASELINE_REASON_NO_BASELINE)
+            .count();
+        assert_eq!(
+            no_baseline_count, 1,
+            "no_baseline should appear exactly once"
+        );
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_markdown_joined() {
+        let report_a = make_pass_report();
+        let report_b = make_pass_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, false, false, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, false, false, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (_sensor_report, md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        assert!(md.contains("bench-a"), "markdown should contain bench-a");
+        assert!(md.contains("bench-b"), "markdown should contain bench-b");
+        assert!(
+            md.contains("\n---\n\n"),
+            "multi-bench markdown should have --- separator"
+        );
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_truncation() {
+        use perfgate_types::FindingData;
+
+        // Create a report with many findings
+        let findings: Vec<ReportFinding> = (0..10)
+            .map(|i| ReportFinding {
+                check_id: "perf.budget".to_string(),
+                code: FINDING_CODE_METRIC_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: format!("metric {} regression", i),
+                data: Some(FindingData {
+                    metric_name: format!("metric_{}", i),
+                    baseline: 100.0,
+                    current: 150.0,
+                    regression_pct: 50.0,
+                    threshold: 0.2,
+                    direction: perfgate_types::Direction::Lower,
+                }),
+            })
+            .collect();
+
+        let report = PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 10,
+                },
+                reasons: vec![],
+            },
+            compare: None,
+            findings,
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 10,
+                total_count: 10,
+            },
+        };
+
+        let outcome = make_bench_outcome("bench-a", report, true, true, "extras");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+                .max_findings(5);
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome]);
+
+        // 4 real + 1 truncation = 5
+        assert_eq!(sensor_report.findings.len(), 5);
+        assert_eq!(sensor_report.findings[4].check_id, CHECK_ID_TOOL_TRUNCATION);
+        assert_eq!(sensor_report.data["findings_total"], 10);
+        assert_eq!(sensor_report.data["findings_emitted"], 4);
+        assert!(sensor_report
+            .verdict
+            .reasons
+            .contains(&"truncated".to_string()));
+    }
+
+    #[test]
+    fn test_build_aggregated_multi_bench_artifacts_sorted() {
+        let report_a = make_pass_report();
+        let report_b = make_pass_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, true, true, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, true, true, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        // Verify sorted by (type, path)
+        let arts = &sensor_report.artifacts;
+        for window in arts.windows(2) {
+            assert!(
+                (&window[0].artifact_type, &window[0].path)
+                    <= (&window[1].artifact_type, &window[1].path),
+                "artifacts not sorted: {:?} > {:?}",
+                (&window[0].artifact_type, &window[0].path),
+                (&window[1].artifact_type, &window[1].path)
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_aggregated_baseline_all_available() {
+        let report_a = make_pass_report();
+        let report_b = make_pass_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, true, true, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, true, true, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        assert_eq!(
+            sensor_report.run.capabilities.baseline.status,
+            CapabilityStatus::Available,
+            "all baselines available → status = available"
+        );
+        assert!(
+            sensor_report.run.capabilities.baseline.reason.is_none(),
+            "all baselines available → no reason"
+        );
+    }
+
+    #[test]
+    fn test_build_aggregated_baseline_partial() {
+        let report_a = make_pass_report();
+        let report_b = make_pass_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, true, true, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, false, false, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        assert_eq!(
+            sensor_report.run.capabilities.baseline.status,
+            CapabilityStatus::Unavailable,
+            "partial baselines → status = unavailable"
+        );
+        assert!(
+            sensor_report.run.capabilities.baseline.reason.is_none(),
+            "partial baselines → reason = null (some have baselines)"
+        );
+    }
+
+    #[test]
+    fn test_build_aggregated_baseline_none() {
+        let report_a = make_pass_report();
+        let report_b = make_pass_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, false, false, "extras/bench-a");
+        let outcome_b = make_bench_outcome("bench-b", report_b, false, false, "extras/bench-b");
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        assert_eq!(
+            sensor_report.run.capabilities.baseline.status,
+            CapabilityStatus::Unavailable,
+            "no baselines → status = unavailable"
+        );
+        assert_eq!(
+            sensor_report.run.capabilities.baseline.reason,
+            Some(BASELINE_REASON_NO_BASELINE.to_string()),
+            "no baselines → reason = no_baseline"
+        );
     }
 }
