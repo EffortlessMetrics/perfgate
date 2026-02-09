@@ -287,19 +287,34 @@ fn truncate_findings(
 }
 
 /// A single bench's outcome for aggregation into a sensor report.
-pub struct BenchOutcome {
-    /// The bench name.
-    pub bench_name: String,
-    /// The PerfgateReport produced by this bench.
-    pub report: PerfgateReport,
-    /// Whether a compare receipt was produced (baseline was available and comparison ran).
-    pub has_compare: bool,
-    /// Whether a baseline was available for this bench.
-    pub baseline_available: bool,
-    /// The rendered markdown for this bench.
-    pub markdown: String,
-    /// The extras path prefix, e.g. "extras/bench-a" or "extras".
-    pub extras_prefix: String,
+#[allow(clippy::large_enum_variant)]
+pub enum BenchOutcome {
+    /// The bench ran successfully and produced a report.
+    Success {
+        bench_name: String,
+        report: PerfgateReport,
+        has_compare: bool,
+        baseline_available: bool,
+        markdown: String,
+        extras_prefix: String,
+    },
+    /// The bench failed with an error before producing a report.
+    Error {
+        bench_name: String,
+        error_message: String,
+        stage: &'static str,
+        error_kind: &'static str,
+    },
+}
+
+impl BenchOutcome {
+    /// Get the bench name regardless of variant.
+    pub fn bench_name(&self) -> &str {
+        match self {
+            BenchOutcome::Success { bench_name, .. } => bench_name,
+            BenchOutcome::Error { bench_name, .. } => bench_name,
+        }
+    }
 }
 
 /// Builder for constructing a SensorReport from a PerfgateReport.
@@ -461,6 +476,7 @@ impl SensorReportBuilder {
                 "warn_count": report.summary.warn_count,
                 "fail_count": report.summary.fail_count,
                 "total_count": report.summary.total_count,
+                "bench_count": 1,
             }
         });
 
@@ -550,6 +566,7 @@ impl SensorReportBuilder {
                 "warn_count": 0,
                 "fail_count": 1,
                 "total_count": 1,
+                "bench_count": 0,
             }
         });
 
@@ -591,114 +608,187 @@ impl SensorReportBuilder {
         let mut combined_markdown = String::new();
 
         for outcome in outcomes {
-            // Map findings from this bench's report
-            for f in &outcome.report.findings {
-                let severity = match f.severity {
-                    Severity::Warn => SensorSeverity::Warn,
-                    Severity::Fail => SensorSeverity::Error,
-                };
-                let mut finding_data = f.data.as_ref().and_then(|d| serde_json::to_value(d).ok());
-                // In multi-bench mode, include bench name in finding data
-                if multi_bench {
-                    if let Some(ref mut val) = finding_data {
-                        if let Some(obj) = val.as_object_mut() {
-                            obj.insert(
-                                "bench_name".to_string(),
-                                serde_json::Value::String(outcome.bench_name.clone()),
-                            );
+            match outcome {
+                BenchOutcome::Success {
+                    bench_name,
+                    report,
+                    has_compare,
+                    baseline_available,
+                    markdown,
+                    extras_prefix,
+                } => {
+                    // Map findings from this bench's report
+                    for f in &report.findings {
+                        let severity = match f.severity {
+                            Severity::Warn => SensorSeverity::Warn,
+                            Severity::Fail => SensorSeverity::Error,
+                        };
+                        let mut finding_data =
+                            f.data.as_ref().and_then(|d| serde_json::to_value(d).ok());
+                        // In multi-bench mode, include bench name in finding data
+                        if multi_bench {
+                            if let Some(ref mut val) = finding_data {
+                                if let Some(obj) = val.as_object_mut() {
+                                    obj.insert(
+                                        "bench_name".to_string(),
+                                        serde_json::Value::String(bench_name.clone()),
+                                    );
+                                }
+                            } else {
+                                finding_data =
+                                    Some(serde_json::json!({ "bench_name": bench_name }));
+                            }
                         }
-                    } else {
-                        finding_data =
-                            Some(serde_json::json!({ "bench_name": &outcome.bench_name }));
+                        let metric_name = f
+                            .data
+                            .as_ref()
+                            .map(|d| d.metric_name.as_str())
+                            .unwrap_or("");
+                        let fingerprint = if multi_bench {
+                            Some(sensor_fingerprint(&[
+                                &self.tool.name,
+                                bench_name,
+                                &f.check_id,
+                                &f.code,
+                                metric_name,
+                            ]))
+                        } else {
+                            Some(sensor_fingerprint(&[
+                                &self.tool.name,
+                                &f.check_id,
+                                &f.code,
+                                metric_name,
+                            ]))
+                        };
+                        aggregated_findings.push(SensorFinding {
+                            check_id: f.check_id.clone(),
+                            code: f.code.clone(),
+                            severity,
+                            message: if multi_bench {
+                                format!("[{}] {}", bench_name, f.message)
+                            } else {
+                                f.message.clone()
+                            },
+                            fingerprint,
+                            data: finding_data,
+                        });
+                    }
+
+                    // Aggregate counts
+                    total_info += report.summary.pass_count;
+                    total_warn += report.summary.warn_count;
+                    total_error += report.summary.fail_count;
+
+                    // Aggregate worst verdict status
+                    match report.verdict.status {
+                        VerdictStatus::Fail => {
+                            worst_status = SensorVerdictStatus::Fail;
+                        }
+                        VerdictStatus::Warn => {
+                            if worst_status != SensorVerdictStatus::Fail {
+                                worst_status = SensorVerdictStatus::Warn;
+                            }
+                        }
+                        VerdictStatus::Pass => {}
+                    }
+
+                    // Aggregate reasons (union)
+                    for reason in &report.verdict.reasons {
+                        if !all_reasons.contains(reason) {
+                            all_reasons.push(reason.clone());
+                        }
+                    }
+
+                    // Add per-bench artifacts
+                    self.artifacts.push(SensorArtifact {
+                        path: format!("{}/perfgate.run.v1.json", extras_prefix),
+                        artifact_type: "run_receipt".to_string(),
+                    });
+                    self.artifacts.push(SensorArtifact {
+                        path: format!("{}/perfgate.report.v1.json", extras_prefix),
+                        artifact_type: "perfgate_report".to_string(),
+                    });
+                    if *has_compare {
+                        self.artifacts.push(SensorArtifact {
+                            path: format!("{}/perfgate.compare.v1.json", extras_prefix),
+                            artifact_type: "compare_receipt".to_string(),
+                        });
+                    }
+
+                    // Collect markdown
+                    if multi_bench && !combined_markdown.is_empty() {
+                        combined_markdown.push_str("\n---\n\n");
+                    }
+                    combined_markdown.push_str(markdown);
+
+                    // Baseline reason per bench
+                    if !baseline_available
+                        && !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string())
+                    {
+                        all_reasons.push(BASELINE_REASON_NO_BASELINE.to_string());
                     }
                 }
-                let metric_name = f
-                    .data
-                    .as_ref()
-                    .map(|d| d.metric_name.as_str())
-                    .unwrap_or("");
-                let fingerprint = if multi_bench {
-                    Some(sensor_fingerprint(&[
+
+                BenchOutcome::Error {
+                    bench_name,
+                    error_message,
+                    stage,
+                    error_kind,
+                } => {
+                    // Create error finding directly (like build_error does)
+                    let mut finding_data = serde_json::json!({
+                        "stage": stage,
+                        "error_kind": error_kind,
+                    });
+                    if multi_bench {
+                        finding_data
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("bench_name".to_string(), serde_json::json!(bench_name));
+                    }
+                    let fingerprint = Some(sensor_fingerprint(&[
                         &self.tool.name,
-                        &outcome.bench_name,
-                        &f.check_id,
-                        &f.code,
-                        metric_name,
-                    ]))
-                } else {
-                    Some(sensor_fingerprint(&[
-                        &self.tool.name,
-                        &f.check_id,
-                        &f.code,
-                        metric_name,
-                    ]))
-                };
-                aggregated_findings.push(SensorFinding {
-                    check_id: f.check_id.clone(),
-                    code: f.code.clone(),
-                    severity,
-                    message: if multi_bench {
-                        format!("[{}] {}", outcome.bench_name, f.message)
+                        bench_name,
+                        CHECK_ID_TOOL_RUNTIME,
+                        FINDING_CODE_RUNTIME_ERROR,
+                        stage,
+                    ]));
+                    let message = if multi_bench {
+                        format!("[{}] {}", bench_name, error_message)
                     } else {
-                        f.message.clone()
-                    },
-                    fingerprint,
-                    data: finding_data,
-                });
-            }
+                        error_message.clone()
+                    };
+                    aggregated_findings.push(SensorFinding {
+                        check_id: CHECK_ID_TOOL_RUNTIME.to_string(),
+                        code: FINDING_CODE_RUNTIME_ERROR.to_string(),
+                        severity: SensorSeverity::Error,
+                        message,
+                        fingerprint,
+                        data: Some(finding_data),
+                    });
 
-            // Aggregate counts
-            total_info += outcome.report.summary.pass_count;
-            total_warn += outcome.report.summary.warn_count;
-            total_error += outcome.report.summary.fail_count;
-
-            // Aggregate worst verdict status
-            match outcome.report.verdict.status {
-                VerdictStatus::Fail => {
+                    // Error contributes to counts
+                    total_error += 1;
                     worst_status = SensorVerdictStatus::Fail;
-                }
-                VerdictStatus::Warn => {
-                    if worst_status != SensorVerdictStatus::Fail {
-                        worst_status = SensorVerdictStatus::Warn;
+                    if !all_reasons.contains(&VERDICT_REASON_TOOL_ERROR.to_string()) {
+                        all_reasons.push(VERDICT_REASON_TOOL_ERROR.to_string());
                     }
+
+                    // Error markdown
+                    if multi_bench && !combined_markdown.is_empty() {
+                        combined_markdown.push_str("\n---\n\n");
+                    }
+                    combined_markdown.push_str(&format!(
+                        "## {}\n\n**Error:** {}\n",
+                        bench_name, error_message
+                    ));
+
+                    // Error bench has no baseline
+                    if !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string()) {
+                        all_reasons.push(BASELINE_REASON_NO_BASELINE.to_string());
+                    }
+                    // No artifact registration for errored benches
                 }
-                VerdictStatus::Pass => {}
-            }
-
-            // Aggregate reasons (union)
-            for reason in &outcome.report.verdict.reasons {
-                if !all_reasons.contains(reason) {
-                    all_reasons.push(reason.clone());
-                }
-            }
-
-            // Add per-bench artifacts
-            self.artifacts.push(SensorArtifact {
-                path: format!("{}/perfgate.run.v1.json", outcome.extras_prefix),
-                artifact_type: "run_receipt".to_string(),
-            });
-            self.artifacts.push(SensorArtifact {
-                path: format!("{}/perfgate.report.v1.json", outcome.extras_prefix),
-                artifact_type: "perfgate_report".to_string(),
-            });
-            if outcome.has_compare {
-                self.artifacts.push(SensorArtifact {
-                    path: format!("{}/perfgate.compare.v1.json", outcome.extras_prefix),
-                    artifact_type: "compare_receipt".to_string(),
-                });
-            }
-
-            // Collect markdown
-            if multi_bench && !combined_markdown.is_empty() {
-                combined_markdown.push_str("\n---\n\n");
-            }
-            combined_markdown.push_str(&outcome.markdown);
-
-            // Baseline reason per bench
-            if !outcome.baseline_available
-                && !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string())
-            {
-                all_reasons.push(BASELINE_REASON_NO_BASELINE.to_string());
             }
         }
 
@@ -723,6 +813,7 @@ impl SensorReportBuilder {
                 "warn_count": total_warn,
                 "fail_count": total_error,
                 "total_count": total_info + total_warn + total_error,
+                "bench_count": outcomes.len(),
             }
         });
 
@@ -732,8 +823,24 @@ impl SensorReportBuilder {
         }
 
         // Build capabilities
-        let any_baseline_available = outcomes.iter().any(|o| o.baseline_available);
-        let all_baseline_available = outcomes.iter().all(|o| o.baseline_available);
+        let any_baseline_available = outcomes.iter().any(|o| {
+            matches!(
+                o,
+                BenchOutcome::Success {
+                    baseline_available: true,
+                    ..
+                }
+            )
+        });
+        let all_baseline_available = outcomes.iter().all(|o| {
+            matches!(
+                o,
+                BenchOutcome::Success {
+                    baseline_available: true,
+                    ..
+                }
+            )
+        });
 
         let capabilities = SensorCapabilities {
             baseline: Capability {
@@ -792,8 +899,9 @@ impl SensorReportBuilder {
 mod tests {
     use super::*;
     use perfgate_types::{
-        PerfgateError, ReportFinding, ReportSummary, Verdict, VerdictCounts, ERROR_KIND_PARSE,
-        FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1, STAGE_CONFIG_PARSE,
+        PerfgateError, ReportFinding, ReportSummary, Verdict, VerdictCounts, ERROR_KIND_EXEC,
+        ERROR_KIND_PARSE, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1,
+        STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND,
     };
 
     fn make_tool_info() -> ToolInfo {
@@ -1634,13 +1742,27 @@ mod tests {
         baseline_available: bool,
         extras_prefix: &str,
     ) -> BenchOutcome {
-        BenchOutcome {
+        BenchOutcome::Success {
             bench_name: bench_name.to_string(),
             report,
             has_compare,
             baseline_available,
             markdown: format!("## {}\n\nSome results\n", bench_name),
             extras_prefix: extras_prefix.to_string(),
+        }
+    }
+
+    fn make_error_outcome(
+        bench_name: &str,
+        error_message: &str,
+        stage: &'static str,
+        error_kind: &'static str,
+    ) -> BenchOutcome {
+        BenchOutcome::Error {
+            bench_name: bench_name.to_string(),
+            error_message: error_message.to_string(),
+            stage,
+            error_kind,
         }
     }
 
@@ -1953,5 +2075,171 @@ mod tests {
             Some(BASELINE_REASON_NO_BASELINE.to_string()),
             "no baselines → reason = no_baseline"
         );
+    }
+
+    // --- BenchOutcome::Error aggregation tests ---
+
+    #[test]
+    fn test_build_aggregated_mixed_success_and_error() {
+        let report_a = make_warn_report();
+        let outcome_a = make_bench_outcome("bench-a", report_a, false, false, "extras/bench-a");
+        let outcome_b = make_error_outcome(
+            "bench-b",
+            "failed to spawn: no such file",
+            STAGE_RUN_COMMAND,
+            ERROR_KIND_EXEC,
+        );
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        // Worst-wins: error bench → fail
+        assert_eq!(sensor_report.verdict.status, SensorVerdictStatus::Fail);
+
+        // Counts: bench-a has pass=1, warn=1, fail=0; bench-b error adds error=1
+        assert_eq!(sensor_report.verdict.counts.info, 1);
+        assert_eq!(sensor_report.verdict.counts.warn, 1);
+        assert_eq!(sensor_report.verdict.counts.error, 1);
+
+        // Reasons: should have tool_error and no_baseline
+        assert!(
+            sensor_report
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TOOL_ERROR.to_string()),
+            "should have tool_error reason"
+        );
+        assert!(
+            sensor_report
+                .verdict
+                .reasons
+                .contains(&BASELINE_REASON_NO_BASELINE.to_string()),
+            "should have no_baseline reason"
+        );
+
+        // Findings: 1 from bench-a (warn) + 1 from bench-b (error)
+        assert_eq!(sensor_report.findings.len(), 2);
+        assert!(sensor_report.findings[0].message.starts_with("[bench-a]"));
+        assert!(sensor_report.findings[1].message.starts_with("[bench-b]"));
+        assert_eq!(sensor_report.findings[1].check_id, CHECK_ID_TOOL_RUNTIME);
+
+        // bench_count includes both
+        assert_eq!(sensor_report.data["summary"]["bench_count"], 2);
+
+        // Markdown should have error section
+        assert!(md.contains("bench-b"));
+        assert!(md.contains("**Error:**"));
+    }
+
+    #[test]
+    fn test_build_aggregated_single_error_outcome() {
+        let outcome = make_error_outcome(
+            "bench-a",
+            "config parse failure",
+            STAGE_CONFIG_PARSE,
+            ERROR_KIND_PARSE,
+        );
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome]);
+
+        assert_eq!(sensor_report.verdict.status, SensorVerdictStatus::Fail);
+        assert_eq!(sensor_report.verdict.counts.error, 1);
+        assert_eq!(sensor_report.findings.len(), 1);
+        assert_eq!(sensor_report.findings[0].check_id, CHECK_ID_TOOL_RUNTIME);
+        assert_eq!(sensor_report.data["summary"]["bench_count"], 1);
+    }
+
+    #[test]
+    fn test_build_aggregated_error_no_artifacts() {
+        let outcome_a =
+            make_bench_outcome("bench-a", make_pass_report(), true, true, "extras/bench-a");
+        let outcome_b =
+            make_error_outcome("bench-b", "spawn error", STAGE_RUN_COMMAND, ERROR_KIND_EXEC);
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        // bench-a should have artifacts, bench-b should NOT
+        let has_bench_a_artifact = sensor_report
+            .artifacts
+            .iter()
+            .any(|a| a.path.contains("bench-a"));
+        let has_bench_b_artifact = sensor_report
+            .artifacts
+            .iter()
+            .any(|a| a.path.contains("bench-b"));
+
+        assert!(has_bench_a_artifact, "bench-a should have artifacts");
+        assert!(!has_bench_b_artifact, "bench-b should NOT have artifacts");
+    }
+
+    #[test]
+    fn test_build_aggregated_error_finding_data() {
+        let outcome =
+            make_error_outcome("bench-x", "spawn error", STAGE_RUN_COMMAND, ERROR_KIND_EXEC);
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome]);
+
+        let finding = &sensor_report.findings[0];
+        let data = finding.data.as_ref().expect("finding should have data");
+        assert_eq!(data["stage"], STAGE_RUN_COMMAND);
+        assert_eq!(data["error_kind"], ERROR_KIND_EXEC);
+        // Single bench → no bench_name in data (not multi_bench)
+        assert!(
+            data.get("bench_name").is_none() || data["bench_name"].is_null(),
+            "single bench error should not have bench_name in data"
+        );
+    }
+
+    #[test]
+    fn test_build_aggregated_error_finding_data_multi_bench() {
+        let outcome_a = make_bench_outcome(
+            "bench-a",
+            make_pass_report(),
+            false,
+            false,
+            "extras/bench-a",
+        );
+        let outcome_b =
+            make_error_outcome("bench-b", "spawn error", STAGE_RUN_COMMAND, ERROR_KIND_EXEC);
+
+        let builder =
+            SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string());
+
+        let (sensor_report, _md) = builder.build_aggregated(&[outcome_a, outcome_b]);
+
+        // Find the error finding
+        let error_finding = sensor_report
+            .findings
+            .iter()
+            .find(|f| f.check_id == CHECK_ID_TOOL_RUNTIME)
+            .expect("should have error finding");
+
+        let data = error_finding
+            .data
+            .as_ref()
+            .expect("finding should have data");
+        assert_eq!(data["stage"], STAGE_RUN_COMMAND);
+        assert_eq!(data["error_kind"], ERROR_KIND_EXEC);
+        assert_eq!(data["bench_name"], "bench-b");
+    }
+
+    #[test]
+    fn test_bench_outcome_bench_name() {
+        let success = make_bench_outcome("my-bench", make_pass_report(), false, false, "extras");
+        assert_eq!(success.bench_name(), "my-bench");
+
+        let error = make_error_outcome("bad-bench", "error", STAGE_RUN_COMMAND, ERROR_KIND_EXEC);
+        assert_eq!(error.bench_name(), "bad-bench");
     }
 }

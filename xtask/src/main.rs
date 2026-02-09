@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use schemars::schema_for;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Repo automation for perfgate")]
@@ -217,12 +217,17 @@ fn cmd_sync_fixtures() -> anyhow::Result<()> {
     let golden_dir = PathBuf::from("crates/perfgate-cli/tests/fixtures/golden");
     let contracts_dir = PathBuf::from("contracts/fixtures");
 
-    fs::create_dir_all(&contracts_dir)
+    sync_fixtures(&golden_dir, &contracts_dir)?;
+    Ok(())
+}
+
+fn sync_fixtures(golden_dir: &Path, contracts_dir: &Path) -> anyhow::Result<u32> {
+    fs::create_dir_all(contracts_dir)
         .with_context(|| format!("create dir {}", contracts_dir.display()))?;
 
     let mut count = 0u32;
     for entry in
-        fs::read_dir(&golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
+        fs::read_dir(golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -242,23 +247,27 @@ fn cmd_sync_fixtures() -> anyhow::Result<()> {
     }
 
     println!("\nSynced {} fixtures from golden -> contracts", count);
-    Ok(())
+    Ok(count)
 }
 
 /// Check that golden fixtures and contract fixtures are byte-for-byte identical.
 fn check_fixture_mirror() -> anyhow::Result<()> {
     let golden_dir = PathBuf::from("crates/perfgate-cli/tests/fixtures/golden");
     let contracts_dir = PathBuf::from("contracts/fixtures");
+    check_fixture_mirror_at(&golden_dir, &contracts_dir)
+}
 
+fn check_fixture_mirror_at(golden_dir: &Path, contracts_dir: &Path) -> anyhow::Result<()> {
     if !contracts_dir.is_dir() {
         anyhow::bail!(
-            "contracts/fixtures/ does not exist. Run: cargo run -p xtask -- sync-fixtures"
+            "{} does not exist. Run: cargo run -p xtask -- sync-fixtures",
+            contracts_dir.display()
         );
     }
 
     let mut drift = 0u32;
     for entry in
-        fs::read_dir(&golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
+        fs::read_dir(golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -532,4 +541,261 @@ fn write_schema<T: serde::Serialize>(
     let json = serde_json::to_vec_pretty(&schema)?;
     fs::write(&path, json).with_context(|| format!("write {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn cwd_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        dir.push(format!("{}_{}_{}", prefix, std::process::id(), nanos));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn lock_cwd() -> std::sync::MutexGuard<'static, ()> {
+        match cwd_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn repo_root() -> PathBuf {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir.parent().expect("workspace root").to_path_buf()
+    }
+
+    fn with_temp_cwd<F: FnOnce(&PathBuf)>(f: F) {
+        let _guard = lock_cwd();
+        let original = std::env::current_dir().expect("current dir");
+        let temp_dir = unique_temp_dir("perfgate_xtask");
+        std::env::set_current_dir(&temp_dir).expect("set cwd");
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&temp_dir)));
+
+        std::env::set_current_dir(&original).expect("restore cwd");
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    fn with_repo_cwd<F: FnOnce()>(f: F) {
+        let _guard = lock_cwd();
+        let original = std::env::current_dir().expect("current dir");
+        let root = repo_root();
+        std::env::set_current_dir(&root).expect("set repo cwd");
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+
+        std::env::set_current_dir(&original).expect("restore cwd");
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[test]
+    fn mutants_crate_mapping_and_targets() {
+        assert_eq!(MutantsCrate::Domain.as_package_name(), "perfgate-domain");
+        assert_eq!(MutantsCrate::Types.as_package_name(), "perfgate-types");
+        assert_eq!(MutantsCrate::App.as_package_name(), "perfgate-app");
+        assert_eq!(
+            MutantsCrate::Adapters.as_package_name(),
+            "perfgate-adapters"
+        );
+        assert_eq!(MutantsCrate::Cli.as_package_name(), "perfgate-cli");
+
+        assert_eq!(MutantsCrate::Domain.target_kill_rate(), 100);
+        assert_eq!(MutantsCrate::Types.target_kill_rate(), 95);
+        assert_eq!(MutantsCrate::App.target_kill_rate(), 90);
+        assert_eq!(MutantsCrate::Adapters.target_kill_rate(), 80);
+        assert_eq!(MutantsCrate::Cli.target_kill_rate(), 70);
+    }
+
+    #[test]
+    fn run_reports_failure_and_success() {
+        #[cfg(windows)]
+        {
+            assert!(run("cmd", ["/c", "exit", "1"]).is_err());
+            assert!(run("cmd", ["/c", "exit", "0"]).is_ok());
+        }
+
+        #[cfg(unix)]
+        {
+            assert!(run("sh", ["-c", "exit 1"]).is_err());
+            assert!(run("sh", ["-c", "exit 0"]).is_ok());
+        }
+    }
+
+    #[test]
+    fn cmd_schema_writes_expected_files() {
+        let out_dir = unique_temp_dir("perfgate_schema");
+        with_repo_cwd(|| {
+            cmd_schema(&out_dir).expect("schema command");
+        });
+
+        let expected = [
+            "perfgate.run.v1.schema.json",
+            "perfgate.compare.v1.schema.json",
+            "perfgate.config.v1.schema.json",
+            "perfgate.report.v1.schema.json",
+            "sensor.report.v1.schema.json",
+        ];
+
+        for name in expected {
+            let path = out_dir.join(name);
+            assert!(path.exists(), "expected schema file {}", name);
+            let bytes = fs::read(&path).expect("read schema");
+            assert!(
+                !bytes.is_empty(),
+                "schema file {} should not be empty",
+                name
+            );
+        }
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn cmd_conform_accepts_valid_single_file() {
+        with_repo_cwd(|| {
+            let path = PathBuf::from("contracts/fixtures/sensor_report_pass.json");
+            cmd_conform(None, Some(path)).expect("conform should succeed");
+        });
+    }
+
+    #[test]
+    fn cmd_conform_rejects_invalid_file() {
+        let temp_dir = unique_temp_dir("perfgate_invalid_fixture");
+        let bad_path = temp_dir.join("bad.json");
+        fs::write(&bad_path, r#"{"schema":"sensor.report.v1"}"#).expect("write bad file");
+        with_repo_cwd(|| {
+            let result = cmd_conform(None, Some(bad_path.clone()));
+            assert!(result.is_err(), "expected schema validation to fail");
+        });
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn mutation_summary_no_results_is_ok() {
+        with_temp_cwd(|_dir| {
+            let result = generate_mutation_summary(None);
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn mutation_summary_parses_outcomes() {
+        with_temp_cwd(|dir| {
+            let outcomes_dir = dir.join("mutants.out");
+            fs::create_dir_all(&outcomes_dir).expect("create mutants.out");
+            fs::write(
+                outcomes_dir.join("outcomes.json"),
+                r#"[{"summary":"CaughtMutant"},{"summary":"MissedMutant"},{"summary":"Timeout"},{"summary":"Unviable"}]"#,
+            )
+            .expect("write outcomes");
+            fs::write(outcomes_dir.join("missed.txt"), "missed-1\nmissed-2\n")
+                .expect("write missed");
+
+            let result = generate_mutation_summary(Some(MutantsCrate::Domain));
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn sync_fixtures_copies_sensor_reports_only() {
+        let root = unique_temp_dir("perfgate_sync");
+        let golden = root.join("golden");
+        let contracts = root.join("contracts");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::create_dir_all(&contracts).expect("create contracts dir");
+
+        fs::write(golden.join("sensor_report_a.json"), "a").expect("write a");
+        fs::write(golden.join("sensor_report_b.json"), "b").expect("write b");
+        fs::write(golden.join("not_sensor.json"), "no").expect("write other");
+        fs::write(golden.join("sensor_report.txt"), "no").expect("write txt");
+
+        let count = sync_fixtures(&golden, &contracts).expect("sync fixtures");
+        assert_eq!(count, 2);
+        assert_eq!(
+            fs::read_to_string(contracts.join("sensor_report_a.json")).unwrap(),
+            "a"
+        );
+        assert_eq!(
+            fs::read_to_string(contracts.join("sensor_report_b.json")).unwrap(),
+            "b"
+        );
+        assert!(!contracts.join("not_sensor.json").exists());
+        assert!(!contracts.join("sensor_report.txt").exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn check_fixture_mirror_at_ok_when_matching() {
+        let root = unique_temp_dir("perfgate_mirror_ok");
+        let golden = root.join("golden");
+        let contracts = root.join("contracts");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::create_dir_all(&contracts).expect("create contracts dir");
+
+        fs::write(golden.join("sensor_report_ok.json"), "same").expect("write golden");
+        fs::write(contracts.join("sensor_report_ok.json"), "same").expect("write contracts");
+
+        check_fixture_mirror_at(&golden, &contracts).expect("mirror check ok");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn check_fixture_mirror_at_requires_contracts_dir() {
+        let root = unique_temp_dir("perfgate_mirror_missing");
+        let golden = root.join("golden");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::write(golden.join("sensor_report_ok.json"), "same").expect("write golden");
+
+        let missing_contracts = root.join("contracts_missing");
+        let err = check_fixture_mirror_at(&golden, &missing_contracts).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("does not exist"), "unexpected error: {}", msg);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn check_fixture_mirror_at_reports_missing_and_different() {
+        let root = unique_temp_dir("perfgate_mirror_drift");
+        let golden = root.join("golden");
+        let contracts = root.join("contracts");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::create_dir_all(&contracts).expect("create contracts dir");
+
+        fs::write(golden.join("sensor_report_missing.json"), "one").expect("write missing");
+        fs::write(golden.join("sensor_report_diff.json"), "golden").expect("write golden");
+        fs::write(contracts.join("sensor_report_diff.json"), "contracts").expect("write contracts");
+
+        let err = check_fixture_mirror_at(&golden, &contracts).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("fixture(s) drifted"),
+            "unexpected error: {}",
+            msg
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }

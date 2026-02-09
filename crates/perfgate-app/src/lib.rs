@@ -416,7 +416,108 @@ fn format_pct(pct: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{Delta, Verdict, VerdictCounts, VerdictStatus};
+    use perfgate_types::{
+        Delta, HostInfo, RunMeta, RunReceipt, Stats, U64Summary, Verdict, VerdictCounts,
+        VerdictStatus, RUN_SCHEMA_V1,
+    };
+    use std::collections::BTreeMap;
+
+    fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.1,
+                direction: Direction::Lower,
+            },
+        );
+
+        let mut deltas = BTreeMap::new();
+        deltas.insert(
+            Metric::WallMs,
+            Delta {
+                baseline: 100.0,
+                current: 115.0,
+                ratio: 1.15,
+                pct: 0.15,
+                regression: 0.15,
+                status,
+            },
+        );
+
+        CompareReceipt {
+            schema: perfgate_types::COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "0.1.0".into(),
+            },
+            bench: BenchMeta {
+                name: "bench".into(),
+                cwd: None,
+                command: vec!["true".into()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            budgets,
+            deltas,
+            verdict: Verdict {
+                status: VerdictStatus::Warn,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 0,
+                },
+                reasons: vec!["wall_ms_warn".to_string()],
+            },
+        }
+    }
+
+    fn make_run_receipt_with_host(host: HostInfo, wall_ms: u64) -> RunReceipt {
+        RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            run: RunMeta {
+                id: "run-id".to_string(),
+                started_at: "2024-01-01T00:00:00Z".to_string(),
+                ended_at: "2024-01-01T00:00:01Z".to_string(),
+                host,
+            },
+            bench: BenchMeta {
+                name: "bench".to_string(),
+                cwd: None,
+                command: vec!["true".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples: Vec::new(),
+            stats: Stats {
+                wall_ms: U64Summary {
+                    median: wall_ms,
+                    min: wall_ms,
+                    max: wall_ms,
+                },
+                cpu_ms: None,
+                max_rss_kb: None,
+                throughput_per_s: None,
+            },
+        }
+    }
 
     #[test]
     fn markdown_renders_table() {
@@ -482,6 +583,171 @@ mod tests {
         let md = render_markdown(&compare);
         assert!(md.contains("| metric | baseline"));
         assert!(md.contains("wall_ms"));
+    }
+
+    #[test]
+    fn parse_reason_token_handles_valid_and_invalid() {
+        let parsed = parse_reason_token("wall_ms_warn");
+        assert!(parsed.is_some());
+        let (metric, status) = parsed.unwrap();
+        assert_eq!(metric, Metric::WallMs);
+        assert_eq!(status, MetricStatus::Warn);
+
+        assert!(parse_reason_token("wall_ms_pass").is_none());
+        assert!(parse_reason_token("unknown_warn").is_none());
+    }
+
+    #[test]
+    fn render_reason_line_formats_thresholds() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let line = render_reason_line(&compare, "wall_ms_warn");
+        assert!(line.contains("warn >="));
+        assert!(line.contains("fail >"));
+        assert!(line.contains("+15.00%"));
+    }
+
+    #[test]
+    fn render_reason_line_falls_back_when_missing_budget() {
+        let mut compare = make_compare_receipt(MetricStatus::Warn);
+        compare.budgets.clear();
+        let line = render_reason_line(&compare, "wall_ms_warn");
+        assert_eq!(line, "- wall_ms_warn\n");
+    }
+
+    #[test]
+    fn format_value_and_pct_render_expected_strings() {
+        assert_eq!(format_value(Metric::ThroughputPerS, 1.23456), "1.235");
+        assert_eq!(format_value(Metric::WallMs, 123.0), "123");
+        assert_eq!(format_pct(0.1), "+10.00%");
+        assert_eq!(format_pct(-0.1), "-10.00%");
+        assert_eq!(format_pct(0.0), "0.00%");
+    }
+
+    #[test]
+    fn github_annotations_only_warn_and_fail() {
+        let mut compare = make_compare_receipt(MetricStatus::Warn);
+        compare.deltas.insert(
+            Metric::MaxRssKb,
+            Delta {
+                baseline: 100.0,
+                current: 150.0,
+                ratio: 1.5,
+                pct: 0.5,
+                regression: 0.5,
+                status: MetricStatus::Fail,
+            },
+        );
+        compare.deltas.insert(
+            Metric::ThroughputPerS,
+            Delta {
+                baseline: 100.0,
+                current: 90.0,
+                ratio: 0.9,
+                pct: -0.1,
+                regression: 0.0,
+                status: MetricStatus::Pass,
+            },
+        );
+
+        let lines = github_annotations(&compare);
+        assert_eq!(lines.len(), 2);
+        assert!(lines.iter().any(|l| l.starts_with("::warning::")));
+        assert!(lines.iter().any(|l| l.starts_with("::error::")));
+        assert!(lines.iter().all(|l| !l.contains("throughput_per_s")));
+    }
+
+    #[test]
+    fn sample_from_run_sets_optional_stdout_stderr() {
+        let run = RunResult {
+            wall_ms: 10,
+            exit_code: 0,
+            timed_out: false,
+            cpu_ms: None,
+            max_rss_kb: None,
+            stdout: b"ok".to_vec(),
+            stderr: Vec::new(),
+        };
+
+        let sample = sample_from_run(run, false);
+        assert_eq!(sample.stdout.as_deref(), Some("ok"));
+        assert!(sample.stderr.is_none());
+    }
+
+    #[test]
+    fn compare_use_case_host_mismatch_policies() {
+        let baseline = make_run_receipt_with_host(
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            100,
+        );
+        let current = make_run_receipt_with_host(
+            HostInfo {
+                os: "windows".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            100,
+        );
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.1,
+                direction: Direction::Lower,
+            },
+        );
+
+        let err = CompareUseCase::execute(CompareRequest {
+            baseline: baseline.clone(),
+            current: current.clone(),
+            budgets: budgets.clone(),
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            host_mismatch_policy: HostMismatchPolicy::Error,
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("host mismatch"));
+
+        let ignore = CompareUseCase::execute(CompareRequest {
+            baseline,
+            current,
+            budgets,
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            host_mismatch_policy: HostMismatchPolicy::Ignore,
+        })
+        .expect("ignore mismatch should succeed");
+
+        assert!(ignore.host_mismatch.is_none());
     }
 }
 

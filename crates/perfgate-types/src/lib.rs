@@ -808,6 +808,42 @@ mod tests {
         assert!(json.contains("\"wall_ms\""));
     }
 
+    #[test]
+    fn metric_metadata_and_parsing_are_consistent() {
+        let cases = [
+            (Metric::WallMs, "wall_ms", Direction::Lower, "ms"),
+            (Metric::CpuMs, "cpu_ms", Direction::Lower, "ms"),
+            (Metric::MaxRssKb, "max_rss_kb", Direction::Lower, "KB"),
+            (
+                Metric::ThroughputPerS,
+                "throughput_per_s",
+                Direction::Higher,
+                "/s",
+            ),
+        ];
+
+        for (metric, key, direction, unit) in cases {
+            assert_eq!(metric.as_str(), key);
+            assert_eq!(Metric::parse_key(key), Some(metric));
+            assert_eq!(metric.default_direction(), direction);
+            assert_eq!(metric.display_unit(), unit);
+            assert!((metric.default_warn_factor() - 0.9).abs() < f64::EPSILON);
+        }
+
+        assert!(Metric::parse_key("unknown").is_none());
+    }
+
+    #[test]
+    fn status_and_policy_as_str_values() {
+        assert_eq!(MetricStatus::Pass.as_str(), "pass");
+        assert_eq!(MetricStatus::Warn.as_str(), "warn");
+        assert_eq!(MetricStatus::Fail.as_str(), "fail");
+
+        assert_eq!(HostMismatchPolicy::Warn.as_str(), "warn");
+        assert_eq!(HostMismatchPolicy::Error.as_str(), "error");
+        assert_eq!(HostMismatchPolicy::Ignore.as_str(), "ignore");
+    }
+
     /// Test backward compatibility: receipts without new host fields still parse
     #[test]
     fn backward_compat_host_info_without_new_fields() {
@@ -819,6 +855,25 @@ mod tests {
         assert!(info.cpu_count.is_none());
         assert!(info.memory_bytes.is_none());
         assert!(info.hostname_hash.is_none());
+    }
+
+    #[test]
+    fn host_info_minimal_json_snapshot() {
+        let info = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+
+        let value = serde_json::to_value(&info).expect("serialize HostInfo");
+        insta::assert_json_snapshot!(value, @r###"
+        {
+          "arch": "x86_64",
+          "os": "linux"
+        }
+        "###);
     }
 
     /// Test that new fields are serialized when present

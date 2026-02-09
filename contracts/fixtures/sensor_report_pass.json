@@ -50,7 +50,8 @@
       "pass_count": 2,
       "warn_count": 0,
       "fail_count": 0,
-      "total_count": 2
+      "total_count": 2,
+      "bench_count": 1
     }
   }
 }

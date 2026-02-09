@@ -4,8 +4,17 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::env;
 use std::fs;
 use tempfile::tempdir;
+
+fn perfgate_cmd() -> Command {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
+        cmd.env("LLVM_PROFILE_FILE", profile);
+    }
+    cmd
+}
 
 /// Returns a cross-platform command that exits successfully.
 /// On Unix: ["true"]
@@ -20,6 +29,17 @@ fn success_command() -> Vec<&'static str> {
     vec!["cmd", "/c", "exit", "0"]
 }
 
+/// Returns a cross-platform command that exits with code 1.
+#[cfg(unix)]
+fn failure_command() -> Vec<&'static str> {
+    vec!["false"]
+}
+
+#[cfg(windows)]
+fn failure_command() -> Vec<&'static str> {
+    vec!["cmd", "/c", "exit", "1"]
+}
+
 /// Test basic run with `--name test -- <success_command>`
 /// Verify output file is valid JSON with correct schema
 ///
@@ -30,7 +50,7 @@ fn test_run_basic_command() {
     let output_path = temp_dir.path().join("output.json");
 
     // Run perfgate with a simple command that always succeeds
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("test")
@@ -82,6 +102,41 @@ fn test_run_basic_command() {
     );
 }
 
+/// Test that run fails with nonzero command when --allow-nonzero is not set
+#[test]
+fn test_run_nonzero_command_fails_without_allow_nonzero() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("nonzero-test")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--");
+
+    for arg in failure_command() {
+        cmd.arg(arg);
+    }
+
+    let output = cmd.output().expect("failed to execute perfgate run");
+    assert!(!output.status.success(), "run should fail on nonzero");
+    assert_eq!(output.status.code(), Some(1));
+
+    // Receipt should still be written
+    assert!(output_path.exists(), "output file should exist");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("benchmark command failed"),
+        "stderr should mention benchmark failure: {}",
+        stderr
+    );
+}
+
 /// Test that run command with default repeat count produces 5 samples
 ///
 /// **Validates: Requirements 1.2**
@@ -90,7 +145,7 @@ fn test_run_default_repeat_count() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("default-repeat-test")
@@ -120,7 +175,7 @@ fn test_run_default_repeat_count() {
 /// **Validates: Requirements 1.1**
 #[test]
 fn test_run_missing_name_fails() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run").arg("--");
 
     for arg in success_command() {
@@ -137,7 +192,7 @@ fn test_run_missing_name_fails() {
 /// **Validates: Requirements 1.1**
 #[test]
 fn test_run_missing_command_fails() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run").arg("--name").arg("test");
 
     cmd.assert()
@@ -153,7 +208,7 @@ fn test_run_receipt_contains_tool_info() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("tool-info-test")
@@ -193,7 +248,7 @@ fn test_run_samples_contain_required_fields() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("sample-fields-test")

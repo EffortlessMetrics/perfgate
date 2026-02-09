@@ -4,9 +4,18 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
+
+fn perfgate_cmd() -> Command {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
+        cmd.env("LLVM_PROFILE_FILE", profile);
+    }
+    cmd
+}
 
 /// Returns the path to the test fixtures directory
 fn fixtures_dir() -> PathBuf {
@@ -27,7 +36,7 @@ fn test_compare_pass_scenario() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_pass.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -73,7 +82,7 @@ fn test_compare_warn_scenario_without_fail_on_warn() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_warn.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -112,7 +121,7 @@ fn test_compare_warn_scenario_with_fail_on_warn() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_warn.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -141,7 +150,7 @@ fn test_compare_fail_scenario() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_fail.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -180,7 +189,7 @@ fn test_compare_missing_baseline_file() {
     let baseline = temp_dir.path().join("nonexistent.json");
     let current = fixtures_dir().join("current_pass.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -207,7 +216,7 @@ fn test_compare_missing_current_file() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = temp_dir.path().join("nonexistent.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -233,7 +242,7 @@ fn test_compare_receipt_contains_required_fields() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_pass.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -288,7 +297,7 @@ fn test_compare_with_custom_threshold() {
     // With threshold of 0.60 (60%), it should pass
     let current = fixtures_dir().join("current_fail.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)

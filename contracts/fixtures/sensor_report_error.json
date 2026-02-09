@@ -44,7 +44,8 @@
       "pass_count": 0,
       "warn_count": 0,
       "fail_count": 1,
-      "total_count": 1
+      "total_count": 1,
+      "bench_count": 0
     }
   }
 }

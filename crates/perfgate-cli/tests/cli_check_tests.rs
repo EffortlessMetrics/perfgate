@@ -3,8 +3,17 @@
 //! **Validates: Config-driven one-command workflow**
 
 use assert_cmd::Command;
+use std::env;
 use std::fs;
 use tempfile::tempdir;
+
+fn perfgate_cmd() -> Command {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
+        cmd.env("LLVM_PROFILE_FILE", profile);
+    }
+    cmd
+}
 
 /// Returns a cross-platform command that exits successfully.
 #[cfg(unix)]
@@ -15,6 +24,17 @@ fn success_command() -> Vec<&'static str> {
 #[cfg(windows)]
 fn success_command() -> Vec<&'static str> {
     vec!["cmd", "/c", "exit", "0"]
+}
+
+/// Returns a cross-platform command that sleeps briefly to ensure measurable runtime.
+#[cfg(unix)]
+fn slow_command() -> Vec<&'static str> {
+    vec!["sh", "-c", "sleep 0.05"]
+}
+
+#[cfg(windows)]
+fn slow_command() -> Vec<&'static str> {
+    vec!["powershell", "-Command", "Start-Sleep -Milliseconds 50"]
 }
 
 /// Create a minimal config file with a single bench.
@@ -43,6 +63,28 @@ command = [{}]
     );
 
     fs::write(&config_path, config_content).expect("Failed to write config file");
+    config_path
+}
+
+/// Create a minimal JSON config file with a single bench.
+fn create_json_config_file(temp_dir: &std::path::Path, bench_name: &str) -> std::path::PathBuf {
+    let config_path = temp_dir.join("perfgate.json");
+    let cmd = success_command();
+
+    let config = serde_json::json!({
+        "defaults": {
+            "repeat": 1,
+            "warmup": 0,
+            "threshold": 0.20
+        },
+        "bench": [{
+            "name": bench_name,
+            "command": cmd
+        }]
+    });
+
+    fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+        .expect("Failed to write config file");
     config_path
 }
 
@@ -98,6 +140,58 @@ fn create_baseline_receipt(temp_dir: &std::path::Path, bench_name: &str) -> std:
     baseline_path
 }
 
+/// Create a baseline receipt with a custom wall_ms median.
+fn create_baseline_receipt_with_wall_ms(
+    temp_dir: &std::path::Path,
+    bench_name: &str,
+    wall_ms: u64,
+) -> std::path::PathBuf {
+    let baselines_dir = temp_dir.join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
+
+    let baseline_path = baselines_dir.join(format!("{}.json", bench_name));
+    let receipt = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": {
+            "name": "perfgate",
+            "version": "0.1.0"
+        },
+        "run": {
+            "id": "baseline-run-id",
+            "started_at": "2024-01-01T00:00:00Z",
+            "ended_at": "2024-01-01T00:01:00Z",
+            "host": {
+                "os": "linux",
+                "arch": "x86_64"
+            }
+        },
+        "bench": {
+            "name": bench_name,
+            "command": ["echo", "hello"],
+            "repeat": 1,
+            "warmup": 0
+        },
+        "samples": [
+            {"wall_ms": wall_ms, "exit_code": 0, "warmup": false, "timed_out": false}
+        ],
+        "stats": {
+            "wall_ms": {
+                "median": wall_ms,
+                "min": wall_ms,
+                "max": wall_ms
+            }
+        }
+    });
+
+    fs::write(
+        &baseline_path,
+        serde_json::to_string_pretty(&receipt).unwrap(),
+    )
+    .expect("Failed to write baseline");
+
+    baseline_path
+}
+
 /// Test basic check command with config file
 #[test]
 fn test_check_basic_with_config() {
@@ -105,7 +199,7 @@ fn test_check_basic_with_config() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "test-bench");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -134,6 +228,33 @@ fn test_check_basic_with_config() {
     );
 }
 
+/// Test check command can parse JSON config files
+#[test]
+fn test_check_json_config_parsing() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_json_config_file(temp_dir.path(), "json-bench");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("json-bench")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "check with JSON config should succeed: {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(out_dir.join("run.json").exists(), "run.json should exist");
+}
+
 /// Test check command with baseline
 #[test]
 fn test_check_with_baseline() {
@@ -142,7 +263,7 @@ fn test_check_with_baseline() {
     let config_path = create_config_file(temp_dir.path(), "with-baseline");
     let _baseline_path = create_baseline_receipt(temp_dir.path(), "with-baseline");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -185,7 +306,7 @@ fn test_check_missing_baseline_warns() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "no-baseline");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -299,7 +420,7 @@ fn test_check_missing_baseline_removes_stale_compare() {
     fs::write(&stale_compare, "{\"stale\": true}").expect("Failed to write stale compare.json");
     assert!(stale_compare.exists(), "stale compare.json should exist");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -325,6 +446,37 @@ fn test_check_missing_baseline_removes_stale_compare() {
     );
 }
 
+/// Test check command fails when output directory cannot be created
+#[test]
+fn test_check_output_dir_creation_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "bad-out-dir");
+
+    // Create a file where a directory is expected
+    fs::write(&out_dir, "not a directory").expect("Failed to create output file");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("bad-out-dir")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(!output.status.success(), "check should fail");
+    assert_eq!(output.status.code(), Some(1));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("create output dir"),
+        "stderr should mention output dir creation: {}",
+        stderr
+    );
+}
+
 /// Test check command with --require-baseline fails when baseline missing
 #[test]
 fn test_check_require_baseline_fails() {
@@ -332,7 +484,7 @@ fn test_check_require_baseline_fails() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "required-baseline");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -371,7 +523,7 @@ fn test_check_unknown_bench_fails() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "existing-bench");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -405,7 +557,7 @@ fn test_check_produces_valid_json() {
     let config_path = create_config_file(temp_dir.path(), "json-test");
     let _baseline_path = create_baseline_receipt(temp_dir.path(), "json-test");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -499,7 +651,7 @@ fn test_check_all_runs_all_benches() {
     let config_path =
         create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b", "bench-c"]);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -554,7 +706,7 @@ fn test_check_all_with_baselines() {
     create_baseline_receipt(temp_dir.path(), "bench-x");
     create_baseline_receipt(temp_dir.path(), "bench-y");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -583,6 +735,61 @@ fn test_check_all_with_baselines() {
     }
 }
 
+/// Test --all exits with failure when any bench fails comparison
+#[test]
+fn test_check_all_exit_code_fail() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = temp_dir.path().join("perfgate.toml");
+
+    let cmd = slow_command();
+    let cmd_str = cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let config_content = format!(
+        r#"
+[defaults]
+repeat = 1
+warmup = 0
+threshold = 0.01
+
+[[bench]]
+name = "bench-a"
+command = [{}]
+
+[[bench]]
+name = "bench-b"
+command = [{}]
+"#,
+        cmd_str, cmd_str
+    );
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+
+    create_baseline_receipt_with_wall_ms(temp_dir.path(), "bench-a", 1);
+    create_baseline_receipt_with_wall_ms(temp_dir.path(), "bench-b", 1);
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "check --all should exit 2 on failure: stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// Test --all fails on empty config
 #[test]
 fn test_check_all_empty_config_fails() {
@@ -600,7 +807,7 @@ repeat = 2
     )
     .expect("Failed to write config file");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -630,7 +837,7 @@ fn test_check_bench_and_all_mutually_exclusive() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "test-bench");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -662,7 +869,7 @@ fn test_check_no_bench_or_all_fails() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "test-bench");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -692,7 +899,7 @@ fn test_check_baseline_and_all_mutually_exclusive() {
     let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
     let baseline_path = create_baseline_receipt(temp_dir.path(), "bench-a");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)

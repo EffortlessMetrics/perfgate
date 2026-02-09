@@ -183,3 +183,193 @@ fn sample_half(run: &perfgate_adapters::RunResult) -> PairedSampleHalf {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use perfgate_adapters::{AdapterError, RunResult};
+    use perfgate_types::HostInfo;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct TestRunner {
+        runs: Arc<Mutex<Vec<RunResult>>>,
+    }
+
+    impl TestRunner {
+        fn new(runs: Vec<RunResult>) -> Self {
+            Self {
+                runs: Arc::new(Mutex::new(runs)),
+            }
+        }
+    }
+
+    impl ProcessRunner for TestRunner {
+        fn run(&self, _spec: &CommandSpec) -> Result<RunResult, AdapterError> {
+            let mut runs = self.runs.lock().expect("lock runs");
+            if runs.is_empty() {
+                return Err(AdapterError::Other(anyhow::anyhow!("no more queued runs")));
+            }
+            Ok(runs.remove(0))
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestHostProbe {
+        host: HostInfo,
+        seen_include_hash: Arc<Mutex<Vec<bool>>>,
+    }
+
+    impl TestHostProbe {
+        fn new(host: HostInfo) -> Self {
+            Self {
+                host,
+                seen_include_hash: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl HostProbe for TestHostProbe {
+        fn probe(&self, options: &HostProbeOptions) -> HostInfo {
+            self.seen_include_hash
+                .lock()
+                .expect("lock options")
+                .push(options.include_hostname_hash);
+            self.host.clone()
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestClock {
+        now: String,
+    }
+
+    impl TestClock {
+        fn new(now: &str) -> Self {
+            Self {
+                now: now.to_string(),
+            }
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now_rfc3339(&self) -> String {
+            self.now.clone()
+        }
+    }
+
+    fn run_result(
+        wall_ms: u64,
+        exit_code: i32,
+        timed_out: bool,
+        max_rss_kb: Option<u64>,
+        stdout: &[u8],
+        stderr: &[u8],
+    ) -> RunResult {
+        RunResult {
+            wall_ms,
+            exit_code,
+            timed_out,
+            cpu_ms: None,
+            max_rss_kb,
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+        }
+    }
+
+    #[test]
+    fn sample_half_maps_optional_output() {
+        let run = run_result(10, 0, false, None, b"hello", b"");
+        let sample = sample_half(&run);
+        assert_eq!(sample.stdout.as_deref(), Some("hello"));
+        assert!(sample.stderr.is_none());
+
+        let run2 = run_result(10, 0, false, None, b"", b"err");
+        let sample2 = sample_half(&run2);
+        assert!(sample2.stdout.is_none());
+        assert_eq!(sample2.stderr.as_deref(), Some("err"));
+    }
+
+    #[test]
+    fn paired_run_collects_samples_and_reasons() {
+        let runs = vec![
+            // warmup baseline/current (current exits nonzero, should be ignored)
+            run_result(100, 0, false, None, b"", b""),
+            run_result(90, 1, false, None, b"", b""),
+            // measured baseline/current (baseline times out + nonzero)
+            run_result(110, 2, true, Some(2000), b"out", b""),
+            run_result(105, 0, false, Some(2500), b"", b""),
+        ];
+
+        let runner = TestRunner::new(runs);
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host.clone());
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe.clone(),
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let outcome = usecase
+            .execute(PairedRunRequest {
+                name: "bench".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 1,
+                warmup: 1,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: true,
+            })
+            .expect("paired run should succeed");
+
+        assert_eq!(outcome.receipt.samples.len(), 2);
+        assert!(outcome.receipt.samples[0].warmup);
+        assert!(!outcome.receipt.samples[1].warmup);
+        assert_eq!(outcome.receipt.samples[0].pair_index, 0);
+        assert_eq!(outcome.receipt.samples[1].pair_index, 1);
+
+        let measured = &outcome.receipt.samples[1];
+        assert_eq!(measured.rss_diff_kb, Some(500));
+
+        assert!(outcome.failed);
+        assert!(
+            outcome
+                .reasons
+                .iter()
+                .any(|r| r.contains("baseline timed out")),
+            "expected baseline timeout reason"
+        );
+        assert!(
+            outcome.reasons.iter().any(|r| r.contains("baseline exit")),
+            "expected baseline exit reason"
+        );
+        assert!(
+            !outcome
+                .reasons
+                .iter()
+                .any(|r| r.contains("pair 1 current exit")),
+            "warmup errors should not be recorded"
+        );
+
+        let seen = host_probe.seen_include_hash.lock().expect("lock seen");
+        assert_eq!(seen.as_slice(), &[true]);
+        assert_eq!(outcome.receipt.run.host, host);
+    }
+}

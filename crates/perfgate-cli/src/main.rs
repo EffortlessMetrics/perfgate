@@ -377,8 +377,11 @@ fn main() -> ExitCode {
 
 fn real_main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    run_command(cli.cmd)
+}
 
-    match cli.cmd {
+fn run_command(cmd: Command) -> anyhow::Result<()> {
+    match cmd {
         Command::Run {
             name,
             repeat,
@@ -481,12 +484,12 @@ fn real_main() -> anyhow::Result<()> {
                 perfgate_types::VerdictStatus::Pass => Ok(()),
                 perfgate_types::VerdictStatus::Warn => {
                     if fail_on_warn {
-                        std::process::exit(3)
+                        exit_with_code(3)
                     } else {
                         Ok(())
                     }
                 }
-                perfgate_types::VerdictStatus::Fail => std::process::exit(2),
+                perfgate_types::VerdictStatus::Fail => exit_with_code(2),
             }
         }
 
@@ -519,31 +522,7 @@ fn real_main() -> anyhow::Result<()> {
             compare,
             format,
             out,
-        } => {
-            let export_format = ExportFormat::from_str(&format).ok_or_else(|| {
-                anyhow::anyhow!("invalid format: {} (expected csv or jsonl)", format)
-            })?;
-
-            let content = match (run, compare) {
-                (Some(run_path), None) => {
-                    let run_receipt: RunReceipt = read_json(&run_path)?;
-                    ExportUseCase::export_run(&run_receipt, export_format)?
-                }
-                (None, Some(compare_path)) => {
-                    let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare_path)?;
-                    ExportUseCase::export_compare(&compare_receipt, export_format)?
-                }
-                (None, None) => {
-                    anyhow::bail!("either --run or --compare must be specified");
-                }
-                (Some(_), Some(_)) => {
-                    unreachable!("clap prevents both --run and --compare");
-                }
-            };
-
-            atomic_write(&out, content.as_bytes())?;
-            Ok(())
-        }
+        } => execute_export(run, compare, &format, &out),
 
         Command::Promote {
             current,
@@ -684,6 +663,16 @@ fn real_main() -> anyhow::Result<()> {
     }
 }
 
+#[cfg(not(test))]
+fn exit_with_code(code: i32) -> ! {
+    std::process::exit(code);
+}
+
+#[cfg(test)]
+fn exit_with_code(code: i32) -> ! {
+    panic!("exit {code}");
+}
+
 /// Run check in standard mode (exit codes reflect verdict).
 #[allow(clippy::too_many_arguments)]
 fn run_check_standard(
@@ -742,15 +731,11 @@ fn run_check_standard(
 
         // Resolve baseline path (--baseline flag only valid for single bench mode)
         let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
-        let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
-            if path.exists() {
-                Some(
-                    read_json(path)
-                        .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
-                )
-            } else {
-                None
-            }
+        let baseline_receipt: Option<RunReceipt> = if baseline_path.exists() {
+            Some(
+                read_json(&baseline_path)
+                    .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
+            )
         } else {
             None
         };
@@ -775,7 +760,7 @@ fn run_check_standard(
             bench_name: bench_name.clone(),
             out_dir: bench_out_dir.clone(),
             baseline: baseline_receipt,
-            baseline_path,
+            baseline_path: Some(baseline_path.clone()),
             require_baseline,
             fail_on_warn,
             tool: tool_info(),
@@ -800,11 +785,7 @@ fn run_check_standard(
 
         // Update aggregate exit code (worst wins)
         // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
-        if outcome.exit_code == 2 {
-            max_exit_code = 2;
-        } else if outcome.exit_code == 3 && max_exit_code != 2 {
-            max_exit_code = 3;
-        }
+        update_max_exit_code(&mut max_exit_code, outcome.exit_code);
     }
 
     // Print all warnings
@@ -814,7 +795,7 @@ fn run_check_standard(
 
     // Exit with aggregate code
     if max_exit_code != 0 {
-        std::process::exit(max_exit_code);
+        exit_with_code(max_exit_code);
     }
 
     Ok(())
@@ -955,90 +936,107 @@ fn run_check_cockpit_inner(
     let mut bench_outcomes: Vec<BenchOutcome> = Vec::new();
 
     for bench_name in &bench_names {
-        // Create extras directory for native artifacts
-        let extras_dir = if multi_bench {
-            out_dir.join("extras").join(bench_name)
-        } else {
-            out_dir.join("extras")
-        };
-        fs::create_dir_all(&extras_dir).map_err(|e| {
-            PerfgateError::ArtifactWrite(format!(
-                "create extras dir {}: {}",
-                extras_dir.display(),
-                e
-            ))
-        })?;
+        let outcome: BenchOutcome = (|| -> anyhow::Result<BenchOutcome> {
+            // Create extras directory for native artifacts
+            let extras_dir = if multi_bench {
+                out_dir.join("extras").join(bench_name)
+            } else {
+                out_dir.join("extras")
+            };
+            fs::create_dir_all(&extras_dir).map_err(|e| {
+                PerfgateError::ArtifactWrite(format!(
+                    "create extras dir {}: {}",
+                    extras_dir.display(),
+                    e
+                ))
+            })?;
 
-        // Resolve baseline path
-        let baseline_path = resolve_baseline_path(baseline, bench_name, &config_file);
-        let baseline_receipt: Option<RunReceipt> = if let Some(ref path) = baseline_path {
-            if path.exists() {
+            // Resolve baseline path
+            let baseline_path = resolve_baseline_path(baseline, bench_name, &config_file);
+            let baseline_receipt: Option<RunReceipt> = if baseline_path.exists() {
                 Some(
-                    read_json(path)
+                    read_json(&baseline_path)
                         .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
                 )
             } else {
                 None
+            };
+            let baseline_available = baseline_receipt.is_some();
+
+            // Execute check
+            let runner = StdProcessRunner;
+            let host_probe = StdHostProbe;
+            let usecase = CheckUseCase::new(runner, host_probe, clock.clone());
+
+            let check_outcome = usecase.execute(CheckRequest {
+                config: config_file.clone(),
+                bench_name: bench_name.clone(),
+                out_dir: extras_dir.clone(),
+                baseline: baseline_receipt,
+                baseline_path: Some(baseline_path.clone()),
+                require_baseline,
+                fail_on_warn,
+                tool: tool_info(),
+                env: env.to_vec(),
+                output_cap_bytes,
+                allow_nonzero,
+                host_mismatch_policy: host_mismatch,
+            })?;
+
+            // Write native artifacts to extras/
+            write_check_artifacts(&check_outcome, pretty)
+                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+
+            // Rename extras files to versioned names
+            rename_extras_to_versioned(&extras_dir)
+                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+
+            // Print warnings (CLI concern, not part of aggregation)
+            for warning in &check_outcome.warnings {
+                eprintln!("warning: {}", warning);
             }
-        } else {
-            None
-        };
-        let baseline_available = baseline_receipt.is_some();
 
-        // Execute check
-        let runner = StdProcessRunner;
-        let host_probe = StdHostProbe;
-        let usecase = CheckUseCase::new(runner, host_probe, clock.clone());
+            let extras_prefix = if multi_bench {
+                format!("extras/{}", bench_name)
+            } else {
+                "extras".to_string()
+            };
 
-        let outcome = usecase.execute(CheckRequest {
-            config: config_file.clone(),
-            bench_name: bench_name.clone(),
-            out_dir: extras_dir.clone(),
-            baseline: baseline_receipt,
-            baseline_path: baseline_path.clone(),
-            require_baseline,
-            fail_on_warn,
-            tool: tool_info(),
-            env: env.to_vec(),
-            output_cap_bytes,
-            allow_nonzero,
-            host_mismatch_policy: host_mismatch,
-        })?;
-
-        // Write native artifacts to extras/
-        write_check_artifacts(&outcome, pretty)
-            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
-
-        // Rename extras files to versioned names
-        rename_extras_to_versioned(&extras_dir)
-            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
-
-        // Print warnings (CLI concern, not part of aggregation)
-        for warning in &outcome.warnings {
-            eprintln!("warning: {}", warning);
-        }
-
-        let extras_prefix = if multi_bench {
-            format!("extras/{}", bench_name)
-        } else {
-            "extras".to_string()
-        };
-
-        bench_outcomes.push(BenchOutcome {
-            bench_name: bench_name.clone(),
-            has_compare: outcome.compare_receipt.is_some(),
-            baseline_available,
-            markdown: outcome.markdown,
-            extras_prefix,
-            report: outcome.report,
+            Ok(BenchOutcome::Success {
+                bench_name: bench_name.clone(),
+                has_compare: check_outcome.compare_receipt.is_some(),
+                baseline_available,
+                markdown: check_outcome.markdown,
+                extras_prefix,
+                report: check_outcome.report,
+            })
+        })()
+        .unwrap_or_else(|err| {
+            let (stage, error_kind) = classify_error(&err);
+            eprintln!("error: bench '{}': {:#}", bench_name, err);
+            BenchOutcome::Error {
+                bench_name: bench_name.clone(),
+                error_message: format!("{:#}", err),
+                stage,
+                error_kind,
+            }
         });
+        bench_outcomes.push(outcome);
     }
 
     // Build aggregated sensor report
     let ended_at = clock.now_rfc3339();
     let duration_ms = start_instant.elapsed().as_millis() as u64;
 
-    let any_baseline_available = bench_outcomes.iter().any(|o| o.baseline_available);
+    let any_baseline_available = bench_outcomes.iter().any(|o| {
+        matches!(
+            o,
+            BenchOutcome::Success {
+                baseline_available: true,
+                ..
+            }
+        )
+    });
 
     let baseline_reason = if !any_baseline_available {
         Some(BASELINE_REASON_NO_BASELINE.to_string())
@@ -1046,7 +1044,15 @@ fn run_check_cockpit_inner(
         None
     };
 
-    let all_baseline_available = bench_outcomes.iter().all(|o| o.baseline_available);
+    let all_baseline_available = bench_outcomes.iter().all(|o| {
+        matches!(
+            o,
+            BenchOutcome::Success {
+                baseline_available: true,
+                ..
+            }
+        )
+    });
 
     let builder = SensorReportBuilder::new(tool_info(), started_at.to_string())
         .ended_at(ended_at, duration_ms)
@@ -1067,6 +1073,57 @@ fn run_check_cockpit_inner(
     Ok(())
 }
 
+fn update_max_exit_code(max_exit_code: &mut i32, outcome_exit_code: i32) {
+    // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
+    if outcome_exit_code == 2 {
+        *max_exit_code = 2;
+    } else if outcome_exit_code == 3 && *max_exit_code != 2 {
+        *max_exit_code = 3;
+    }
+}
+
+fn rename_if_exists(old_path: &Path, new_path: &Path) -> anyhow::Result<()> {
+    if old_path.exists() {
+        fs::rename(old_path, new_path)
+            .with_context(|| format!("rename {} -> {}", old_path.display(), new_path.display()))?;
+    }
+    Ok(())
+}
+
+fn remove_stale_file(stale: &Path) -> anyhow::Result<()> {
+    if stale.exists() {
+        match fs::remove_file(stale) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "failed to remove stale {}: {}",
+                    stale.display(),
+                    e
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remove_stale_compare_file(stale: &Path) -> anyhow::Result<()> {
+    if stale.exists() {
+        match fs::remove_file(stale) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "failed to remove stale compare.json {}: {}",
+                    stale.display(),
+                    e
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Rename extras files to versioned names.
 fn rename_extras_to_versioned(extras_dir: &Path) -> anyhow::Result<()> {
     let renames = [
@@ -1078,30 +1135,14 @@ fn rename_extras_to_versioned(extras_dir: &Path) -> anyhow::Result<()> {
     for (old_name, new_name) in &renames {
         let old_path = extras_dir.join(old_name);
         let new_path = extras_dir.join(new_name);
-        if old_path.exists() {
-            fs::rename(&old_path, &new_path).with_context(|| {
-                format!("rename {} -> {}", old_path.display(), new_path.display())
-            })?;
-        }
+        rename_if_exists(&old_path, &new_path)?;
     }
 
     // Clean up stale files that might exist from previous runs
     let stale_files = ["run.json", "compare.json", "report.json"];
     for name in &stale_files {
         let stale = extras_dir.join(name);
-        if stale.exists() {
-            match fs::remove_file(&stale) {
-                Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "failed to remove stale {}: {}",
-                        stale.display(),
-                        e
-                    ));
-                }
-            }
-        }
+        remove_stale_file(&stale)?;
     }
 
     Ok(())
@@ -1112,20 +1153,19 @@ fn resolve_baseline_path(
     cli_baseline: &Option<PathBuf>,
     bench_name: &str,
     config: &ConfigFile,
-) -> Option<PathBuf> {
+) -> PathBuf {
     // 1. CLI takes precedence
     if let Some(path) = cli_baseline {
-        return Some(path.clone());
+        return path.clone();
     }
 
     // 2. Fall back to baseline_dir from config defaults
     if let Some(ref baseline_dir) = config.defaults.baseline_dir {
-        let path = PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
-        return Some(path);
+        return PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
     }
 
     // 3. Default convention: baselines/{bench_name}.json
-    Some(PathBuf::from("baselines").join(format!("{}.json", bench_name)))
+    PathBuf::from("baselines").join(format!("{}.json", bench_name))
 }
 
 /// Write all artifacts from a check outcome.
@@ -1140,17 +1180,7 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
         // Ensure compare.json is absent when no baseline is available.
         if let Some(parent) = outcome.run_path.parent() {
             let stale = parent.join("compare.json");
-            match fs::remove_file(&stale) {
-                Ok(_) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => {
-                    return Err(anyhow::anyhow!(
-                        "failed to remove stale compare.json {}: {}",
-                        stale.display(),
-                        err
-                    ));
-                }
-            }
+            remove_stale_compare_file(&stale)?;
         }
     }
 
@@ -1161,6 +1191,36 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
     fs::write(&outcome.markdown_path, &outcome.markdown)
         .with_context(|| format!("write {}", outcome.markdown_path.display()))?;
 
+    Ok(())
+}
+
+fn execute_export(
+    run: Option<PathBuf>,
+    compare: Option<PathBuf>,
+    format: &str,
+    out: &Path,
+) -> anyhow::Result<()> {
+    let export_format = ExportFormat::from_str(format)
+        .ok_or_else(|| anyhow::anyhow!("invalid format: {} (expected csv or jsonl)", format))?;
+
+    let content = match (run, compare) {
+        (Some(run_path), None) => {
+            let run_receipt: RunReceipt = read_json(&run_path)?;
+            ExportUseCase::export_run(&run_receipt, export_format)?
+        }
+        (None, Some(compare_path)) => {
+            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare_path)?;
+            ExportUseCase::export_compare(&compare_receipt, export_format)?
+        }
+        (None, None) => {
+            anyhow::bail!("either --run or --compare must be specified");
+        }
+        (Some(_), Some(_)) => {
+            anyhow::bail!("--run and --compare are mutually exclusive");
+        }
+    };
+
+    atomic_write(out, content.as_bytes())?;
     Ok(())
 }
 
@@ -1309,4 +1369,676 @@ fn build_budgets(
 
 fn metric_key(metric: Metric) -> &'static str {
     metric.as_str()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use perfgate_types::{
+        BenchMeta, DefaultsConfig, Direction, F64Summary, HostInfo, PerfgateReport, ReportSummary,
+        RunMeta, RunReceipt, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
+        RUN_SCHEMA_V1,
+    };
+    use serde_json::json;
+    use std::any::Any;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    fn make_stats(cpu: bool, rss: bool, throughput: bool) -> Stats {
+        Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 90,
+                max: 110,
+            },
+            cpu_ms: cpu.then_some(U64Summary {
+                median: 50,
+                min: 40,
+                max: 60,
+            }),
+            max_rss_kb: rss.then_some(U64Summary {
+                median: 2048,
+                min: 1024,
+                max: 4096,
+            }),
+            throughput_per_s: throughput.then_some(F64Summary {
+                median: 200.0,
+                min: 180.0,
+                max: 220.0,
+            }),
+        }
+    }
+
+    fn make_receipt(stats: Stats) -> RunReceipt {
+        RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: tool_info(),
+            run: RunMeta {
+                id: "run-id".to_string(),
+                started_at: "2020-01-01T00:00:00Z".to_string(),
+                ended_at: "2020-01-01T00:00:01Z".to_string(),
+                host: HostInfo {
+                    os: "linux".to_string(),
+                    arch: "x86_64".to_string(),
+                    cpu_count: Some(8),
+                    memory_bytes: Some(8 * 1024 * 1024 * 1024),
+                    hostname_hash: None,
+                },
+            },
+            bench: BenchMeta {
+                name: "bench".to_string(),
+                cwd: None,
+                command: vec!["echo".to_string(), "hi".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples: Vec::new(),
+            stats,
+        }
+    }
+
+    fn make_stats_with_wall(wall_ms: u64) -> Stats {
+        Stats {
+            wall_ms: U64Summary {
+                median: wall_ms,
+                min: wall_ms,
+                max: wall_ms,
+            },
+            cpu_ms: None,
+            max_rss_kb: None,
+            throughput_per_s: None,
+        }
+    }
+
+    #[cfg(unix)]
+    fn slow_command() -> Vec<String> {
+        vec!["sh".to_string(), "-c".to_string(), "sleep 0.05".to_string()]
+    }
+
+    #[cfg(windows)]
+    fn slow_command() -> Vec<String> {
+        vec![
+            "powershell".to_string(),
+            "-Command".to_string(),
+            "Start-Sleep -Milliseconds 50".to_string(),
+        ]
+    }
+
+    fn create_compare_receipt_json(verdict_status: &str, metric_status: &str) -> String {
+        format!(
+            r#"{{
+  "schema": "perfgate.compare.v1",
+  "tool": {{"name": "perfgate", "version": "0.1.0"}},
+  "bench": {{"name": "test-bench", "cwd": null, "command": ["true"], "repeat": 1, "warmup": 0}},
+  "baseline_ref": {{"path": "baseline.json", "run_id": "b123"}},
+  "current_ref": {{"path": "current.json", "run_id": "c456"}},
+  "budgets": {{"wall_ms": {{"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}}}},
+  "deltas": {{"wall_ms": {{"baseline": 100.0, "current": 150.0, "ratio": 1.5, "pct": 0.5, "regression": 0.5, "status": "{}"}}}},
+  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1}}, "reasons": ["wall_ms_fail"]}}
+}}"#,
+            metric_status, verdict_status
+        )
+    }
+
+    fn create_check_config_json(
+        temp_dir: &std::path::Path,
+        bench_name: &str,
+    ) -> std::path::PathBuf {
+        let config_path = temp_dir.join("perfgate.json");
+        let cmd = slow_command();
+        let config = json!({
+            "defaults": {
+                "repeat": 1,
+                "warmup": 0,
+                "threshold": 0.0,
+                "warn_factor": 0.0
+            },
+            "bench": [{
+                "name": bench_name,
+                "command": cmd
+            }]
+        });
+
+        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+            .expect("Failed to write config file");
+
+        config_path
+    }
+
+    fn assert_exit_code(result: Result<(), Box<dyn Any + Send>>, expected: i32) {
+        let err = result.expect_err("expected exit panic");
+        let msg = if let Some(s) = err.downcast_ref::<String>() {
+            s.clone()
+        } else if let Some(s) = err.downcast_ref::<&str>() {
+            s.to_string()
+        } else {
+            "<non-string panic>".to_string()
+        };
+        assert!(
+            msg.contains(&format!("exit {}", expected)),
+            "unexpected panic: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn parse_duration_accepts_humantime() {
+        let d = parse_duration("150ms").unwrap();
+        assert_eq!(d, Duration::from_millis(150));
+    }
+
+    #[test]
+    fn parse_duration_rejects_invalid() {
+        let err = parse_duration("not-a-duration").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid duration"),
+            "unexpected error: {}",
+            msg
+        );
+        assert!(msg.contains("not-a-duration"), "unexpected error: {}", msg);
+    }
+
+    #[test]
+    fn parse_key_val_string_parses_and_errors() {
+        let (k, v) = parse_key_val_string("KEY=VALUE").unwrap();
+        assert_eq!(k, "KEY");
+        assert_eq!(v, "VALUE");
+
+        let err = parse_key_val_string("NOPE").unwrap_err();
+        assert_eq!(err, "expected KEY=VALUE");
+    }
+
+    #[test]
+    fn parse_key_val_f64_parses_and_errors() {
+        let (k, v) = parse_key_val_f64("wall_ms=0.25").unwrap();
+        assert_eq!(k, "wall_ms");
+        assert!((v - 0.25).abs() < f64::EPSILON);
+
+        let err = parse_key_val_f64("wall_ms=abc").unwrap_err();
+        assert!(
+            err.contains("invalid float value: abc"),
+            "unexpected error: {}",
+            err
+        );
+
+        let err = parse_key_val_f64("missing_equals").unwrap_err();
+        assert_eq!(err, "expected KEY=VALUE");
+    }
+
+    #[test]
+    fn parse_host_mismatch_policy_accepts_and_errors() {
+        assert_eq!(
+            parse_host_mismatch_policy("warn").unwrap(),
+            HostMismatchPolicy::Warn
+        );
+        assert_eq!(
+            parse_host_mismatch_policy("error").unwrap(),
+            HostMismatchPolicy::Error
+        );
+        assert_eq!(
+            parse_host_mismatch_policy("ignore").unwrap(),
+            HostMismatchPolicy::Ignore
+        );
+
+        let err = parse_host_mismatch_policy("maybe").unwrap_err();
+        assert!(
+            err.contains("invalid host mismatch policy"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn resolve_baseline_path_prefers_cli_then_config_then_default() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                baseline_dir: Some("bases".to_string()),
+                ..Default::default()
+            },
+            benches: Vec::new(),
+        };
+
+        let cli = Some(PathBuf::from("cli.json"));
+        assert_eq!(
+            resolve_baseline_path(&cli, "bench", &config),
+            PathBuf::from("cli.json")
+        );
+
+        let no_cli = None;
+        assert_eq!(
+            resolve_baseline_path(&no_cli, "bench", &config),
+            PathBuf::from("bases").join("bench.json")
+        );
+
+        let config_no_default = ConfigFile::default();
+        assert_eq!(
+            resolve_baseline_path(&no_cli, "bench", &config_no_default),
+            PathBuf::from("baselines").join("bench.json")
+        );
+    }
+
+    #[test]
+    fn rename_extras_to_versioned_moves_files() {
+        let dir = tempdir().unwrap();
+        let extras = dir.path();
+        fs::write(extras.join("run.json"), "run").unwrap();
+        fs::write(extras.join("report.json"), "report").unwrap();
+
+        rename_extras_to_versioned(extras).unwrap();
+
+        assert!(extras.join("perfgate.run.v1.json").exists());
+        assert!(extras.join("perfgate.report.v1.json").exists());
+        assert!(!extras.join("run.json").exists());
+        assert!(!extras.join("report.json").exists());
+    }
+
+    #[test]
+    fn atomic_write_writes_and_cleans_temp() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("out.txt");
+        atomic_write(&path, b"hello").unwrap();
+
+        let contents = fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, "hello");
+
+        let entries: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn write_json_and_read_json_round_trip() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join("value.json");
+        let value = json!({ "hello": "world", "n": 1 });
+
+        write_json(&path, &value, true).unwrap();
+        let read: serde_json::Value = read_json(&path).unwrap();
+        assert_eq!(read, value);
+    }
+
+    #[test]
+    fn read_json_reports_parse_error() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("bad.json");
+        fs::write(&path, "not-json").unwrap();
+
+        let err = read_json::<serde_json::Value>(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("parse json"), "unexpected error: {}", msg);
+    }
+
+    #[test]
+    fn map_domain_err_rewrites_invalid_baseline() {
+        let err = anyhow::Error::new(DomainError::InvalidBaseline(Metric::WallMs));
+        let mapped = map_domain_err(err);
+        assert_eq!(mapped.to_string(), "invalid baseline for WallMs");
+    }
+
+    #[test]
+    fn build_budgets_includes_matching_metrics_and_applies_overrides() {
+        let baseline = make_receipt(make_stats(true, true, true));
+        let current = make_receipt(make_stats(true, false, true));
+
+        let budgets = build_budgets(
+            &baseline,
+            &current,
+            0.20,
+            0.90,
+            vec![("cpu_ms".to_string(), 0.10)],
+            vec![("throughput_per_s".to_string(), "lower".to_string())],
+        )
+        .unwrap();
+
+        assert!(budgets.contains_key(&Metric::WallMs));
+        assert!(budgets.contains_key(&Metric::CpuMs));
+        assert!(budgets.contains_key(&Metric::ThroughputPerS));
+        assert!(!budgets.contains_key(&Metric::MaxRssKb));
+
+        let cpu = budgets.get(&Metric::CpuMs).unwrap();
+        assert!((cpu.threshold - 0.10).abs() < f64::EPSILON);
+        assert!((cpu.warn_threshold - 0.09).abs() < f64::EPSILON);
+
+        let throughput = budgets.get(&Metric::ThroughputPerS).unwrap();
+        assert_eq!(throughput.direction, Direction::Lower);
+    }
+
+    #[test]
+    fn build_budgets_rejects_invalid_direction() {
+        let baseline = make_receipt(make_stats(false, false, false));
+        let current = make_receipt(make_stats(false, false, false));
+
+        let err = build_budgets(
+            &baseline,
+            &current,
+            0.20,
+            0.90,
+            Vec::new(),
+            vec![("wall_ms".to_string(), "sideways".to_string())],
+        )
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid direction for wall_ms"),
+            "unexpected error: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn compare_command_exits_with_fail_code() {
+        let dir = tempdir().unwrap();
+        let baseline_path = dir.path().join("baseline.json");
+        let current_path = dir.path().join("current.json");
+        let out_path = dir.path().join("compare.json");
+
+        write_json(
+            &baseline_path,
+            &make_receipt(make_stats_with_wall(100)),
+            false,
+        )
+        .unwrap();
+        write_json(
+            &current_path,
+            &make_receipt(make_stats_with_wall(150)),
+            false,
+        )
+        .unwrap();
+
+        let out_clone = out_path.clone();
+        let result = std::panic::catch_unwind(|| {
+            run_command(Command::Compare {
+                baseline: baseline_path,
+                current: current_path,
+                threshold: 0.20,
+                warn_factor: 0.90,
+                metric_threshold: Vec::new(),
+                direction: Vec::new(),
+                fail_on_warn: false,
+                host_mismatch: HostMismatchPolicy::Warn,
+                out: out_clone,
+                pretty: false,
+            })
+            .unwrap();
+        });
+
+        assert_exit_code(result, 2);
+        assert!(out_path.exists());
+    }
+
+    #[test]
+    fn compare_command_exits_with_warn_code() {
+        let dir = tempdir().unwrap();
+        let baseline_path = dir.path().join("baseline.json");
+        let current_path = dir.path().join("current.json");
+        let out_path = dir.path().join("compare.json");
+
+        write_json(
+            &baseline_path,
+            &make_receipt(make_stats_with_wall(100)),
+            false,
+        )
+        .unwrap();
+        write_json(
+            &current_path,
+            &make_receipt(make_stats_with_wall(119)),
+            false,
+        )
+        .unwrap();
+
+        let out_clone = out_path.clone();
+        let result = std::panic::catch_unwind(|| {
+            run_command(Command::Compare {
+                baseline: baseline_path,
+                current: current_path,
+                threshold: 0.20,
+                warn_factor: 0.90,
+                metric_threshold: Vec::new(),
+                direction: Vec::new(),
+                fail_on_warn: true,
+                host_mismatch: HostMismatchPolicy::Warn,
+                out: out_clone,
+                pretty: false,
+            })
+            .unwrap();
+        });
+
+        assert_exit_code(result, 3);
+        assert!(out_path.exists());
+    }
+
+    #[test]
+    fn report_command_creates_parent_dirs_for_md() {
+        let dir = tempdir().unwrap();
+        let compare_path = dir.path().join("compare.json");
+        let report_path = dir.path().join("report.json");
+        let md_path = dir.path().join("nested").join("comment.md");
+
+        fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
+
+        run_command(Command::Report {
+            compare: compare_path,
+            out: report_path,
+            md: Some(md_path.clone()),
+            pretty: false,
+        })
+        .unwrap();
+
+        assert!(md_path.exists());
+    }
+
+    #[test]
+    fn run_check_standard_exits_with_fail_code() {
+        let dir = tempdir().unwrap();
+        let config_path = create_check_config_json(dir.path(), "bench");
+        let baseline_path = dir.path().join("baseline.json");
+        let out_dir = dir.path().join("out");
+
+        write_json(
+            &baseline_path,
+            &make_receipt(make_stats_with_wall(1)),
+            false,
+        )
+        .unwrap();
+
+        let result = std::panic::catch_unwind(|| {
+            run_check_standard(
+                config_path,
+                Some("bench".to_string()),
+                false,
+                out_dir,
+                Some(baseline_path),
+                false,
+                false,
+                Vec::new(),
+                8192,
+                false,
+                HostMismatchPolicy::Warn,
+                false,
+            )
+            .unwrap();
+        });
+
+        assert_exit_code(result, 2);
+    }
+
+    #[test]
+    fn run_check_cockpit_returns_error_when_report_write_fails() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+        fs::create_dir_all(out_dir.join("report.json")).unwrap();
+
+        let config_path = dir.path().join("perfgate.json");
+        let config = json!({
+            "defaults": {},
+            "bench": []
+        });
+        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+
+        let err = run_check_cockpit(
+            config_path,
+            None,
+            false,
+            out_dir,
+            None,
+            false,
+            false,
+            Vec::new(),
+            8192,
+            false,
+            HostMismatchPolicy::Warn,
+            false,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("either --bench or --all must be specified"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn update_max_exit_code_prioritizes_fail_over_warn() {
+        let mut max_exit_code = 0;
+        update_max_exit_code(&mut max_exit_code, 3);
+        assert_eq!(max_exit_code, 3);
+        update_max_exit_code(&mut max_exit_code, 2);
+        assert_eq!(max_exit_code, 2);
+        update_max_exit_code(&mut max_exit_code, 3);
+        assert_eq!(max_exit_code, 2);
+    }
+
+    #[test]
+    fn execute_export_rejects_both_run_and_compare() {
+        let dir = tempdir().unwrap();
+        let run_path = dir.path().join("run.json");
+        let compare_path = dir.path().join("compare.json");
+        let out_path = dir.path().join("out.csv");
+
+        let err = execute_export(Some(run_path), Some(compare_path), "csv", &out_path).unwrap_err();
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn rename_if_exists_reports_error_on_invalid_target() {
+        let dir = tempdir().unwrap();
+        let old_path = dir.path().join("run.json");
+        let new_path = dir.path().join("perfgate.run.v1.json");
+        fs::write(&old_path, "data").unwrap();
+        fs::create_dir_all(&new_path).unwrap();
+
+        let err = rename_if_exists(&old_path, &new_path).unwrap_err();
+        assert!(
+            err.to_string().contains("rename"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn remove_stale_file_removes_existing_file() {
+        let dir = tempdir().unwrap();
+        let stale = dir.path().join("run.json");
+        fs::write(&stale, "data").unwrap();
+
+        remove_stale_file(&stale).unwrap();
+
+        assert!(!stale.exists());
+    }
+
+    #[test]
+    fn remove_stale_file_reports_error_on_directory() {
+        let dir = tempdir().unwrap();
+        let stale_dir = dir.path().join("run.json");
+        fs::create_dir_all(&stale_dir).unwrap();
+
+        let err = remove_stale_file(&stale_dir).unwrap_err();
+        assert!(
+            err.to_string().contains("failed to remove stale"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn remove_stale_compare_file_reports_error_on_directory() {
+        let dir = tempdir().unwrap();
+        let stale_dir = dir.path().join("compare.json");
+        fs::create_dir_all(&stale_dir).unwrap();
+
+        let err = remove_stale_compare_file(&stale_dir).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("failed to remove stale compare.json"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn write_check_artifacts_removes_stale_compare_when_missing_baseline() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let run_path = out_dir.join("run.json");
+        let report_path = out_dir.join("report.json");
+        let markdown_path = out_dir.join("comment.md");
+        let stale_compare = out_dir.join("compare.json");
+
+        fs::write(&stale_compare, "stale").unwrap();
+
+        let report = PerfgateReport {
+            report_type: "perfgate.report.v1".to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 0,
+                },
+                reasons: Vec::new(),
+            },
+            compare: None,
+            findings: Vec::new(),
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 0,
+                total_count: 0,
+            },
+        };
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: run_path.clone(),
+            compare_receipt: None,
+            compare_path: None,
+            report,
+            report_path: report_path.clone(),
+            markdown: "hello".to_string(),
+            markdown_path: markdown_path.clone(),
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+        };
+
+        write_check_artifacts(&outcome, false).unwrap();
+
+        assert!(!stale_compare.exists());
+        assert!(run_path.exists());
+        assert!(report_path.exists());
+        assert!(markdown_path.exists());
+    }
 }

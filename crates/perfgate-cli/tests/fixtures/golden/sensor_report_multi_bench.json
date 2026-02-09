@@ -76,7 +76,8 @@
       "pass_count": 0,
       "warn_count": 2,
       "fail_count": 0,
-      "total_count": 2
+      "total_count": 2,
+      "bench_count": 2
     }
   }
 }
