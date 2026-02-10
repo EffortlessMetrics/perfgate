@@ -64,6 +64,8 @@ impl FuzzF64Summary {
 #[derive(Arbitrary, Debug, Clone)]
 struct FuzzStats {
     wall_ms: FuzzU64Summary,
+    has_cpu_ms: bool,
+    cpu_ms: FuzzU64Summary,
     has_max_rss_kb: bool,
     max_rss_kb: FuzzU64Summary,
     has_throughput: bool,
@@ -74,6 +76,11 @@ impl FuzzStats {
     fn to_perfgate(&self) -> perfgate_types::Stats {
         perfgate_types::Stats {
             wall_ms: self.wall_ms.to_perfgate(),
+            cpu_ms: if self.has_cpu_ms {
+                Some(self.cpu_ms.to_perfgate())
+            } else {
+                None
+            },
             max_rss_kb: if self.has_max_rss_kb {
                 Some(self.max_rss_kb.to_perfgate())
             } else {

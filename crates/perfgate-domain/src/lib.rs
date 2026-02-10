@@ -405,7 +405,7 @@ pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<H
     }
 
     // Check hostname_hash mismatch (if both present)
-    if let (Some(ref base_hash), Some(ref curr_hash)) =
+    if let (Some(base_hash), Some(curr_hash)) =
         (&baseline.hostname_hash, &current.hostname_hash)
     {
         if base_hash != curr_hash {

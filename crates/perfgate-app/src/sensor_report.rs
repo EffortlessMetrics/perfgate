@@ -783,8 +783,10 @@ impl SensorReportBuilder {
                         bench_name, error_message
                     ));
 
-                    // Error bench has no baseline
-                    if !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string()) {
+                    // Only tag as no_baseline if error occurred during baseline resolution
+                    if *stage == STAGE_BASELINE_RESOLVE
+                        && !all_reasons.contains(&BASELINE_REASON_NO_BASELINE.to_string())
+                    {
                         all_reasons.push(BASELINE_REASON_NO_BASELINE.to_string());
                     }
                     // No artifact registration for errored benches

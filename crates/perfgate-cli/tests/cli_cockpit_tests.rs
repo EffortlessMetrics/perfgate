@@ -34,12 +34,52 @@ fn success_command() -> Vec<&'static str> {
     vec!["cmd", "/c", "exit", "0"]
 }
 
+/// Returns a cross-platform command that is guaranteed to take some time.
+#[cfg(unix)]
+fn slow_command() -> Vec<&'static str> {
+    vec!["sh", "-c", "sleep 0.05"]
+}
+
+#[cfg(windows)]
+fn slow_command() -> Vec<&'static str> {
+    vec!["powershell", "-Command", "Start-Sleep -Milliseconds 50"]
+}
+
 /// Create a minimal config file with a single bench.
 fn create_config_file(temp_dir: &std::path::Path, bench_name: &str) -> std::path::PathBuf {
     let config_path = temp_dir.join("perfgate.toml");
     let success_cmd = success_command();
 
     let cmd_str = success_cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let config_content = format!(
+        r#"
+[defaults]
+repeat = 2
+warmup = 0
+threshold = 0.20
+
+[[bench]]
+name = "{}"
+command = [{}]
+"#,
+        bench_name, cmd_str
+    );
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+    config_path
+}
+
+/// Create a config file with a slow command.
+fn create_slow_config_file(temp_dir: &std::path::Path, bench_name: &str) -> std::path::PathBuf {
+    let config_path = temp_dir.join("perfgate_slow.toml");
+    let slow_cmd = slow_command();
+
+    let cmd_str = slow_cmd
         .iter()
         .map(|s| format!("\"{}\"", s))
         .collect::<Vec<_>>()
@@ -245,7 +285,7 @@ fn test_cockpit_mode_artifact_layout() {
 fn test_cockpit_mode_exits_zero_on_fail() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
-    let config_path = create_config_file(temp_dir.path(), "test-bench");
+    let config_path = create_slow_config_file(temp_dir.path(), "test-bench");
 
     // Create a baseline with very low wall_ms to trigger a regression
     let baselines_dir = temp_dir.path().join("baselines");

@@ -711,7 +711,7 @@ fn run_check_standard(
             anyhow::bail!("no benchmarks defined in config file");
         }
         config_file.benches.iter().map(|b| b.name.clone()).collect()
-    } else if let Some(ref name) = bench {
+    } else if let Some(name) = bench {
         vec![name.clone()]
     } else {
         anyhow::bail!("either --bench or --all must be specified");
@@ -924,7 +924,7 @@ fn run_check_cockpit_inner(
             anyhow::bail!("no benchmarks defined in config file");
         }
         config_file.benches.iter().map(|b| b.name.clone()).collect()
-    } else if let Some(ref name) = bench {
+    } else if let Some(name) = bench {
         vec![name.clone()]
     } else {
         anyhow::bail!("either --bench or --all must be specified");
@@ -1174,7 +1174,7 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
     write_json(&outcome.run_path, &outcome.run_receipt, pretty)?;
 
     // Write compare receipt if present
-    if let (Some(ref compare), Some(ref path)) = (&outcome.compare_receipt, &outcome.compare_path) {
+    if let (Some(compare), Some(path)) = (&outcome.compare_receipt, &outcome.compare_path) {
         write_json(path, compare, pretty)?;
     } else if outcome.compare_receipt.is_none() {
         // Ensure compare.json is absent when no baseline is available.

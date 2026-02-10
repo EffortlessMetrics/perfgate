@@ -16,8 +16,7 @@ perfgate collects raw samples and computes summary statistics:
 - `warmup`: Boolean flag indicating warmup sample
 - `timed_out`: Boolean flag indicating timeout occurred
 - `max_rss_kb`: Maximum resident set size in KB (Unix only, optional)
-- `user_time_ms`: User-mode CPU time in milliseconds (Unix only, optional)
-- `system_time_ms`: Kernel-mode CPU time in milliseconds (Unix only, optional)
+- `cpu_ms`: Combined user and system CPU time in milliseconds (Unix only, optional)
 - `stdout`: Truncated stdout (optional, up to `output_cap_bytes`)
 - `stderr`: Truncated stderr (optional, up to `output_cap_bytes`)
 

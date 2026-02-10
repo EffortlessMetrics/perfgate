@@ -92,10 +92,10 @@ Cockpit mode (`--mode cockpit`) wraps perfgate output in a `sensor.report.v1` en
 The `perfgate paired` command interleaves baseline and current executions to reduce environmental noise:
 
 ```bash
-perfgate paired --baseline "sleep 0.01" --current "sleep 0.02" --samples 10 --out cmp.json
+perfgate paired --baseline-cmd "sleep 0.01" --current-cmd "sleep 0.02" --repeat 10 --out cmp.json
 ```
 
-- Commands are specified as shell strings via `--baseline` and `--current`
+- Commands are specified as shell strings via `--baseline-cmd` and `--current-cmd`
 - Samples are collected in alternating pairs (B, C, B, C, ...)
 - Output conforms to `perfgate.compare.v1` schema
 - Domain logic in `perfgate-domain/src/paired.rs`, app orchestration in `perfgate-app/src/paired.rs`
@@ -107,9 +107,9 @@ perfgate paired --baseline "sleep 0.01" --current "sleep 0.02" --samples 10 --ou
 Host mismatch detection warns or fails when comparing receipts from different machines.
 
 The `--host-mismatch` flag on `compare` (and `check`) supports three policies:
-- `ignore` (default): Silently allow cross-host comparisons
-- `warn`: Emit a warning but continue
-- `fail`: Exit 1 on mismatch
+- `warn` (default): Emit a warning but continue
+- `error`: Exit 1 on mismatch
+- `ignore`: Silently allow cross-host comparisons
 
 Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
@@ -117,7 +117,7 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 **Status:** Partially implemented
 
-1. **CPU time** (`user_time_ms`, `system_time_ms`): User and system CPU time from `rusage`
+1. **CPU time** (`cpu_ms`): Combined user and system CPU time from `rusage`
    - **Status:** Implemented (v0.2.0)
    - Platform: Unix only (optional fields in run receipt)
    - Collected via `rusage` alongside `max_rss_kb`

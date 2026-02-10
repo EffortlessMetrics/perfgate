@@ -72,7 +72,7 @@ Compares a current run receipt against a baseline.
 - `--metric-threshold`: Per-metric threshold override (e.g., `wall_ms=0.10`)
 - `--direction`: Per-metric direction override (e.g., `throughput_per_s=higher`)
 - `--fail-on-warn`: Treat warn verdict as exit 3
-- `--host-mismatch` (default: "ignore"): Host mismatch policy (`ignore`, `warn`, `fail`)
+- `--host-mismatch` (default: "warn"): Host mismatch policy (`warn`, `error`, `ignore`)
 - `--out` (default: "perfgate-compare.json"): Output file path
 - `--pretty`: Pretty-print JSON output
 
@@ -223,11 +223,11 @@ Exports a run or compare receipt to CSV or JSONL format.
 Paired benchmarking with interleaved baseline/current runs to reduce environmental noise.
 
 **Required Arguments:**
-- `--baseline`: Baseline command to execute (shell string)
-- `--current`: Current command to execute (shell string)
+- `--baseline-cmd`: Baseline command to execute (shell string)
+- `--current-cmd`: Current command to execute (shell string)
 
 **Optional Arguments:**
-- `--samples` (default: 10): Number of paired samples
+- `--repeat` (default: 5): Number of paired samples
 - `--warmup` (default: 0): Warmup pairs excluded from stats
 - `--threshold` (default: 0.20): Regression threshold (fraction)
 - `--warn-factor` (default: 0.90): Warn threshold = threshold * warn_factor
@@ -299,8 +299,7 @@ When comparing runs from different hosts, perfgate detects potential inconsisten
 ## CPU Time Tracking
 
 On Unix platforms, perfgate collects CPU time metrics via `rusage`:
-- `user_time_ms`: Time spent in user mode
-- `system_time_ms`: Time spent in kernel mode
+- `cpu_ms`: Combined user and system CPU time
 
 These are optional fields in the run receipt sample. They are `None` on non-Unix platforms.
 

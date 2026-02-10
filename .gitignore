@@ -8,3 +8,6 @@ schemas/*.tmp
 .DS_Store
 .idea/
 .vscode/
+mutants.out/
+mutants.out.old/
+test_output/

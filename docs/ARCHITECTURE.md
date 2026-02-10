@@ -115,7 +115,7 @@ perfgate-cli (outermost)
 - MUST define trait abstractions for host probing (`HostProbe`)
 - MUST define trait abstractions for time (`Clock`)
 - SHOULD provide best-effort system metrics
-- SHOULD collect CPU time metrics (`user_time_ms`, `system_time_ms`) on Unix via `rusage`
+- SHOULD collect CPU time metrics (`cpu_ms`) on Unix via `rusage`
 
 #### perfgate-app
 
