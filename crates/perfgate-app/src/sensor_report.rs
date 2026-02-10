@@ -184,9 +184,9 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
     if msg_lower.contains("bench name") || msg_lower.contains("config validation") {
         (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
     } else if msg_lower.contains("parse")
-        && (msg_lower.contains("config")
-            || msg_lower.contains("toml")
-            || msg_lower.contains("json config"))
+        && (msg_lower.contains("toml")
+            || msg_lower.contains("json config")
+            || msg_lower.contains("config"))
     {
         (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
     } else if msg_lower.contains("baseline") || msg_lower.contains("not found") {
@@ -1530,6 +1530,14 @@ mod tests {
     #[test]
     fn test_classify_error_json_config() {
         let err = anyhow::anyhow!("parse JSON config perfgate.json: unexpected token");
+        let (stage, kind) = classify_error(&err);
+        assert_eq!(stage, STAGE_CONFIG_PARSE);
+        assert_eq!(kind, ERROR_KIND_PARSE);
+    }
+
+    #[test]
+    fn test_classify_error_generic_config_parse() {
+        let err = anyhow::anyhow!("parse config perfgate");
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_CONFIG_PARSE);
         assert_eq!(kind, ERROR_KIND_PARSE);

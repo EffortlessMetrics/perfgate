@@ -1178,10 +1178,9 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
         write_json(path, compare, pretty)?;
     } else if outcome.compare_receipt.is_none() {
         // Ensure compare.json is absent when no baseline is available.
-        if let Some(parent) = outcome.run_path.parent() {
-            let stale = parent.join("compare.json");
-            remove_stale_compare_file(&stale)?;
-        }
+        let parent = outcome.run_path.parent().unwrap_or_else(|| Path::new(""));
+        let stale = parent.join("compare.json");
+        remove_stale_compare_file(&stale)?;
     }
 
     // Write report (always present for cockpit integration)
@@ -1279,11 +1278,9 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
 }
 
 fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bool) -> anyhow::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("create dir {}", parent.display()))?;
-        }
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    if !parent.as_os_str().is_empty() {
+        fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
     }
 
     let bytes = if pretty {
@@ -1384,6 +1381,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use tempfile::tempdir;
+    use uuid::Uuid;
 
     fn make_stats(cpu: bool, rss: bool, throughput: bool) -> Stats {
         Stats {
@@ -1730,6 +1728,47 @@ mod tests {
     }
 
     #[test]
+    fn compare_command_rejects_invalid_direction() {
+        let dir = tempdir().unwrap();
+        let baseline_path = dir.path().join("baseline.json");
+        let current_path = dir.path().join("current.json");
+        let out_path = dir.path().join("compare.json");
+
+        write_json(
+            &baseline_path,
+            &make_receipt(make_stats_with_wall(100)),
+            false,
+        )
+        .unwrap();
+        write_json(
+            &current_path,
+            &make_receipt(make_stats_with_wall(100)),
+            false,
+        )
+        .unwrap();
+
+        let err = run_command(Command::Compare {
+            baseline: baseline_path,
+            current: current_path,
+            threshold: 0.20,
+            warn_factor: 0.90,
+            metric_threshold: Vec::new(),
+            direction: vec![("wall_ms".to_string(), "sideways".to_string())],
+            fail_on_warn: false,
+            host_mismatch: HostMismatchPolicy::Warn,
+            out: out_path,
+            pretty: false,
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid direction"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
     fn compare_command_exits_with_fail_code() {
         let dir = tempdir().unwrap();
         let baseline_path = dir.path().join("baseline.json");
@@ -1829,6 +1868,47 @@ mod tests {
         .unwrap();
 
         assert!(md_path.exists());
+    }
+
+    #[test]
+    fn report_command_skips_parent_dir_for_relative_md() {
+        let dir = tempdir().unwrap();
+        let compare_path = dir.path().join("compare.json");
+        let report_path = dir.path().join("report.json");
+        let md_name = format!("comment_{}.md", Uuid::new_v4());
+        let md_path = PathBuf::from(&md_name);
+
+        fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
+
+        run_command(Command::Report {
+            compare: compare_path,
+            out: report_path,
+            md: Some(md_path.clone()),
+            pretty: false,
+        })
+        .unwrap();
+
+        assert!(md_path.exists());
+        let _ = fs::remove_file(&md_path);
+    }
+
+    #[test]
+    fn report_command_errors_on_empty_md_path() {
+        let dir = tempdir().unwrap();
+        let compare_path = dir.path().join("compare.json");
+        let report_path = dir.path().join("report.json");
+
+        fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
+
+        let err = run_command(Command::Report {
+            compare: compare_path,
+            out: report_path,
+            md: Some(PathBuf::from("")),
+            pretty: false,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("write"));
     }
 
     #[test]
@@ -2040,5 +2120,72 @@ mod tests {
         assert!(run_path.exists());
         assert!(report_path.exists());
         assert!(markdown_path.exists());
+    }
+
+    #[test]
+    fn write_check_artifacts_skips_compare_when_path_missing() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let run_path = out_dir.join("run.json");
+        let report_path = out_dir.join("report.json");
+        let markdown_path = out_dir.join("comment.md");
+
+        let compare_receipt: CompareReceipt =
+            serde_json::from_str(&create_compare_receipt_json("pass", "pass")).unwrap();
+
+        let report = PerfgateReport {
+            report_type: "perfgate.report.v1".to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 0,
+                },
+                reasons: Vec::new(),
+            },
+            compare: None,
+            findings: Vec::new(),
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 0,
+                total_count: 0,
+            },
+        };
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: run_path.clone(),
+            compare_receipt: Some(compare_receipt),
+            compare_path: None,
+            report,
+            report_path: report_path.clone(),
+            markdown: "hello".to_string(),
+            markdown_path: markdown_path.clone(),
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+        };
+
+        write_check_artifacts(&outcome, false).unwrap();
+
+        assert!(run_path.exists());
+        assert!(report_path.exists());
+        assert!(markdown_path.exists());
+    }
+
+    #[test]
+    fn write_json_skips_parent_dir_for_relative_path() {
+        let name = format!("write_json_{}.json", Uuid::new_v4());
+        let path = PathBuf::from(&name);
+        let receipt = make_receipt(make_stats_with_wall(1));
+
+        write_json(&path, &receipt, false).unwrap();
+
+        assert!(path.exists());
+        let _ = fs::remove_file(&path);
     }
 }

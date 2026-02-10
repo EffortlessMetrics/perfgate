@@ -727,6 +727,27 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("host mismatch"));
 
+        let matching = CompareUseCase::execute(CompareRequest {
+            baseline: baseline.clone(),
+            current: baseline.clone(),
+            budgets: budgets.clone(),
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            host_mismatch_policy: HostMismatchPolicy::Error,
+        })
+        .expect("matching hosts should not error");
+        assert!(matching.host_mismatch.is_none());
+
         let ignore = CompareUseCase::execute(CompareRequest {
             baseline,
             current,

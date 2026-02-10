@@ -317,7 +317,8 @@ fn cmd_mutants(
     args: Vec<String>,
 ) -> anyhow::Result<()> {
     // Typical usage: `cargo install cargo-mutants` then `cargo run -p xtask -- mutants`.
-    let mut cmd = std::process::Command::new("cargo");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let mut cmd = std::process::Command::new(cargo);
     cmd.arg("mutants");
 
     // Add --package flag if a specific crate is requested
