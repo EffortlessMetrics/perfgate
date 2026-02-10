@@ -6,10 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 fn repo_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
+    manifest_dir.parent().expect("workspace root").to_path_buf()
 }
 
 fn unique_temp_dir(prefix: &str) -> PathBuf {

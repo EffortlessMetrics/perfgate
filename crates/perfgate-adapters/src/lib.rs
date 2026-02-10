@@ -933,8 +933,7 @@ mod tests {
         if let Some(hash) = &info.hostname_hash {
             let hash_len = hash.len();
             assert_eq!(
-                hash_len,
-                64,
+                hash_len, 64,
                 "hostname_hash should be 64 hex chars, got {}",
                 hash_len
             );
