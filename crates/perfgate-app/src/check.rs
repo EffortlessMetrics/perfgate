@@ -177,7 +177,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             let compare_result = CompareUseCase::execute(compare_req)?;
 
             // Add host mismatch warnings if detected (for Warn policy)
-            if let Some(ref mismatch) = compare_result.host_mismatch {
+            if let Some(mismatch) = &compare_result.host_mismatch {
                 for reason in &mismatch.reasons {
                     warnings.push(format!("host mismatch: {}", reason));
                 }
@@ -210,7 +210,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         };
 
         // 6. Generate markdown
-        let markdown = if let Some(ref compare) = compare_receipt {
+        let markdown = if let Some(compare) = &compare_receipt {
             crate::render_markdown(compare)
         } else {
             render_no_baseline_markdown(&run_receipt, &warnings)
@@ -219,7 +219,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let markdown_path = req.out_dir.join("comment.md");
 
         // 7. Determine exit code
-        let (failed, exit_code) = if let Some(ref compare) = compare_receipt {
+        let (failed, exit_code) = if let Some(compare) = &compare_receipt {
             match compare.verdict.status {
                 VerdictStatus::Pass => (false, 0),
                 VerdictStatus::Warn => {
@@ -476,11 +476,11 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
         run.stats.wall_ms.median
     ));
 
-    if let Some(ref rss) = run.stats.max_rss_kb {
+    if let Some(rss) = &run.stats.max_rss_kb {
         out.push_str(&format!("| `max_rss_kb` | {} KB |\n", rss.median));
     }
 
-    if let Some(ref throughput) = run.stats.throughput_per_s {
+    if let Some(throughput) = &run.stats.throughput_per_s {
         out.push_str(&format!(
             "| `throughput_per_s` | {:.3} /s |\n",
             throughput.median

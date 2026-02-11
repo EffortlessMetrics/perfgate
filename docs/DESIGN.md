@@ -390,6 +390,6 @@ A mismatch is detected when any of the following differ between baseline and cur
 
 | Policy | Behavior |
 |--------|----------|
-| `ignore` | No check performed (default) |
-| `warn` | Emit warning to stderr, continue comparison |
-| `fail` | Exit 1 with error message |
+| `warn` | Emit warning to stderr, continue comparison (default) |
+| `error` | Exit 1 with error message |
+| `ignore` | No check performed |

@@ -472,7 +472,7 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             .map_err(map_domain_err)?;
 
             // Print host mismatch warnings if detected (for Warn policy)
-            if let Some(ref mismatch) = compare_result.host_mismatch {
+            if let Some(mismatch) = &compare_result.host_mismatch {
                 for reason in &mismatch.reasons {
                     eprintln!("warning: host mismatch: {}", reason);
                 }
@@ -1160,7 +1160,7 @@ fn resolve_baseline_path(
     }
 
     // 2. Fall back to baseline_dir from config defaults
-    if let Some(ref baseline_dir) = config.defaults.baseline_dir {
+    if let Some(baseline_dir) = &config.defaults.baseline_dir {
         return PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
     }
 
@@ -1261,7 +1261,7 @@ fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
 fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
     match s {
         "warn" => Ok(HostMismatchPolicy::Warn),
-        "error" => Ok(HostMismatchPolicy::Error),
+        "error" | "fail" => Ok(HostMismatchPolicy::Error),
         "ignore" => Ok(HostMismatchPolicy::Ignore),
         _ => Err(format!(
             "invalid host mismatch policy: {} (expected warn, error, or ignore)",

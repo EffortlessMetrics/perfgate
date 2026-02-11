@@ -1,24 +1,7 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn repo_root() -> PathBuf {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.parent().expect("workspace root").to_path_buf()
-}
-
-fn unique_temp_dir(prefix: &str) -> PathBuf {
-    let mut dir = std::env::temp_dir();
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos();
-    dir.push(format!("{}_{}_{}", prefix, std::process::id(), nanos));
-    fs::create_dir_all(&dir).expect("create temp dir");
-    dir
-}
+use xtask::*;
 
 #[test]
 fn xtask_schema_command_runs() {

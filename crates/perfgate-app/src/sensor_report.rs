@@ -627,7 +627,7 @@ impl SensorReportBuilder {
                             f.data.as_ref().and_then(|d| serde_json::to_value(d).ok());
                         // In multi-bench mode, include bench name in finding data
                         if multi_bench {
-                            if let Some(ref mut val) = finding_data {
+                            if let Some(val) = &mut finding_data {
                                 if let Some(obj) = val.as_object_mut() {
                                     obj.insert(
                                         "bench_name".to_string(),

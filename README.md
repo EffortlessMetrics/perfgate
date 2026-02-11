@@ -306,8 +306,7 @@ Workspace structure:
 ### CPU Time Tracking (Unix only)
 
 On Unix platforms, perfgate collects CPU time metrics via `rusage`:
-- `user_time_ms`: Time spent in user mode
-- `system_time_ms`: Time spent in kernel mode
+- `cpu_ms`: Combined user and system CPU time
 
 These metrics are included in the run receipt when available and can help identify whether performance changes are due to CPU-bound work or I/O wait.
 

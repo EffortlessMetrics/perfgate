@@ -292,9 +292,9 @@ When comparing runs from different hosts, perfgate detects potential inconsisten
 - Different `hostname_hash` (if both present)
 
 **Policy (`--host-mismatch`):**
-- `ignore` (default): Silently allow comparisons across different hosts
-- `warn`: Emit a warning but continue with comparison
-- `fail`: Exit 1 on mismatch
+- `warn` (default): Emit a warning but continue with comparison
+- `error`: Exit 1 on mismatch
+- `ignore`: Silently allow comparisons across different hosts
 
 ## CPU Time Tracking
 

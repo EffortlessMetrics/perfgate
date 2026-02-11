@@ -42,7 +42,7 @@ perfgate check --config perfgate.toml --bench my-bench --mode cockpit
 perfgate check --config perfgate.toml --all
 
 # Paired benchmarking
-perfgate paired --baseline "sleep 0.01" --current "sleep 0.02" --samples 10 --out compare.json
+perfgate paired --baseline-cmd "sleep 0.01" --current-cmd "sleep 0.02" --repeat 10 --out compare.json
 ```
 
 ## Exit Codes

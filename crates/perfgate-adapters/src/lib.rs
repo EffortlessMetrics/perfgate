@@ -70,6 +70,7 @@ impl ProcessRunner for StdProcessRunner {
     }
 }
 
+#[allow(dead_code)]
 fn truncate(mut bytes: Vec<u8>, cap: usize) -> Vec<u8> {
     if bytes.len() > cap {
         bytes.truncate(cap);

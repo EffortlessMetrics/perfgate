@@ -54,7 +54,7 @@ cargo run -p perfgate -- promote --current out.json --to baselines/bench.json
 cargo run -p perfgate -- export --run out.json --format csv --out data.csv
 cargo run -p perfgate -- check --config perfgate.toml --bench my-bench
 cargo run -p perfgate -- check --config perfgate.toml --bench my-bench --mode cockpit
-cargo run -p perfgate -- paired --baseline "echo baseline" --current "echo current" --samples 10 --out cmp.json
+cargo run -p perfgate -- paired --baseline-cmd "echo baseline" --current-cmd "echo current" --repeat 10 --out cmp.json
 ```
 
 ## Fuzzing (requires nightly)

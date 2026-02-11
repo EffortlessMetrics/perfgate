@@ -240,7 +240,7 @@ impl CompareUseCase {
 
         // If policy is Error and there's a mismatch, fail immediately
         if req.host_mismatch_policy == HostMismatchPolicy::Error {
-            if let Some(ref mismatch) = host_mismatch {
+            if let Some(mismatch) = &host_mismatch {
                 anyhow::bail!(
                     "host mismatch detected (--host-mismatch=error): {}",
                     mismatch.reasons.join("; ")

@@ -856,6 +856,44 @@ command = [{}]
     config_path
 }
 
+/// Create a config file with multiple slow benches.
+fn create_slow_multi_bench_config(
+    temp_dir: &std::path::Path,
+    bench_names: &[&str],
+) -> std::path::PathBuf {
+    let config_path = temp_dir.join("perfgate_slow_multi.toml");
+    let slow_cmd = slow_command();
+
+    let cmd_str = slow_cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let mut config_content = String::from(
+        r#"
+[defaults]
+repeat = 2
+warmup = 0
+threshold = 0.20
+"#,
+    );
+
+    for name in bench_names {
+        config_content.push_str(&format!(
+            r#"
+[[bench]]
+name = "{}"
+command = [{}]
+"#,
+            name, cmd_str
+        ));
+    }
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+    config_path
+}
+
 /// Load the vendored schema validator.
 fn load_vendored_schema_validator() -> jsonschema::Validator {
     let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -978,7 +1016,7 @@ fn test_cockpit_multi_bench_schema_validation() {
 fn test_cockpit_multi_bench_verdict_worst_wins() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
-    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
+    let config_path = create_slow_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
 
     // Create a baseline with very low wall_ms for bench-a to trigger fail
     let baselines_dir = temp_dir.path().join("baselines");
@@ -1573,7 +1611,7 @@ fn test_cockpit_multi_bench_mixed_outcome_error_and_warn() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
 
-    let good_cmd = success_command();
+    let good_cmd = slow_command();
     let bad_cmd = nonexistent_command();
 
     let config_path = create_mixed_outcome_config(
