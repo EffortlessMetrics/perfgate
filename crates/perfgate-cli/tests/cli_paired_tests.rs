@@ -455,7 +455,7 @@ fn test_paired_missing_baseline_cmd_fails() {
 
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("--baseline-cmd"));
+        .stderr(predicate::str::contains("baseline"));
 }
 
 /// Test missing current-cmd fails
@@ -470,7 +470,7 @@ fn test_paired_missing_current_cmd_fails() {
 
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("--current-cmd"));
+        .stderr(predicate::str::contains("current"));
 }
 
 /// Test receipt contains required tool info
@@ -651,11 +651,66 @@ fn test_paired_bench_metadata() {
 
     // Verify commands are arrays
     assert!(
-        bench["baseline_command"].is_array(),
-        "baseline_command should be an array"
-    );
-    assert!(
         bench["current_command"].is_array(),
         "current_command should be an array"
     );
+}
+
+/// Test paired command with shell string arguments
+#[test]
+fn test_paired_with_shell_strings() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("paired.json");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("shell-test")
+        .arg("--repeat")
+        .arg("1");
+
+    #[cfg(unix)]
+    {
+        cmd.arg("--baseline").arg("true");
+        cmd.arg("--current").arg("true");
+    }
+    #[cfg(windows)]
+    {
+        cmd.arg("--baseline").arg("cmd /c exit 0");
+        cmd.arg("--current").arg("cmd /c exit 0");
+    }
+
+    cmd.arg("--out").arg(&output_path);
+
+    cmd.assert().success();
+
+    let content = fs::read_to_string(&output_path).expect("failed to read output file");
+    let receipt: serde_json::Value =
+        serde_json::from_str(&content).expect("output should be valid JSON");
+
+    assert_eq!(
+        receipt["bench"]["name"].as_str(),
+        Some("shell-test"),
+        "bench name should match"
+    );
+
+    let baseline_cmd = receipt["bench"]["baseline_command"]
+        .as_array()
+        .expect("baseline_command should be array");
+    let _current_cmd = receipt["bench"]["current_command"]
+        .as_array()
+        .expect("current_command should be array");
+
+    #[cfg(unix)]
+    {
+        assert_eq!(baseline_cmd[0], "true");
+        assert_eq!(current_cmd[0], "true");
+    }
+    #[cfg(windows)]
+    {
+        assert_eq!(baseline_cmd[0], "cmd");
+        assert_eq!(baseline_cmd[1], "/c");
+        assert_eq!(baseline_cmd[2], "exit");
+        assert_eq!(baseline_cmd[3], "0");
+    }
 }

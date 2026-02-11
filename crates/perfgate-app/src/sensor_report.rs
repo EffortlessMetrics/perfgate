@@ -900,6 +900,7 @@ impl SensorReportBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use perfgate_adapters::FakeProcessRunner;
     use perfgate_types::{
         ERROR_KIND_EXEC, ERROR_KIND_PARSE, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
         PerfgateError, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, STAGE_CONFIG_PARSE,
@@ -1778,6 +1779,42 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct TestHostProbe {
+        host: perfgate_types::HostInfo,
+    }
+
+    impl TestHostProbe {
+        fn new(host: perfgate_types::HostInfo) -> Self {
+            Self { host }
+        }
+    }
+
+    impl HostProbe for TestHostProbe {
+        fn probe(&self, _options: &perfgate_adapters::HostProbeOptions) -> perfgate_types::HostInfo {
+            self.host.clone()
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestClock {
+        now: String,
+    }
+
+    impl TestClock {
+        fn new(now: &str) -> Self {
+            Self {
+                now: now.to_string(),
+            }
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now_rfc3339(&self) -> String {
+            self.now.clone()
+        }
+    }
+
     #[test]
     fn test_build_aggregated_single_bench_matches_build() {
         let report = make_fail_report();
@@ -2255,5 +2292,94 @@ mod tests {
 
         let error = make_error_outcome("bad-bench", "error", STAGE_RUN_COMMAND, ERROR_KIND_EXEC);
         assert_eq!(error.bench_name(), "bad-bench");
+    }
+
+    #[test]
+    fn test_run_sensor_check_deterministic() {
+        use perfgate_adapters::RunResult;
+
+        let runner = FakeProcessRunner::new();
+        // Configure fake runner to return a successful run with 100ms wall time
+        runner.set_fallback(RunResult {
+            wall_ms: 100,
+            exit_code: 0,
+            timed_out: false,
+            cpu_ms: Some(50),
+            max_rss_kb: Some(2048),
+            stdout: b"ok".to_vec(),
+            stderr: b"".to_vec(),
+        });
+
+        let host_probe = TestHostProbe::new(perfgate_types::HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: Some(4),
+            memory_bytes: Some(8 * 1024 * 1024 * 1024),
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let config = ConfigFile {
+            defaults: perfgate_types::DefaultsConfig::default(),
+            benches: vec![perfgate_types::BenchConfigFile {
+                name: "test-bench".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["true".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            }],
+        };
+
+        // Create a baseline that is faster than 100ms to trigger a regression
+        let baseline = perfgate_types::RunReceipt {
+            schema: perfgate_types::RUN_SCHEMA_V1.to_string(),
+            tool: make_tool_info(),
+            run: perfgate_types::RunMeta {
+                id: "baseline".to_string(),
+                started_at: "2024-01-01T00:00:00Z".to_string(),
+                ended_at: "2024-01-01T00:00:01Z".to_string(),
+                host: host_probe.probe(&perfgate_adapters::HostProbeOptions::default()),
+            },
+            bench: perfgate_types::BenchMeta {
+                name: "test-bench".to_string(),
+                cwd: None,
+                command: vec!["true".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples: vec![],
+            stats: perfgate_types::Stats {
+                wall_ms: perfgate_types::U64Summary {
+                    median: 50,
+                    min: 50,
+                    max: 50,
+                },
+                cpu_ms: None,
+                max_rss_kb: None,
+                throughput_per_s: None,
+            },
+        };
+
+        let report = run_sensor_check(
+            &runner,
+            &host_probe,
+            &clock,
+            &config,
+            "test-bench",
+            Some(&baseline),
+            make_tool_info(),
+            SensorCheckOptions::default(),
+        );
+
+        // Verify deterministic verdict based on configured fake runner timing
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Fail);
+        assert_eq!(report.verdict.counts.error, 1);
+        assert!(report.findings[0].message.contains("wall_ms regression"));
     }
 }

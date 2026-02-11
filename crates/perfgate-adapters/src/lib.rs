@@ -2,6 +2,10 @@
 //!
 //! In clean-arch terms: this is where we touch the world.
 
+mod fake;
+
+pub use fake::FakeProcessRunner;
+
 use anyhow::Context;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

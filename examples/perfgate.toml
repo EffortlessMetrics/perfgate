@@ -1,0 +1,20 @@
+# perfgate.toml - Minimal configuration example
+
+[defaults]
+# Number of measured samples per benchmark
+repeat = 5
+# Number of warmup samples (not counted in stats)
+warmup = 1
+# Global regression threshold (0.20 = 20%)
+threshold = 0.20
+# Warning factor (warn threshold = threshold * warn_factor)
+warn_factor = 0.90
+# Directory where baseline receipts are stored
+baseline_dir = "baselines"
+
+[[bench]]
+name = "my-bench"
+# Command to execute (argv format)
+command = ["./scripts/bench.sh"]
+# Optional: expected units of work (enables throughput metrics)
+# work = 1000

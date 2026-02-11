@@ -313,13 +313,21 @@ enum Command {
         #[arg(long)]
         name: String,
 
+        /// Baseline command as a shell string (parsed using shell-words)
+        #[arg(long, conflicts_with = "baseline_cmd")]
+        baseline: Option<String>,
+
+        /// Current command as a shell string (parsed using shell-words)
+        #[arg(long, conflicts_with = "current_cmd")]
+        current: Option<String>,
+
         /// Baseline command (argv)
-        #[arg(long, required = true, num_args = 1..)]
-        baseline_cmd: Vec<String>,
+        #[arg(long, num_args = 1.., conflicts_with = "baseline")]
+        baseline_cmd: Option<Vec<String>>,
 
         /// Current command (argv)
-        #[arg(long, required = true, num_args = 1..)]
-        current_cmd: Vec<String>,
+        #[arg(long, num_args = 1.., conflicts_with = "current")]
+        current_cmd: Option<Vec<String>>,
 
         /// Number of measured pairs
         #[arg(long, default_value_t = 5)]
@@ -615,6 +623,8 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
 
         Command::Paired {
             name,
+            baseline,
+            current,
             baseline_cmd,
             current_cmd,
             repeat,
@@ -631,6 +641,20 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
         } => {
             let timeout = timeout.as_deref().map(parse_duration).transpose()?;
 
+            let baseline_command = match (baseline, baseline_cmd) {
+                (Some(s), None) => shell_words::split(&s)
+                    .with_context(|| format!("failed to parse baseline command: {}", s))?,
+                (None, Some(argv)) => argv,
+                _ => anyhow::bail!("either --baseline or --baseline-cmd must be specified"),
+            };
+
+            let current_command = match (current, current_cmd) {
+                (Some(s), None) => shell_words::split(&s)
+                    .with_context(|| format!("failed to parse current command: {}", s))?,
+                (None, Some(argv)) => argv,
+                _ => anyhow::bail!("either --current or --current-cmd must be specified"),
+            };
+
             let tool = tool_info();
             let runner = StdProcessRunner;
             let host_probe = StdHostProbe;
@@ -640,8 +664,8 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             let outcome = usecase.execute(PairedRunRequest {
                 name,
                 cwd,
-                baseline_command: baseline_cmd,
-                current_command: current_cmd,
+                baseline_command,
+                current_command,
                 repeat,
                 warmup,
                 work_units: work,

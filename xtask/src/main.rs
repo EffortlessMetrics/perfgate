@@ -107,6 +107,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn cmd_ci() -> anyhow::Result<()> {
+    std::env::set_var("CARGO_TARGET_DIR", "target/ci");
     run("cargo", ["fmt", "--all", "--", "--check"])?;
     run(
         "cargo",

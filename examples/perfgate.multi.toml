@@ -1,0 +1,26 @@
+# perfgate.multi.toml - Multi-benchmark configuration for cockpit mode
+
+[defaults]
+repeat = 5
+warmup = 1
+threshold = 0.15
+baseline_dir = "baselines"
+
+[[bench]]
+name = "api-load-test"
+command = ["./scripts/load-test.sh", "--target", "api"]
+work = 5000
+
+[[bench]]
+name = "db-query-perf"
+command = ["./scripts/db-test.sh", "select-large-table"]
+# Override global threshold for this specific benchmark
+[bench.budgets.wall_ms]
+threshold = 0.10
+
+[[bench]]
+name = "frontend-bundle-size"
+command = ["stat", "-c", "%s", "dist/bundle.js"]
+# Static metrics can be gated like dynamic ones
+[bench.budgets.wall_ms]
+threshold = 0.05
