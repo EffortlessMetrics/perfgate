@@ -402,11 +402,7 @@ fn probe_memory_macos() -> Option<u64> {
         )
     };
 
-    if ret == 0 {
-        Some(memsize)
-    } else {
-        None
-    }
+    if ret == 0 { Some(memsize) } else { None }
 }
 
 #[cfg(target_os = "windows")]

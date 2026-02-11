@@ -4,8 +4,8 @@ use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner};
 use perfgate_domain::compute_paired_stats;
 use perfgate_types::{
-    PairedBenchMeta, PairedRunReceipt, PairedSample, PairedSampleHalf, RunMeta, ToolInfo,
-    PAIRED_SCHEMA_V1,
+    PAIRED_SCHEMA_V1, PairedBenchMeta, PairedRunReceipt, PairedSample, PairedSampleHalf, RunMeta,
+    ToolInfo,
 };
 use std::path::PathBuf;
 use std::time::Duration;

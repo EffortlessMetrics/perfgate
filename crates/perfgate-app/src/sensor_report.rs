@@ -8,16 +8,16 @@
 
 use crate::{CheckRequest, CheckUseCase, Clock};
 use perfgate_adapters::AdapterError;
-use perfgate_adapters::{sha256_hex, HostProbe, ProcessRunner};
+use perfgate_adapters::{HostProbe, ProcessRunner, sha256_hex};
 use perfgate_types::{
-    validate_bench_name, Capability, CapabilityStatus, ConfigFile, ConfigValidationError,
-    HostMismatchPolicy, PerfgateError, PerfgateReport, RunReceipt, SensorArtifact,
-    SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict,
-    SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo, VerdictStatus,
-    BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, ERROR_KIND_EXEC,
-    ERROR_KIND_IO, ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED,
-    MAX_FINDINGS_DEFAULT, SENSOR_REPORT_SCHEMA_V1, STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE,
-    STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS, VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED,
+    BASELINE_REASON_NO_BASELINE, CHECK_ID_TOOL_RUNTIME, CHECK_ID_TOOL_TRUNCATION, Capability,
+    CapabilityStatus, ConfigFile, ConfigValidationError, ERROR_KIND_EXEC, ERROR_KIND_IO,
+    ERROR_KIND_PARSE, FINDING_CODE_RUNTIME_ERROR, FINDING_CODE_TRUNCATED, HostMismatchPolicy,
+    MAX_FINDINGS_DEFAULT, PerfgateError, PerfgateReport, RunReceipt, SENSOR_REPORT_SCHEMA_V1,
+    STAGE_BASELINE_RESOLVE, STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND, STAGE_WRITE_ARTIFACTS,
+    SensorArtifact, SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity,
+    SensorVerdict, SensorVerdictCounts, SensorVerdictStatus, Severity, ToolInfo,
+    VERDICT_REASON_TOOL_ERROR, VERDICT_REASON_TRUNCATED, VerdictStatus, validate_bench_name,
 };
 
 /// Options for `run_sensor_check`.
@@ -901,9 +901,9 @@ impl SensorReportBuilder {
 mod tests {
     use super::*;
     use perfgate_types::{
-        PerfgateError, ReportFinding, ReportSummary, Verdict, VerdictCounts, ERROR_KIND_EXEC,
-        ERROR_KIND_PARSE, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1,
-        STAGE_CONFIG_PARSE, STAGE_RUN_COMMAND,
+        ERROR_KIND_EXEC, ERROR_KIND_PARSE, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
+        PerfgateError, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, STAGE_CONFIG_PARSE,
+        STAGE_RUN_COMMAND, Verdict, VerdictCounts,
     };
 
     fn make_tool_info() -> ToolInfo {
@@ -1112,9 +1112,11 @@ mod tests {
         assert_eq!(sensor_report.findings.len(), 1);
         assert_eq!(sensor_report.findings[0].check_id, "tool.runtime");
         assert_eq!(sensor_report.findings[0].code, "runtime_error");
-        assert!(sensor_report.findings[0]
-            .message
-            .contains("config file not found"));
+        assert!(
+            sensor_report.findings[0]
+                .message
+                .contains("config file not found")
+        );
         // Verify structured data
         let data = sensor_report.findings[0].data.as_ref().unwrap();
         assert_eq!(data["stage"], "config_parse");
@@ -1986,10 +1988,12 @@ mod tests {
         assert_eq!(sensor_report.findings[4].check_id, CHECK_ID_TOOL_TRUNCATION);
         assert_eq!(sensor_report.data["findings_total"], 10);
         assert_eq!(sensor_report.data["findings_emitted"], 4);
-        assert!(sensor_report
-            .verdict
-            .reasons
-            .contains(&"truncated".to_string()));
+        assert!(
+            sensor_report
+                .verdict
+                .reasons
+                .contains(&"truncated".to_string())
+        );
     }
 
     #[test]

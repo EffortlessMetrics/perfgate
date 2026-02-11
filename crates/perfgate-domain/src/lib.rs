@@ -4,12 +4,12 @@
 
 mod paired;
 
-pub use paired::{compare_paired_stats, compute_paired_stats, PairedComparison};
+pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
 
 use perfgate_types::{
-    Budget, CompareReceipt, Delta, Direction, F64Summary, Metric, MetricStatus, Stats, U64Summary,
-    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BUDGET, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN,
+    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, Direction, F64Summary,
+    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, Metric, MetricStatus, Stats, U64Summary,
+    Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 
@@ -405,9 +405,7 @@ pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<H
     }
 
     // Check hostname_hash mismatch (if both present)
-    if let (Some(base_hash), Some(curr_hash)) =
-        (&baseline.hostname_hash, &current.hostname_hash)
-    {
+    if let (Some(base_hash), Some(curr_hash)) = (&baseline.hostname_hash, &current.hostname_hash) {
         if base_hash != curr_hash {
             reasons.push("hostname mismatch (different machines)".to_string());
         }
@@ -3196,8 +3194,8 @@ mod tests {
     mod derive_report_tests {
         use super::*;
         use perfgate_types::{
-            BenchMeta, Budget, CompareReceipt, CompareRef, Delta, Direction, Metric, MetricStatus,
-            ToolInfo, Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1,
+            BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, Delta, Direction,
+            Metric, MetricStatus, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
         };
 
         /// Helper to create a minimal CompareReceipt for testing.

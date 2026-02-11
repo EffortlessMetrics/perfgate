@@ -2,15 +2,15 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::{
-    classify_error, github_annotations, render_markdown, BenchOutcome, CheckOutcome, CheckRequest,
-    CheckUseCase, Clock, CompareRequest, CompareUseCase, ExportFormat, ExportUseCase,
-    PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest,
-    ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock,
+    BenchOutcome, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase,
+    ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest,
+    PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
 };
 use perfgate_domain::DomainError;
 use perfgate_types::{
-    Budget, CompareReceipt, CompareRef, ConfigFile, ConfigValidationError, HostMismatchPolicy,
-    Metric, PerfgateError, RunReceipt, ToolInfo, BASELINE_REASON_NO_BASELINE,
+    BASELINE_REASON_NO_BASELINE, Budget, CompareReceipt, CompareRef, ConfigFile,
+    ConfigValidationError, HostMismatchPolicy, Metric, PerfgateError, RunReceipt, ToolInfo,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -1372,9 +1372,9 @@ fn metric_key(metric: Metric) -> &'static str {
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, DefaultsConfig, Direction, F64Summary, HostInfo, PerfgateReport, ReportSummary,
-        RunMeta, RunReceipt, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
-        RUN_SCHEMA_V1,
+        BenchMeta, DefaultsConfig, Direction, F64Summary, HostInfo, PerfgateReport, RUN_SCHEMA_V1,
+        ReportSummary, RunMeta, RunReceipt, Stats, U64Summary, Verdict, VerdictCounts,
+        VerdictStatus,
     };
     use serde_json::json;
     use std::any::Any;

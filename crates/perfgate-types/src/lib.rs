@@ -10,8 +10,8 @@
 mod paired;
 
 pub use paired::{
-    PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample, PairedSampleHalf,
-    PairedStats, PAIRED_SCHEMA_V1,
+    PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample,
+    PairedSampleHalf, PairedStats,
 };
 
 use schemars::JsonSchema;

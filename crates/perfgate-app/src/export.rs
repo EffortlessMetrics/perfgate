@@ -243,9 +243,9 @@ fn csv_escape(s: &str) -> String {
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, CompareRef, Delta, Direction, HostInfo, Metric, MetricStatus, RunMeta,
-        Sample, Stats, ToolInfo, U64Summary, Verdict, VerdictCounts, VerdictStatus,
-        COMPARE_SCHEMA_V1, RUN_SCHEMA_V1,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, HostInfo, Metric,
+        MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo, U64Summary, Verdict,
+        VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -491,9 +491,9 @@ mod tests {
 mod property_tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, CompareRef, Delta, Direction, F64Summary, HostInfo, Metric,
-        MetricStatus, RunMeta, Sample, Stats, ToolInfo, U64Summary, Verdict, VerdictCounts,
-        VerdictStatus, COMPARE_SCHEMA_V1, RUN_SCHEMA_V1,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, F64Summary, HostInfo,
+        Metric, MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo, U64Summary, Verdict,
+        VerdictCounts, VerdictStatus,
     };
     use proptest::prelude::*;
     use std::collections::BTreeMap;

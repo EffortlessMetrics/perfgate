@@ -16,13 +16,13 @@ pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
 pub use sensor_report::{
-    classify_error, default_engine_capability, run_sensor_check, sensor_fingerprint, BenchOutcome,
-    SensorCheckOptions, SensorReportBuilder,
+    BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,
+    default_engine_capability, run_sensor_check, sensor_fingerprint,
 };
 
 use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
-use perfgate_domain::{compare_stats, compute_stats, detect_host_mismatch, Comparison};
+use perfgate_domain::{Comparison, compare_stats, compute_stats, detect_host_mismatch};
 use perfgate_types::{
     BenchMeta, Budget, CompareReceipt, CompareRef, Direction, HostMismatchInfo, HostMismatchPolicy,
     Metric, MetricStatus, RunMeta, RunReceipt, Sample, ToolInfo,
@@ -417,8 +417,8 @@ fn format_pct(pct: f64) -> String {
 mod tests {
     use super::*;
     use perfgate_types::{
-        Delta, HostInfo, RunMeta, RunReceipt, Stats, U64Summary, Verdict, VerdictCounts,
-        VerdictStatus, RUN_SCHEMA_V1,
+        Delta, HostInfo, RUN_SCHEMA_V1, RunMeta, RunReceipt, Stats, U64Summary, Verdict,
+        VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 

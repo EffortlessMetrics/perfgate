@@ -1,6 +1,6 @@
 //! Paired statistics computation for perfgate.
 
-use crate::{summarize_f64, summarize_u64, DomainError};
+use crate::{DomainError, summarize_f64, summarize_u64};
 use perfgate_types::{PairedDiffSummary, PairedSample, PairedStats};
 
 pub fn compute_paired_stats(
@@ -57,22 +57,14 @@ pub fn compute_paired_stats(
                     .iter()
                     .map(|s| {
                         let secs = s.baseline.wall_ms as f64 / 1000.0;
-                        if secs <= 0.0 {
-                            0.0
-                        } else {
-                            work as f64 / secs
-                        }
+                        if secs <= 0.0 { 0.0 } else { work as f64 / secs }
                     })
                     .collect();
                 let current_thr: Vec<f64> = measured
                     .iter()
                     .map(|s| {
                         let secs = s.current.wall_ms as f64 / 1000.0;
-                        if secs <= 0.0 {
-                            0.0
-                        } else {
-                            work as f64 / secs
-                        }
+                        if secs <= 0.0 { 0.0 } else { work as f64 / secs }
                     })
                     .collect();
                 let thr_diffs: Vec<f64> = baseline_thr

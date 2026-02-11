@@ -9,18 +9,17 @@
 //! 6. Generates all artifacts (run.json, compare.json, report.json, comment.md)
 
 use crate::{
-    format_metric, format_pct, Clock, CompareRequest, CompareUseCase, RunBenchRequest,
-    RunBenchUseCase,
+    Clock, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase, format_metric,
+    format_pct,
 };
 use anyhow::Context;
 use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
-    BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, ConfigValidationError,
-    FindingData, HostMismatchPolicy, Metric, MetricStatus, PerfgateError, PerfgateReport,
-    ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo, Verdict, VerdictCounts,
-    VerdictStatus, CHECK_ID_BASELINE, CHECK_ID_BUDGET, FINDING_CODE_BASELINE_MISSING,
-    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, REPORT_SCHEMA_V1,
-    VERDICT_REASON_NO_BASELINE,
+    BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CompareReceipt, CompareRef,
+    ConfigFile, ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN, FindingData, HostMismatchPolicy, Metric, MetricStatus, PerfgateError,
+    PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
+    VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -502,9 +501,9 @@ mod tests {
     use super::*;
     use perfgate_adapters::{AdapterError, CommandSpec, HostProbeOptions, RunResult};
     use perfgate_types::{
-        BenchConfigFile, BenchMeta, BudgetOverride, CompareReceipt, DefaultsConfig, Delta,
-        Direction, HostInfo, Metric, RunMeta, Sample, Stats, U64Summary, Verdict, VerdictCounts,
-        COMPARE_SCHEMA_V1,
+        BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1, CompareReceipt,
+        DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample, Stats, U64Summary,
+        Verdict, VerdictCounts,
     };
     use std::sync::{Arc, Mutex};
     use std::time::Duration;

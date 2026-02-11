@@ -301,8 +301,8 @@ fn check_fixture_mirror_at(golden_dir: &Path, contracts_dir: &Path) -> anyhow::R
     }
 
     // Check for extra files in contracts/fixtures/ (contract -> golden)
-    for entry in
-        fs::read_dir(contracts_dir).with_context(|| format!("read dir {}", contracts_dir.display()))?
+    for entry in fs::read_dir(contracts_dir)
+        .with_context(|| format!("read dir {}", contracts_dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();

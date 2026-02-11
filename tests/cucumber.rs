@@ -9,7 +9,7 @@
 //! - Then steps: exit code and output assertions
 
 use assert_cmd::Command;
-use cucumber::{given, then, when, World};
+use cucumber::{World, given, then, when};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -17,10 +17,10 @@ use tempfile::TempDir;
 
 // Re-export types we need for fixture creation
 use perfgate_types::{
-    BenchConfigFile, BenchMeta, CompareReceipt, CompareRef, ConfigFile, DefaultsConfig, Delta,
-    HostInfo, Metric, MetricStatus, PerfgateReport, RunMeta, RunReceipt, Sample, Stats, ToolInfo,
-    U64Summary, Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1, REPORT_SCHEMA_V1,
-    RUN_SCHEMA_V1,
+    BenchConfigFile, BenchMeta, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile,
+    DefaultsConfig, Delta, HostInfo, Metric, MetricStatus, PerfgateReport, REPORT_SCHEMA_V1,
+    RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 
 /// World struct that holds state across BDD scenario steps.
