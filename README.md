@@ -217,9 +217,9 @@ Paired benchmarking runs baseline and current commands in interleaved fashion to
 
 ```bash
 perfgate paired \
-  --baseline "sleep 0.01" \
-  --current "sleep 0.02" \
-  --samples 10 \
+  --baseline-cmd "sleep 0.01" \
+  --current-cmd "sleep 0.02" \
+  --repeat 10 \
   --threshold 0.20 \
   --out artifacts/perfgate/compare.json
 ```
@@ -328,6 +328,10 @@ Options for `--host-mismatch`:
 - `fail`: Treat host mismatch as an error and exit with code 1
 
 This is useful when baselines are generated on dedicated benchmark machines but CI runs on different hardware.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the project vision and planned features.
 
 ## Testing
 
