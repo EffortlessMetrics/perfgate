@@ -2,10 +2,14 @@
 //!
 //! This crate is intentionally I/O-free: it does math and policy.
 
+mod paired;
+
+pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
+
 use perfgate_types::{
-    Budget, CompareReceipt, Delta, Direction, F64Summary, Metric, MetricStatus, Stats, U64Summary,
-    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BUDGET, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN,
+    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, Direction, F64Summary,
+    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, Metric, MetricStatus, Stats, U64Summary,
+    Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 
@@ -80,6 +84,13 @@ pub fn compute_stats(
     let wall: Vec<u64> = measured.iter().map(|s| s.wall_ms).collect();
     let wall_ms = summarize_u64(&wall)?;
 
+    let cpu_vals: Vec<u64> = measured.iter().filter_map(|s| s.cpu_ms).collect();
+    let cpu_ms = if cpu_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&cpu_vals)?)
+    };
+
     let rss_vals: Vec<u64> = measured.iter().filter_map(|s| s.max_rss_kb).collect();
     let max_rss_kb = if rss_vals.is_empty() {
         None
@@ -107,6 +118,7 @@ pub fn compute_stats(
 
     Ok(Stats {
         wall_ms,
+        cpu_ms,
         max_rss_kb,
         throughput_per_s,
     })
@@ -313,9 +325,10 @@ fn metric_to_string(metric: Metric) -> String {
 
 fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
     match metric {
-        Metric::WallMs => Some(stats.wall_ms.median as f64),
+        Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
+        Metric::WallMs => Some(stats.wall_ms.median as f64),
     }
 }
 
@@ -323,6 +336,86 @@ fn reason_token(metric: Metric, status: MetricStatus) -> String {
     let metric_str = metric.as_str();
     let status_str = status.as_str();
     format!("{metric_str}_{status_str}")
+}
+
+// ============================================================================
+// Host Mismatch Detection
+// ============================================================================
+
+use perfgate_types::{HostInfo, HostMismatchInfo};
+
+/// Detect host mismatches between baseline and current runs.
+///
+/// Returns `Some(HostMismatchInfo)` if any mismatch is detected, `None` otherwise.
+///
+/// Detection criteria:
+/// - Different `os` or `arch`
+/// - Significant difference in `cpu_count` (> 2x)
+/// - Significant difference in `memory_bytes` (> 2x)
+/// - Different `hostname_hash` (if both present)
+pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<HostMismatchInfo> {
+    let mut reasons = Vec::new();
+
+    // Check os mismatch
+    if baseline.os != current.os {
+        reasons.push(format!(
+            "OS mismatch: baseline={}, current={}",
+            baseline.os, current.os
+        ));
+    }
+
+    // Check arch mismatch
+    if baseline.arch != current.arch {
+        reasons.push(format!(
+            "architecture mismatch: baseline={}, current={}",
+            baseline.arch, current.arch
+        ));
+    }
+
+    // Check cpu_count mismatch (> 2x difference)
+    if let (Some(base_cpu), Some(curr_cpu)) = (baseline.cpu_count, current.cpu_count) {
+        let ratio = if base_cpu > 0 && curr_cpu > 0 {
+            (base_cpu as f64 / curr_cpu as f64).max(curr_cpu as f64 / base_cpu as f64)
+        } else {
+            1.0
+        };
+        if ratio > 2.0 {
+            reasons.push(format!(
+                "CPU count differs significantly: baseline={}, current={} ({:.1}x)",
+                base_cpu, curr_cpu, ratio
+            ));
+        }
+    }
+
+    // Check memory_bytes mismatch (> 2x difference)
+    if let (Some(base_mem), Some(curr_mem)) = (baseline.memory_bytes, current.memory_bytes) {
+        let ratio = if base_mem > 0 && curr_mem > 0 {
+            (base_mem as f64 / curr_mem as f64).max(curr_mem as f64 / base_mem as f64)
+        } else {
+            1.0
+        };
+        if ratio > 2.0 {
+            let base_gb = base_mem as f64 / (1024.0 * 1024.0 * 1024.0);
+            let curr_gb = curr_mem as f64 / (1024.0 * 1024.0 * 1024.0);
+            reasons.push(format!(
+                "memory differs significantly: baseline={:.1}GB, current={:.1}GB ({:.1}x)",
+                base_gb, curr_gb, ratio
+            ));
+        }
+    }
+
+    // Check hostname_hash mismatch (if both present)
+    if let (Some(base_hash), Some(curr_hash)) = (&baseline.hostname_hash, &current.hostname_hash) {
+        if base_hash != curr_hash {
+            reasons.push("hostname mismatch (different machines)".to_string());
+        }
+    }
+
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(HostMismatchInfo { reasons })
+    }
 }
 
 #[cfg(test)]
@@ -338,6 +431,136 @@ mod tests {
     fn summarize_u64_median_even_rounds_down() {
         let s = summarize_u64(&[10, 20]).unwrap();
         assert_eq!(s.median, 15);
+    }
+
+    // =========================================================================
+    // Host Mismatch Detection Tests
+    // =========================================================================
+
+    fn make_host_info(os: &str, arch: &str) -> HostInfo {
+        HostInfo {
+            os: os.to_string(),
+            arch: arch.to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        }
+    }
+
+    #[test]
+    fn host_mismatch_none_when_identical() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("linux", "x86_64");
+        assert!(detect_host_mismatch(&baseline, &current).is_none());
+    }
+
+    #[test]
+    fn host_mismatch_detects_os_difference() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("windows", "x86_64");
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("OS mismatch")));
+    }
+
+    #[test]
+    fn host_mismatch_detects_arch_difference() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("linux", "aarch64");
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("architecture mismatch")));
+    }
+
+    #[test]
+    fn host_mismatch_detects_cpu_count_significant_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(4);
+        current.cpu_count = Some(16); // 4x difference
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("CPU count differs")));
+    }
+
+    #[test]
+    fn host_mismatch_ignores_cpu_count_minor_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(8);
+        current.cpu_count = Some(12); // 1.5x difference, below 2x threshold
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_none());
+    }
+
+    #[test]
+    fn host_mismatch_detects_memory_significant_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.memory_bytes = Some(8 * 1024 * 1024 * 1024); // 8GB
+        current.memory_bytes = Some(32 * 1024 * 1024 * 1024); // 32GB (4x)
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("memory differs")));
+    }
+
+    #[test]
+    fn host_mismatch_ignores_memory_minor_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.memory_bytes = Some(16 * 1024 * 1024 * 1024); // 16GB
+        current.memory_bytes = Some(24 * 1024 * 1024 * 1024); // 24GB (1.5x)
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_none());
+    }
+
+    #[test]
+    fn host_mismatch_detects_hostname_difference() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.hostname_hash = Some("abc123".to_string());
+        current.hostname_hash = Some("def456".to_string());
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        assert!(reasons.iter().any(|r| r.contains("hostname mismatch")));
+    }
+
+    #[test]
+    fn host_mismatch_ignores_hostname_when_only_one_present() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("linux", "x86_64");
+        baseline.hostname_hash = Some("abc123".to_string());
+        // current has no hostname_hash
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_none());
+    }
+
+    #[test]
+    fn host_mismatch_multiple_reasons() {
+        let baseline = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: Some(4),
+            memory_bytes: Some(8 * 1024 * 1024 * 1024),
+            hostname_hash: Some("abc".to_string()),
+        };
+        let current = HostInfo {
+            os: "windows".to_string(),
+            arch: "aarch64".to_string(),
+            cpu_count: Some(32),
+            memory_bytes: Some(64 * 1024 * 1024 * 1024),
+            hostname_hash: Some("def".to_string()),
+        };
+        let mismatch = detect_host_mismatch(&baseline, &current);
+        assert!(mismatch.is_some());
+        let reasons = mismatch.unwrap().reasons;
+        // Should have 5 reasons: OS, arch, CPU, memory, hostname
+        assert_eq!(reasons.len(), 5);
     }
 
     // =========================================================================
@@ -910,6 +1133,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -923,6 +1147,7 @@ mod tests {
                 exit_code: 0,
                 warmup: true,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -1142,6 +1367,7 @@ mod tests {
                         min: baseline as u64,
                         max: baseline as u64,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: None,
                 };
@@ -1152,6 +1378,7 @@ mod tests {
                         min: current as u64,
                         max: current as u64,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: None,
                 };
@@ -1212,6 +1439,7 @@ mod tests {
                         min: 1000,
                         max: 1000,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline,
@@ -1226,6 +1454,7 @@ mod tests {
                         min: 1000,
                         max: 1000,
                     },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: Some(F64Summary {
                         median: current,
@@ -1287,6 +1516,7 @@ mod tests {
                             min: baseline as u64,
                             max: baseline as u64,
                         },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: None,
                     };
@@ -1296,6 +1526,7 @@ mod tests {
                             min: current as u64,
                             max: current as u64,
                         },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: None,
                     };
@@ -1305,6 +1536,7 @@ mod tests {
                 } else {
                     let bs = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: Some(F64Summary {
                             median: baseline,
@@ -1314,6 +1546,7 @@ mod tests {
                     };
                     let cs = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: Some(F64Summary {
                             median: current,
@@ -1356,6 +1589,7 @@ mod tests {
             ) {
                 let baseline_stats = Stats {
                     wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                    cpu_ms: None,
                     max_rss_kb: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline,
@@ -1373,6 +1607,7 @@ mod tests {
                 if current_at_threshold_higher > 0.0 {
                     let current_stats = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        cpu_ms: None,
                         max_rss_kb: None,
                         throughput_per_s: Some(F64Summary {
                             median: current_at_threshold_higher,
@@ -1444,6 +1679,7 @@ mod tests {
                     min: median,
                     max: median,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: None,
             }
@@ -1549,6 +1785,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1567,6 +1804,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1629,6 +1867,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1667,6 +1906,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1739,6 +1979,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1757,6 +1998,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1817,6 +2059,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
@@ -1835,6 +2078,7 @@ mod tests {
                         min: wall_ms_current,
                         max: wall_ms_current,
                     },
+                    cpu_ms: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
@@ -1895,6 +2139,7 @@ mod tests {
                         min: baseline,
                         max: baseline,
                     },
+                    cpu_ms: None,
                     max_rss_kb: if num_metrics >= 2 {
                         Some(U64Summary {
                             median: baseline,
@@ -1983,6 +2228,7 @@ mod tests {
                 exit_code: 0,
                 warmup: true,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -1992,6 +2238,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -2009,6 +2256,430 @@ mod tests {
         );
     }
 
+    // =========================================================================
+    // CPU Time (cpu_ms) Tests
+    // =========================================================================
+
+    /// Test that compute_stats correctly computes cpu_ms summary from samples.
+    #[test]
+    fn compute_stats_computes_cpu_ms_summary() {
+        let samples = vec![
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(50),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 110,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(60),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 105,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(55),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        let stats = compute_stats(&samples, None).unwrap();
+
+        // cpu_ms should be present with correct statistics
+        assert!(stats.cpu_ms.is_some(), "cpu_ms stats should be present");
+        let cpu_stats = stats.cpu_ms.unwrap();
+        assert_eq!(cpu_stats.min, 50, "cpu_ms min should be 50");
+        assert_eq!(cpu_stats.max, 60, "cpu_ms max should be 60");
+        assert_eq!(cpu_stats.median, 55, "cpu_ms median should be 55");
+    }
+
+    /// Test that compute_stats returns None for cpu_ms when samples don't have it.
+    #[test]
+    fn compute_stats_cpu_ms_none_when_samples_missing_cpu() {
+        let samples = vec![
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                max_rss_kb: Some(1024),
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 110,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                max_rss_kb: Some(1028),
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        let stats = compute_stats(&samples, None).unwrap();
+
+        // cpu_ms should be None since samples don't have cpu_ms
+        assert!(
+            stats.cpu_ms.is_none(),
+            "cpu_ms stats should be None when samples lack cpu_ms"
+        );
+        // max_rss_kb should still be computed
+        assert!(
+            stats.max_rss_kb.is_some(),
+            "max_rss_kb should still be present"
+        );
+    }
+
+    /// Test that compute_stats excludes warmup samples from cpu_ms calculation.
+    #[test]
+    fn compute_stats_cpu_ms_excludes_warmup() {
+        let samples = vec![
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: true, // warmup - should be excluded
+                timed_out: false,
+                cpu_ms: Some(1000), // High value that would skew results
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(50),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 100,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: Some(60),
+                max_rss_kb: None,
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        let stats = compute_stats(&samples, None).unwrap();
+
+        let cpu_stats = stats.cpu_ms.expect("cpu_ms should be present");
+        // Warmup sample with cpu_ms=1000 should be excluded
+        assert_eq!(
+            cpu_stats.min, 50,
+            "cpu_ms min should be 50 (excluding warmup)"
+        );
+        assert_eq!(
+            cpu_stats.max, 60,
+            "cpu_ms max should be 60 (excluding warmup)"
+        );
+    }
+
+    /// Test that compare_stats correctly compares cpu_ms values.
+    #[test]
+    fn compare_stats_cpu_ms_regression_detection() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        // Current has 100% increase in cpu_ms (50 -> 100)
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20, // 20% threshold
+                warn_threshold: 0.10,
+                direction: Direction::Lower, // Lower cpu_ms is better
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        // Should have cpu_ms delta
+        let cpu_delta = comparison
+            .deltas
+            .get(&Metric::CpuMs)
+            .expect("cpu_ms delta should exist");
+
+        // 100% regression should fail the 20% threshold
+        assert_eq!(
+            cpu_delta.status,
+            MetricStatus::Fail,
+            "100% cpu_ms regression should fail 20% threshold"
+        );
+        assert!(
+            (cpu_delta.regression - 1.0).abs() < 0.001,
+            "regression should be ~1.0 (100%)"
+        );
+        assert_eq!(cpu_delta.baseline, 50.0, "baseline should be 50");
+        assert_eq!(cpu_delta.current, 100.0, "current should be 100");
+    }
+
+    /// Test that compare_stats passes when cpu_ms improvement (decrease).
+    #[test]
+    fn compare_stats_cpu_ms_improvement_passes() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        // Current has 50% decrease in cpu_ms (100 -> 50) - improvement!
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        let cpu_delta = comparison
+            .deltas
+            .get(&Metric::CpuMs)
+            .expect("cpu_ms delta should exist");
+
+        // Improvement should pass (regression = 0 since current < baseline for Lower direction)
+        assert_eq!(
+            cpu_delta.status,
+            MetricStatus::Pass,
+            "cpu_ms improvement should pass"
+        );
+        assert_eq!(
+            cpu_delta.regression, 0.0,
+            "regression should be 0 for improvement"
+        );
+    }
+
+    /// Test that compare_stats skips cpu_ms when only baseline has it.
+    #[test]
+    fn compare_stats_skips_cpu_ms_when_only_baseline_has_it() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: None, // No cpu_ms in current
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        // cpu_ms delta should NOT exist (skipped because current lacks it)
+        assert!(
+            comparison.deltas.get(&Metric::CpuMs).is_none(),
+            "cpu_ms delta should be skipped when current lacks cpu_ms"
+        );
+    }
+
+    /// Test that compare_stats skips cpu_ms when only current has it.
+    #[test]
+    fn compare_stats_skips_cpu_ms_when_only_current_has_it() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: None, // No cpu_ms in baseline
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 50,
+                min: 50,
+                max: 50,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        // cpu_ms delta should NOT exist (skipped because baseline lacks it)
+        assert!(
+            comparison.deltas.get(&Metric::CpuMs).is_none(),
+            "cpu_ms delta should be skipped when baseline lacks cpu_ms"
+        );
+    }
+
+    /// Test that compare_stats warns on cpu_ms when within warn threshold.
+    #[test]
+    fn compare_stats_cpu_ms_warns_within_threshold() {
+        let baseline = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        // Current has 15% increase in cpu_ms (100 -> 115)
+        let current = Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 115,
+                min: 115,
+                max: 115,
+            }),
+            max_rss_kb: None,
+            throughput_per_s: None,
+        };
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::CpuMs,
+            Budget {
+                threshold: 0.20,      // 20% fail threshold
+                warn_threshold: 0.10, // 10% warn threshold
+                direction: Direction::Lower,
+            },
+        );
+
+        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+
+        let cpu_delta = comparison
+            .deltas
+            .get(&Metric::CpuMs)
+            .expect("cpu_ms delta should exist");
+
+        // 15% regression should warn (between 10% and 20%)
+        assert_eq!(
+            cpu_delta.status,
+            MetricStatus::Warn,
+            "15% cpu_ms regression should warn (10% < 15% < 20%)"
+        );
+    }
+
     #[test]
     fn compare_lower_is_worse_regression_is_positive_pct() {
         let baseline = Stats {
@@ -2017,6 +2688,7 @@ mod tests {
                 min: 1000,
                 max: 1000,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: None,
         };
@@ -2026,6 +2698,7 @@ mod tests {
                 min: 1100,
                 max: 1100,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: None,
         };
@@ -2054,6 +2727,7 @@ mod tests {
                 min: 1000,
                 max: 1000,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: Some(F64Summary {
                 median: 100.0,
@@ -2067,6 +2741,7 @@ mod tests {
                 min: 1000,
                 max: 1000,
             },
+            cpu_ms: None,
             max_rss_kb: None,
             throughput_per_s: Some(F64Summary {
                 median: 92.0,
@@ -2166,6 +2841,7 @@ mod tests {
                     exit_code: 0,
                     warmup: true,
                     timed_out: false,
+                    cpu_ms: None,
                     max_rss_kb: Some(1024),
                     stdout: None,
                     stderr: None,
@@ -2175,6 +2851,7 @@ mod tests {
                     exit_code: 0,
                     warmup: true,
                     timed_out: false,
+                    cpu_ms: None,
                     max_rss_kb: Some(2048),
                     stdout: None,
                     stderr: None,
@@ -2184,6 +2861,7 @@ mod tests {
                     exit_code: 0,
                     warmup: true,
                     timed_out: false,
+                    cpu_ms: None,
                     max_rss_kb: Some(1536),
                     stdout: None,
                     stderr: None,
@@ -2212,6 +2890,7 @@ mod tests {
                 exit_code: 0,
                 warmup: true,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: None,
                 stdout: None,
                 stderr: None,
@@ -2246,6 +2925,7 @@ mod tests {
                     min: 0,
                     max: 0,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: None,
             };
@@ -2256,6 +2936,7 @@ mod tests {
                     min: 100,
                     max: 100,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: None,
             };
@@ -2299,6 +2980,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: 0.0,
@@ -2313,6 +2995,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: 100.0,
@@ -2360,6 +3043,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 0,
                     min: 0,
@@ -2374,6 +3058,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1024,
@@ -2422,6 +3107,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: -10.0,
@@ -2436,6 +3122,7 @@ mod tests {
                     min: 1000,
                     max: 1000,
                 },
+                cpu_ms: None,
                 max_rss_kb: None,
                 throughput_per_s: Some(F64Summary {
                     median: 100.0,
@@ -2507,8 +3194,8 @@ mod tests {
     mod derive_report_tests {
         use super::*;
         use perfgate_types::{
-            BenchMeta, Budget, CompareReceipt, CompareRef, Delta, Direction, Metric, MetricStatus,
-            ToolInfo, Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1,
+            BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, Delta, Direction,
+            Metric, MetricStatus, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
         };
 
         /// Helper to create a minimal CompareReceipt for testing.

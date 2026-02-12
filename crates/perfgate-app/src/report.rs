@@ -6,8 +6,8 @@
 
 use perfgate_domain::derive_report;
 use perfgate_types::{
-    CompareReceipt, Direction, FindingData, PerfgateReport, ReportFinding, ReportSummary, Severity,
-    FINDING_CODE_METRIC_FAIL, REPORT_SCHEMA_V1,
+    CompareReceipt, Direction, FINDING_CODE_METRIC_FAIL, FindingData, PerfgateReport,
+    REPORT_SCHEMA_V1, ReportFinding, ReportSummary, Severity,
 };
 
 /// Request for generating a report from a compare receipt.
@@ -123,8 +123,8 @@ fn metric_to_string(metric: perfgate_types::Metric) -> String {
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, CompareRef, Delta, Direction, Metric, MetricStatus, ToolInfo, Verdict,
-        VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, Metric, MetricStatus,
+        ToolInfo, Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -493,8 +493,8 @@ mod tests {
 mod property_tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, CompareRef, Delta, Direction, Metric, MetricStatus, ToolInfo, Verdict,
-        VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, Metric, MetricStatus,
+        ToolInfo, Verdict, VerdictCounts, VerdictStatus,
     };
     use proptest::prelude::*;
     use std::collections::BTreeMap;

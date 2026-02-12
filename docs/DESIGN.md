@@ -16,6 +16,7 @@ perfgate collects raw samples and computes summary statistics:
 - `warmup`: Boolean flag indicating warmup sample
 - `timed_out`: Boolean flag indicating timeout occurred
 - `max_rss_kb`: Maximum resident set size in KB (Unix only, optional)
+- `cpu_ms`: Combined user and system CPU time in milliseconds (Unix only, optional)
 - `stdout`: Truncated stdout (optional, up to `output_cap_bytes`)
 - `stderr`: Truncated stderr (optional, up to `output_cap_bytes`)
 
@@ -203,6 +204,50 @@ perfgate uses `BTreeMap` for all metric collections to ensure deterministic orde
 - This ordering is preserved in JSON serialization (snake_case: `max_rss_kb < throughput_per_s < wall_ms`)
 - Export commands sort metrics alphabetically for user-friendliness
 
+### Finding Fingerprinting
+
+Each sensor report finding includes a `fingerprint` containing the SHA-256 hex digest of a deterministic preimage. This ensures collision-resistant deduplication across sensors in the fleet.
+
+**Preimage format:**
+
+| Finding type | Preimage | Example preimage |
+|-------------|----------|-----------------|
+| Metric budget | `{check_id}:{code}:{metric_name}` | `perf.budget:metric_fail:wall_ms` |
+| Runtime error | `{check_id}:{code}:{stage}` | `tool.runtime:runtime_error:config_parse` |
+| Truncation | `{check_id}:{code}` | `tool.truncation:truncated` |
+| Multi-bench metric | `{bench_name}:{check_id}:{code}:{metric_name}` | `bench-a:perf.budget:metric_fail:wall_ms` |
+
+The `fingerprint` field stores `sha256(preimage)` as a 64-character lowercase hex string.
+
+**Invariants:**
+- Fingerprint MUST be present on all findings
+- Same logical finding across runs MUST produce the same fingerprint
+- Different findings MUST produce different fingerprints
+
+### Finding Truncation
+
+When a sensor report contains many findings (e.g., multi-bench mode with widespread regressions), findings can be truncated to a configurable limit via `SensorReportBuilder::max_findings(n)`.
+
+**Behavior:**
+1. If finding count <= limit, no truncation occurs
+2. If finding count > limit, keep the first `limit - 1` findings
+3. Append a truncation meta-finding with:
+   - `check_id = "tool.truncation"`
+   - `code = "truncated"`
+   - `severity = "info"`
+   - `data = { total_findings, shown_findings }`
+   - `fingerprint = sha256("tool.truncation:truncated")`
+4. `verdict.reasons` MUST include `"truncated"`
+5. Report-level `data` MUST include `findings_total` and `findings_emitted`
+
+**Canonical definitions of truncation counters:**
+- `findings_total`: count of real findings before truncation (excludes the truncation meta-finding itself)
+- `findings_emitted`: count of real findings preserved after truncation (excludes the truncation meta-finding itself)
+- Invariant when truncated: `findings.len() == findings_emitted + 1` (the +1 is the truncation meta-finding)
+- When NOT truncated: both `findings_total` and `findings_emitted` are absent from `data`
+
+`contracts/fixtures/` are portable ingestion fixtures for cockpit compiler integration tests; `tests/fixtures/golden/` are perfgate CLI golden tests.
+
 ## Promote Normalization
 
 The promote command can normalize receipts for stable baselines:
@@ -306,3 +351,45 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
 - `max_rss_kb` MAY be None (non-Unix or collection failure)
 - `throughput_per_s` MAY be None (no `work_units` specified)
 - Metrics missing from either baseline or current are skipped in comparison
+
+## Paired Benchmarking
+
+Paired mode interleaves baseline and current executions to reduce environmental noise:
+
+```
+baseline-1, current-1, baseline-2, current-2, ...
+```
+
+### Execution Model
+
+1. For each pair `i` in `0..samples`:
+   - Execute baseline command, record `wall_ms`
+   - Execute current command, record `wall_ms`
+2. Compute statistics from all baseline samples and all current samples independently
+3. Compare using the same budget/threshold logic as `compare`
+
+### Advantages
+
+- Back-to-back measurement minimizes environmental variance between baseline and current
+- Interleaving prevents systematic bias from thermal throttling or load changes
+- Uses standard `perfgate.compare.v1` output, compatible with all downstream tools
+
+## Host Mismatch Detection
+
+When comparing runs, perfgate can detect and warn about host differences.
+
+### Detection Criteria
+
+A mismatch is detected when any of the following differ between baseline and current:
+- `os` string
+- `arch` string
+- `cpu_count` value
+- `hostname_hash` value (if both present)
+
+### Policy Behavior
+
+| Policy | Behavior |
+|--------|----------|
+| `warn` | Emit warning to stderr, continue comparison (default) |
+| `error` | Exit 1 with error message |
+| `ignore` | No check performed |

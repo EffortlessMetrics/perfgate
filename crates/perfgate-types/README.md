@@ -7,6 +7,8 @@ This crate provides the core data structures used throughout the perfgate worksp
 - **Run receipts** (`perfgate.run.v1`) - Results from benchmark executions
 - **Compare receipts** (`perfgate.compare.v1`) - Baseline vs current comparisons
 - **Report receipts** (`perfgate.report.v1`) - Structured reports for CI integration
+- **Sensor reports** (`sensor.report.v1`) - Cockpit-mode envelope types
+- **Paired types** - Types for paired benchmarking mode
 - **Configuration types** - Budget definitions and thresholds
 
 ## Features

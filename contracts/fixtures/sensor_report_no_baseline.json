@@ -1,0 +1,62 @@
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.2.0"
+  },
+  "run": {
+    "started_at": "2024-01-01T00:00:00Z",
+    "ended_at": "2024-01-01T00:01:00Z",
+    "duration_ms": 60000,
+    "capabilities": {
+      "baseline": {
+        "status": "unavailable",
+        "reason": "no_baseline"
+      },
+      "engine": {
+        "status": "available"
+      }
+    }
+  },
+  "verdict": {
+    "status": "warn",
+    "counts": {
+      "info": 0,
+      "warn": 1,
+      "error": 0
+    },
+    "reasons": ["no_baseline"]
+  },
+  "findings": [
+    {
+      "check_id": "perf.baseline",
+      "code": "missing",
+      "severity": "warn",
+      "message": "No baseline found for bench 'test-bench'; comparison skipped",
+      "fingerprint": "adfda61c658b313c6c79f74474df22c8e50a71906a1405104dfb3e5a4a646ba5"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "comment.md",
+      "type": "markdown"
+    },
+    {
+      "path": "extras/perfgate.report.v1.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "extras/perfgate.run.v1.json",
+      "type": "run_receipt"
+    }
+  ],
+  "data": {
+    "summary": {
+      "pass_count": 0,
+      "warn_count": 1,
+      "fail_count": 0,
+      "total_count": 1,
+      "bench_count": 1
+    }
+  }
+}

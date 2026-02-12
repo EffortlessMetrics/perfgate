@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sensor.report.v1.schema.json",
+  "title": "sensor.report.v1",
+  "description": "Sensor report envelope for cockpit integration. The data and finding data fields are opaque to the schema — each sensor defines its own payload.",
+  "type": "object",
+  "required": ["schema", "tool", "run", "verdict", "findings", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "sensor.report.v1"
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["started_at", "capabilities"],
+      "additionalProperties": false,
+      "properties": {
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["available", "unavailable", "skipped"]
+              },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "required": ["status", "counts", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pass", "warn", "fail", "skip"]
+        },
+        "counts": {
+          "type": "object",
+          "required": ["info", "warn", "error"],
+          "additionalProperties": false,
+          "properties": {
+            "info": { "type": "integer", "minimum": 0 },
+            "warn": { "type": "integer", "minimum": 0 },
+            "error": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check_id", "code", "severity", "message"],
+        "properties": {
+          "check_id": { "type": "string" },
+          "code": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warn", "error"]
+          },
+          "message": { "type": "string" },
+          "fingerprint": { "type": "string" },
+          "data": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "type": { "type": "string" }
+        }
+      }
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

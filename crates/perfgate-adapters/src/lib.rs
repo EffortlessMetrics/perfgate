@@ -2,6 +2,10 @@
 //!
 //! In clean-arch terms: this is where we touch the world.
 
+mod fake;
+
+pub use fake::FakeProcessRunner;
+
 use anyhow::Context;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -20,6 +24,8 @@ pub struct RunResult {
     pub wall_ms: u64,
     pub exit_code: i32,
     pub timed_out: bool,
+    /// CPU time (user + system) in milliseconds (Unix only).
+    pub cpu_ms: Option<u64>,
     pub max_rss_kb: Option<u64>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
@@ -68,6 +74,7 @@ impl ProcessRunner for StdProcessRunner {
     }
 }
 
+#[allow(dead_code)]
 fn truncate(mut bytes: Vec<u8>, cap: usize) -> Vec<u8> {
     if bytes.len() > cap {
         bytes.truncate(cap);
@@ -105,6 +112,7 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         wall_ms,
         exit_code,
         timed_out: false,
+        cpu_ms: None, // Not available on non-Unix platforms
         max_rss_kb: None,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),
@@ -164,12 +172,14 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     let exit_status = std::process::ExitStatus::from_raw(status_raw);
     let exit_code = exit_status.code().unwrap_or(-1);
 
+    let cpu_ms = rusage.map(|ru| ru_cpu_ms(&ru));
     let max_rss_kb = rusage.map(|ru| ru_maxrss_kb(&ru));
 
     Ok(RunResult {
         wall_ms,
         exit_code,
         timed_out,
+        cpu_ms,
         max_rss_kb,
         stdout,
         stderr,
@@ -259,6 +269,14 @@ fn wait4_with_timeout(
     }
 
     Ok((status, Some(ru), timed_out))
+}
+
+#[cfg(unix)]
+fn ru_cpu_ms(ru: &libc::rusage) -> u64 {
+    // ru_utime and ru_stime are timeval structs with tv_sec (seconds) and tv_usec (microseconds)
+    let user_ms = (ru.ru_utime.tv_sec as u64) * 1000 + (ru.ru_utime.tv_usec as u64) / 1000;
+    let sys_ms = (ru.ru_stime.tv_sec as u64) * 1000 + (ru.ru_stime.tv_usec as u64) / 1000;
+    user_ms + sys_ms
 }
 
 #[cfg(unix)]
@@ -388,11 +406,7 @@ fn probe_memory_macos() -> Option<u64> {
         )
     };
 
-    if ret == 0 {
-        Some(memsize)
-    } else {
-        None
-    }
+    if ret == 0 { Some(memsize) } else { None }
 }
 
 #[cfg(target_os = "windows")]
@@ -414,7 +428,7 @@ fn probe_memory_windows() -> Option<u64> {
     }
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
     }
 
@@ -442,7 +456,7 @@ fn probe_hostname_hash() -> Option<String> {
 
 /// Compute SHA-256 hash and return as hex string.
 /// This is a minimal implementation to avoid adding a crypto dependency.
-fn sha256_hex(data: &[u8]) -> String {
+pub fn sha256_hex(data: &[u8]) -> String {
     use std::fmt::Write;
 
     // SHA-256 constants
@@ -918,11 +932,11 @@ mod tests {
 
         // hostname_hash should be Some and be a valid SHA-256 hex string (64 chars)
         if let Some(hash) = &info.hostname_hash {
+            let hash_len = hash.len();
             assert_eq!(
-                hash.len(),
-                64,
+                hash_len, 64,
                 "hostname_hash should be 64 hex chars, got {}",
-                hash.len()
+                hash_len
             );
             assert!(
                 hash.chars().all(|c| c.is_ascii_hexdigit()),

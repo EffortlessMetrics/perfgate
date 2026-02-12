@@ -9,7 +9,7 @@
 //! - Then steps: exit code and output assertions
 
 use assert_cmd::Command;
-use cucumber::{given, then, when, World};
+use cucumber::{World, given, then, when};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -17,10 +17,10 @@ use tempfile::TempDir;
 
 // Re-export types we need for fixture creation
 use perfgate_types::{
-    BenchConfigFile, BenchMeta, CompareReceipt, CompareRef, ConfigFile, DefaultsConfig, Delta,
-    HostInfo, Metric, MetricStatus, PerfgateReport, RunMeta, RunReceipt, Sample, Stats, ToolInfo,
-    U64Summary, Verdict, VerdictCounts, VerdictStatus, COMPARE_SCHEMA_V1, REPORT_SCHEMA_V1,
-    RUN_SCHEMA_V1,
+    BenchConfigFile, BenchMeta, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile,
+    DefaultsConfig, Delta, HostInfo, Metric, MetricStatus, PerfgateReport, REPORT_SCHEMA_V1,
+    RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 
 /// World struct that holds state across BDD scenario steps.
@@ -127,6 +127,7 @@ impl PerfgateWorld {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: Some(1024),
                 stdout: None,
                 stderr: None,
@@ -137,6 +138,7 @@ impl PerfgateWorld {
                     min: wall_ms_median.saturating_sub(10),
                     max: wall_ms_median.saturating_add(10),
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1000,
@@ -1172,13 +1174,13 @@ async fn given_run_receipt_for_promote(world: &mut PerfgateWorld, wall_ms: u64) 
     let mut receipt = world.create_run_receipt(wall_ms);
 
     // Apply any custom fields
-    if let Some(ref run_id) = world.source_run_id {
+    if let Some(run_id) = &world.source_run_id {
         receipt.run.id = run_id.clone();
     }
-    if let Some(ref started_at) = world.source_started_at {
+    if let Some(started_at) = &world.source_started_at {
         receipt.run.started_at = started_at.clone();
     }
-    if let Some(ref bench_name) = world.source_bench_name {
+    if let Some(bench_name) = &world.source_bench_name {
         receipt.bench.name = bench_name.clone();
     }
 
@@ -1194,7 +1196,7 @@ async fn given_run_receipt_has_run_id(world: &mut PerfgateWorld, run_id: String)
     world.source_run_id = Some(run_id.clone());
 
     // If source already exists, update it
-    if let Some(ref source_path) = world.source_run_path {
+    if let Some(source_path) = &world.source_run_path {
         let content = fs::read_to_string(source_path).expect("Failed to read source");
         let mut receipt: RunReceipt =
             serde_json::from_str(&content).expect("Failed to parse source");
@@ -1210,7 +1212,7 @@ async fn given_run_receipt_has_started_at(world: &mut PerfgateWorld, started_at:
     world.source_started_at = Some(started_at.clone());
 
     // If source already exists, update it
-    if let Some(ref source_path) = world.source_run_path {
+    if let Some(source_path) = &world.source_run_path {
         let content = fs::read_to_string(source_path).expect("Failed to read source");
         let mut receipt: RunReceipt =
             serde_json::from_str(&content).expect("Failed to parse source");
@@ -1226,7 +1228,7 @@ async fn given_run_receipt_has_bench_name(world: &mut PerfgateWorld, bench_name:
     world.source_bench_name = Some(bench_name.clone());
 
     // If source already exists, update it
-    if let Some(ref source_path) = world.source_run_path {
+    if let Some(source_path) = &world.source_run_path {
         let content = fs::read_to_string(source_path).expect("Failed to read source");
         let mut receipt: RunReceipt =
             serde_json::from_str(&content).expect("Failed to parse source");

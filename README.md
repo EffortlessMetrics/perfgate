@@ -34,6 +34,7 @@ cargo run -p perfgate -- --help
 | `promote` | Promote a run receipt to become the new baseline |
 | `export` | Export data to CSV/JSONL for trend analysis |
 | `check` | Config-driven one-command workflow |
+| `paired` | Paired benchmarking with interleaved baseline/current runs |
 
 ## Exit Codes
 
@@ -145,6 +146,43 @@ Run the entire workflow from a single config file:
 
 ```bash
 perfgate check --config perfgate.toml --bench pst_extract
+
+# Run all benchmarks in the config
+perfgate check --config perfgate.toml --all
+```
+
+#### Cockpit Mode
+
+The `check` command supports a `--mode cockpit` flag for integration with monitoring dashboards. In cockpit mode, the output follows the `sensor.report.v1` schema and includes additional artifacts:
+
+```bash
+perfgate check --config perfgate.toml --bench pst_extract --mode cockpit
+```
+
+Cockpit mode artifact layout (single bench):
+
+```
+artifacts/perfgate/
+├── report.json                         # sensor.report.v1 envelope
+├── comment.md                          # PR comment markdown
+└── extras/
+    ├── perfgate.run.v1.json            # perfgate.run.v1
+    ├── perfgate.compare.v1.json        # perfgate.compare.v1 (if baseline)
+    └── perfgate.report.v1.json         # perfgate.report.v1
+```
+
+Multi-bench cockpit mode (`--all`):
+
+```
+artifacts/perfgate/
+├── report.json                         # aggregated sensor.report.v1
+├── comment.md
+└── extras/
+    ├── bench-a/perfgate.run.v1.json
+    ├── bench-a/perfgate.compare.v1.json
+    ├── bench-a/perfgate.report.v1.json
+    ├── bench-b/perfgate.run.v1.json
+    └── ...
 ```
 
 Example `perfgate.toml`:
@@ -162,6 +200,39 @@ name = "pst_extract"
 command = ["sh", "-c", "sleep 0.02"]
 work = 1000
 ```
+
+#### Config Presets
+
+Bundled presets are available in `presets/` for common scenarios:
+
+| Preset | Repeat | Warmup | Threshold | Use case |
+|--------|--------|--------|-----------|----------|
+| `standard.toml` | 5 | 1 | 20% | Regular PR checks |
+| `release.toml` | 10 | 2 | 10% | Release branches, nightly checks |
+| `tier1-fast.toml` | 3 | 1 | 30% | Draft PRs, fast feedback |
+
+### 9) Paired benchmarking mode
+
+Paired benchmarking runs baseline and current commands in interleaved fashion to reduce noise from environmental variations. This is especially useful in noisy CI environments where system load can fluctuate.
+
+```bash
+perfgate paired \
+  --baseline-cmd "sleep 0.01" \
+  --current-cmd "sleep 0.02" \
+  --repeat 10 \
+  --threshold 0.20 \
+  --out artifacts/perfgate/compare.json
+```
+
+How it works:
+1. Runs baseline and current commands alternately (B, C, B, C, ...)
+2. Each pair is measured back-to-back to minimize environmental variance
+3. Results are compared using the same statistical methods as `compare`
+
+When to use paired mode:
+- Noisy CI runners with variable system load
+- When you need high-confidence measurements
+- Comparing two different implementations directly
 
 ## Baseline Workflow
 
@@ -198,6 +269,7 @@ Receipts are versioned:
 - `perfgate.run.v1` - run measurement receipt
 - `perfgate.compare.v1` - comparison result
 - `perfgate.report.v1` - cockpit-compatible report
+- `sensor.report.v1` - sensor integration envelope (cockpit mode)
 
 Generate JSON Schemas:
 
@@ -206,6 +278,14 @@ cargo run -p xtask -- schema
 ```
 
 Schemas are written to `schemas/`.
+
+Validate fixtures against the vendored schema:
+
+```bash
+cargo run -p xtask -- conform
+cargo run -p xtask -- conform --file path/to/report.json
+cargo run -p xtask -- conform --fixtures path/to/dir
+```
 
 ## Design
 
@@ -222,6 +302,36 @@ Workspace structure:
 - Uses wall-clock time (median) for gating.
 - Supports optional `work_units` to compute `throughput_per_s`.
 - On Unix, attempts to collect `ru_maxrss` via `wait4()`.
+
+### CPU Time Tracking (Unix only)
+
+On Unix platforms, perfgate collects CPU time metrics via `rusage`:
+- `cpu_ms`: Combined user and system CPU time
+
+These metrics are included in the run receipt when available and can help identify whether performance changes are due to CPU-bound work or I/O wait.
+
+### Host Mismatch Detection
+
+When comparing runs from different hosts, perfgate can detect and warn about potential inconsistencies. Use the `--host-mismatch` flag to control behavior:
+
+```bash
+perfgate compare \
+  --baseline baselines/bench.json \
+  --current run.json \
+  --host-mismatch warn \
+  --out compare.json
+```
+
+Options for `--host-mismatch`:
+- `ignore`: Silently allow comparisons across different hosts (default)
+- `warn`: Emit a warning but continue with comparison
+- `fail`: Treat host mismatch as an error and exit with code 1
+
+This is useful when baselines are generated on dedicated benchmark machines but CI runs on different hardware.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the project vision and planned features.
 
 ## Testing
 

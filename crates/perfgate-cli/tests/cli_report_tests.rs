@@ -2,11 +2,16 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::env;
 use std::fs;
 use tempfile::tempdir;
 
 fn perfgate_cmd() -> Command {
-    Command::new(assert_cmd::cargo::cargo_bin!("perfgate"))
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
+        cmd.env("LLVM_PROFILE_FILE", profile);
+    }
+    cmd
 }
 
 /// Creates a minimal compare receipt JSON for testing.
@@ -180,6 +185,29 @@ fn test_report_with_markdown_output() {
     let md_content = fs::read_to_string(&md_path).unwrap();
     assert!(md_content.contains("perfgate"));
     assert!(md_content.contains("fail"));
+}
+
+#[test]
+fn test_report_with_markdown_nested_output() {
+    let dir = tempdir().unwrap();
+    let compare_path = dir.path().join("compare.json");
+    let report_path = dir.path().join("report.json");
+    let md_path = dir.path().join("nested/dir/comment.md");
+
+    fs::write(&compare_path, create_compare_receipt("fail", "fail")).unwrap();
+
+    perfgate_cmd()
+        .arg("report")
+        .arg("--compare")
+        .arg(&compare_path)
+        .arg("--out")
+        .arg(&report_path)
+        .arg("--md")
+        .arg(&md_path)
+        .assert()
+        .success();
+
+    assert!(md_path.exists(), "nested markdown path should exist");
 }
 
 #[test]

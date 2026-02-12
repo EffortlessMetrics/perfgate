@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use schemars::schema_for;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Repo automation for perfgate")]
@@ -57,8 +57,22 @@ enum Command {
         out_dir: PathBuf,
     },
 
-    /// Run the "usual" repo checks (fmt, clippy, test, schema).
+    /// Run the "usual" repo checks (fmt, clippy, test, schema, conform).
     Ci,
+
+    /// Validate JSON fixtures against the vendored sensor.report.v1 schema.
+    Conform {
+        /// Directory of fixtures to validate (default: golden fixtures)
+        #[arg(long)]
+        fixtures: Option<PathBuf>,
+
+        /// Validate a single file
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
+
+    /// Copy golden fixtures to contracts/fixtures/ (golden is source of truth).
+    SyncFixtures,
 
     /// Run mutation testing via cargo-mutants (must be installed).
     Mutants {
@@ -82,6 +96,8 @@ fn main() -> anyhow::Result<()> {
     match cli.cmd {
         Command::Schema { out_dir } => cmd_schema(&out_dir),
         Command::Ci => cmd_ci(),
+        Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
+        Command::SyncFixtures => cmd_sync_fixtures(),
         Command::Mutants {
             crate_name,
             summary,
@@ -91,6 +107,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn cmd_ci() -> anyhow::Result<()> {
+    std::env::set_var("CARGO_TARGET_DIR", "target/ci");
     run("cargo", ["fmt", "--all", "--", "--check"])?;
     run(
         "cargo",
@@ -105,6 +122,217 @@ fn cmd_ci() -> anyhow::Result<()> {
     )?;
     run("cargo", ["test", "--all"])?;
     run("cargo", ["run", "-p", "xtask", "--", "schema"])?;
+    run("cargo", ["run", "-p", "xtask", "--", "conform"])?;
+    Ok(())
+}
+
+fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> anyhow::Result<()> {
+    let is_default_run = fixtures_dir.is_none() && single_file.is_none();
+
+    // Load vendored schema
+    let schema_path = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
+    let schema_content = fs::read_to_string(&schema_path)
+        .with_context(|| format!("read {}", schema_path.display()))?;
+    let schema_value: serde_json::Value =
+        serde_json::from_str(&schema_content).context("parse vendored schema")?;
+    let validator = jsonschema::validator_for(&schema_value)
+        .map_err(|e| anyhow::anyhow!("compile schema: {}", e))?;
+
+    let mut files_to_validate: Vec<PathBuf> = Vec::new();
+
+    if let Some(path) = single_file {
+        files_to_validate.push(path);
+    } else {
+        // Default: golden fixtures + contracts/fixtures
+        let default_dirs = [
+            fixtures_dir
+                .unwrap_or_else(|| PathBuf::from("crates/perfgate-cli/tests/fixtures/golden")),
+            PathBuf::from("contracts/fixtures"),
+        ];
+
+        for dir in &default_dirs {
+            if dir.is_dir() {
+                for entry in
+                    fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))?
+                {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "json").unwrap_or(false)
+                        && path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|n| n.starts_with("sensor_report_"))
+                            .unwrap_or(false)
+                    {
+                        files_to_validate.push(path);
+                    }
+                }
+            }
+        }
+    }
+
+    if files_to_validate.is_empty() {
+        anyhow::bail!("no fixture files found to validate");
+    }
+
+    files_to_validate.sort();
+
+    let mut errors = 0u32;
+    for path in &files_to_validate {
+        let content =
+            fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+        let instance: serde_json::Value =
+            serde_json::from_str(&content).with_context(|| format!("parse {}", path.display()))?;
+
+        let validation_errors: Vec<_> = validator.iter_errors(&instance).collect();
+        if validation_errors.is_empty() {
+            println!("  OK  {}", path.display());
+        } else {
+            errors += 1;
+            println!("  FAIL  {}", path.display());
+            for err in &validation_errors {
+                println!("        - {}", err);
+            }
+        }
+    }
+
+    println!(
+        "\nValidated {} files, {} errors",
+        files_to_validate.len(),
+        errors
+    );
+
+    if errors > 0 {
+        anyhow::bail!("{} fixture(s) failed schema validation", errors);
+    }
+
+    // When running default conform (no --file / --fixtures), also check fixture mirror
+    if is_default_run {
+        check_fixture_mirror()?;
+    }
+
+    Ok(())
+}
+
+fn cmd_sync_fixtures() -> anyhow::Result<()> {
+    let golden_dir = PathBuf::from("crates/perfgate-cli/tests/fixtures/golden");
+    let contracts_dir = PathBuf::from("contracts/fixtures");
+
+    sync_fixtures(&golden_dir, &contracts_dir)?;
+    Ok(())
+}
+
+fn sync_fixtures(golden_dir: &Path, contracts_dir: &Path) -> anyhow::Result<u32> {
+    fs::create_dir_all(contracts_dir)
+        .with_context(|| format!("create dir {}", contracts_dir.display()))?;
+
+    let mut count = 0u32;
+    for entry in
+        fs::read_dir(golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("sensor_report_"))
+                .unwrap_or(false)
+        {
+            let dest = contracts_dir.join(path.file_name().unwrap());
+            fs::copy(&path, &dest)
+                .with_context(|| format!("copy {} -> {}", path.display(), dest.display()))?;
+            println!("  synced  {}", dest.display());
+            count += 1;
+        }
+    }
+
+    println!("\nSynced {} fixtures from golden -> contracts", count);
+    Ok(count)
+}
+
+/// Check that golden fixtures and contract fixtures are byte-for-byte identical.
+fn check_fixture_mirror() -> anyhow::Result<()> {
+    let golden_dir = PathBuf::from("crates/perfgate-cli/tests/fixtures/golden");
+    let contracts_dir = PathBuf::from("contracts/fixtures");
+    check_fixture_mirror_at(&golden_dir, &contracts_dir)
+}
+
+fn check_fixture_mirror_at(golden_dir: &Path, contracts_dir: &Path) -> anyhow::Result<()> {
+    if !contracts_dir.is_dir() {
+        anyhow::bail!(
+            "{} does not exist. Run: cargo run -p xtask -- sync-fixtures",
+            contracts_dir.display()
+        );
+    }
+
+    let mut drift = 0u32;
+    for entry in
+        fs::read_dir(golden_dir).with_context(|| format!("read dir {}", golden_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("sensor_report_"))
+                .unwrap_or(false)
+        {
+            let contract_path = contracts_dir.join(path.file_name().unwrap());
+            if !contract_path.exists() {
+                println!(
+                    "  DRIFT  {} missing in contracts/fixtures/",
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                drift += 1;
+                continue;
+            }
+
+            let golden_bytes = fs::read(&path)?;
+            let contract_bytes = fs::read(&contract_path)?;
+            if golden_bytes != contract_bytes {
+                println!(
+                    "  DRIFT  {} differs between golden and contracts",
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                drift += 1;
+            }
+        }
+    }
+
+    // Check for extra files in contracts/fixtures/ (contract -> golden)
+    for entry in fs::read_dir(contracts_dir)
+        .with_context(|| format!("read dir {}", contracts_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("sensor_report_"))
+                .unwrap_or(false)
+        {
+            let golden_path = golden_dir.join(path.file_name().unwrap());
+            if !golden_path.exists() {
+                println!(
+                    "  DRIFT  {} unexpected in contracts/fixtures/ (not in golden)",
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                drift += 1;
+            }
+        }
+    }
+
+    if drift > 0 {
+        anyhow::bail!(
+            "{} fixture(s) drifted. Run: cargo run -p xtask -- sync-fixtures",
+            drift
+        );
+    }
+
+    println!("  OK  golden and contracts fixtures are in sync");
     Ok(())
 }
 
@@ -114,7 +342,8 @@ fn cmd_mutants(
     args: Vec<String>,
 ) -> anyhow::Result<()> {
     // Typical usage: `cargo install cargo-mutants` then `cargo run -p xtask -- mutants`.
-    let mut cmd = std::process::Command::new("cargo");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let mut cmd = std::process::Command::new(cargo);
     cmd.arg("mutants");
 
     // Add --package flag if a specific crate is requested
@@ -315,6 +544,17 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
         schema_for!(perfgate_types::PerfgateReport),
     )?;
 
+    // Sensor report schema is vendored from contracts/, not generated.
+    let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
+    let dest = out_dir.join("sensor.report.v1.schema.json");
+    fs::copy(&vendored_schema, &dest).with_context(|| {
+        format!(
+            "copy vendored schema {} -> {}",
+            vendored_schema.display(),
+            dest.display()
+        )
+    })?;
+
     Ok(())
 }
 
@@ -327,4 +567,202 @@ fn write_schema<T: serde::Serialize>(
     let json = serde_json::to_vec_pretty(&schema)?;
     fs::write(&path, json).with_context(|| format!("write {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use xtask::*;
+
+    #[test]
+    fn mutants_crate_mapping_and_targets() {
+        assert_eq!(MutantsCrate::Domain.as_package_name(), "perfgate-domain");
+        assert_eq!(MutantsCrate::Types.as_package_name(), "perfgate-types");
+        assert_eq!(MutantsCrate::App.as_package_name(), "perfgate-app");
+        assert_eq!(
+            MutantsCrate::Adapters.as_package_name(),
+            "perfgate-adapters"
+        );
+        assert_eq!(MutantsCrate::Cli.as_package_name(), "perfgate-cli");
+
+        assert_eq!(MutantsCrate::Domain.target_kill_rate(), 100);
+        assert_eq!(MutantsCrate::Types.target_kill_rate(), 95);
+        assert_eq!(MutantsCrate::App.target_kill_rate(), 90);
+        assert_eq!(MutantsCrate::Adapters.target_kill_rate(), 80);
+        assert_eq!(MutantsCrate::Cli.target_kill_rate(), 70);
+    }
+
+    #[test]
+    fn run_reports_failure_and_success() {
+        #[cfg(windows)]
+        {
+            assert!(run("cmd", ["/c", "exit", "1"]).is_err());
+            assert!(run("cmd", ["/c", "exit", "0"]).is_ok());
+        }
+
+        #[cfg(unix)]
+        {
+            assert!(run("sh", ["-c", "exit 1"]).is_err());
+            assert!(run("sh", ["-c", "exit 0"]).is_ok());
+        }
+    }
+
+    #[test]
+    fn cmd_schema_writes_expected_files() {
+        let out_dir = unique_temp_dir("perfgate_schema");
+        with_repo_cwd(|| {
+            cmd_schema(&out_dir).expect("schema command");
+        });
+
+        let expected = [
+            "perfgate.run.v1.schema.json",
+            "perfgate.compare.v1.schema.json",
+            "perfgate.config.v1.schema.json",
+            "perfgate.report.v1.schema.json",
+            "sensor.report.v1.schema.json",
+        ];
+
+        for name in expected {
+            let path = out_dir.join(name);
+            assert!(path.exists(), "expected schema file {}", name);
+            let bytes = fs::read(&path).expect("read schema");
+            assert!(
+                !bytes.is_empty(),
+                "schema file {} should not be empty",
+                name
+            );
+        }
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn cmd_conform_accepts_valid_single_file() {
+        with_repo_cwd(|| {
+            let path = PathBuf::from("contracts/fixtures/sensor_report_pass.json");
+            cmd_conform(None, Some(path)).expect("conform should succeed");
+        });
+    }
+
+    #[test]
+    fn cmd_conform_rejects_invalid_file() {
+        let temp_dir = unique_temp_dir("perfgate_invalid_fixture");
+        let bad_path = temp_dir.join("bad.json");
+        fs::write(&bad_path, r#"{"schema":"sensor.report.v1"}"#).expect("write bad file");
+        with_repo_cwd(|| {
+            let result = cmd_conform(None, Some(bad_path.clone()));
+            assert!(result.is_err(), "expected schema validation to fail");
+        });
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn mutation_summary_no_results_is_ok() {
+        with_temp_cwd(|_dir| {
+            let result = generate_mutation_summary(None);
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn mutation_summary_parses_outcomes() {
+        with_temp_cwd(|dir| {
+            let outcomes_dir = dir.join("mutants.out");
+            fs::create_dir_all(&outcomes_dir).expect("create mutants.out");
+            fs::write(
+                outcomes_dir.join("outcomes.json"),
+                r#"[{"summary":"CaughtMutant"},{"summary":"MissedMutant"},{"summary":"Timeout"},{"summary":"Unviable"}]"#,
+            )
+            .expect("write outcomes");
+            fs::write(outcomes_dir.join("missed.txt"), "missed-1\nmissed-2\n")
+                .expect("write missed");
+
+            let result = generate_mutation_summary(Some(MutantsCrate::Domain));
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn sync_fixtures_copies_sensor_reports_only() {
+        let root = unique_temp_dir("perfgate_sync");
+        let golden = root.join("golden");
+        let contracts = root.join("contracts");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::create_dir_all(&contracts).expect("create contracts dir");
+
+        fs::write(golden.join("sensor_report_a.json"), "a").expect("write a");
+        fs::write(golden.join("sensor_report_b.json"), "b").expect("write b");
+        fs::write(golden.join("not_sensor.json"), "no").expect("write other");
+        fs::write(golden.join("sensor_report.txt"), "no").expect("write txt");
+
+        let count = sync_fixtures(&golden, &contracts).expect("sync fixtures");
+        assert_eq!(count, 2);
+        assert_eq!(
+            fs::read_to_string(contracts.join("sensor_report_a.json")).unwrap(),
+            "a"
+        );
+        assert_eq!(
+            fs::read_to_string(contracts.join("sensor_report_b.json")).unwrap(),
+            "b"
+        );
+        assert!(!contracts.join("not_sensor.json").exists());
+        assert!(!contracts.join("sensor_report.txt").exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn check_fixture_mirror_at_ok_when_matching() {
+        let root = unique_temp_dir("perfgate_mirror_ok");
+        let golden = root.join("golden");
+        let contracts = root.join("contracts");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::create_dir_all(&contracts).expect("create contracts dir");
+
+        fs::write(golden.join("sensor_report_ok.json"), "same").expect("write golden");
+        fs::write(contracts.join("sensor_report_ok.json"), "same").expect("write contracts");
+
+        check_fixture_mirror_at(&golden, &contracts).expect("mirror check ok");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn check_fixture_mirror_at_requires_contracts_dir() {
+        let root = unique_temp_dir("perfgate_mirror_missing");
+        let golden = root.join("golden");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::write(golden.join("sensor_report_ok.json"), "same").expect("write golden");
+
+        let missing_contracts = root.join("contracts_missing");
+        let err = check_fixture_mirror_at(&golden, &missing_contracts).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("does not exist"), "unexpected error: {}", msg);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn check_fixture_mirror_at_reports_missing_and_different() {
+        let root = unique_temp_dir("perfgate_mirror_drift");
+        let golden = root.join("golden");
+        let contracts = root.join("contracts");
+        fs::create_dir_all(&golden).expect("create golden dir");
+        fs::create_dir_all(&contracts).expect("create contracts dir");
+
+        fs::write(golden.join("sensor_report_missing.json"), "one").expect("write missing");
+        fs::write(golden.join("sensor_report_diff.json"), "golden").expect("write golden");
+        fs::write(contracts.join("sensor_report_diff.json"), "contracts").expect("write contracts");
+
+        let err = check_fixture_mirror_at(&golden, &contracts).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("fixture(s) drifted"),
+            "unexpected error: {}",
+            msg
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }

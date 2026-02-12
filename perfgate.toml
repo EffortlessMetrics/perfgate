@@ -1,0 +1,15 @@
+[defaults]
+repeat = 3
+warmup = 1
+threshold = 0.20
+warn_factor = 0.90
+baseline_dir = "baselines"
+
+[[bench]]
+name = "pst_extract"
+command = ["cmd", "/c", "echo pst_extract"]
+work = 1000
+
+[[bench]]
+name = "pst_load"
+command = ["cmd", "/c", "echo pst_load"]

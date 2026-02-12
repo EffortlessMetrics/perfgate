@@ -34,6 +34,15 @@ perfgate export --run run.json --format csv --out data.csv
 
 # Check against budget config
 perfgate check --config perfgate.toml --bench my-bench
+
+# Check in cockpit mode
+perfgate check --config perfgate.toml --bench my-bench --mode cockpit
+
+# Check all benchmarks
+perfgate check --config perfgate.toml --all
+
+# Paired benchmarking
+perfgate paired --baseline-cmd "sleep 0.01" --current-cmd "sleep 0.02" --repeat 10 --out compare.json
 ```
 
 ## Exit Codes

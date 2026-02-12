@@ -5,13 +5,14 @@ Platform adapters for perfgate: process runner, system metrics, and filesystem o
 This crate provides the infrastructure layer:
 
 - **Process runner** - Execute benchmarks and capture timing/metrics
-- **System metrics** - Collect `max_rss_kb` and other resource usage (Unix via `rusage`)
+- **System metrics** - Collect `max_rss_kb`, `cpu_ms` and other resource usage (Unix via `rusage`)
 - **Timeout support** - Process timeouts with polling (Unix only)
+- **Host probing** - Collect OS, arch, CPU count, memory, and hostname hash
 
 ## Platform Support
 
-- **Unix** - Full support including memory metrics and timeouts
-- **Windows** - Basic support (timeouts return `AdapterError::TimeoutUnsupported`)
+- **Unix** - Full support including memory metrics, CPU time, and timeouts
+- **Windows** - Basic support (no CPU time, timeouts return `AdapterError::TimeoutUnsupported`)
 
 ## Part of perfgate
 

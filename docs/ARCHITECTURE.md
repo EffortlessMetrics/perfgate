@@ -104,21 +104,25 @@ perfgate-cli (outermost)
 - MUST be I/O-free: statistics and policy only
 - MUST implement median computation, delta calculation, and verdict determination
 - MUST handle overflow-safe arithmetic for u64 statistics
+- MUST implement paired comparison logic for interleaved measurements
+- MUST implement host mismatch detection logic
 - SHALL NOT depend on external services or filesystem
 
 #### perfgate-adapters
 
-- MUST implement platform-specific code (Unix `wait4()` for `max_rss_kb`)
+- MUST implement platform-specific code (Unix `wait4()` for `max_rss_kb` and CPU time)
 - MUST define trait abstractions for process execution (`ProcessRunner`)
 - MUST define trait abstractions for host probing (`HostProbe`)
 - MUST define trait abstractions for time (`Clock`)
 - SHOULD provide best-effort system metrics
+- SHOULD collect CPU time metrics (`cpu_ms`) on Unix via `rusage`
 
 #### perfgate-app
 
 - MUST orchestrate adapters and domain logic
-- MUST implement use-cases: run, compare, check, report, promote, export
+- MUST implement use-cases: run, compare, check, report, promote, export, paired
 - MUST generate markdown and GitHub annotation output
+- MUST build `sensor.report.v1` envelopes for cockpit mode
 - SHALL NOT parse CLI arguments or perform direct filesystem I/O
 
 #### perfgate-cli
@@ -209,6 +213,7 @@ Receipt types are versioned with string identifiers:
 - `perfgate.compare.v1` - Comparison result
 - `perfgate.report.v1` - Cockpit-compatible report envelope
 - `perfgate.config.v1` - Configuration file schema
+- `sensor.report.v1` - Sensor integration envelope (cockpit mode, vendored at `contracts/schemas/`)
 
 ### Versioning Rules
 

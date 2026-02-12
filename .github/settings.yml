@@ -1,0 +1,12 @@
+# .github/settings.yml
+# Managed by the "Settings" GitHub App: https://probot.github.io/apps/settings/
+
+repository:
+  # Short, specific, human-readable. One sentence.
+  description: "Perf budgets and baseline diffs for CI / PR bots"
+
+  # Canonical project URL
+  homepage: "https://github.com/EffortlessMetrics/perfgate"
+
+  # Comma-separated list of topics (3-8 tags, lowercase, consistent taxonomy)
+  topics: rust, performance, benchmarking, ci, metrics, budgets, receipts, devex

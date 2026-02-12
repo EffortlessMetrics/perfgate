@@ -4,10 +4,12 @@ Pure domain logic for perfgate: statistics, budgets, and comparisons.
 
 This crate contains the core business logic with **no I/O dependencies**:
 
-- Statistical calculations (mean, standard deviation, percentiles)
+- Statistical calculations (median, min, max for u64 and f64)
 - Budget policy evaluation (pass/warn/fail thresholds)
 - Baseline comparison logic
 - Regression detection algorithms
+- Paired comparison logic for interleaved measurements
+- Host mismatch detection
 
 ## Design Philosophy
 

@@ -1,0 +1,7 @@
+# Release preset: high accuracy with tight threshold.
+# Suitable for release branches and nightly checks.
+
+[defaults]
+repeat = 10
+warmup = 2
+threshold = 0.10

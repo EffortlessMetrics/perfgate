@@ -1,0 +1,83 @@
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.2.0"
+  },
+  "run": {
+    "started_at": "2024-01-01T00:00:00Z",
+    "ended_at": "2024-01-01T00:02:00Z",
+    "duration_ms": 120000,
+    "capabilities": {
+      "baseline": {
+        "status": "unavailable",
+        "reason": "no_baseline"
+      },
+      "engine": {
+        "status": "available"
+      }
+    }
+  },
+  "verdict": {
+    "status": "warn",
+    "counts": {
+      "info": 0,
+      "warn": 2,
+      "error": 0
+    },
+    "reasons": ["no_baseline"]
+  },
+  "findings": [
+    {
+      "check_id": "perf.baseline",
+      "code": "missing",
+      "severity": "warn",
+      "message": "[bench-a] No baseline found for bench 'bench-a'; comparison skipped",
+      "fingerprint": "e664a74b158b43b695e4fe87d7e682a3107997e05f8a190e62bf850c16f655b1",
+      "data": {
+        "bench_name": "bench-a"
+      }
+    },
+    {
+      "check_id": "perf.baseline",
+      "code": "missing",
+      "severity": "warn",
+      "message": "[bench-b] No baseline found for bench 'bench-b'; comparison skipped",
+      "fingerprint": "fb870f99a59d08c8266099e623b4e61c1c952d95bd5db49c5cb1080b648d3252",
+      "data": {
+        "bench_name": "bench-b"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "extras/bench-a/perfgate.report.v1.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "extras/bench-b/perfgate.report.v1.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "comment.md",
+      "type": "markdown"
+    },
+    {
+      "path": "extras/bench-a/perfgate.run.v1.json",
+      "type": "run_receipt"
+    },
+    {
+      "path": "extras/bench-b/perfgate.run.v1.json",
+      "type": "run_receipt"
+    }
+  ],
+  "data": {
+    "summary": {
+      "pass_count": 0,
+      "warn_count": 2,
+      "fail_count": 0,
+      "total_count": 2,
+      "bench_count": 2
+    }
+  }
+}

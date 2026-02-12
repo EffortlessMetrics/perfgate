@@ -9,17 +9,17 @@
 //! 6. Generates all artifacts (run.json, compare.json, report.json, comment.md)
 
 use crate::{
-    format_metric, format_pct, Clock, CompareRequest, CompareUseCase, RunBenchRequest,
-    RunBenchUseCase,
+    Clock, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase, format_metric,
+    format_pct,
 };
-use anyhow::{bail, Context};
+use anyhow::Context;
 use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
-    BenchConfigFile, Budget, CompareReceipt, CompareRef, ConfigFile, FindingData, Metric,
-    MetricStatus, PerfgateReport, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
-    Verdict, VerdictCounts, VerdictStatus, CHECK_ID_BASELINE, CHECK_ID_BUDGET,
-    FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
-    REPORT_SCHEMA_V1, VERDICT_REASON_NO_BASELINE,
+    BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CompareReceipt, CompareRef,
+    ConfigFile, ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN, FindingData, HostMismatchPolicy, Metric, MetricStatus, PerfgateError,
+    PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
+    VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -59,6 +59,9 @@ pub struct CheckRequest {
 
     /// If true, do not treat nonzero exit codes as a tool error.
     pub allow_nonzero: bool,
+
+    /// Policy for handling host mismatches when comparing against baseline.
+    pub host_mismatch_policy: HostMismatchPolicy,
 }
 
 /// Outcome of the check use case.
@@ -124,7 +127,12 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             .benches
             .iter()
             .find(|b| b.name == req.bench_name)
-            .with_context(|| format!("bench '{}' not found in config", req.bench_name))?;
+            .ok_or_else(|| {
+                ConfigValidationError::BenchName(format!(
+                    "bench '{}' not found in config",
+                    req.bench_name
+                ))
+            })?;
 
         // 2. Build run request from config
         let run_request = self.build_run_request(bench_config, &req)?;
@@ -162,23 +170,32 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                     run_id: Some(run_receipt.run.id.clone()),
                 },
                 tool: req.tool.clone(),
+                host_mismatch_policy: req.host_mismatch_policy,
             };
 
-            let compare = CompareUseCase::execute(compare_req)?;
+            let compare_result = CompareUseCase::execute(compare_req)?;
+
+            // Add host mismatch warnings if detected (for Warn policy)
+            if let Some(mismatch) = &compare_result.host_mismatch {
+                for reason in &mismatch.reasons {
+                    warnings.push(format!("host mismatch: {}", reason));
+                }
+            }
 
             // Build report
-            let report = build_report(&compare);
+            let report = build_report(&compare_result.receipt);
 
             let compare_path = req.out_dir.join("compare.json");
 
-            (Some(compare), Some(compare_path), report)
+            (Some(compare_result.receipt), Some(compare_path), report)
         } else {
             // No baseline
             if req.require_baseline {
-                bail!(
+                return Err(PerfgateError::BaselineResolve(format!(
                     "baseline required but not found for bench '{}'",
                     req.bench_name
-                );
+                ))
+                .into());
             }
             warnings.push(format!(
                 "no baseline found for bench '{}', skipping comparison",
@@ -192,7 +209,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         };
 
         // 6. Generate markdown
-        let markdown = if let Some(ref compare) = compare_receipt {
+        let markdown = if let Some(compare) = &compare_receipt {
             crate::render_markdown(compare)
         } else {
             render_no_baseline_markdown(&run_receipt, &warnings)
@@ -201,7 +218,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let markdown_path = req.out_dir.join("comment.md");
 
         // 7. Determine exit code
-        let (failed, exit_code) = if let Some(ref compare) = compare_receipt {
+        let (failed, exit_code) = if let Some(compare) = &compare_receipt {
             match compare.verdict.status {
                 VerdictStatus::Pass => (false, 0),
                 VerdictStatus::Warn => {
@@ -458,11 +475,11 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
         run.stats.wall_ms.median
     ));
 
-    if let Some(ref rss) = run.stats.max_rss_kb {
+    if let Some(rss) = &run.stats.max_rss_kb {
         out.push_str(&format!("| `max_rss_kb` | {} KB |\n", rss.median));
     }
 
-    if let Some(ref throughput) = run.stats.throughput_per_s {
+    if let Some(throughput) = &run.stats.throughput_per_s {
         out.push_str(&format!(
             "| `throughput_per_s` | {:.3} /s |\n",
             throughput.median
@@ -482,10 +499,14 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use perfgate_adapters::{AdapterError, CommandSpec, HostProbeOptions, RunResult};
     use perfgate_types::{
-        BenchMeta, CompareReceipt, Delta, Direction, HostInfo, RunMeta, Sample, Stats, U64Summary,
-        Verdict, VerdictCounts, COMPARE_SCHEMA_V1,
+        BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1, CompareReceipt,
+        DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample, Stats, U64Summary,
+        Verdict, VerdictCounts,
     };
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     fn make_run_receipt(wall_ms_median: u64) -> RunReceipt {
         RunReceipt {
@@ -520,6 +541,7 @@ mod tests {
                 exit_code: 0,
                 warmup: false,
                 timed_out: false,
+                cpu_ms: None,
                 max_rss_kb: Some(1024),
                 stdout: None,
                 stderr: None,
@@ -530,6 +552,7 @@ mod tests {
                     min: wall_ms_median.saturating_sub(10),
                     max: wall_ms_median.saturating_add(10),
                 },
+                cpu_ms: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1000,
@@ -537,6 +560,142 @@ mod tests {
                 }),
                 throughput_per_s: None,
             },
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestRunner {
+        runs: Arc<Mutex<Vec<RunResult>>>,
+    }
+
+    impl TestRunner {
+        fn new(runs: Vec<RunResult>) -> Self {
+            Self {
+                runs: Arc::new(Mutex::new(runs)),
+            }
+        }
+    }
+
+    impl ProcessRunner for TestRunner {
+        fn run(&self, _spec: &CommandSpec) -> Result<RunResult, AdapterError> {
+            let mut runs = self.runs.lock().expect("lock runs");
+            if runs.is_empty() {
+                return Err(AdapterError::Other(anyhow::anyhow!("no more queued runs")));
+            }
+            Ok(runs.remove(0))
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestHostProbe {
+        host: HostInfo,
+    }
+
+    impl TestHostProbe {
+        fn new(host: HostInfo) -> Self {
+            Self { host }
+        }
+    }
+
+    impl HostProbe for TestHostProbe {
+        fn probe(&self, _options: &HostProbeOptions) -> HostInfo {
+            self.host.clone()
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestClock {
+        now: String,
+    }
+
+    impl TestClock {
+        fn new(now: &str) -> Self {
+            Self {
+                now: now.to_string(),
+            }
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now_rfc3339(&self) -> String {
+            self.now.clone()
+        }
+    }
+
+    fn run_result(wall_ms: u64, exit_code: i32, timed_out: bool) -> RunResult {
+        RunResult {
+            wall_ms,
+            exit_code,
+            timed_out,
+            cpu_ms: None,
+            max_rss_kb: None,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }
+    }
+
+    fn make_baseline_receipt(wall_ms: u64, host: HostInfo, max_rss_kb: Option<u64>) -> RunReceipt {
+        RunReceipt {
+            schema: perfgate_types::RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            run: RunMeta {
+                id: "baseline-id".to_string(),
+                started_at: "2024-01-01T00:00:00Z".to_string(),
+                ended_at: "2024-01-01T00:00:01Z".to_string(),
+                host,
+            },
+            bench: BenchMeta {
+                name: "bench".to_string(),
+                cwd: None,
+                command: vec!["echo".to_string(), "hello".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples: Vec::new(),
+            stats: Stats {
+                wall_ms: U64Summary {
+                    median: wall_ms,
+                    min: wall_ms,
+                    max: wall_ms,
+                },
+                cpu_ms: None,
+                max_rss_kb: max_rss_kb.map(|v| U64Summary {
+                    median: v,
+                    min: v,
+                    max: v,
+                }),
+                throughput_per_s: None,
+            },
+        }
+    }
+
+    fn make_check_request(
+        config: ConfigFile,
+        baseline: Option<RunReceipt>,
+        host_mismatch_policy: HostMismatchPolicy,
+        fail_on_warn: bool,
+    ) -> CheckRequest {
+        CheckRequest {
+            config,
+            bench_name: "bench".to_string(),
+            out_dir: PathBuf::from("out"),
+            baseline,
+            baseline_path: None,
+            require_baseline: false,
+            fail_on_warn,
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            env: vec![],
+            output_cap_bytes: 1024,
+            allow_nonzero: false,
+            host_mismatch_policy,
         }
     }
 
@@ -660,5 +819,363 @@ mod tests {
 
         // Verify no compare receipt (no synthetic comparison)
         assert!(report.compare.is_none());
+    }
+
+    #[test]
+    fn build_run_request_resolves_defaults_and_timeout() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: Some("some/dir".to_string()),
+            work: Some(42),
+            timeout: Some("2s".to_string()),
+            command: vec!["echo".to_string(), "ok".to_string()],
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        };
+
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                repeat: Some(7),
+                warmup: Some(2),
+                threshold: None,
+                warn_factor: None,
+                out_dir: None,
+                baseline_dir: None,
+            },
+            benches: vec![bench.clone()],
+        };
+
+        let req = CheckRequest {
+            config: config.clone(),
+            bench_name: "bench".to_string(),
+            out_dir: PathBuf::from("out"),
+            baseline: None,
+            baseline_path: None,
+            require_baseline: false,
+            fail_on_warn: false,
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            env: vec![("K".to_string(), "V".to_string())],
+            output_cap_bytes: 512,
+            allow_nonzero: true,
+            host_mismatch_policy: HostMismatchPolicy::Warn,
+        };
+
+        let usecase = CheckUseCase::new(
+            TestRunner::new(Vec::new()),
+            TestHostProbe::new(HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            }),
+            TestClock::new("2024-01-01T00:00:00Z"),
+        );
+
+        let run_req = usecase
+            .build_run_request(&bench, &req)
+            .expect("build run request");
+        assert_eq!(run_req.repeat, 7);
+        assert_eq!(run_req.warmup, 2);
+        assert_eq!(run_req.work_units, Some(42));
+        assert_eq!(run_req.timeout, Some(Duration::from_secs(2)));
+        assert_eq!(run_req.output_cap_bytes, 512);
+        assert_eq!(run_req.env.len(), 1);
+    }
+
+    #[test]
+    fn build_run_request_rejects_invalid_timeout() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: Some("not-a-duration".to_string()),
+            command: vec!["echo".to_string()],
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        };
+        let config = ConfigFile::default();
+        let req = make_check_request(config, None, HostMismatchPolicy::Warn, false);
+
+        let usecase = CheckUseCase::new(
+            TestRunner::new(Vec::new()),
+            TestHostProbe::new(HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            }),
+            TestClock::new("2024-01-01T00:00:00Z"),
+        );
+
+        let err = usecase.build_run_request(&bench, &req).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid timeout"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn build_budgets_applies_overrides_and_defaults() {
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            Metric::WallMs,
+            BudgetOverride {
+                threshold: Some(0.3),
+                direction: Some(Direction::Higher),
+                warn_factor: Some(0.8),
+            },
+        );
+
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string()],
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: Some(overrides),
+        };
+
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                repeat: None,
+                warmup: None,
+                threshold: Some(0.2),
+                warn_factor: Some(0.5),
+                out_dir: None,
+                baseline_dir: None,
+            },
+            benches: vec![bench.clone()],
+        };
+
+        let baseline = make_baseline_receipt(
+            100,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            Some(1024),
+        );
+        let current = make_baseline_receipt(
+            110,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            Some(2048),
+        );
+
+        let usecase = CheckUseCase::new(
+            TestRunner::new(Vec::new()),
+            TestHostProbe::new(HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            }),
+            TestClock::new("2024-01-01T00:00:00Z"),
+        );
+
+        let budgets = usecase
+            .build_budgets(&bench, &config, &baseline, &current)
+            .expect("build budgets");
+
+        let wall = budgets.get(&Metric::WallMs).expect("wall budget");
+        assert!((wall.threshold - 0.3).abs() < f64::EPSILON);
+        assert!((wall.warn_threshold - 0.24).abs() < f64::EPSILON);
+        assert_eq!(wall.direction, Direction::Higher);
+
+        let max_rss = budgets.get(&Metric::MaxRssKb).expect("max_rss budget");
+        assert!((max_rss.threshold - 0.2).abs() < f64::EPSILON);
+        assert!((max_rss.warn_threshold - 0.1).abs() < f64::EPSILON);
+        assert_eq!(max_rss.direction, Direction::Lower);
+    }
+
+    #[test]
+    fn execute_no_baseline_builds_warn_report() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "ok".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![bench],
+        };
+
+        let runner = TestRunner::new(vec![run_result(100, 0, false)]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase
+            .execute(make_check_request(
+                config,
+                None,
+                HostMismatchPolicy::Warn,
+                false,
+            ))
+            .expect("check should succeed");
+
+        assert!(outcome.compare_receipt.is_none());
+        assert_eq!(outcome.report.verdict.status, VerdictStatus::Warn);
+        assert!(
+            outcome
+                .warnings
+                .iter()
+                .any(|w| w.contains("no baseline found")),
+            "expected no-baseline warning"
+        );
+        assert!(!outcome.failed);
+        assert_eq!(outcome.exit_code, 0);
+    }
+
+    #[test]
+    fn execute_with_baseline_emits_host_mismatch_warning() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "ok".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![bench],
+        };
+
+        let baseline = make_baseline_receipt(
+            100,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: Some(4),
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            None,
+        );
+
+        let runner = TestRunner::new(vec![run_result(100, 0, false)]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "windows".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: Some(4),
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase
+            .execute(make_check_request(
+                config,
+                Some(baseline),
+                HostMismatchPolicy::Warn,
+                false,
+            ))
+            .expect("check should succeed");
+
+        assert!(outcome.compare_receipt.is_some());
+        assert!(
+            outcome.warnings.iter().any(|w| w.contains("host mismatch")),
+            "expected host mismatch warning"
+        );
+    }
+
+    #[test]
+    fn execute_fail_on_warn_sets_exit_code_3() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "ok".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                repeat: None,
+                warmup: None,
+                threshold: Some(0.2),
+                warn_factor: Some(0.5),
+                out_dir: None,
+                baseline_dir: None,
+            },
+            benches: vec![bench],
+        };
+
+        let baseline = make_baseline_receipt(
+            100,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            None,
+        );
+
+        let runner = TestRunner::new(vec![run_result(115, 0, false)]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase
+            .execute(make_check_request(
+                config,
+                Some(baseline),
+                HostMismatchPolicy::Warn,
+                true,
+            ))
+            .expect("check should succeed");
+
+        assert!(outcome.failed);
+        assert_eq!(outcome.exit_code, 3);
     }
 }

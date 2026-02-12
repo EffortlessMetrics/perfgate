@@ -183,9 +183,10 @@
     "Metric": {
       "type": "string",
       "enum": [
-        "wall_ms",
+        "cpu_ms",
         "max_rss_kb",
-        "throughput_per_s"
+        "throughput_per_s",
+        "wall_ms"
       ]
     }
   }

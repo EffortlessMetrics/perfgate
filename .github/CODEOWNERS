@@ -1,0 +1,5 @@
+# .github/CODEOWNERS
+# Ownership rules for files in this repository
+
+# Protect repo settings file (requires owner review for metadata changes)
+/.github/settings.yml @EffortlessSteven

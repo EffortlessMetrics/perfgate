@@ -7,6 +7,13 @@
 //!
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
+mod paired;
+
+pub use paired::{
+    PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample,
+    PairedSampleHalf, PairedStats,
+};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,10 +26,238 @@ pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
 pub const CHECK_ID_BASELINE: &str = "perf.baseline";
+pub const CHECK_ID_HOST: &str = "perf.host";
+pub const CHECK_ID_TOOL_RUNTIME: &str = "tool.runtime";
 pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
 pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
+pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
+pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
+pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
+pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
+pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
+
+// Error classification stages.
+pub const STAGE_CONFIG_PARSE: &str = "config_parse";
+pub const STAGE_BASELINE_RESOLVE: &str = "baseline_resolve";
+pub const STAGE_RUN_COMMAND: &str = "run_command";
+pub const STAGE_WRITE_ARTIFACTS: &str = "write_artifacts";
+
+// Error kind constants.
+pub const ERROR_KIND_IO: &str = "io_error";
+pub const ERROR_KIND_PARSE: &str = "parse_error";
+pub const ERROR_KIND_EXEC: &str = "exec_error";
+
+// Baseline reason tokens.
+pub const BASELINE_REASON_NO_BASELINE: &str = "no_baseline";
+
+// Bench name validation.
+/// Maximum length for a bench name.
+pub const BENCH_NAME_MAX_LEN: usize = 64;
+
+/// Pattern for valid bench names: lowercase alphanumeric, dots, underscores, hyphens,
+/// with `/` as a path separator. No path traversal (`..`), empty segments, or uppercase.
+pub const BENCH_NAME_PATTERN: &str = r"^[a-z0-9_.\-]+(/[a-z0-9_.\-]+)*$";
+
+/// Validate a bench name. Returns Err with a descriptive message if invalid.
+///
+/// Rules:
+/// 1. Must not be empty
+/// 2. Must be at most 64 characters
+/// 3. Only lowercase `[a-z0-9_.\-]` per segment, `/` as separator
+/// 4. No empty segments, `.` segments, or `..` segments (path traversal)
+pub fn validate_bench_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("bench name must not be empty".to_string());
+    }
+    if name.len() > BENCH_NAME_MAX_LEN {
+        return Err(format!(
+            "bench name {:?} exceeds maximum length of {} characters",
+            name, BENCH_NAME_MAX_LEN
+        ));
+    }
+    if !name.chars().all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '/' || c == '-'
+    }) {
+        return Err(format!(
+            "bench name {:?} contains invalid characters; \
+             allowed: lowercase alphanumeric, dots, underscores, hyphens, slashes",
+            name
+        ));
+    }
+    for segment in name.split('/') {
+        if segment.is_empty() {
+            return Err(format!(
+                "bench name {:?} contains an empty path segment \
+                 (leading, trailing, or consecutive slashes are forbidden)",
+                name
+            ));
+        }
+        if segment == "." || segment == ".." {
+            return Err(format!(
+                "bench name {:?} contains a {:?} path segment (path traversal is forbidden)",
+                name, segment
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigValidationError {
+    #[error("bench name validation: {0}")]
+    BenchName(String),
+
+    #[error("config validation: {0}")]
+    ConfigFile(String),
+}
+
+/// Typed error for non-config failures, enabling structural classification
+/// in `classify_error()` without string heuristics.
+#[derive(Debug, thiserror::Error)]
+pub enum PerfgateError {
+    #[error("baseline resolve: {0}")]
+    BaselineResolve(String),
+
+    #[error("write artifacts: {0}")]
+    ArtifactWrite(String),
+
+    #[error("run command: {0}")]
+    RunCommand(String),
+}
+
+// Truncation signaling constants.
+pub const CHECK_ID_TOOL_TRUNCATION: &str = "tool.truncation";
+pub const FINDING_CODE_TRUNCATED: &str = "truncated";
+pub const MAX_FINDINGS_DEFAULT: usize = 100;
+
+// Sensor report schema for cockpit integration
+pub const SENSOR_REPORT_SCHEMA_V1: &str = "sensor.report.v1";
+
+// ----------------------------
+// Sensor report types (sensor.report.v1)
+// ----------------------------
+
+/// Capability status for "No Green By Omission" principle.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityStatus {
+    Available,
+    Unavailable,
+    Skipped,
+}
+
+/// A capability with its status and optional reason.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Capability {
+    pub status: CapabilityStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Capabilities available to the sensor.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorCapabilities {
+    pub baseline: Capability,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub engine: Option<Capability>,
+}
+
+/// Run metadata for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorRunMeta {
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    pub capabilities: SensorCapabilities,
+}
+
+/// Verdict status for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum SensorVerdictStatus {
+    Pass,
+    Warn,
+    Fail,
+    Skip,
+}
+
+/// Verdict counts for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorVerdictCounts {
+    pub info: u32,
+    pub warn: u32,
+    pub error: u32,
+}
+
+/// Verdict for the sensor report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorVerdict {
+    pub status: SensorVerdictStatus,
+    pub counts: SensorVerdictCounts,
+    pub reasons: Vec<String>,
+}
+
+/// Severity level for sensor findings (cockpit vocabulary).
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum SensorSeverity {
+    Info,
+    Warn,
+    Error,
+}
+
+/// A finding from the sensor.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SensorFinding {
+    pub check_id: String,
+    pub code: String,
+    pub severity: SensorSeverity,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+}
+
+/// An artifact produced by the sensor.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SensorArtifact {
+    pub path: String,
+    #[serde(rename = "type")]
+    pub artifact_type: String,
+}
+
+/// The sensor.report.v1 envelope for cockpit integration.
+///
+/// This wraps PerfgateReport in a cockpit-compatible format with:
+/// - Run metadata including capabilities
+/// - Verdict using cockpit vocabulary (error instead of fail)
+/// - Artifacts list
+/// - Native perfgate data
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SensorReport {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: SensorRunMeta,
+    pub verdict: SensorVerdict,
+    pub findings: Vec<SensorFinding>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub artifacts: Vec<SensorArtifact>,
+    pub data: serde_json::Value,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -52,6 +287,43 @@ pub struct HostInfo {
     /// When present, this is a SHA-256 hash of the actual hostname.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hostname_hash: Option<String>,
+}
+
+/// Policy for handling host mismatches when comparing receipts from different machines.
+///
+/// Host mismatches are detected when:
+/// - Different `os` or `arch`
+/// - Significant difference in `cpu_count` (> 2x)
+/// - Significant difference in `memory_bytes` (> 2x)
+/// - Different `hostname_hash` (if both present)
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum HostMismatchPolicy {
+    /// Warn about host mismatch but continue with comparison (default).
+    #[default]
+    Warn,
+    /// Treat host mismatch as an error (exit 1).
+    Error,
+    /// Ignore host mismatches completely (suppress warnings).
+    Ignore,
+}
+
+impl HostMismatchPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HostMismatchPolicy::Warn => "warn",
+            HostMismatchPolicy::Error => "error",
+            HostMismatchPolicy::Ignore => "ignore",
+        }
+    }
+}
+
+/// Details about a detected host mismatch between baseline and current runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostMismatchInfo {
+    /// Human-readable description of the mismatch.
+    pub reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -97,6 +369,10 @@ pub struct Sample {
     #[serde(default)]
     pub timed_out: bool,
 
+    /// CPU time (user + system) in milliseconds (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_ms: Option<u64>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rss_kb: Option<u64>,
 
@@ -130,6 +406,10 @@ pub struct F64Summary {
 pub struct Stats {
     pub wall_ms: U64Summary,
 
+    /// CPU time (user + system) summary in milliseconds (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_ms: Option<U64Summary>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rss_kb: Option<U64Summary>,
 
@@ -154,34 +434,38 @@ pub struct RunReceipt {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum Metric {
-    WallMs,
+    CpuMs,
     MaxRssKb,
     ThroughputPerS,
+    WallMs,
 }
 
 impl Metric {
     pub fn as_str(self) -> &'static str {
         match self {
-            Metric::WallMs => "wall_ms",
+            Metric::CpuMs => "cpu_ms",
             Metric::MaxRssKb => "max_rss_kb",
             Metric::ThroughputPerS => "throughput_per_s",
+            Metric::WallMs => "wall_ms",
         }
     }
 
     pub fn parse_key(key: &str) -> Option<Self> {
         match key {
-            "wall_ms" => Some(Metric::WallMs),
+            "cpu_ms" => Some(Metric::CpuMs),
             "max_rss_kb" => Some(Metric::MaxRssKb),
             "throughput_per_s" => Some(Metric::ThroughputPerS),
+            "wall_ms" => Some(Metric::WallMs),
             _ => None,
         }
     }
 
     pub fn default_direction(self) -> Direction {
         match self {
-            Metric::WallMs => Direction::Lower,
+            Metric::CpuMs => Direction::Lower,
             Metric::MaxRssKb => Direction::Lower,
             Metric::ThroughputPerS => Direction::Higher,
+            Metric::WallMs => Direction::Lower,
         }
     }
 
@@ -192,9 +476,10 @@ impl Metric {
 
     pub fn display_unit(self) -> &'static str {
         match self {
-            Metric::WallMs => "ms",
+            Metric::CpuMs => "ms",
             Metric::MaxRssKb => "KB",
             Metric::ThroughputPerS => "/s",
+            Metric::WallMs => "ms",
         }
     }
 }
@@ -425,6 +710,16 @@ pub struct ConfigFile {
     pub benches: Vec<BenchConfigFile>,
 }
 
+impl ConfigFile {
+    /// Validate all bench names in this config. Returns an error if any name is invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        for bench in &self.benches {
+            validate_bench_name(&bench.name)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct DefaultsConfig {
@@ -513,6 +808,42 @@ mod tests {
         assert!(json.contains("\"wall_ms\""));
     }
 
+    #[test]
+    fn metric_metadata_and_parsing_are_consistent() {
+        let cases = [
+            (Metric::WallMs, "wall_ms", Direction::Lower, "ms"),
+            (Metric::CpuMs, "cpu_ms", Direction::Lower, "ms"),
+            (Metric::MaxRssKb, "max_rss_kb", Direction::Lower, "KB"),
+            (
+                Metric::ThroughputPerS,
+                "throughput_per_s",
+                Direction::Higher,
+                "/s",
+            ),
+        ];
+
+        for (metric, key, direction, unit) in cases {
+            assert_eq!(metric.as_str(), key);
+            assert_eq!(Metric::parse_key(key), Some(metric));
+            assert_eq!(metric.default_direction(), direction);
+            assert_eq!(metric.display_unit(), unit);
+            assert!((metric.default_warn_factor() - 0.9).abs() < f64::EPSILON);
+        }
+
+        assert!(Metric::parse_key("unknown").is_none());
+    }
+
+    #[test]
+    fn status_and_policy_as_str_values() {
+        assert_eq!(MetricStatus::Pass.as_str(), "pass");
+        assert_eq!(MetricStatus::Warn.as_str(), "warn");
+        assert_eq!(MetricStatus::Fail.as_str(), "fail");
+
+        assert_eq!(HostMismatchPolicy::Warn.as_str(), "warn");
+        assert_eq!(HostMismatchPolicy::Error.as_str(), "error");
+        assert_eq!(HostMismatchPolicy::Ignore.as_str(), "ignore");
+    }
+
     /// Test backward compatibility: receipts without new host fields still parse
     #[test]
     fn backward_compat_host_info_without_new_fields() {
@@ -524,6 +855,25 @@ mod tests {
         assert!(info.cpu_count.is_none());
         assert!(info.memory_bytes.is_none());
         assert!(info.hostname_hash.is_none());
+    }
+
+    #[test]
+    fn host_info_minimal_json_snapshot() {
+        let info = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+
+        let value = serde_json::to_value(&info).expect("serialize HostInfo");
+        insta::assert_json_snapshot!(value, @r###"
+        {
+          "arch": "x86_64",
+          "os": "linux"
+        }
+        "###);
     }
 
     /// Test that new fields are serialized when present
@@ -575,6 +925,154 @@ mod tests {
         let parsed: HostInfo = serde_json::from_str(&json).expect("should deserialize");
 
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn validate_bench_name_valid() {
+        assert!(validate_bench_name("my-bench").is_ok());
+        assert!(validate_bench_name("bench_a").is_ok());
+        assert!(validate_bench_name("path/to/bench").is_ok());
+        assert!(validate_bench_name("bench.v2").is_ok());
+        assert!(validate_bench_name("a").is_ok());
+        assert!(validate_bench_name("123").is_ok());
+    }
+
+    #[test]
+    fn validate_bench_name_invalid() {
+        assert!(validate_bench_name("bench|name").is_err());
+        assert!(validate_bench_name("").is_err());
+        assert!(validate_bench_name("bench name").is_err());
+        assert!(validate_bench_name("bench@name").is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_path_traversal() {
+        assert!(validate_bench_name("../bench").is_err());
+        assert!(validate_bench_name("bench/../x").is_err());
+        assert!(validate_bench_name("./bench").is_err());
+        assert!(validate_bench_name("bench/.").is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_empty_segments() {
+        assert!(validate_bench_name("/bench").is_err());
+        assert!(validate_bench_name("bench/").is_err());
+        assert!(validate_bench_name("bench//x").is_err());
+        assert!(validate_bench_name("/").is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_length_cap() {
+        // Exactly 64 chars -> ok
+        let name_64 = "a".repeat(BENCH_NAME_MAX_LEN);
+        assert!(validate_bench_name(&name_64).is_ok());
+
+        // 65 chars -> rejected
+        let name_65 = "a".repeat(BENCH_NAME_MAX_LEN + 1);
+        assert!(validate_bench_name(&name_65).is_err());
+    }
+
+    #[test]
+    fn validate_bench_name_case() {
+        assert!(validate_bench_name("MyBench").is_err());
+        assert!(validate_bench_name("BENCH").is_err());
+        assert!(validate_bench_name("benchA").is_err());
+    }
+
+    #[test]
+    fn config_file_validate_catches_bad_bench_name() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![BenchConfigFile {
+                name: "bad|name".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            }],
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn perfgate_error_display_baseline_resolve() {
+        let err = PerfgateError::BaselineResolve("file not found".to_string());
+        assert_eq!(format!("{}", err), "baseline resolve: file not found");
+    }
+
+    #[test]
+    fn perfgate_error_display_artifact_write() {
+        let err = PerfgateError::ArtifactWrite("permission denied".to_string());
+        assert_eq!(format!("{}", err), "write artifacts: permission denied");
+    }
+
+    #[test]
+    fn perfgate_error_display_run_command() {
+        let err = PerfgateError::RunCommand("spawn failed".to_string());
+        assert_eq!(format!("{}", err), "run command: spawn failed");
+    }
+
+    #[test]
+    fn sensor_capabilities_backward_compat_without_engine() {
+        let json = r#"{"baseline":{"status":"available"}}"#;
+        let caps: SensorCapabilities =
+            serde_json::from_str(json).expect("should parse without engine");
+        assert_eq!(caps.baseline.status, CapabilityStatus::Available);
+        assert!(caps.engine.is_none());
+    }
+
+    #[test]
+    fn sensor_capabilities_with_engine() {
+        let caps = SensorCapabilities {
+            baseline: Capability {
+                status: CapabilityStatus::Available,
+                reason: None,
+            },
+            engine: Some(Capability {
+                status: CapabilityStatus::Available,
+                reason: None,
+            }),
+        };
+        let json = serde_json::to_string(&caps).unwrap();
+        assert!(json.contains("\"engine\""));
+        let parsed: SensorCapabilities = serde_json::from_str(&json).unwrap();
+        assert_eq!(caps, parsed);
+    }
+
+    #[test]
+    fn sensor_capabilities_engine_omitted_when_none() {
+        let caps = SensorCapabilities {
+            baseline: Capability {
+                status: CapabilityStatus::Available,
+                reason: None,
+            },
+            engine: None,
+        };
+        let json = serde_json::to_string(&caps).unwrap();
+        assert!(!json.contains("engine"));
+    }
+
+    #[test]
+    fn config_file_validate_passes_good_bench_names() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![BenchConfigFile {
+                name: "my-bench".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            }],
+        };
+        assert!(config.validate().is_ok());
     }
 
     /// Test backward compatibility: full RunReceipt without new host fields parses
@@ -711,19 +1209,23 @@ mod property_tests {
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..1000000), // cpu_ms
+            proptest::option::of(0u64..1000000), // max_rss_kb
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
         )
             .prop_map(
-                |(wall_ms, exit_code, warmup, timed_out, max_rss_kb, stdout, stderr)| Sample {
-                    wall_ms,
-                    exit_code,
-                    warmup,
-                    timed_out,
-                    max_rss_kb,
-                    stdout,
-                    stderr,
+                |(wall_ms, exit_code, warmup, timed_out, cpu_ms, max_rss_kb, stdout, stderr)| {
+                    Sample {
+                        wall_ms,
+                        exit_code,
+                        warmup,
+                        timed_out,
+                        cpu_ms,
+                        max_rss_kb,
+                        stdout,
+                        stderr,
+                    }
                 },
             )
     }
@@ -758,11 +1260,13 @@ mod property_tests {
     fn stats_strategy() -> impl Strategy<Value = Stats> {
         (
             u64_summary_strategy(),
-            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()), // cpu_ms
+            proptest::option::of(u64_summary_strategy()), // max_rss_kb
             proptest::option::of(f64_summary_strategy()),
         )
-            .prop_map(|(wall_ms, max_rss_kb, throughput_per_s)| Stats {
+            .prop_map(|(wall_ms, cpu_ms, max_rss_kb, throughput_per_s)| Stats {
                 wall_ms,
+                cpu_ms,
                 max_rss_kb,
                 throughput_per_s,
             })
@@ -819,6 +1323,7 @@ mod property_tests {
                 prop_assert_eq!(orig.exit_code, deser.exit_code);
                 prop_assert_eq!(orig.warmup, deser.warmup);
                 prop_assert_eq!(orig.timed_out, deser.timed_out);
+                prop_assert_eq!(orig.cpu_ms, deser.cpu_ms);
                 prop_assert_eq!(orig.max_rss_kb, deser.max_rss_kb);
                 prop_assert_eq!(&orig.stdout, &deser.stdout);
                 prop_assert_eq!(&orig.stderr, &deser.stderr);
@@ -826,6 +1331,7 @@ mod property_tests {
 
             // Compare stats
             prop_assert_eq!(&receipt.stats.wall_ms, &deserialized.stats.wall_ms);
+            prop_assert_eq!(&receipt.stats.cpu_ms, &deserialized.stats.cpu_ms);
             prop_assert_eq!(&receipt.stats.max_rss_kb, &deserialized.stats.max_rss_kb);
 
             // For f64 throughput, compare with tolerance for floating point
@@ -948,9 +1454,10 @@ mod property_tests {
     // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
-            Just(Metric::WallMs),
+            Just(Metric::CpuMs),
             Just(Metric::MaxRssKb),
             Just(Metric::ThroughputPerS),
+            Just(Metric::WallMs),
         ]
     }
 
