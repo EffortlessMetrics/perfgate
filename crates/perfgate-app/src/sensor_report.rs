@@ -1791,7 +1791,10 @@ mod tests {
     }
 
     impl HostProbe for TestHostProbe {
-        fn probe(&self, _options: &perfgate_adapters::HostProbeOptions) -> perfgate_types::HostInfo {
+        fn probe(
+            &self,
+            _options: &perfgate_adapters::HostProbeOptions,
+        ) -> perfgate_types::HostInfo {
             self.host.clone()
         }
     }
