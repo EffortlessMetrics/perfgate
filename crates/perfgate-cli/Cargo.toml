@@ -1,10 +1,11 @@
 [package]
 name = "perfgate"
-description = "Perf budgets and baseline diffs for CI / PR bots"
+description = "Performance budgets and baseline diffs for CI automation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
 readme = "README.md"
 keywords.workspace = true

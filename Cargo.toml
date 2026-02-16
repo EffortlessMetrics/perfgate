@@ -20,7 +20,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/EffortlessMetrics/perfgate"
 authors = ["Effortless Metrics"]
 homepage = "https://github.com/EffortlessMetrics/perfgate"
-keywords = ["performance", "benchmarking", "ci", "metrics", "budgets"]
+keywords = ["performance", "benchmarking", "budgets", "baseline", "ci"]
 categories = ["development-tools", "command-line-utilities"]
 
 # Root package for workspace-level integration tests (BDD/cucumber)
