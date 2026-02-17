@@ -152,7 +152,7 @@ Config-driven one-command workflow.
 **Optional Arguments:**
 - `--config` (default: "perfgate.toml"): Path to config file (TOML or JSON)
 - `--out-dir` (default: "artifacts/perfgate"): Output directory for artifacts
-- `--baseline`: Path to baseline file (overrides config default)
+- `--baseline`: Path/URI to baseline file (overrides config default)
 - `--require-baseline`: Fail if baseline is missing (default: warn and continue)
 - `--fail-on-warn`: Treat warn verdict as exit 3
 - `--env`: Environment variables (repeatable)
@@ -170,6 +170,7 @@ Config-driven one-command workflow.
 - MUST run the benchmark using config parameters
 - MUST write all artifacts to `out_dir`
 - Baseline resolution order MUST be: `--baseline` > `defaults.baseline_pattern` > `defaults.baseline_dir` > `baselines/{bench}.json`
+- Baseline locations MAY be local paths or cloud URIs (`s3://...` or `gs://...`)
 - If baseline exists, MUST compare and generate report
 - If baseline missing without `--require-baseline`, MUST warn and exit 0
 - If baseline missing with `--require-baseline`, MUST exit 1
@@ -186,8 +187,8 @@ Config-driven one-command workflow.
 Promotes a run receipt to become the new baseline.
 
 **Required Arguments:**
-- `--current`: Path to the run receipt to promote
-- `--to`: Path where the baseline should be written
+- `--current`: Path/URI to the run receipt to promote
+- `--to`: Path/URI where the baseline should be written
 
 **Optional Arguments:**
 - `--normalize`: Strip run-specific fields for stable baselines
@@ -199,6 +200,7 @@ Promotes a run receipt to become the new baseline.
   - `run.id` MUST be replaced with "baseline"
   - `run.started_at` and `run.ended_at` MUST be replaced with "1970-01-01T00:00:00Z"
   - Host info, bench metadata, samples, and stats MUST be preserved
+- Locations MAY be local paths or cloud URIs (`s3://...` or `gs://...`)
 
 ### export
 

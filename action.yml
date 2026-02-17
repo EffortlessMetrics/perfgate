@@ -1,0 +1,156 @@
+name: "perfgate-action"
+description: "Zero-config performance gating with perfgate check"
+author: "Effortless Metrics"
+
+branding:
+  icon: "activity"
+  color: "blue"
+
+inputs:
+  config:
+    description: "Path to perfgate config file"
+    required: false
+    default: "perfgate.toml"
+  bench:
+    description: "Bench name to run when all=false"
+    required: false
+    default: ""
+  all:
+    description: "Run all benches in config"
+    required: false
+    default: "true"
+  out_dir:
+    description: "Artifact output directory"
+    required: false
+    default: "artifacts/perfgate"
+  fail_on_warn:
+    description: "Treat warn verdicts as failures"
+    required: false
+    default: "false"
+  require_baseline:
+    description: "Fail when no baseline is found"
+    required: false
+    default: "false"
+  host_mismatch:
+    description: "Host mismatch policy: warn, error, or ignore"
+    required: false
+    default: "warn"
+  mode:
+    description: "Check output mode: standard or cockpit"
+    required: false
+    default: "standard"
+  md_template:
+    description: "Optional Handlebars template path for markdown output"
+    required: false
+    default: ""
+  output_github:
+    description: "Write verdict/count outputs to GITHUB_OUTPUT"
+    required: false
+    default: "true"
+  upload_artifact:
+    description: "Upload generated artifacts via actions/upload-artifact"
+    required: false
+    default: "true"
+  artifact_name:
+    description: "Artifact name used when upload_artifact=true"
+    required: false
+    default: "perfgate-artifacts"
+  version:
+    description: "Optional perfgate crate version from crates.io (e.g. 0.3.0); if empty, builds from this action source"
+    required: false
+    default: ""
+
+outputs:
+  verdict:
+    description: "Overall verdict (pass|warn|fail|skip)"
+    value: ${{ steps.run_check.outputs.verdict }}
+  pass_count:
+    description: "Count of passing checks"
+    value: ${{ steps.run_check.outputs.pass_count }}
+  warn_count:
+    description: "Count of warning checks"
+    value: ${{ steps.run_check.outputs.warn_count }}
+  fail_count:
+    description: "Count of failing checks"
+    value: ${{ steps.run_check.outputs.fail_count }}
+  bench_count:
+    description: "Count of benches evaluated"
+    value: ${{ steps.run_check.outputs.bench_count }}
+  exit_code:
+    description: "perfgate process exit code"
+    value: ${{ steps.run_check.outputs.exit_code }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install perfgate
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "${{ inputs.version }}" ]]; then
+          cargo install perfgate --locked --force --version "${{ inputs.version }}"
+        else
+          cargo install --path "${GITHUB_ACTION_PATH}/crates/perfgate-cli" --locked --force
+        fi
+
+    - id: run_check
+      name: Run perfgate check
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        args=(
+          check
+          --config "${{ inputs.config }}"
+          --out-dir "${{ inputs.out_dir }}"
+          --host-mismatch "${{ inputs.host_mismatch }}"
+          --mode "${{ inputs.mode }}"
+        )
+
+        if [[ "${{ inputs.all }}" == "true" ]]; then
+          args+=(--all)
+        else
+          if [[ -z "${{ inputs.bench }}" ]]; then
+            echo "input 'bench' is required when all=false" >&2
+            exit 1
+          fi
+          args+=(--bench "${{ inputs.bench }}")
+        fi
+
+        if [[ "${{ inputs.fail_on_warn }}" == "true" ]]; then
+          args+=(--fail-on-warn)
+        fi
+
+        if [[ "${{ inputs.require_baseline }}" == "true" ]]; then
+          args+=(--require-baseline)
+        fi
+
+        if [[ -n "${{ inputs.md_template }}" ]]; then
+          args+=(--md-template "${{ inputs.md_template }}")
+        fi
+
+        if [[ "${{ inputs.output_github }}" == "true" ]]; then
+          args+=(--output-github)
+        fi
+
+        set +e
+        perfgate "${args[@]}"
+        status=$?
+        set -e
+
+        if [[ "${{ inputs.output_github }}" != "true" ]]; then
+          echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+        fi
+
+        exit "${status}"
+
+    - name: Upload perfgate artifacts
+      if: ${{ inputs.upload_artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ inputs.out_dir }}
+        if-no-files-found: warn

@@ -116,7 +116,7 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 ### Additional Metrics
 
-**Status:** Partially implemented
+**Status:** Implemented (v0.3.0)
 
 1. **CPU time** (`cpu_ms`): Combined user and system CPU time from `rusage`
    - **Status:** Implemented (v0.2.0)
@@ -124,14 +124,17 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
    - Collected via `rusage` on Unix and process APIs on Windows
 
 2. **Page faults** (`page_faults`): Major page faults from `rusage`
+   - **Status:** Implemented (v0.2.0)
    - Direction: Lower
    - Platform: Unix only
 
 3. **Context switches** (`ctx_switches`): Voluntary + involuntary from `rusage`
+   - **Status:** Implemented (v0.2.0)
    - Direction: Lower
    - Platform: Unix only
 
 4. **Binary size** (`binary_bytes`): Size of executable
+   - **Status:** Implemented (v0.2.0)
    - Direction: Lower
    - Requires path to binary
 
@@ -144,9 +147,10 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 ### Configuration Enhancements
 
-**Status:** Partially implemented
+**Status:** Implemented (v0.3.0)
 
 1. **Metric-specific budgets in config:**
+   (Implemented in v0.2.0)
    ```toml
    [[bench]]
    name = "my-bench"
@@ -166,9 +170,15 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
    perfgate check --config perfgate.toml --all
    ```
 
+4. **Cloud baseline backends:** (Implemented in v0.3.0)
+   `check` and `promote` accept `s3://...` and `gs://...` locations for baseline read/write.
+
 ### CI Integration Improvements
 
-**Status:** Partially implemented
+**Status:** Implemented (v0.3.0)
+
+0. **Official GitHub Action:** (Implemented in v0.3.0)
+   Composite action shipped at repository root (`action.yml`) for zero-config setup.
 
 1. **GitHub Actions output:**
    ```yaml
@@ -182,12 +192,12 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
    - `perfgate report --md-template`
    - `perfgate check --md-template`
 
-3. **Artifact upload helpers:**
-   Integration with GitHub Actions artifacts
+3. **Artifact upload helpers:** (Implemented in v0.3.0)
+   Integration with GitHub Actions artifacts via the official composite action.
 
 ### Contract Tooling
 
-**Status:** Partially implemented
+**Status:** Implemented (v0.3.0)
 
 1. **Schema lock checks:** (Implemented)
    `xtask schema-check` verifies `schemas/` matches generated schema output and rejects missing/modified/extra stale schema files.

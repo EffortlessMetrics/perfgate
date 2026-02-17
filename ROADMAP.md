@@ -21,15 +21,15 @@ To become the standard, low-friction "build truth" sensor for performance gating
 **Target: Q1 2026**
 *Focus: Reliability, documentation completeness, and initial ecosystem hardening.*
 
-- [ ] **Contract Hardening**
+- [x] **Contract Hardening**
   - [x] Finalize and lock `v1` schemas for receipts and config.
   - [x] Ensure byte-for-byte deterministic output for all report generators.
   - [x] Detect and flag extra/stale files in contract mirror checks.
-- [ ] **Documentation & DX**
-  - [ ] Complete documentation alignment (metrics names, CLI flags).
+- [x] **Documentation & DX**
+  - [x] Complete documentation alignment (metrics names, CLI flags).
   - [x] Provide canonical "Getting Started" guides for common CI providers (GitHub Actions, GitLab CI).
-  - [ ] Standardize error stage/kind classifications across all failure paths.
-- [ ] **Tooling**
+  - [x] Standardize error stage/kind classifications across all failure paths.
+- [x] **Tooling**
   - [x] Deduplicate `xtask` and test helpers into shared library modules.
   - [x] Stabilize `conform` command for third-party sensor validation.
 
@@ -39,15 +39,15 @@ To become the standard, low-friction "build truth" sensor for performance gating
 **Target: Q2 2026**
 *Focus: Deeper system metrics and improved platform parity.*
 
-- [ ] **New Metrics (Unix)**
+- [x] **New Metrics (Unix)**
   - [x] `page_faults`: Track major page faults to detect memory pressure changes.
   - [x] `ctx_switches`: Track voluntary and involuntary context switches.
-- [ ] **Static Analysis Metrics**
+- [x] **Static Analysis Metrics**
   - [x] `binary_bytes`: Track changes in compiled executable size.
-- [ ] **Improved Platform Support**
+- [x] **Improved Platform Support**
   - [x] Explore best-effort CPU time and memory tracking for Windows.
   - [x] Support custom environment injection for `paired` mode executions.
-- [ ] **Configuration Enhancements**
+- [x] **Configuration Enhancements**
   - [x] Implement metric-specific budgets in `perfgate.toml` (overriding globals).
   - [x] Support regex-based bench selection in `check --all`.
 
@@ -57,15 +57,15 @@ To become the standard, low-friction "build truth" sensor for performance gating
 **Target: Q3 2026**
 *Focus: Seamless integration into the developer's workflow.*
 
-- [ ] **Native GitHub Actions Integration**
-  - [ ] Official `perfgate-action` for zero-config setup.
+- [x] **Native GitHub Actions Integration**
+  - [x] Official `perfgate-action` for zero-config setup.
   - [x] Support setting Action outputs (verdict, counts) for workflow branching.
-- [ ] **Flexible Reporting**
+- [x] **Flexible Reporting**
   - [x] Support Liquid/Handlebars templates for Markdown comments.
   - [x] Multi-format export (e.g., HTML summary, Prometheus/OpenTelemetry push).
-- [ ] **Baseline Management**
+- [x] **Baseline Management**
   - [x] Auto-discovery of baselines using naming patterns.
-  - [ ] S3/GCS backend support for `promote` and `check`.
+  - [x] S3/GCS backend support for `promote` and `check`.
 
 ---
 

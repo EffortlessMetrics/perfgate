@@ -1,5 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
+use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::{
     BenchOutcome, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase,
@@ -19,7 +20,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use url::Url;
 
 /// Output mode for the check command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
@@ -192,11 +195,11 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Promote {
-        /// Path to the current run receipt to promote
+        /// Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote.
         #[arg(long)]
         current: PathBuf,
 
-        /// Path where the baseline should be written
+        /// Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written.
         #[arg(long)]
         to: PathBuf,
 
@@ -270,7 +273,8 @@ enum Command {
         #[arg(long, default_value = "artifacts/perfgate")]
         out_dir: PathBuf,
 
-        /// Path to the baseline file. If not specified, looks in baseline_dir/{bench}.json
+        /// Path or cloud URI to the baseline file.
+        /// If not specified, looks in baseline_dir/{bench}.json
         /// (only valid when --bench is specified, not with --all)
         #[arg(long, conflicts_with = "all")]
         baseline: Option<PathBuf>,
@@ -572,11 +576,11 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             normalize,
             pretty,
         } => {
-            let receipt: RunReceipt = read_json(&current)?;
+            let receipt: RunReceipt = read_json_from_location(&current)?;
 
             let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
 
-            write_json(&to, &result.receipt, pretty)?;
+            write_json_to_location(&to, &result.receipt, pretty)?;
             Ok(())
         }
 
@@ -814,14 +818,8 @@ fn run_check_standard(
 
         // Resolve baseline path (--baseline flag only valid for single bench mode)
         let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
-        let baseline_receipt: Option<RunReceipt> = if baseline_path.exists() {
-            Some(
-                read_json(&baseline_path)
-                    .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
-            )
-        } else {
-            None
-        };
+        let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
+            .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
 
         // Create output directory
         fs::create_dir_all(&bench_out_dir).map_err(|e| {
@@ -1022,7 +1020,10 @@ fn run_check_cockpit(
             let ended_at = clock.now_rfc3339();
             let duration_ms = start_instant.elapsed().as_millis() as u64;
 
-            let baseline_available = baseline.as_ref().map(|p| p.exists()).unwrap_or(false);
+            let baseline_available = baseline
+                .as_ref()
+                .and_then(|p| location_exists(p).ok())
+                .unwrap_or(false);
 
             let (stage, error_kind) = classify_error(&err);
 
@@ -1135,14 +1136,8 @@ fn run_check_cockpit_inner(
 
             // Resolve baseline path
             let baseline_path = resolve_baseline_path(baseline, bench_name, &config_file);
-            let baseline_receipt: Option<RunReceipt> = if baseline_path.exists() {
-                Some(
-                    read_json(&baseline_path)
-                        .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?,
-                )
-            } else {
-                None
-            };
+            let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
+                .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
             let baseline_available = baseline_receipt.is_some();
 
             // Execute check
@@ -1453,6 +1448,13 @@ fn resolve_baseline_path(
 
     // 3. Fall back to baseline_dir from config defaults
     if let Some(baseline_dir) = &config.defaults.baseline_dir {
+        if is_remote_storage_uri(baseline_dir) {
+            return PathBuf::from(format!(
+                "{}/{}.json",
+                baseline_dir.trim_end_matches('/'),
+                bench_name
+            ));
+        }
         return PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
     }
 
@@ -1462,6 +1464,10 @@ fn resolve_baseline_path(
 
 fn render_baseline_pattern(pattern: &str, bench_name: &str) -> PathBuf {
     PathBuf::from(pattern.replace("{bench}", bench_name))
+}
+
+fn is_remote_storage_uri(path: &str) -> bool {
+    path.starts_with("s3://") || path.starts_with("gs://")
 }
 
 /// Write all artifacts from a check outcome.
@@ -1567,6 +1573,123 @@ fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
             "invalid host mismatch policy: {} (expected warn, error, or ignore)",
             s
         )),
+    }
+}
+
+struct RemoteLocation {
+    store: Arc<dyn object_store::ObjectStore>,
+    object_path: ObjectPath,
+}
+
+fn parse_remote_location(path: &Path) -> anyhow::Result<Option<RemoteLocation>> {
+    let uri = path.to_string_lossy().to_string();
+    if !is_remote_storage_uri(&uri) {
+        return Ok(None);
+    }
+
+    let url = Url::parse(&uri).with_context(|| format!("invalid remote URI {}", uri))?;
+    let (store, object_path) =
+        object_store::parse_url(&url).with_context(|| format!("parse remote URI {}", uri))?;
+
+    Ok(Some(RemoteLocation {
+        store: store.into(),
+        object_path,
+    }))
+}
+
+fn with_tokio_runtime<T, F>(f: F) -> anyhow::Result<T>
+where
+    F: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("initialize async runtime")?;
+    rt.block_on(f)
+}
+
+fn is_object_not_found(err: &object_store::Error) -> bool {
+    matches!(err, object_store::Error::NotFound { .. })
+        || err.to_string().to_ascii_lowercase().contains("not found")
+}
+
+fn location_exists(path: &Path) -> anyhow::Result<bool> {
+    if let Some(remote) = parse_remote_location(path)? {
+        let head = with_tokio_runtime(async move {
+            remote
+                .store
+                .head(&remote.object_path)
+                .await
+                .map_err(anyhow::Error::from)
+        });
+        return match head {
+            Ok(_) => Ok(true),
+            Err(err) => {
+                if err
+                    .downcast_ref::<object_store::Error>()
+                    .is_some_and(is_object_not_found)
+                {
+                    Ok(false)
+                } else {
+                    Err(err).with_context(|| format!("check existence {}", path.display()))
+                }
+            }
+        };
+    }
+    Ok(path.exists())
+}
+
+fn read_json_from_location<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
+    if let Some(remote) = parse_remote_location(path)? {
+        let bytes = with_tokio_runtime(async move {
+            let result = remote
+                .store
+                .get(&remote.object_path)
+                .await
+                .map_err(anyhow::Error::from)?;
+            result.bytes().await.map_err(anyhow::Error::from)
+        })
+        .with_context(|| format!("read {}", path.display()))?;
+
+        return serde_json::from_slice(&bytes)
+            .with_context(|| format!("parse json {}", path.display()));
+    }
+
+    read_json(path)
+}
+
+fn write_json_to_location<T: serde::Serialize>(
+    path: &Path,
+    value: &T,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    if let Some(remote) = parse_remote_location(path)? {
+        let bytes = if pretty {
+            serde_json::to_vec_pretty(value)?
+        } else {
+            serde_json::to_vec(value)?
+        };
+
+        with_tokio_runtime(async move {
+            remote
+                .store
+                .put(&remote.object_path, bytes.into())
+                .await
+                .map(|_| ())
+                .map_err(anyhow::Error::from)
+        })
+        .with_context(|| format!("write {}", path.display()))?;
+        return Ok(());
+    }
+
+    write_json(path, value, pretty)
+}
+
+fn load_optional_baseline_receipt(path: &Path) -> anyhow::Result<Option<RunReceipt>> {
+    if location_exists(path)? {
+        Ok(Some(read_json_from_location(path)?))
+    } else {
+        Ok(None)
     }
 }
 
@@ -1948,6 +2071,31 @@ mod tests {
     }
 
     #[test]
+    fn resolve_baseline_path_supports_remote_baseline_dir() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                baseline_dir: Some("s3://my-bucket/baselines".to_string()),
+                ..Default::default()
+            },
+            benches: Vec::new(),
+        };
+
+        let no_cli = None;
+        assert_eq!(
+            resolve_baseline_path(&no_cli, "bench-a", &config),
+            PathBuf::from("s3://my-bucket/baselines/bench-a.json")
+        );
+    }
+
+    #[test]
+    fn is_remote_storage_uri_accepts_s3_and_gs_only() {
+        assert!(is_remote_storage_uri("s3://bucket/key.json"));
+        assert!(is_remote_storage_uri("gs://bucket/key.json"));
+        assert!(!is_remote_storage_uri("file:///tmp/key.json"));
+        assert!(!is_remote_storage_uri("baselines/key.json"));
+    }
+
+    #[test]
     fn rename_extras_to_versioned_moves_files() {
         let dir = tempdir().unwrap();
         let extras = dir.path();
@@ -1984,6 +2132,18 @@ mod tests {
         write_json(&path, &value, true).unwrap();
         let read: serde_json::Value = read_json(&path).unwrap();
         assert_eq!(read, value);
+    }
+
+    #[test]
+    fn write_json_to_location_and_read_json_from_location_round_trip_local() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("value.json");
+        let value = json!({ "hello": "location", "n": 2 });
+
+        write_json_to_location(&path, &value, false).unwrap();
+        let read: serde_json::Value = read_json_from_location(&path).unwrap();
+        assert_eq!(read, value);
+        assert!(location_exists(&path).unwrap());
     }
 
     #[test]

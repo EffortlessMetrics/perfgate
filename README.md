@@ -133,6 +133,11 @@ After merging to main, promote the current run to become the new baseline:
 perfgate promote \
   --current artifacts/perfgate/run.json \
   --to baselines/pst_extract.json
+
+# Optional: promote directly to cloud object storage
+perfgate promote \
+  --current artifacts/perfgate/run.json \
+  --to s3://my-perfgate-baselines/pst_extract.json
 ```
 
 ### 7) Export for trend analysis
@@ -180,6 +185,9 @@ perfgate check --config perfgate.toml --all --bench-regex "^service/"
 
 # Emit GitHub Actions outputs (verdict/counts) for workflow branching
 perfgate check --config perfgate.toml --bench pst_extract --output-github
+
+# Pull baseline from cloud storage
+perfgate check --config perfgate.toml --bench pst_extract --baseline gs://my-baselines/pst_extract.json
 
 # Use a custom markdown template
 perfgate check --config perfgate.toml --bench pst_extract --md-template .github/perfgate-comment.hbs
@@ -296,8 +304,20 @@ git commit -m "Update performance baseline"
 ### Baseline Storage Options
 
 - **In-repo**: Commit baselines to `baselines/` directory (simple, versioned)
-- **Artifact storage**: Store in S3/GCS/Azure Blob (scales better for many baselines)
+- **Cloud object storage**: Use `s3://...` or `gs://...` directly with `check --baseline` / `defaults.baseline_pattern` and `promote --to`
 - **Database**: Store in a metrics database for advanced trend analysis
+
+## GitHub Action
+
+Use the official composite action for zero-config setup:
+
+```yaml
+- uses: EffortlessMetrics/perfgate@main
+  with:
+    config: perfgate.toml
+    all: "true"
+    out_dir: artifacts/perfgate
+```
 
 ## CI Guides
 

@@ -4,6 +4,7 @@ This guide shows a minimal GitHub Actions setup for `perfgate` with:
 - config-driven checks (`perfgate check`)
 - PR artifact upload
 - workflow branching via `--output-github`
+- optional one-line use of the official `perfgate-action`
 
 ## 1) Repository layout
 
@@ -26,7 +27,42 @@ name = "api"
 command = ["bash", "-lc", "cargo test -p mycrate --release -- --nocapture"]
 ```
 
-## 2) PR performance gate workflow
+## 2) Zero-config workflow with `perfgate-action`
+
+Use the official composite action at the root of this repository:
+
+```yaml
+name: perfgate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run perfgate
+        id: perfgate
+        uses: EffortlessMetrics/perfgate@main
+        with:
+          config: perfgate.toml
+          all: "true"
+          out_dir: artifacts/perfgate
+          upload_artifact: "true"
+```
+
+Action outputs are available as:
+- `${{ steps.perfgate.outputs.verdict }}`
+- `${{ steps.perfgate.outputs.pass_count }}`
+- `${{ steps.perfgate.outputs.warn_count }}`
+- `${{ steps.perfgate.outputs.fail_count }}`
+- `${{ steps.perfgate.outputs.bench_count }}`
+- `${{ steps.perfgate.outputs.exit_code }}`
+
+## 3) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:
 
@@ -82,7 +118,7 @@ jobs:
 - `bench_count`
 - `exit_code`
 
-## 3) Optional: comment markdown artifact
+## 4) Optional: comment markdown artifact
 
 If you want a custom PR comment body:
 
