@@ -2,19 +2,12 @@
 //!
 //! **Validates: Requirements 1.1, 1.2, 9.1**
 
-use assert_cmd::Command;
 use predicates::prelude::*;
-use std::env;
 use std::fs;
 use tempfile::tempdir;
 
-fn perfgate_cmd() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
-        cmd.env("LLVM_PROFILE_FILE", profile);
-    }
-    cmd
-}
+mod common;
+use common::perfgate_cmd;
 
 /// Returns a cross-platform command that exits successfully.
 /// On Unix: ["true"]

@@ -110,12 +110,13 @@ perfgate-cli (outermost)
 
 #### perfgate-adapters
 
-- MUST implement platform-specific code (Unix `wait4()` for `max_rss_kb` and CPU time)
+- MUST implement platform-specific code (Unix `wait4()` and best-effort Windows process APIs)
 - MUST define trait abstractions for process execution (`ProcessRunner`)
 - MUST define trait abstractions for host probing (`HostProbe`)
 - MUST define trait abstractions for time (`Clock`)
 - SHOULD provide best-effort system metrics
 - SHOULD collect CPU time metrics (`cpu_ms`) on Unix via `rusage`
+- SHOULD collect best-effort CPU and RSS metrics on Windows
 
 #### perfgate-app
 

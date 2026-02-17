@@ -1,15 +1,17 @@
 [package]
 name = "perfgate-types"
-description = "Receipt types and JSON schemas for perfgate performance budgets"
+description = "Versioned receipt/config contracts and JSON schemas for perfgate"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/perfgate-types"
 authors.workspace = true
 readme = "README.md"
-keywords = ["performance", "benchmarking", "schema", "receipts", "baseline"]
-categories = ["development-tools", "data-structures"]
+keywords = ["performance", "benchmarking", "receipts", "schema", "ci"]
+categories = ["data-structures", "development-tools"]
 
 [features]
 default = []

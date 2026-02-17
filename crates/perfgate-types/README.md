@@ -1,24 +1,35 @@
 # perfgate-types
 
-Shared types and schemas for perfgate receipts.
+Versioned data contracts for perfgate.
 
-This crate provides the core data structures used throughout the perfgate workspace:
+## Responsibilities
 
-- **Run receipts** (`perfgate.run.v1`) - Results from benchmark executions
-- **Compare receipts** (`perfgate.compare.v1`) - Baseline vs current comparisons
-- **Report receipts** (`perfgate.report.v1`) - Structured reports for CI integration
-- **Sensor reports** (`sensor.report.v1`) - Cockpit-mode envelope types
-- **Paired types** - Types for paired benchmarking mode
-- **Configuration types** - Budget definitions and thresholds
+- Defines receipt and report schemas:
+  - `perfgate.run.v1`
+  - `perfgate.compare.v1`
+  - `perfgate.report.v1`
+  - `sensor.report.v1`
+  - paired benchmarking schema (`perfgate.paired.v1`)
+- Defines config types (`ConfigFile`, `BenchConfigFile`, defaults/budget overrides).
+- Defines shared enums/tokens used across crates (metrics, verdicts, finding codes, reason tokens).
+- Provides JSON Schema derivation support through `schemars`.
 
-## Features
+## Boundaries
 
-- `arbitrary` - Enable structure-aware fuzzing support via the `arbitrary` crate
+- No process execution or host probing.
+- No statistics math or budget decision logic.
+- No CLI parsing or filesystem I/O.
 
-## Part of perfgate
+## Feature Flags
 
-This crate is part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace for performance budgets and baseline diffs in CI.
+- `arbitrary`: enables structure-aware fuzzing derives for core types.
+
+## Workspace Role
+
+`perfgate-types` is the innermost crate and the shared contract layer:
+
+`perfgate-types` -> `perfgate-domain` -> `perfgate-adapters` -> `perfgate-app` -> `perfgate` (CLI)
 
 ## License
 
-Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+Licensed under either Apache-2.0 or MIT.

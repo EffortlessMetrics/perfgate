@@ -373,8 +373,20 @@ pub struct Sample {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_ms: Option<u64>,
 
+    /// Major page faults (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_faults: Option<u64>,
+
+    /// Voluntary + involuntary context switches (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ctx_switches: Option<u64>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rss_kb: Option<u64>,
+
+    /// Size of executed binary in bytes (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binary_bytes: Option<u64>,
 
     /// Truncated stdout (bytes interpreted as UTF-8 lossily).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -410,8 +422,20 @@ pub struct Stats {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_ms: Option<U64Summary>,
 
+    /// Major page faults summary (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_faults: Option<U64Summary>,
+
+    /// Voluntary + involuntary context switches summary (Unix only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ctx_switches: Option<U64Summary>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rss_kb: Option<U64Summary>,
+
+    /// Size of executed binary in bytes (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binary_bytes: Option<U64Summary>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub throughput_per_s: Option<F64Summary>,
@@ -434,8 +458,11 @@ pub struct RunReceipt {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum Metric {
+    BinaryBytes,
     CpuMs,
+    CtxSwitches,
     MaxRssKb,
+    PageFaults,
     ThroughputPerS,
     WallMs,
 }
@@ -443,8 +470,11 @@ pub enum Metric {
 impl Metric {
     pub fn as_str(self) -> &'static str {
         match self {
+            Metric::BinaryBytes => "binary_bytes",
             Metric::CpuMs => "cpu_ms",
+            Metric::CtxSwitches => "ctx_switches",
             Metric::MaxRssKb => "max_rss_kb",
+            Metric::PageFaults => "page_faults",
             Metric::ThroughputPerS => "throughput_per_s",
             Metric::WallMs => "wall_ms",
         }
@@ -452,8 +482,11 @@ impl Metric {
 
     pub fn parse_key(key: &str) -> Option<Self> {
         match key {
+            "binary_bytes" => Some(Metric::BinaryBytes),
             "cpu_ms" => Some(Metric::CpuMs),
+            "ctx_switches" => Some(Metric::CtxSwitches),
             "max_rss_kb" => Some(Metric::MaxRssKb),
+            "page_faults" => Some(Metric::PageFaults),
             "throughput_per_s" => Some(Metric::ThroughputPerS),
             "wall_ms" => Some(Metric::WallMs),
             _ => None,
@@ -462,8 +495,11 @@ impl Metric {
 
     pub fn default_direction(self) -> Direction {
         match self {
+            Metric::BinaryBytes => Direction::Lower,
             Metric::CpuMs => Direction::Lower,
+            Metric::CtxSwitches => Direction::Lower,
             Metric::MaxRssKb => Direction::Lower,
+            Metric::PageFaults => Direction::Lower,
             Metric::ThroughputPerS => Direction::Higher,
             Metric::WallMs => Direction::Lower,
         }
@@ -476,8 +512,11 @@ impl Metric {
 
     pub fn display_unit(self) -> &'static str {
         match self {
+            Metric::BinaryBytes => "bytes",
             Metric::CpuMs => "ms",
+            Metric::CtxSwitches => "count",
             Metric::MaxRssKb => "KB",
+            Metric::PageFaults => "count",
             Metric::ThroughputPerS => "/s",
             Metric::WallMs => "ms",
         }
@@ -740,6 +779,15 @@ pub struct DefaultsConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub baseline_dir: Option<String>,
+
+    /// Optional baseline discovery pattern. Supports `{bench}` placeholder.
+    /// Example: `baselines/{bench}.json`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub baseline_pattern: Option<String>,
+
+    /// Optional Handlebars template path for markdown comments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown_template: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -811,9 +859,22 @@ mod tests {
     #[test]
     fn metric_metadata_and_parsing_are_consistent() {
         let cases = [
+            (
+                Metric::BinaryBytes,
+                "binary_bytes",
+                Direction::Lower,
+                "bytes",
+            ),
             (Metric::WallMs, "wall_ms", Direction::Lower, "ms"),
             (Metric::CpuMs, "cpu_ms", Direction::Lower, "ms"),
+            (
+                Metric::CtxSwitches,
+                "ctx_switches",
+                Direction::Lower,
+                "count",
+            ),
             (Metric::MaxRssKb, "max_rss_kb", Direction::Lower, "KB"),
+            (Metric::PageFaults, "page_faults", Direction::Lower, "count"),
             (
                 Metric::ThroughputPerS,
                 "throughput_per_s",
@@ -1209,23 +1270,39 @@ mod property_tests {
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000), // cpu_ms
-            proptest::option::of(0u64..1000000), // max_rss_kb
+            proptest::option::of(0u64..1000000),   // cpu_ms
+            proptest::option::of(0u64..1000000),   // page_faults
+            proptest::option::of(0u64..1000000),   // ctx_switches
+            proptest::option::of(0u64..1000000),   // max_rss_kb
+            proptest::option::of(0u64..100000000), // binary_bytes
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
         )
             .prop_map(
-                |(wall_ms, exit_code, warmup, timed_out, cpu_ms, max_rss_kb, stdout, stderr)| {
-                    Sample {
-                        wall_ms,
-                        exit_code,
-                        warmup,
-                        timed_out,
-                        cpu_ms,
-                        max_rss_kb,
-                        stdout,
-                        stderr,
-                    }
+                |(
+                    wall_ms,
+                    exit_code,
+                    warmup,
+                    timed_out,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
+                    stdout,
+                    stderr,
+                )| Sample {
+                    wall_ms,
+                    exit_code,
+                    warmup,
+                    timed_out,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
+                    stdout,
+                    stderr,
                 },
             )
     }
@@ -1261,15 +1338,31 @@ mod property_tests {
         (
             u64_summary_strategy(),
             proptest::option::of(u64_summary_strategy()), // cpu_ms
+            proptest::option::of(u64_summary_strategy()), // page_faults
+            proptest::option::of(u64_summary_strategy()), // ctx_switches
             proptest::option::of(u64_summary_strategy()), // max_rss_kb
+            proptest::option::of(u64_summary_strategy()), // binary_bytes
             proptest::option::of(f64_summary_strategy()),
         )
-            .prop_map(|(wall_ms, cpu_ms, max_rss_kb, throughput_per_s)| Stats {
-                wall_ms,
-                cpu_ms,
-                max_rss_kb,
-                throughput_per_s,
-            })
+            .prop_map(
+                |(
+                    wall_ms,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
+                    throughput_per_s,
+                )| Stats {
+                    wall_ms,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
+                    throughput_per_s,
+                },
+            )
     }
 
     // Strategy for RunReceipt
@@ -1324,7 +1417,10 @@ mod property_tests {
                 prop_assert_eq!(orig.warmup, deser.warmup);
                 prop_assert_eq!(orig.timed_out, deser.timed_out);
                 prop_assert_eq!(orig.cpu_ms, deser.cpu_ms);
+                prop_assert_eq!(orig.page_faults, deser.page_faults);
+                prop_assert_eq!(orig.ctx_switches, deser.ctx_switches);
                 prop_assert_eq!(orig.max_rss_kb, deser.max_rss_kb);
+                prop_assert_eq!(orig.binary_bytes, deser.binary_bytes);
                 prop_assert_eq!(&orig.stdout, &deser.stdout);
                 prop_assert_eq!(&orig.stderr, &deser.stderr);
             }
@@ -1332,7 +1428,10 @@ mod property_tests {
             // Compare stats
             prop_assert_eq!(&receipt.stats.wall_ms, &deserialized.stats.wall_ms);
             prop_assert_eq!(&receipt.stats.cpu_ms, &deserialized.stats.cpu_ms);
+            prop_assert_eq!(&receipt.stats.page_faults, &deserialized.stats.page_faults);
+            prop_assert_eq!(&receipt.stats.ctx_switches, &deserialized.stats.ctx_switches);
             prop_assert_eq!(&receipt.stats.max_rss_kb, &deserialized.stats.max_rss_kb);
+            prop_assert_eq!(&receipt.stats.binary_bytes, &deserialized.stats.binary_bytes);
 
             // For f64 throughput, compare with tolerance for floating point
             // JSON serialization may lose some precision for large floats
@@ -1454,8 +1553,11 @@ mod property_tests {
     // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
+            Just(Metric::BinaryBytes),
             Just(Metric::CpuMs),
+            Just(Metric::CtxSwitches),
             Just(Metric::MaxRssKb),
+            Just(Metric::PageFaults),
             Just(Metric::ThroughputPerS),
             Just(Metric::WallMs),
         ]
@@ -1463,12 +1565,12 @@ mod property_tests {
 
     // Strategy for BTreeMap<Metric, Budget>
     fn budgets_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Budget>> {
-        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 0..4)
+        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 0..8)
     }
 
     // Strategy for BTreeMap<Metric, Delta>
     fn deltas_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Delta>> {
-        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 0..4)
+        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 0..8)
     }
 
     // Strategy for CompareReceipt
@@ -1652,15 +1754,28 @@ mod property_tests {
             proptest::option::of(0.5f64..1.0),
             proptest::option::of(non_empty_string()),
             proptest::option::of(non_empty_string()),
+            proptest::option::of(non_empty_string()),
+            proptest::option::of(non_empty_string()),
         )
             .prop_map(
-                |(repeat, warmup, threshold, warn_factor, out_dir, baseline_dir)| DefaultsConfig {
+                |(
                     repeat,
                     warmup,
                     threshold,
                     warn_factor,
                     out_dir,
                     baseline_dir,
+                    baseline_pattern,
+                    markdown_template,
+                )| DefaultsConfig {
+                    repeat,
+                    warmup,
+                    threshold,
+                    warn_factor,
+                    out_dir,
+                    baseline_dir,
+                    baseline_pattern,
+                    markdown_template,
                 },
             )
     }
@@ -1698,6 +1813,14 @@ mod property_tests {
             prop_assert_eq!(config.defaults.warmup, deserialized.defaults.warmup);
             prop_assert_eq!(&config.defaults.out_dir, &deserialized.defaults.out_dir);
             prop_assert_eq!(&config.defaults.baseline_dir, &deserialized.defaults.baseline_dir);
+            prop_assert_eq!(
+                &config.defaults.baseline_pattern,
+                &deserialized.defaults.baseline_pattern
+            );
+            prop_assert_eq!(
+                &config.defaults.markdown_template,
+                &deserialized.defaults.markdown_template
+            );
 
             // Compare f64 fields in defaults with tolerance
             match (config.defaults.threshold, deserialized.defaults.threshold) {
@@ -1802,6 +1925,14 @@ mod property_tests {
             prop_assert_eq!(config.defaults.warmup, deserialized.defaults.warmup);
             prop_assert_eq!(&config.defaults.out_dir, &deserialized.defaults.out_dir);
             prop_assert_eq!(&config.defaults.baseline_dir, &deserialized.defaults.baseline_dir);
+            prop_assert_eq!(
+                &config.defaults.baseline_pattern,
+                &deserialized.defaults.baseline_pattern
+            );
+            prop_assert_eq!(
+                &config.defaults.markdown_template,
+                &deserialized.defaults.markdown_template
+            );
 
             // Compare f64 fields in defaults with tolerance
             match (config.defaults.threshold, deserialized.defaults.threshold) {

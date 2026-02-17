@@ -53,6 +53,7 @@ impl Default for SensorCheckOptions {
 /// and catches errors to produce an error report.
 ///
 /// Returns `SensorReport` directly — no I/O, no file writing.
+#[allow(clippy::too_many_arguments)]
 pub fn run_sensor_check<R, H, C>(
     runner: &R,
     host_probe: &H,
@@ -181,12 +182,12 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
     let msg = format!("{:#}", err);
     let msg_lower = msg.to_lowercase();
 
-    if msg_lower.contains("bench name") || msg_lower.contains("config validation") {
-        (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
-    } else if msg_lower.contains("parse")
-        && (msg_lower.contains("toml")
-            || msg_lower.contains("json config")
-            || msg_lower.contains("config"))
+    if msg_lower.contains("bench name")
+        || msg_lower.contains("config validation")
+        || (msg_lower.contains("parse")
+            && (msg_lower.contains("toml")
+                || msg_lower.contains("json config")
+                || msg_lower.contains("config")))
     {
         (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE)
     } else if msg_lower.contains("baseline") || msg_lower.contains("not found") {
@@ -2308,7 +2309,10 @@ mod tests {
             exit_code: 0,
             timed_out: false,
             cpu_ms: Some(50),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: Some(2048),
+            binary_bytes: None,
             stdout: b"ok".to_vec(),
             stderr: b"".to_vec(),
         });
@@ -2364,7 +2368,10 @@ mod tests {
                     max: 50,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: None,
             },
         };

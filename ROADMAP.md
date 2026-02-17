@@ -13,7 +13,7 @@ To become the standard, low-friction "build truth" sensor for performance gating
 - [x] Stable v1 JSON receipt schemas.
 - [x] Cockpit integration mode (`--mode cockpit`).
 - [x] Multi-layered testing: BDD, Property, Fuzz, Mutation.
-- [x] Basic Windows support; Full Unix support (RSS, CPU time).
+- [x] Basic Windows support; Full Unix support (RSS, CPU time, page faults, context switches).
 
 ---
 
@@ -22,16 +22,16 @@ To become the standard, low-friction "build truth" sensor for performance gating
 *Focus: Reliability, documentation completeness, and initial ecosystem hardening.*
 
 - [ ] **Contract Hardening**
-  - [ ] Finalize and lock `v1` schemas for receipts and config.
-  - [ ] Ensure byte-for-byte deterministic output for all report generators.
-  - [ ] Detect and flag extra/stale files in contract mirror checks.
+  - [x] Finalize and lock `v1` schemas for receipts and config.
+  - [x] Ensure byte-for-byte deterministic output for all report generators.
+  - [x] Detect and flag extra/stale files in contract mirror checks.
 - [ ] **Documentation & DX**
   - [ ] Complete documentation alignment (metrics names, CLI flags).
-  - [ ] Provide canonical "Getting Started" guides for common CI providers (GitHub Actions, GitLab CI).
+  - [x] Provide canonical "Getting Started" guides for common CI providers (GitHub Actions, GitLab CI).
   - [ ] Standardize error stage/kind classifications across all failure paths.
 - [ ] **Tooling**
-  - [ ] Deduplicate `xtask` and test helpers into shared library modules.
-  - [ ] Stabilize `conform` command for third-party sensor validation.
+  - [x] Deduplicate `xtask` and test helpers into shared library modules.
+  - [x] Stabilize `conform` command for third-party sensor validation.
 
 ---
 
@@ -40,16 +40,16 @@ To become the standard, low-friction "build truth" sensor for performance gating
 *Focus: Deeper system metrics and improved platform parity.*
 
 - [ ] **New Metrics (Unix)**
-  - [ ] `page_faults`: Track major page faults to detect memory pressure changes.
-  - [ ] `ctx_switches`: Track voluntary and involuntary context switches.
+  - [x] `page_faults`: Track major page faults to detect memory pressure changes.
+  - [x] `ctx_switches`: Track voluntary and involuntary context switches.
 - [ ] **Static Analysis Metrics**
-  - [ ] `binary_bytes`: Track changes in compiled executable size.
+  - [x] `binary_bytes`: Track changes in compiled executable size.
 - [ ] **Improved Platform Support**
-  - [ ] Explore best-effort CPU time and memory tracking for Windows.
-  - [ ] Support custom environment injection for `paired` mode executions.
+  - [x] Explore best-effort CPU time and memory tracking for Windows.
+  - [x] Support custom environment injection for `paired` mode executions.
 - [ ] **Configuration Enhancements**
-  - [ ] Implement metric-specific budgets in `perfgate.toml` (overriding globals).
-  - [ ] Support regex-based bench selection in `check --all`.
+  - [x] Implement metric-specific budgets in `perfgate.toml` (overriding globals).
+  - [x] Support regex-based bench selection in `check --all`.
 
 ---
 
@@ -59,12 +59,12 @@ To become the standard, low-friction "build truth" sensor for performance gating
 
 - [ ] **Native GitHub Actions Integration**
   - [ ] Official `perfgate-action` for zero-config setup.
-  - [ ] Support setting Action outputs (verdict, counts) for workflow branching.
+  - [x] Support setting Action outputs (verdict, counts) for workflow branching.
 - [ ] **Flexible Reporting**
-  - [ ] Support Liquid/Handlebars templates for Markdown comments.
-  - [ ] Multi-format export (e.g., HTML summary, Prometheus/OpenTelemetry push).
+  - [x] Support Liquid/Handlebars templates for Markdown comments.
+  - [x] Multi-format export (e.g., HTML summary, Prometheus/OpenTelemetry push).
 - [ ] **Baseline Management**
-  - [ ] Auto-discovery of baselines using naming patterns.
+  - [x] Auto-discovery of baselines using naming patterns.
   - [ ] S3/GCS backend support for `promote` and `check`.
 
 ---

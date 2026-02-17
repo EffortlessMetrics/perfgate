@@ -1,20 +1,14 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PerfgateReport",
   "description": "A performance report wrapping compare results in a cockpit-compatible envelope.",
   "type": "object",
-  "required": [
-    "findings",
-    "report_type",
-    "summary",
-    "verdict"
-  ],
   "properties": {
     "compare": {
       "description": "The full compare receipt (absent when baseline is missing).",
       "anyOf": [
         {
-          "$ref": "#/definitions/CompareReceipt"
+          "$ref": "#/$defs/CompareReceipt"
         },
         {
           "type": "null"
@@ -25,7 +19,7 @@
       "description": "List of findings (warnings and failures).",
       "type": "array",
       "items": {
-        "$ref": "#/definitions/ReportFinding"
+        "$ref": "#/$defs/ReportFinding"
       }
     },
     "report_type": {
@@ -34,30 +28,22 @@
     },
     "summary": {
       "description": "Summary counts.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/ReportSummary"
-        }
-      ]
+      "$ref": "#/$defs/ReportSummary"
     },
     "verdict": {
       "description": "Overall verdict for the report.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Verdict"
-        }
-      ]
+      "$ref": "#/$defs/Verdict"
     }
   },
-  "definitions": {
+  "required": [
+    "report_type",
+    "verdict",
+    "findings",
+    "summary"
+  ],
+  "$defs": {
     "BenchMeta": {
       "type": "object",
-      "required": [
-        "command",
-        "name",
-        "repeat",
-        "warmup"
-      ],
       "properties": {
         "command": {
           "description": "argv vector (no shell parsing).",
@@ -79,7 +65,7 @@
         "repeat": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "timeout_ms": {
           "type": [
@@ -87,12 +73,12 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warmup": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "work_units": {
           "type": [
@@ -100,20 +86,21 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
     },
     "Budget": {
       "type": "object",
-      "required": [
-        "direction",
-        "threshold",
-        "warn_threshold"
-      ],
       "properties": {
         "direction": {
-          "$ref": "#/definitions/Direction"
+          "$ref": "#/$defs/Direction"
         },
         "threshold": {
           "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
@@ -125,52 +112,99 @@
           "type": "number",
           "format": "double"
         }
-      }
+      },
+      "required": [
+        "threshold",
+        "warn_threshold",
+        "direction"
+      ]
     },
     "CompareReceipt": {
       "type": "object",
-      "required": [
-        "baseline_ref",
-        "bench",
-        "budgets",
-        "current_ref",
-        "deltas",
-        "schema",
-        "tool",
-        "verdict"
-      ],
       "properties": {
         "baseline_ref": {
-          "$ref": "#/definitions/CompareRef"
+          "$ref": "#/$defs/CompareRef"
         },
         "bench": {
-          "$ref": "#/definitions/BenchMeta"
+          "$ref": "#/$defs/BenchMeta"
         },
         "budgets": {
           "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/Budget"
-          }
+          "properties": {
+            "binary_bytes": {
+              "$ref": "#/$defs/Budget"
+            },
+            "cpu_ms": {
+              "$ref": "#/$defs/Budget"
+            },
+            "ctx_switches": {
+              "$ref": "#/$defs/Budget"
+            },
+            "max_rss_kb": {
+              "$ref": "#/$defs/Budget"
+            },
+            "page_faults": {
+              "$ref": "#/$defs/Budget"
+            },
+            "throughput_per_s": {
+              "$ref": "#/$defs/Budget"
+            },
+            "wall_ms": {
+              "$ref": "#/$defs/Budget"
+            }
+          },
+          "additionalProperties": false
         },
         "current_ref": {
-          "$ref": "#/definitions/CompareRef"
+          "$ref": "#/$defs/CompareRef"
         },
         "deltas": {
           "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/Delta"
-          }
+          "properties": {
+            "binary_bytes": {
+              "$ref": "#/$defs/Delta"
+            },
+            "cpu_ms": {
+              "$ref": "#/$defs/Delta"
+            },
+            "ctx_switches": {
+              "$ref": "#/$defs/Delta"
+            },
+            "max_rss_kb": {
+              "$ref": "#/$defs/Delta"
+            },
+            "page_faults": {
+              "$ref": "#/$defs/Delta"
+            },
+            "throughput_per_s": {
+              "$ref": "#/$defs/Delta"
+            },
+            "wall_ms": {
+              "$ref": "#/$defs/Delta"
+            }
+          },
+          "additionalProperties": false
         },
         "schema": {
           "type": "string"
         },
         "tool": {
-          "$ref": "#/definitions/ToolInfo"
+          "$ref": "#/$defs/ToolInfo"
         },
         "verdict": {
-          "$ref": "#/definitions/Verdict"
+          "$ref": "#/$defs/Verdict"
         }
-      }
+      },
+      "required": [
+        "schema",
+        "tool",
+        "bench",
+        "baseline_ref",
+        "current_ref",
+        "budgets",
+        "deltas",
+        "verdict"
+      ]
     },
     "CompareRef": {
       "type": "object",
@@ -191,14 +225,6 @@
     },
     "Delta": {
       "type": "object",
-      "required": [
-        "baseline",
-        "current",
-        "pct",
-        "ratio",
-        "regression",
-        "status"
-      ],
       "properties": {
         "baseline": {
           "type": "number",
@@ -224,9 +250,17 @@
           "format": "double"
         },
         "status": {
-          "$ref": "#/definitions/MetricStatus"
+          "$ref": "#/$defs/MetricStatus"
         }
-      }
+      },
+      "required": [
+        "baseline",
+        "current",
+        "ratio",
+        "pct",
+        "regression",
+        "status"
+      ]
     },
     "Direction": {
       "type": "string",
@@ -238,14 +272,6 @@
     "FindingData": {
       "description": "Data associated with a metric finding.",
       "type": "object",
-      "required": [
-        "baseline",
-        "current",
-        "direction",
-        "metric_name",
-        "regression_pct",
-        "threshold"
-      ],
       "properties": {
         "baseline": {
           "description": "Baseline value.",
@@ -259,11 +285,7 @@
         },
         "direction": {
           "description": "Whether lower is better or higher is better.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Direction"
-            }
-          ]
+          "$ref": "#/$defs/Direction"
         },
         "metric_name": {
           "description": "Name of the metric (e.g., \"wall_ms\", \"max_rss_kb\").",
@@ -279,7 +301,15 @@
           "type": "number",
           "format": "double"
         }
-      }
+      },
+      "required": [
+        "metric_name",
+        "baseline",
+        "current",
+        "regression_pct",
+        "threshold",
+        "direction"
+      ]
     },
     "MetricStatus": {
       "type": "string",
@@ -292,12 +322,6 @@
     "ReportFinding": {
       "description": "A single finding from the performance check.",
       "type": "object",
-      "required": [
-        "check_id",
-        "code",
-        "message",
-        "severity"
-      ],
       "properties": {
         "check_id": {
           "description": "Unique identifier for the check type (e.g., \"perf.budget\", \"perf.baseline\").",
@@ -311,7 +335,7 @@
           "description": "Structured data about the finding (present for metric findings, absent for structural findings).",
           "anyOf": [
             {
-              "$ref": "#/definitions/FindingData"
+              "$ref": "#/$defs/FindingData"
             },
             {
               "type": "null"
@@ -324,49 +348,51 @@
         },
         "severity": {
           "description": "Severity level (warn or fail).",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Severity"
-            }
-          ]
+          "$ref": "#/$defs/Severity"
         }
-      }
+      },
+      "required": [
+        "check_id",
+        "code",
+        "severity",
+        "message"
+      ]
     },
     "ReportSummary": {
       "description": "Summary counts and key metrics for the report.",
       "type": "object",
-      "required": [
-        "fail_count",
-        "pass_count",
-        "total_count",
-        "warn_count"
-      ],
       "properties": {
         "fail_count": {
           "description": "Number of metrics that failed.",
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "pass_count": {
           "description": "Number of metrics that passed.",
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "total_count": {
           "description": "Total number of metrics checked.",
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warn_count": {
           "description": "Number of metrics that warned.",
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "pass_count",
+        "warn_count",
+        "fail_count",
+        "total_count"
+      ]
     },
     "Severity": {
       "description": "Severity level for a finding.",
@@ -378,10 +404,6 @@
     },
     "ToolInfo": {
       "type": "object",
-      "required": [
-        "name",
-        "version"
-      ],
       "properties": {
         "name": {
           "type": "string"
@@ -389,18 +411,17 @@
         "version": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
     },
     "Verdict": {
       "type": "object",
-      "required": [
-        "counts",
-        "reasons",
-        "status"
-      ],
       "properties": {
         "counts": {
-          "$ref": "#/definitions/VerdictCounts"
+          "$ref": "#/$defs/VerdictCounts"
         },
         "reasons": {
           "type": "array",
@@ -409,34 +430,39 @@
           }
         },
         "status": {
-          "$ref": "#/definitions/VerdictStatus"
+          "$ref": "#/$defs/VerdictStatus"
         }
-      }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
     },
     "VerdictCounts": {
       "type": "object",
-      "required": [
-        "fail",
-        "pass",
-        "warn"
-      ],
       "properties": {
         "fail": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "pass": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warn": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail"
+      ]
     },
     "VerdictStatus": {
       "type": "string",

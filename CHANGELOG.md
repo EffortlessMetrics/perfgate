@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Baseline pattern auto-discovery** for `check` via `defaults.baseline_pattern` in config (supports `{bench}` placeholder).
+- **Markdown templating** with Handlebars:
+  - `perfgate md --template ...`
+  - `perfgate report --md-template ...`
+  - `perfgate check --md-template ...` (with config fallback `defaults.markdown_template`)
+- **GitHub Actions outputs** for `check` via `--output-github`, writing verdict/count outputs to `$GITHUB_OUTPUT`.
+- **New export formats**: `html` and `prometheus` alongside existing `csv` and `jsonl`.
+- **Schema lock verification** via `xtask schema-check`, with drift detection for missing/modified/extra schema files in `schemas/`.
+- **Stabilized `xtask conform` third-party mode**: `--fixtures` now validates all `*.json` files in the provided directory.
+- **CI provider guides**: added canonical getting-started docs for GitHub Actions and GitLab CI.
+
+## [0.3.0] - 2026-02-16
+
+### Added
+
 - **Finding fingerprinting** — Each sensor report finding now includes a `fingerprint` field containing the SHA-256 hex digest of a deterministic preimage for collision-resistant deduplication:
   - Metric findings: `sha256("{check_id}:{code}:{metric_name}")`
   - Error findings: `sha256("{check_id}:{code}:{stage}")`
@@ -139,6 +154,7 @@ Initial release of perfgate, a CLI tool for performance budgets and baseline dif
 - `max_rss_kb` collection only works on Unix via `rusage`
 - BDD tests skip `@unix` tagged scenarios on Windows
 
-[Unreleased]: https://github.com/EffortlessMetrics/perfgate/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/EffortlessMetrics/perfgate/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/EffortlessMetrics/perfgate/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/EffortlessMetrics/perfgate/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/EffortlessMetrics/perfgate/releases/tag/v0.1.0

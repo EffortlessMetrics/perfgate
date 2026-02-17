@@ -13,7 +13,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
@@ -26,9 +26,15 @@ categories = ["development-tools", "command-line-utilities"]
 # Root package for workspace-level integration tests (BDD/cucumber)
 [package]
 name = "perfgate-tests"
+description = "Workspace integration and BDD tests for perfgate"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
 publish = false
 
 [dev-dependencies]
@@ -69,7 +75,7 @@ tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 libc = "0.2.181"
 
 # Internal crates
-perfgate-types = { path = "crates/perfgate-types", version = "0.2.0" }
-perfgate-domain = { path = "crates/perfgate-domain", version = "0.2.0" }
-perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.2.0" }
-perfgate-app = { path = "crates/perfgate-app", version = "0.2.0" }
+perfgate-types = { path = "crates/perfgate-types", version = "0.3.0" }
+perfgate-domain = { path = "crates/perfgate-domain", version = "0.3.0" }
+perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.3.0" }
+perfgate-app = { path = "crates/perfgate-app", version = "0.3.0" }

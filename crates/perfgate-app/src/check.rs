@@ -307,8 +307,20 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         // Determine candidate metrics: those present in both baseline+current
         let mut candidates = Vec::new();
         candidates.push(Metric::WallMs);
+        if baseline.stats.cpu_ms.is_some() && current.stats.cpu_ms.is_some() {
+            candidates.push(Metric::CpuMs);
+        }
+        if baseline.stats.page_faults.is_some() && current.stats.page_faults.is_some() {
+            candidates.push(Metric::PageFaults);
+        }
+        if baseline.stats.ctx_switches.is_some() && current.stats.ctx_switches.is_some() {
+            candidates.push(Metric::CtxSwitches);
+        }
         if baseline.stats.max_rss_kb.is_some() && current.stats.max_rss_kb.is_some() {
             candidates.push(Metric::MaxRssKb);
+        }
+        if baseline.stats.binary_bytes.is_some() && current.stats.binary_bytes.is_some() {
+            candidates.push(Metric::BinaryBytes);
         }
         if baseline.stats.throughput_per_s.is_some() && current.stats.throughput_per_s.is_some() {
             candidates.push(Metric::ThroughputPerS);
@@ -475,8 +487,33 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
         run.stats.wall_ms.median
     ));
 
+    if let Some(cpu) = &run.stats.cpu_ms {
+        out.push_str(&format!("| `cpu_ms` | {} ms |\n", cpu.median));
+    }
+
+    if let Some(page_faults) = &run.stats.page_faults {
+        out.push_str(&format!(
+            "| `page_faults` | {} count |\n",
+            page_faults.median
+        ));
+    }
+
+    if let Some(ctx_switches) = &run.stats.ctx_switches {
+        out.push_str(&format!(
+            "| `ctx_switches` | {} count |\n",
+            ctx_switches.median
+        ));
+    }
+
     if let Some(rss) = &run.stats.max_rss_kb {
         out.push_str(&format!("| `max_rss_kb` | {} KB |\n", rss.median));
+    }
+
+    if let Some(binary_bytes) = &run.stats.binary_bytes {
+        out.push_str(&format!(
+            "| `binary_bytes` | {} bytes |\n",
+            binary_bytes.median
+        ));
     }
 
     if let Some(throughput) = &run.stats.throughput_per_s {
@@ -542,7 +579,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(1024),
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }],
@@ -553,11 +593,14 @@ mod tests {
                     max: wall_ms_median.saturating_add(10),
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1000,
                     max: 1100,
                 }),
+                binary_bytes: None,
                 throughput_per_s: None,
             },
         }
@@ -628,7 +671,10 @@ mod tests {
             exit_code,
             timed_out,
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             stdout: Vec::new(),
             stderr: Vec::new(),
         }
@@ -664,11 +710,14 @@ mod tests {
                     max: wall_ms,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: max_rss_kb.map(|v| U64Summary {
                     median: v,
                     min: v,
                     max: v,
                 }),
+                binary_bytes: None,
                 throughput_per_s: None,
             },
         }
@@ -843,6 +892,8 @@ mod tests {
                 warn_factor: None,
                 out_dir: None,
                 baseline_dir: None,
+                baseline_pattern: None,
+                markdown_template: None,
             },
             benches: vec![bench.clone()],
         };
@@ -956,6 +1007,8 @@ mod tests {
                 warn_factor: Some(0.5),
                 out_dir: None,
                 baseline_dir: None,
+                baseline_pattern: None,
+                markdown_template: None,
             },
             benches: vec![bench.clone()],
         };
@@ -1139,6 +1192,8 @@ mod tests {
                 warn_factor: Some(0.5),
                 out_dir: None,
                 baseline_dir: None,
+                baseline_pattern: None,
+                markdown_template: None,
             },
             benches: vec![bench],
         };

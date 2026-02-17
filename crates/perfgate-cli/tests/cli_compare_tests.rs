@@ -2,27 +2,12 @@
 //!
 //! **Validates: Requirements 4.1, 6.1, 6.2, 6.3**
 
-use assert_cmd::Command;
 use predicates::prelude::*;
-use std::env;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
-fn perfgate_cmd() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
-        cmd.env("LLVM_PROFILE_FILE", profile);
-    }
-    cmd
-}
-
-/// Returns the path to the test fixtures directory
-fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
+mod common;
+use common::{fixtures_dir, perfgate_cmd};
 
 /// Test compare with pass scenario - current is better than baseline
 /// Exit code should be 0 (pass)

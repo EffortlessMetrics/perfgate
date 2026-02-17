@@ -12,15 +12,29 @@ pub enum ExportFormat {
     Csv,
     /// JSON Lines format (one JSON object per line).
     Jsonl,
+    /// HTML summary table.
+    Html,
+    /// Prometheus text exposition format.
+    Prometheus,
 }
 
 impl ExportFormat {
     /// Parse format from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
+        s.parse().ok()
+    }
+}
+
+impl std::str::FromStr for ExportFormat {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "csv" => Some(ExportFormat::Csv),
-            "jsonl" => Some(ExportFormat::Jsonl),
-            _ => None,
+            "csv" => Ok(ExportFormat::Csv),
+            "jsonl" => Ok(ExportFormat::Jsonl),
+            "html" => Ok(ExportFormat::Html),
+            "prometheus" | "prom" => Ok(ExportFormat::Prometheus),
+            _ => Err(()),
         }
     }
 }
@@ -32,8 +46,11 @@ pub struct RunExportRow {
     pub wall_ms_median: u64,
     pub wall_ms_min: u64,
     pub wall_ms_max: u64,
+    pub binary_bytes_median: Option<u64>,
     pub cpu_ms_median: Option<u64>,
+    pub ctx_switches_median: Option<u64>,
     pub max_rss_kb_median: Option<u64>,
+    pub page_faults_median: Option<u64>,
     pub throughput_median: Option<f64>,
     pub sample_count: usize,
     pub timestamp: String,
@@ -62,6 +79,8 @@ impl ExportUseCase {
         match format {
             ExportFormat::Csv => Self::run_row_to_csv(&row),
             ExportFormat::Jsonl => Self::run_row_to_jsonl(&row),
+            ExportFormat::Html => Self::run_row_to_html(&row),
+            ExportFormat::Prometheus => Self::run_row_to_prometheus(&row),
         }
     }
 
@@ -75,6 +94,8 @@ impl ExportUseCase {
         match format {
             ExportFormat::Csv => Self::compare_rows_to_csv(&rows),
             ExportFormat::Jsonl => Self::compare_rows_to_jsonl(&rows),
+            ExportFormat::Html => Self::compare_rows_to_html(&rows),
+            ExportFormat::Prometheus => Self::compare_rows_to_prometheus(&rows),
         }
     }
 
@@ -87,8 +108,11 @@ impl ExportUseCase {
             wall_ms_median: receipt.stats.wall_ms.median,
             wall_ms_min: receipt.stats.wall_ms.min,
             wall_ms_max: receipt.stats.wall_ms.max,
+            binary_bytes_median: receipt.stats.binary_bytes.as_ref().map(|s| s.median),
             cpu_ms_median: receipt.stats.cpu_ms.as_ref().map(|s| s.median),
+            ctx_switches_median: receipt.stats.ctx_switches.as_ref().map(|s| s.median),
             max_rss_kb_median: receipt.stats.max_rss_kb.as_ref().map(|s| s.median),
+            page_faults_median: receipt.stats.page_faults.as_ref().map(|s| s.median),
             throughput_median: receipt.stats.throughput_per_s.as_ref().map(|s| s.median),
             sample_count,
             timestamp: receipt.run.started_at.clone(),
@@ -129,7 +153,7 @@ impl ExportUseCase {
         let mut output = String::new();
 
         // Header row
-        output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,cpu_ms_median,max_rss_kb_median,throughput_median,sample_count,timestamp\n");
+        output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp\n");
 
         // Data row
         output.push_str(&csv_escape(&row.bench_name));
@@ -140,10 +164,25 @@ impl ExportUseCase {
         output.push(',');
         output.push_str(&row.wall_ms_max.to_string());
         output.push(',');
+        output.push_str(
+            &row.binary_bytes_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
         output.push_str(&row.cpu_ms_median.map_or(String::new(), |v| v.to_string()));
         output.push(',');
         output.push_str(
+            &row.ctx_switches_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
+        output.push_str(
             &row.max_rss_kb_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
+        output.push_str(
+            &row.page_faults_median
                 .map_or(String::new(), |v| v.to_string()),
         );
         output.push(',');
@@ -208,16 +247,164 @@ impl ExportUseCase {
 
         Ok(output)
     }
+
+    fn run_row_to_html(row: &RunExportRow) -> anyhow::Result<String> {
+        let html = format!(
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>perfgate run export</title></head><body>\
+             <h1>perfgate run export</h1>\
+             <table border=\"1\">\
+             <thead><tr><th>bench_name</th><th>wall_ms_median</th><th>wall_ms_min</th><th>wall_ms_max</th><th>binary_bytes_median</th><th>cpu_ms_median</th><th>ctx_switches_median</th><th>max_rss_kb_median</th><th>page_faults_median</th><th>throughput_median</th><th>sample_count</th><th>timestamp</th></tr></thead>\
+             <tbody><tr><td>{bench}</td><td>{wall_med}</td><td>{wall_min}</td><td>{wall_max}</td><td>{binary}</td><td>{cpu}</td><td>{ctx}</td><td>{rss}</td><td>{pf}</td><td>{throughput}</td><td>{sample_count}</td><td>{timestamp}</td></tr></tbody>\
+             </table></body></html>\n",
+            bench = html_escape(&row.bench_name),
+            wall_med = row.wall_ms_median,
+            wall_min = row.wall_ms_min,
+            wall_max = row.wall_ms_max,
+            binary = row
+                .binary_bytes_median
+                .map_or(String::new(), |v| v.to_string()),
+            cpu = row.cpu_ms_median.map_or(String::new(), |v| v.to_string()),
+            ctx = row
+                .ctx_switches_median
+                .map_or(String::new(), |v| v.to_string()),
+            rss = row
+                .max_rss_kb_median
+                .map_or(String::new(), |v| v.to_string()),
+            pf = row
+                .page_faults_median
+                .map_or(String::new(), |v| v.to_string()),
+            throughput = row
+                .throughput_median
+                .map_or(String::new(), |v| format!("{:.6}", v)),
+            sample_count = row.sample_count,
+            timestamp = html_escape(&row.timestamp),
+        );
+        Ok(html)
+    }
+
+    fn compare_rows_to_html(rows: &[CompareExportRow]) -> anyhow::Result<String> {
+        let mut out = String::from(
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>perfgate compare export</title></head><body><h1>perfgate compare export</h1><table border=\"1\"><thead><tr><th>bench_name</th><th>metric</th><th>baseline_value</th><th>current_value</th><th>regression_pct</th><th>status</th><th>threshold</th></tr></thead><tbody>",
+        );
+
+        for row in rows {
+            out.push_str(&format!(
+                "<tr><td>{}</td><td>{}</td><td>{:.6}</td><td>{:.6}</td><td>{:.6}</td><td>{}</td><td>{:.6}</td></tr>",
+                html_escape(&row.bench_name),
+                html_escape(&row.metric),
+                row.baseline_value,
+                row.current_value,
+                row.regression_pct,
+                html_escape(&row.status),
+                row.threshold
+            ));
+        }
+
+        out.push_str("</tbody></table></body></html>\n");
+        Ok(out)
+    }
+
+    fn run_row_to_prometheus(row: &RunExportRow) -> anyhow::Result<String> {
+        let bench = prometheus_escape_label_value(&row.bench_name);
+        let mut out = String::new();
+        out.push_str(&format!(
+            "perfgate_run_wall_ms_median{{bench=\"{}\"}} {}\n",
+            bench, row.wall_ms_median
+        ));
+        out.push_str(&format!(
+            "perfgate_run_wall_ms_min{{bench=\"{}\"}} {}\n",
+            bench, row.wall_ms_min
+        ));
+        out.push_str(&format!(
+            "perfgate_run_wall_ms_max{{bench=\"{}\"}} {}\n",
+            bench, row.wall_ms_max
+        ));
+        if let Some(v) = row.binary_bytes_median {
+            out.push_str(&format!(
+                "perfgate_run_binary_bytes_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.cpu_ms_median {
+            out.push_str(&format!(
+                "perfgate_run_cpu_ms_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.ctx_switches_median {
+            out.push_str(&format!(
+                "perfgate_run_ctx_switches_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.max_rss_kb_median {
+            out.push_str(&format!(
+                "perfgate_run_max_rss_kb_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.page_faults_median {
+            out.push_str(&format!(
+                "perfgate_run_page_faults_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.throughput_median {
+            out.push_str(&format!(
+                "perfgate_run_throughput_per_s_median{{bench=\"{}\"}} {:.6}\n",
+                bench, v
+            ));
+        }
+        out.push_str(&format!(
+            "perfgate_run_sample_count{{bench=\"{}\"}} {}\n",
+            bench, row.sample_count
+        ));
+        Ok(out)
+    }
+
+    fn compare_rows_to_prometheus(rows: &[CompareExportRow]) -> anyhow::Result<String> {
+        let mut out = String::new();
+        for row in rows {
+            let bench = prometheus_escape_label_value(&row.bench_name);
+            let metric = prometheus_escape_label_value(&row.metric);
+            out.push_str(&format!(
+                "perfgate_compare_baseline_value{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+                bench, metric, row.baseline_value
+            ));
+            out.push_str(&format!(
+                "perfgate_compare_current_value{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+                bench, metric, row.current_value
+            ));
+            out.push_str(&format!(
+                "perfgate_compare_regression_pct{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+                bench, metric, row.regression_pct
+            ));
+            out.push_str(&format!(
+                "perfgate_compare_threshold_pct{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+                bench, metric, row.threshold
+            ));
+
+            let status_code = match row.status.as_str() {
+                "pass" => 0,
+                "warn" => 1,
+                "fail" => 2,
+                _ => -1,
+            };
+            out.push_str(&format!(
+                "perfgate_compare_status{{bench=\"{}\",metric=\"{}\",status=\"{}\"}} {}\n",
+                bench,
+                metric,
+                prometheus_escape_label_value(&row.status),
+                status_code
+            ));
+        }
+        Ok(out)
+    }
 }
 
 /// Convert Metric enum to snake_case string.
 fn metric_to_string(metric: Metric) -> String {
-    match metric {
-        Metric::CpuMs => "cpu_ms".to_string(),
-        Metric::MaxRssKb => "max_rss_kb".to_string(),
-        Metric::ThroughputPerS => "throughput_per_s".to_string(),
-        Metric::WallMs => "wall_ms".to_string(),
-    }
+    metric.as_str().to_string()
 }
 
 /// Convert MetricStatus enum to lowercase string.
@@ -237,6 +424,17 @@ fn csv_escape(s: &str) -> String {
     } else {
         s.to_string()
     }
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn prometheus_escape_label_value(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 #[cfg(test)]
@@ -284,7 +482,10 @@ mod tests {
                     warmup: false,
                     timed_out: false,
                     cpu_ms: Some(50),
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(1024),
+                    binary_bytes: None,
                     stdout: None,
                     stderr: None,
                 },
@@ -294,7 +495,10 @@ mod tests {
                     warmup: false,
                     timed_out: false,
                     cpu_ms: Some(52),
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(1028),
+                    binary_bytes: None,
                     stdout: None,
                     stderr: None,
                 },
@@ -310,11 +514,14 @@ mod tests {
                     min: 48,
                     max: 52,
                 }),
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1020,
                     max: 1028,
                 }),
+                binary_bytes: None,
                 throughput_per_s: None,
             },
         }
@@ -479,11 +686,42 @@ mod tests {
 
     #[test]
     fn test_export_format_from_str() {
-        assert_eq!(ExportFormat::from_str("csv"), Some(ExportFormat::Csv));
-        assert_eq!(ExportFormat::from_str("CSV"), Some(ExportFormat::Csv));
-        assert_eq!(ExportFormat::from_str("jsonl"), Some(ExportFormat::Jsonl));
-        assert_eq!(ExportFormat::from_str("JSONL"), Some(ExportFormat::Jsonl));
-        assert_eq!(ExportFormat::from_str("invalid"), None);
+        assert_eq!(ExportFormat::parse("csv"), Some(ExportFormat::Csv));
+        assert_eq!(ExportFormat::parse("CSV"), Some(ExportFormat::Csv));
+        assert_eq!(ExportFormat::parse("jsonl"), Some(ExportFormat::Jsonl));
+        assert_eq!(ExportFormat::parse("JSONL"), Some(ExportFormat::Jsonl));
+        assert_eq!(ExportFormat::parse("html"), Some(ExportFormat::Html));
+        assert_eq!(
+            ExportFormat::parse("prometheus"),
+            Some(ExportFormat::Prometheus)
+        );
+        assert_eq!(ExportFormat::parse("invalid"), None);
+    }
+
+    #[test]
+    fn test_run_export_html_and_prometheus() {
+        let receipt = create_test_run_receipt();
+
+        let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+        assert!(html.contains("<table"), "html output should contain table");
+        assert!(html.contains("test-benchmark"));
+
+        let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+        assert!(prom.contains("perfgate_run_wall_ms_median"));
+        assert!(prom.contains("bench=\"test-benchmark\""));
+    }
+
+    #[test]
+    fn test_compare_export_html_and_prometheus() {
+        let receipt = create_test_compare_receipt();
+
+        let html = ExportUseCase::export_compare(&receipt, ExportFormat::Html).unwrap();
+        assert!(html.contains("<table"), "html output should contain table");
+        assert!(html.contains("max_rss_kb"));
+
+        let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
+        assert!(prom.contains("perfgate_compare_regression_pct"));
+        assert!(prom.contains("metric=\"max_rss_kb\""));
     }
 }
 
@@ -585,17 +823,33 @@ mod property_tests {
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000), // cpu_ms
-            proptest::option::of(0u64..1000000), // max_rss_kb
+            proptest::option::of(0u64..1000000),   // cpu_ms
+            proptest::option::of(0u64..1000000),   // page_faults
+            proptest::option::of(0u64..1000000),   // ctx_switches
+            proptest::option::of(0u64..1000000),   // max_rss_kb
+            proptest::option::of(0u64..100000000), // binary_bytes
         )
             .prop_map(
-                |(wall_ms, exit_code, warmup, timed_out, cpu_ms, max_rss_kb)| Sample {
+                |(
                     wall_ms,
                     exit_code,
                     warmup,
                     timed_out,
                     cpu_ms,
+                    page_faults,
+                    ctx_switches,
                     max_rss_kb,
+                    binary_bytes,
+                )| Sample {
+                    wall_ms,
+                    exit_code,
+                    warmup,
+                    timed_out,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
                     stdout: None,
                     stderr: None,
                 },
@@ -633,15 +887,31 @@ mod property_tests {
         (
             u64_summary_strategy(),
             proptest::option::of(u64_summary_strategy()), // cpu_ms
+            proptest::option::of(u64_summary_strategy()), // page_faults
+            proptest::option::of(u64_summary_strategy()), // ctx_switches
             proptest::option::of(u64_summary_strategy()), // max_rss_kb
+            proptest::option::of(u64_summary_strategy()), // binary_bytes
             proptest::option::of(f64_summary_strategy()),
         )
-            .prop_map(|(wall_ms, cpu_ms, max_rss_kb, throughput_per_s)| Stats {
-                wall_ms,
-                cpu_ms,
-                max_rss_kb,
-                throughput_per_s,
-            })
+            .prop_map(
+                |(
+                    wall_ms,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
+                    throughput_per_s,
+                )| Stats {
+                    wall_ms,
+                    cpu_ms,
+                    page_faults,
+                    ctx_switches,
+                    max_rss_kb,
+                    binary_bytes,
+                    throughput_per_s,
+                },
+            )
     }
 
     // Strategy for RunReceipt
@@ -745,8 +1015,11 @@ mod property_tests {
     // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
+            Just(Metric::BinaryBytes),
             Just(Metric::CpuMs),
+            Just(Metric::CtxSwitches),
             Just(Metric::MaxRssKb),
+            Just(Metric::PageFaults),
             Just(Metric::ThroughputPerS),
             Just(Metric::WallMs),
         ]
@@ -754,12 +1027,12 @@ mod property_tests {
 
     // Strategy for BTreeMap<Metric, Budget>
     fn budgets_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Budget>> {
-        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 1..4)
+        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 1..8)
     }
 
     // Strategy for BTreeMap<Metric, Delta>
     fn deltas_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Delta>> {
-        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 1..4)
+        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 1..8)
     }
 
     // Strategy for CompareRef
@@ -807,7 +1080,7 @@ mod property_tests {
             let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
 
             // Check header is present
-            prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,cpu_ms_median,max_rss_kb_median,throughput_median,sample_count,timestamp\n"));
+            prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp\n"));
 
             // Check we have exactly 2 lines (header + data)
             let lines: Vec<&str> = csv.trim().split('\n').collect();

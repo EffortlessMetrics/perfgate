@@ -91,11 +91,32 @@ pub fn compute_stats(
         Some(summarize_u64(&cpu_vals)?)
     };
 
+    let page_fault_vals: Vec<u64> = measured.iter().filter_map(|s| s.page_faults).collect();
+    let page_faults = if page_fault_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&page_fault_vals)?)
+    };
+
+    let ctx_switch_vals: Vec<u64> = measured.iter().filter_map(|s| s.ctx_switches).collect();
+    let ctx_switches = if ctx_switch_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&ctx_switch_vals)?)
+    };
+
     let rss_vals: Vec<u64> = measured.iter().filter_map(|s| s.max_rss_kb).collect();
     let max_rss_kb = if rss_vals.is_empty() {
         None
     } else {
         Some(summarize_u64(&rss_vals)?)
+    };
+
+    let binary_vals: Vec<u64> = measured.iter().filter_map(|s| s.binary_bytes).collect();
+    let binary_bytes = if binary_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&binary_vals)?)
     };
 
     let throughput_per_s = match work_units {
@@ -119,7 +140,10 @@ pub fn compute_stats(
     Ok(Stats {
         wall_ms,
         cpu_ms,
+        page_faults,
+        ctx_switches,
         max_rss_kb,
+        binary_bytes,
         throughput_per_s,
     })
 }
@@ -325,8 +349,11 @@ fn metric_to_string(metric: Metric) -> String {
 
 fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
     match metric {
+        Metric::BinaryBytes => stats.binary_bytes.as_ref().map(|s| s.median as f64),
         Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),
+        Metric::CtxSwitches => stats.ctx_switches.as_ref().map(|s| s.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
+        Metric::PageFaults => stats.page_faults.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
         Metric::WallMs => Some(stats.wall_ms.median as f64),
     }
@@ -405,10 +432,10 @@ pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<H
     }
 
     // Check hostname_hash mismatch (if both present)
-    if let (Some(base_hash), Some(curr_hash)) = (&baseline.hostname_hash, &current.hostname_hash) {
-        if base_hash != curr_hash {
-            reasons.push("hostname mismatch (different machines)".to_string());
-        }
+    if let (Some(base_hash), Some(curr_hash)) = (&baseline.hostname_hash, &current.hostname_hash)
+        && base_hash != curr_hash
+    {
+        reasons.push("hostname mismatch (different machines)".to_string());
     }
 
     if reasons.is_empty() {
@@ -1134,7 +1161,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }
@@ -1148,7 +1178,10 @@ mod tests {
                 warmup: true,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }
@@ -1368,7 +1401,10 @@ mod tests {
                         max: baseline as u64,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: None,
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -1379,7 +1415,10 @@ mod tests {
                         max: current as u64,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: None,
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -1440,7 +1479,10 @@ mod tests {
                         max: 1000,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: None,
+                    binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline,
                         min: baseline,
@@ -1455,7 +1497,10 @@ mod tests {
                         max: 1000,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: None,
+                    binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: current,
                         min: current,
@@ -1517,7 +1562,10 @@ mod tests {
                             max: baseline as u64,
                         },
                         cpu_ms: None,
+                        page_faults: None,
+                        ctx_switches: None,
                         max_rss_kb: None,
+                        binary_bytes: None,
                         throughput_per_s: None,
                     };
                     let cs = Stats {
@@ -1527,7 +1575,10 @@ mod tests {
                             max: current as u64,
                         },
                         cpu_ms: None,
+                        page_faults: None,
+                        ctx_switches: None,
                         max_rss_kb: None,
+                        binary_bytes: None,
                         throughput_per_s: None,
                     };
                     let mut b = BTreeMap::new();
@@ -1537,7 +1588,10 @@ mod tests {
                     let bs = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
                         cpu_ms: None,
+                        page_faults: None,
+                        ctx_switches: None,
                         max_rss_kb: None,
+                        binary_bytes: None,
                         throughput_per_s: Some(F64Summary {
                             median: baseline,
                             min: baseline,
@@ -1547,7 +1601,10 @@ mod tests {
                     let cs = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
                         cpu_ms: None,
+                        page_faults: None,
+                        ctx_switches: None,
                         max_rss_kb: None,
+                        binary_bytes: None,
                         throughput_per_s: Some(F64Summary {
                             median: current,
                             min: current,
@@ -1590,7 +1647,10 @@ mod tests {
                 let baseline_stats = Stats {
                     wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: None,
+                    binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline,
                         min: baseline,
@@ -1608,7 +1668,10 @@ mod tests {
                     let current_stats = Stats {
                         wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
                         cpu_ms: None,
+                        page_faults: None,
+                        ctx_switches: None,
                         max_rss_kb: None,
+                        binary_bytes: None,
                         throughput_per_s: Some(F64Summary {
                             median: current_at_threshold_higher,
                             min: current_at_threshold_higher,
@@ -1680,7 +1743,10 @@ mod tests {
                     max: median,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: None,
             }
         }
@@ -1786,11 +1852,14 @@ mod tests {
                         max: baseline,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
                         max: baseline,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -1805,11 +1874,14 @@ mod tests {
                         max: wall_ms_current,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
                         max: max_rss_current,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -1868,11 +1940,14 @@ mod tests {
                         max: baseline,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
                         max: baseline,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: baseline_throughput,
                         min: baseline_throughput,
@@ -1907,11 +1982,14 @@ mod tests {
                         max: wall_ms_current,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
                         max: max_rss_current,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: throughput_current,
                         min: throughput_current,
@@ -1980,11 +2058,14 @@ mod tests {
                         max: baseline,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
                         max: baseline,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -1999,11 +2080,14 @@ mod tests {
                         max: wall_ms_current,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
                         max: max_rss_current,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -2060,11 +2144,14 @@ mod tests {
                         max: baseline,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: baseline,
                         min: baseline,
                         max: baseline,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -2079,11 +2166,14 @@ mod tests {
                         max: wall_ms_current,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(U64Summary {
                         median: max_rss_current,
                         min: max_rss_current,
                         max: max_rss_current,
                     }),
+                    binary_bytes: None,
                     throughput_per_s: None,
                 };
 
@@ -2140,6 +2230,8 @@ mod tests {
                         max: baseline,
                     },
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: if num_metrics >= 2 {
                         Some(U64Summary {
                             median: baseline,
@@ -2149,6 +2241,7 @@ mod tests {
                     } else {
                         None
                     },
+                    binary_bytes: None,
                     throughput_per_s: if num_metrics >= 3 {
                         Some(F64Summary {
                             median: baseline_throughput,
@@ -2229,7 +2322,10 @@ mod tests {
                 warmup: true,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2239,7 +2335,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2270,7 +2369,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: Some(50),
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2280,7 +2382,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: Some(60),
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2290,7 +2395,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: Some(55),
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2316,7 +2424,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(1024),
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2326,7 +2437,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(1028),
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2356,7 +2470,10 @@ mod tests {
                 warmup: true, // warmup - should be excluded
                 timed_out: false,
                 cpu_ms: Some(1000), // High value that would skew results
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2366,7 +2483,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: Some(50),
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2376,7 +2496,10 @@ mod tests {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: Some(60),
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
@@ -2410,7 +2533,10 @@ mod tests {
                 min: 50,
                 max: 50,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2426,7 +2552,10 @@ mod tests {
                 min: 100,
                 max: 100,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2476,7 +2605,10 @@ mod tests {
                 min: 100,
                 max: 100,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2492,7 +2624,10 @@ mod tests {
                 min: 50,
                 max: 50,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2539,7 +2674,10 @@ mod tests {
                 min: 50,
                 max: 50,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2550,7 +2688,10 @@ mod tests {
                 max: 100,
             },
             cpu_ms: None, // No cpu_ms in current
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2568,7 +2709,7 @@ mod tests {
 
         // cpu_ms delta should NOT exist (skipped because current lacks it)
         assert!(
-            comparison.deltas.get(&Metric::CpuMs).is_none(),
+            !comparison.deltas.contains_key(&Metric::CpuMs),
             "cpu_ms delta should be skipped when current lacks cpu_ms"
         );
     }
@@ -2583,7 +2724,10 @@ mod tests {
                 max: 100,
             },
             cpu_ms: None, // No cpu_ms in baseline
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2598,7 +2742,10 @@ mod tests {
                 min: 50,
                 max: 50,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2616,7 +2763,7 @@ mod tests {
 
         // cpu_ms delta should NOT exist (skipped because baseline lacks it)
         assert!(
-            comparison.deltas.get(&Metric::CpuMs).is_none(),
+            !comparison.deltas.contains_key(&Metric::CpuMs),
             "cpu_ms delta should be skipped when baseline lacks cpu_ms"
         );
     }
@@ -2635,7 +2782,10 @@ mod tests {
                 min: 100,
                 max: 100,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2651,7 +2801,10 @@ mod tests {
                 min: 115,
                 max: 115,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2689,7 +2842,10 @@ mod tests {
                 max: 1000,
             },
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
         let current = Stats {
@@ -2699,7 +2855,10 @@ mod tests {
                 max: 1100,
             },
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         };
 
@@ -2728,7 +2887,10 @@ mod tests {
                 max: 1000,
             },
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: Some(F64Summary {
                 median: 100.0,
                 min: 100.0,
@@ -2742,7 +2904,10 @@ mod tests {
                 max: 1000,
             },
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: Some(F64Summary {
                 median: 92.0,
                 min: 92.0,
@@ -2842,7 +3007,10 @@ mod tests {
                     warmup: true,
                     timed_out: false,
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(1024),
+                    binary_bytes: None,
                     stdout: None,
                     stderr: None,
                 },
@@ -2852,7 +3020,10 @@ mod tests {
                     warmup: true,
                     timed_out: false,
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(2048),
+                    binary_bytes: None,
                     stdout: None,
                     stderr: None,
                 },
@@ -2862,7 +3033,10 @@ mod tests {
                     warmup: true,
                     timed_out: false,
                     cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
                     max_rss_kb: Some(1536),
+                    binary_bytes: None,
                     stdout: None,
                     stderr: None,
                 },
@@ -2891,7 +3065,10 @@ mod tests {
                 warmup: true,
                 timed_out: false,
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }];
@@ -2926,7 +3103,10 @@ mod tests {
                     max: 0,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: None,
             };
 
@@ -2937,7 +3117,10 @@ mod tests {
                     max: 100,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: None,
             };
 
@@ -2981,7 +3164,10 @@ mod tests {
                     max: 1000,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
                     median: 0.0,
                     min: 0.0,
@@ -2996,7 +3182,10 @@ mod tests {
                     max: 1000,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
                     median: 100.0,
                     min: 100.0,
@@ -3044,11 +3233,14 @@ mod tests {
                     max: 1000,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(U64Summary {
                     median: 0,
                     min: 0,
                     max: 0,
                 }),
+                binary_bytes: None,
                 throughput_per_s: None,
             };
 
@@ -3059,11 +3251,14 @@ mod tests {
                     max: 1000,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: Some(U64Summary {
                     median: 1024,
                     min: 1024,
                     max: 1024,
                 }),
+                binary_bytes: None,
                 throughput_per_s: None,
             };
 
@@ -3108,7 +3303,10 @@ mod tests {
                     max: 1000,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
                     median: -10.0,
                     min: -10.0,
@@ -3123,7 +3321,10 @@ mod tests {
                     max: 1000,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
                     median: 100.0,
                     min: 100.0,

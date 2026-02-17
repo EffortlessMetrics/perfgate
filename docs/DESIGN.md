@@ -15,8 +15,8 @@ perfgate collects raw samples and computes summary statistics:
 - `exit_code`: Process exit code
 - `warmup`: Boolean flag indicating warmup sample
 - `timed_out`: Boolean flag indicating timeout occurred
-- `max_rss_kb`: Maximum resident set size in KB (Unix only, optional)
-- `cpu_ms`: Combined user and system CPU time in milliseconds (Unix only, optional)
+- `max_rss_kb`: Maximum resident set size in KB (Unix + best-effort Windows, optional)
+- `cpu_ms`: Combined user and system CPU time in milliseconds (Unix + best-effort Windows, optional)
 - `stdout`: Truncated stdout (optional, up to `output_cap_bytes`)
 - `stderr`: Truncated stderr (optional, up to `output_cap_bytes`)
 
@@ -348,7 +348,7 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
 
 **Invariants:**
 - `wall_ms` is always present (never None)
-- `max_rss_kb` MAY be None (non-Unix or collection failure)
+- `max_rss_kb` MAY be None (platform limits or collection failure)
 - `throughput_per_s` MAY be None (no `work_units` specified)
 - Metrics missing from either baseline or current are skipped in comparison
 

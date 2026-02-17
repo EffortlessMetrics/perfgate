@@ -1,15 +1,17 @@
 [package]
 name = "perfgate-adapters"
-description = "Process runner and system metrics adapters for perfgate"
+description = "Process execution and host probing adapters for perfgate"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/perfgate-adapters"
 authors.workspace = true
 readme = "README.md"
-keywords = ["performance", "benchmarking", "process", "metrics", "system"]
-categories = ["development-tools", "os"]
+keywords = ["performance", "benchmarking", "process", "metrics", "host"]
+categories = ["development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true

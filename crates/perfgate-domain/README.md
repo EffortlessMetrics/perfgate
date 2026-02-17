@@ -1,27 +1,32 @@
 # perfgate-domain
 
-Pure domain logic for perfgate: statistics, budgets, and comparisons.
+Pure, I/O-free policy and statistics logic for perfgate.
 
-This crate contains the core business logic with **no I/O dependencies**:
+## Responsibilities
 
-- Statistical calculations (median, min, max for u64 and f64)
-- Budget policy evaluation (pass/warn/fail thresholds)
-- Baseline comparison logic
-- Regression detection algorithms
-- Paired comparison logic for interleaved measurements
-- Host mismatch detection
+- Computes summary statistics from samples (`median`, `min`, `max`).
+- Compares baseline vs current stats against metric budgets.
+- Produces per-metric deltas and verdicts (pass/warn/fail).
+- Derives structured findings/reports from compare receipts.
+- Detects host mismatch signals between baseline and current runs.
+- Provides paired-benchmark math (`compute_paired_stats`, `compare_paired_stats`).
 
-## Design Philosophy
+## Boundaries
 
-This crate is intentionally I/O-free to ensure:
-- Easy testing with pure functions
-- Deterministic behavior
-- Clear separation of concerns
+- No process spawning.
+- No filesystem or network I/O.
+- No CLI parsing or formatting concerns.
 
-## Part of perfgate
+## Why This Layer Exists
 
-This crate is part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace for performance budgets and baseline diffs in CI.
+The crate is intentionally pure so it stays easy to test, deterministic, and reusable from both CLI and higher-level orchestration code.
+
+## Workspace Role
+
+`perfgate-domain` sits above `perfgate-types` and below `perfgate-app`:
+
+`perfgate-types` -> `perfgate-domain` -> `perfgate-app`
 
 ## License
 
-Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+Licensed under either Apache-2.0 or MIT.

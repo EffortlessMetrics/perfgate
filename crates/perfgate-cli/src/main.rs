@@ -6,12 +6,15 @@ use perfgate_app::{
     ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest,
     PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
     SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
+    render_markdown_template,
 };
 use perfgate_domain::DomainError;
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, Budget, CompareReceipt, CompareRef, ConfigFile,
-    ConfigValidationError, HostMismatchPolicy, Metric, PerfgateError, RunReceipt, ToolInfo,
+    ConfigValidationError, HostMismatchPolicy, Metric, PerfgateError, RunReceipt,
+    SensorVerdictStatus, ToolInfo,
 };
+use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -149,6 +152,10 @@ enum Command {
         /// Output markdown path (default: stdout)
         #[arg(long)]
         out: Option<PathBuf>,
+
+        /// Render markdown using a Handlebars template file.
+        #[arg(long)]
+        template: Option<PathBuf>,
     },
 
     /// Emit GitHub Actions annotations from a compare receipt.
@@ -221,6 +228,10 @@ enum Command {
         #[arg(long)]
         md: Option<PathBuf>,
 
+        /// Render markdown with a Handlebars template file (requires --md).
+        #[arg(long, requires = "md")]
+        md_template: Option<PathBuf>,
+
         /// Pretty-print JSON
         #[arg(long, default_value_t = false)]
         pretty: bool,
@@ -250,6 +261,10 @@ enum Command {
         /// Run all benchmarks defined in the config file
         #[arg(long, default_value_t = false)]
         all: bool,
+
+        /// Regex to filter benchmark names when used with --all
+        #[arg(long, requires = "all")]
+        bench_regex: Option<String>,
 
         /// Output directory for artifacts
         #[arg(long, default_value = "artifacts/perfgate")]
@@ -300,6 +315,15 @@ enum Command {
         /// - Errors are captured in the report rather than causing exit 1
         #[arg(long, default_value = "standard", value_enum)]
         mode: OutputMode,
+
+        /// Render markdown using a Handlebars template file.
+        /// If omitted, falls back to defaults.markdown_template from config.
+        #[arg(long)]
+        md_template: Option<PathBuf>,
+
+        /// Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT.
+        #[arg(long, default_value_t = false)]
+        output_github: bool,
     },
 
     /// Run paired benchmark: interleave baseline and current commands for reduced noise.
@@ -501,9 +525,19 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             }
         }
 
-        Command::Md { compare, out } => {
+        Command::Md {
+            compare,
+            out,
+            template,
+        } => {
             let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
-            let md = render_markdown(&compare_receipt);
+            let md = if let Some(template_path) = template {
+                let template = fs::read_to_string(&template_path)
+                    .with_context(|| format!("read {}", template_path.display()))?;
+                render_markdown_template(&compare_receipt, &template)?
+            } else {
+                render_markdown(&compare_receipt)
+            };
 
             match out {
                 Some(path) => {
@@ -550,6 +584,7 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             compare,
             out,
             md,
+            md_template,
             pretty,
         } => {
             let compare_receipt: CompareReceipt = read_json(&compare)?;
@@ -562,12 +597,18 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
 
             // Optionally write markdown summary
             if let Some(md_path) = md {
-                let md_content = render_markdown(&compare_receipt);
-                if let Some(parent) = md_path.parent() {
-                    if !parent.as_os_str().is_empty() {
-                        fs::create_dir_all(parent)
-                            .with_context(|| format!("create dir {}", parent.display()))?;
-                    }
+                let md_content = if let Some(template_path) = md_template {
+                    let template = fs::read_to_string(&template_path)
+                        .with_context(|| format!("read {}", template_path.display()))?;
+                    render_markdown_template(&compare_receipt, &template)?
+                } else {
+                    render_markdown(&compare_receipt)
+                };
+                if let Some(parent) = md_path.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("create dir {}", parent.display()))?;
                 }
                 fs::write(&md_path, md_content)
                     .with_context(|| format!("write {}", md_path.display()))?;
@@ -580,6 +621,7 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             config,
             bench,
             all,
+            bench_regex,
             out_dir,
             baseline,
             require_baseline,
@@ -590,11 +632,14 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             host_mismatch,
             pretty,
             mode,
+            md_template,
+            output_github,
         } => match mode {
             OutputMode::Standard => run_check_standard(
                 config,
                 bench,
                 all,
+                bench_regex,
                 out_dir,
                 baseline,
                 require_baseline,
@@ -604,11 +649,14 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
                 allow_nonzero,
                 host_mismatch,
                 pretty,
+                md_template,
+                output_github,
             ),
             OutputMode::Cockpit => run_check_cockpit(
                 config,
                 bench,
                 all,
+                bench_regex,
                 out_dir,
                 baseline,
                 require_baseline,
@@ -618,6 +666,8 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
                 allow_nonzero,
                 host_mismatch,
                 pretty,
+                md_template,
+                output_github,
             ),
         },
 
@@ -703,6 +753,7 @@ fn run_check_standard(
     config: PathBuf,
     bench: Option<String>,
     all: bool,
+    bench_regex: Option<String>,
     out_dir: PathBuf,
     baseline: Option<PathBuf>,
     require_baseline: bool,
@@ -712,6 +763,8 @@ fn run_check_standard(
     allow_nonzero: bool,
     host_mismatch: HostMismatchPolicy,
     pretty: bool,
+    md_template: Option<PathBuf>,
+    output_github: bool,
 ) -> anyhow::Result<()> {
     // Load config file
     let config_content =
@@ -727,23 +780,29 @@ fn run_check_standard(
 
     config_file
         .validate()
-        .map_err(|e| ConfigValidationError::ConfigFile(e))?;
+        .map_err(ConfigValidationError::ConfigFile)?;
 
     // Determine which benches to run
-    let bench_names: Vec<String> = if all {
-        if config_file.benches.is_empty() {
-            anyhow::bail!("no benchmarks defined in config file");
-        }
-        config_file.benches.iter().map(|b| b.name.clone()).collect()
-    } else if let Some(name) = bench {
-        vec![name.clone()]
-    } else {
-        anyhow::bail!("either --bench or --all must be specified");
-    };
+    let bench_names =
+        resolve_bench_names(&config_file, bench.as_deref(), all, bench_regex.as_deref())?;
+    let bench_count = bench_names.len() as u32;
+
+    let markdown_template_path = md_template.or_else(|| {
+        config_file
+            .defaults
+            .markdown_template
+            .as_ref()
+            .map(PathBuf::from)
+    });
+    let markdown_template = load_template(markdown_template_path.as_deref())?;
+    let github_output_path = resolve_github_output_path(output_github)?;
 
     // Track aggregate exit code: fail (2) > warn-as-fail (3) > pass (0)
     let mut max_exit_code: i32 = 0;
     let mut all_warnings: Vec<String> = Vec::new();
+    let mut total_pass: u32 = 0;
+    let mut total_warn: u32 = 0;
+    let mut total_fail: u32 = 0;
 
     for bench_name in &bench_names {
         // For --all mode, use per-bench subdirectories
@@ -798,6 +857,23 @@ fn run_check_standard(
         write_check_artifacts(&outcome, pretty)
             .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
+        if let Some(template) = markdown_template.as_deref() {
+            if let Some(compare) = &outcome.compare_receipt {
+                let markdown = render_markdown_template(compare, template).with_context(|| {
+                    format!("render markdown template for bench '{}'", bench_name)
+                })?;
+                atomic_write(&outcome.markdown_path, markdown.as_bytes())
+                    .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+            } else {
+                let msg = "markdown template ignored for no-baseline bench".to_string();
+                if all {
+                    all_warnings.push(format!("[{}] {}", bench_name, msg));
+                } else {
+                    all_warnings.push(msg);
+                }
+            }
+        }
+
         // Collect warnings (prefix with bench name in --all mode)
         for warning in &outcome.warnings {
             if all {
@@ -807,9 +883,27 @@ fn run_check_standard(
             }
         }
 
+        total_pass += outcome.report.summary.pass_count;
+        total_warn += outcome.report.summary.warn_count;
+        total_fail += outcome.report.summary.fail_count;
+
         // Update aggregate exit code (worst wins)
         // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
         update_max_exit_code(&mut max_exit_code, outcome.exit_code);
+    }
+
+    if let Some(path) = github_output_path.as_deref() {
+        write_github_outputs(
+            path,
+            &GitHubOutputSummary {
+                verdict: verdict_from_counts(total_pass, total_warn, total_fail),
+                pass_count: total_pass,
+                warn_count: total_warn,
+                fail_count: total_fail,
+                bench_count,
+                exit_code: max_exit_code,
+            },
+        )?;
     }
 
     // Print all warnings
@@ -825,6 +919,46 @@ fn run_check_standard(
     Ok(())
 }
 
+fn resolve_bench_names(
+    config_file: &ConfigFile,
+    bench: Option<&str>,
+    all: bool,
+    bench_regex: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    if all {
+        if config_file.benches.is_empty() {
+            anyhow::bail!("no benchmarks defined in config file");
+        }
+
+        let mut names: Vec<String> = config_file.benches.iter().map(|b| b.name.clone()).collect();
+
+        if let Some(pattern) = bench_regex {
+            let regex = Regex::new(pattern)
+                .with_context(|| format!("invalid --bench-regex pattern: {}", pattern))?;
+            names.retain(|name| regex.is_match(name));
+
+            if names.is_empty() {
+                anyhow::bail!(
+                    "--bench-regex '{}' did not match any benchmark names in config",
+                    pattern
+                );
+            }
+        }
+
+        return Ok(names);
+    }
+
+    if bench_regex.is_some() {
+        anyhow::bail!("--bench-regex can only be used with --all");
+    }
+
+    if let Some(name) = bench {
+        return Ok(vec![name.to_string()]);
+    }
+
+    anyhow::bail!("either --bench or --all must be specified")
+}
+
 /// Run check in cockpit mode (always write receipt, exit 0 unless catastrophic).
 ///
 /// In cockpit mode:
@@ -838,6 +972,7 @@ fn run_check_cockpit(
     config: PathBuf,
     bench: Option<String>,
     all: bool,
+    bench_regex: Option<String>,
     out_dir: PathBuf,
     baseline: Option<PathBuf>,
     require_baseline: bool,
@@ -847,10 +982,13 @@ fn run_check_cockpit(
     allow_nonzero: bool,
     host_mismatch: HostMismatchPolicy,
     pretty: bool,
+    md_template: Option<PathBuf>,
+    output_github: bool,
 ) -> anyhow::Result<()> {
     let clock = SystemClock;
     let started_at = clock.now_rfc3339();
     let start_instant = Instant::now();
+    let github_output_path = resolve_github_output_path(output_github)?;
 
     // Ensure base output directory exists (catastrophic failure if we can't)
     fs::create_dir_all(&out_dir)
@@ -861,6 +999,7 @@ fn run_check_cockpit(
         &config,
         &bench,
         all,
+        &bench_regex,
         &out_dir,
         &baseline,
         require_baseline,
@@ -870,6 +1009,8 @@ fn run_check_cockpit(
         allow_nonzero,
         host_mismatch,
         pretty,
+        &md_template,
+        github_output_path.as_deref(),
         &started_at,
         start_instant,
     );
@@ -894,6 +1035,20 @@ fn run_check_cockpit(
             // Try to write the error report
             let report_path = out_dir.join("report.json");
             if write_json(&report_path, &error_report, pretty).is_ok() {
+                if let Some(path) = github_output_path.as_deref() {
+                    write_github_outputs(
+                        path,
+                        &GitHubOutputSummary {
+                            verdict: verdict_from_sensor(&error_report.verdict.status),
+                            pass_count: error_report.verdict.counts.info,
+                            warn_count: error_report.verdict.counts.warn,
+                            fail_count: error_report.verdict.counts.error,
+                            bench_count: 1,
+                            exit_code: 0,
+                        },
+                    )?;
+                }
+
                 // Report written successfully - exit 0 per cockpit contract
                 eprintln!("error: {:#}", err);
                 eprintln!("note: error recorded in {}", report_path.display());
@@ -912,7 +1067,8 @@ fn run_check_cockpit_inner(
     config: &PathBuf,
     bench: &Option<String>,
     all: bool,
-    out_dir: &PathBuf,
+    bench_regex: &Option<String>,
+    out_dir: &Path,
     baseline: &Option<PathBuf>,
     require_baseline: bool,
     fail_on_warn: bool,
@@ -921,6 +1077,8 @@ fn run_check_cockpit_inner(
     allow_nonzero: bool,
     host_mismatch: HostMismatchPolicy,
     pretty: bool,
+    md_template: &Option<PathBuf>,
+    github_output_path: Option<&Path>,
     started_at: &str,
     start_instant: Instant,
 ) -> anyhow::Result<()> {
@@ -940,19 +1098,19 @@ fn run_check_cockpit_inner(
 
     config_file
         .validate()
-        .map_err(|e| ConfigValidationError::ConfigFile(e))?;
+        .map_err(ConfigValidationError::ConfigFile)?;
 
     // Determine which benches to run
-    let bench_names: Vec<String> = if all {
-        if config_file.benches.is_empty() {
-            anyhow::bail!("no benchmarks defined in config file");
-        }
-        config_file.benches.iter().map(|b| b.name.clone()).collect()
-    } else if let Some(name) = bench {
-        vec![name.clone()]
-    } else {
-        anyhow::bail!("either --bench or --all must be specified");
-    };
+    let bench_names =
+        resolve_bench_names(&config_file, bench.as_deref(), all, bench_regex.as_deref())?;
+    let markdown_template_path = md_template.clone().or_else(|| {
+        config_file
+            .defaults
+            .markdown_template
+            .as_ref()
+            .map(PathBuf::from)
+    });
+    let markdown_template = load_template(markdown_template_path.as_deref())?;
 
     let multi_bench = bench_names.len() > 1;
 
@@ -1011,6 +1169,26 @@ fn run_check_cockpit_inner(
             write_check_artifacts(&check_outcome, pretty)
                 .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
+            let final_markdown = if let Some(template) = markdown_template.as_deref() {
+                if let Some(compare) = &check_outcome.compare_receipt {
+                    let rendered =
+                        render_markdown_template(compare, template).with_context(|| {
+                            format!("render markdown template for bench '{}'", bench_name)
+                        })?;
+                    atomic_write(&check_outcome.markdown_path, rendered.as_bytes())
+                        .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                    rendered
+                } else {
+                    eprintln!(
+                        "warning: [{}] markdown template ignored for no-baseline bench",
+                        bench_name
+                    );
+                    check_outcome.markdown.clone()
+                }
+            } else {
+                check_outcome.markdown.clone()
+            };
+
             // Rename extras files to versioned names
             rename_extras_to_versioned(&extras_dir)
                 .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
@@ -1030,7 +1208,7 @@ fn run_check_cockpit_inner(
                 bench_name: bench_name.clone(),
                 has_compare: check_outcome.compare_receipt.is_some(),
                 baseline_available,
-                markdown: check_outcome.markdown,
+                markdown: final_markdown,
                 extras_prefix,
                 report: check_outcome.report,
             })
@@ -1093,6 +1271,20 @@ fn run_check_cockpit_inner(
     fs::write(&md_dest, &combined_markdown)
         .with_context(|| format!("write {}", md_dest.display()))?;
 
+    if let Some(path) = github_output_path {
+        write_github_outputs(
+            path,
+            &GitHubOutputSummary {
+                verdict: verdict_from_sensor(&sensor_report.verdict.status),
+                pass_count: sensor_report.verdict.counts.info,
+                warn_count: sensor_report.verdict.counts.warn,
+                fail_count: sensor_report.verdict.counts.error,
+                bench_count: bench_names.len() as u32,
+                exit_code: 0,
+            },
+        )?;
+    }
+
     // Cockpit mode: always exit 0 if we got here
     Ok(())
 }
@@ -1104,6 +1296,77 @@ fn update_max_exit_code(max_exit_code: &mut i32, outcome_exit_code: i32) {
     } else if outcome_exit_code == 3 && *max_exit_code != 2 {
         *max_exit_code = 3;
     }
+}
+
+#[derive(Debug, Clone)]
+struct GitHubOutputSummary {
+    verdict: &'static str,
+    pass_count: u32,
+    warn_count: u32,
+    fail_count: u32,
+    bench_count: u32,
+    exit_code: i32,
+}
+
+fn verdict_from_counts(pass_count: u32, warn_count: u32, fail_count: u32) -> &'static str {
+    if fail_count > 0 {
+        "fail"
+    } else if warn_count > 0 {
+        "warn"
+    } else if pass_count > 0 {
+        "pass"
+    } else {
+        "skip"
+    }
+}
+
+fn verdict_from_sensor(status: &SensorVerdictStatus) -> &'static str {
+    match status {
+        SensorVerdictStatus::Pass => "pass",
+        SensorVerdictStatus::Warn => "warn",
+        SensorVerdictStatus::Fail => "fail",
+        SensorVerdictStatus::Skip => "skip",
+    }
+}
+
+fn resolve_github_output_path(output_github: bool) -> anyhow::Result<Option<PathBuf>> {
+    if !output_github {
+        return Ok(None);
+    }
+
+    let path = std::env::var_os("GITHUB_OUTPUT")
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("--output-github requires GITHUB_OUTPUT to be set"))?;
+    Ok(Some(path))
+}
+
+fn write_github_outputs(path: &Path, summary: &GitHubOutputSummary) -> anyhow::Result<()> {
+    use std::io::Write;
+
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    if !parent.as_os_str().is_empty() {
+        fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
+    }
+
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("open {}", path.display()))?;
+
+    writeln!(file, "verdict={}", summary.verdict)?;
+    writeln!(file, "pass_count={}", summary.pass_count)?;
+    writeln!(file, "warn_count={}", summary.warn_count)?;
+    writeln!(file, "fail_count={}", summary.fail_count)?;
+    writeln!(file, "bench_count={}", summary.bench_count)?;
+    writeln!(file, "exit_code={}", summary.exit_code)?;
+
+    Ok(())
+}
+
+fn load_template(path: Option<&Path>) -> anyhow::Result<Option<String>> {
+    path.map(|p| fs::read_to_string(p).with_context(|| format!("read {}", p.display())))
+        .transpose()
 }
 
 fn rename_if_exists(old_path: &Path, new_path: &Path) -> anyhow::Result<()> {
@@ -1183,13 +1446,22 @@ fn resolve_baseline_path(
         return path.clone();
     }
 
-    // 2. Fall back to baseline_dir from config defaults
+    // 2. Fall back to baseline_pattern from config defaults.
+    if let Some(pattern) = &config.defaults.baseline_pattern {
+        return render_baseline_pattern(pattern, bench_name);
+    }
+
+    // 3. Fall back to baseline_dir from config defaults
     if let Some(baseline_dir) = &config.defaults.baseline_dir {
         return PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
     }
 
-    // 3. Default convention: baselines/{bench_name}.json
+    // 4. Default convention: baselines/{bench_name}.json
     PathBuf::from("baselines").join(format!("{}.json", bench_name))
+}
+
+fn render_baseline_pattern(pattern: &str, bench_name: &str) -> PathBuf {
+    PathBuf::from(pattern.replace("{bench}", bench_name))
 }
 
 /// Write all artifacts from a check outcome.
@@ -1223,8 +1495,12 @@ fn execute_export(
     format: &str,
     out: &Path,
 ) -> anyhow::Result<()> {
-    let export_format = ExportFormat::from_str(format)
-        .ok_or_else(|| anyhow::anyhow!("invalid format: {} (expected csv or jsonl)", format))?;
+    let export_format = ExportFormat::parse(format).ok_or_else(|| {
+        anyhow::anyhow!(
+            "invalid format: {} (expected csv, jsonl, html, or prometheus)",
+            format
+        )
+    })?;
 
     let content = match (run, compare) {
         (Some(run_path), None) => {
@@ -1347,11 +1623,20 @@ fn build_budgets(
     // Determine candidate metrics: those present in both baseline+current.
     let mut candidates = Vec::new();
     candidates.push(Metric::WallMs);
+    if baseline.stats.binary_bytes.is_some() && current.stats.binary_bytes.is_some() {
+        candidates.push(Metric::BinaryBytes);
+    }
     if baseline.stats.cpu_ms.is_some() && current.stats.cpu_ms.is_some() {
         candidates.push(Metric::CpuMs);
     }
+    if baseline.stats.ctx_switches.is_some() && current.stats.ctx_switches.is_some() {
+        candidates.push(Metric::CtxSwitches);
+    }
     if baseline.stats.max_rss_kb.is_some() && current.stats.max_rss_kb.is_some() {
         candidates.push(Metric::MaxRssKb);
+    }
+    if baseline.stats.page_faults.is_some() && current.stats.page_faults.is_some() {
+        candidates.push(Metric::PageFaults);
     }
     if baseline.stats.throughput_per_s.is_some() && current.stats.throughput_per_s.is_some() {
         candidates.push(Metric::ThroughputPerS);
@@ -1419,11 +1704,14 @@ mod tests {
                 min: 40,
                 max: 60,
             }),
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: rss.then_some(U64Summary {
                 median: 2048,
                 min: 1024,
                 max: 4096,
             }),
+            binary_bytes: None,
             throughput_per_s: throughput.then_some(F64Summary {
                 median: 200.0,
                 min: 180.0,
@@ -1470,7 +1758,10 @@ mod tests {
                 max: wall_ms,
             },
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             throughput_per_s: None,
         }
     }
@@ -1615,9 +1906,10 @@ mod tests {
     }
 
     #[test]
-    fn resolve_baseline_path_prefers_cli_then_config_then_default() {
+    fn resolve_baseline_path_prefers_cli_then_pattern_then_config_then_default() {
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                baseline_pattern: Some("pattern/{bench}.receipt.json".to_string()),
                 baseline_dir: Some("bases".to_string()),
                 ..Default::default()
             },
@@ -1633,6 +1925,18 @@ mod tests {
         let no_cli = None;
         assert_eq!(
             resolve_baseline_path(&no_cli, "bench", &config),
+            PathBuf::from("pattern").join("bench.receipt.json")
+        );
+
+        let config_dir_only = ConfigFile {
+            defaults: DefaultsConfig {
+                baseline_dir: Some("bases".to_string()),
+                ..Default::default()
+            },
+            benches: Vec::new(),
+        };
+        assert_eq!(
+            resolve_baseline_path(&no_cli, "bench", &config_dir_only),
             PathBuf::from("bases").join("bench.json")
         );
 
@@ -1887,6 +2191,7 @@ mod tests {
             compare: compare_path,
             out: report_path,
             md: Some(md_path.clone()),
+            md_template: None,
             pretty: false,
         })
         .unwrap();
@@ -1908,6 +2213,7 @@ mod tests {
             compare: compare_path,
             out: report_path,
             md: Some(md_path.clone()),
+            md_template: None,
             pretty: false,
         })
         .unwrap();
@@ -1928,6 +2234,7 @@ mod tests {
             compare: compare_path,
             out: report_path,
             md: Some(PathBuf::from("")),
+            md_template: None,
             pretty: false,
         })
         .unwrap_err();
@@ -1954,6 +2261,7 @@ mod tests {
                 config_path,
                 Some("bench".to_string()),
                 false,
+                None,
                 out_dir,
                 Some(baseline_path),
                 false,
@@ -1962,6 +2270,8 @@ mod tests {
                 8192,
                 false,
                 HostMismatchPolicy::Warn,
+                false,
+                None,
                 false,
             )
             .unwrap();
@@ -1988,6 +2298,7 @@ mod tests {
             config_path,
             None,
             false,
+            None,
             out_dir,
             None,
             false,
@@ -1996,6 +2307,8 @@ mod tests {
             8192,
             false,
             HostMismatchPolicy::Warn,
+            false,
+            None,
             false,
         )
         .unwrap_err();

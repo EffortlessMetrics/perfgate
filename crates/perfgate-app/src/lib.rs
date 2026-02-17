@@ -27,6 +27,7 @@ use perfgate_types::{
     BenchMeta, Budget, CompareReceipt, CompareRef, Direction, HostMismatchInfo, HostMismatchPolicy,
     Metric, MetricStatus, RunMeta, RunReceipt, Sample, ToolInfo,
 };
+use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -192,7 +193,10 @@ fn sample_from_run(run: RunResult, warmup: bool) -> Sample {
         warmup,
         timed_out: run.timed_out,
         cpu_ms: run.cpu_ms,
+        page_faults: run.page_faults,
+        ctx_switches: run.ctx_switches,
         max_rss_kb: run.max_rss_kb,
+        binary_bytes: run.binary_bytes,
         stdout: if run.stdout.is_empty() {
             None
         } else {
@@ -239,13 +243,13 @@ impl CompareUseCase {
         };
 
         // If policy is Error and there's a mismatch, fail immediately
-        if req.host_mismatch_policy == HostMismatchPolicy::Error {
-            if let Some(mismatch) = &host_mismatch {
-                anyhow::bail!(
-                    "host mismatch detected (--host-mismatch=error): {}",
-                    mismatch.reasons.join("; ")
-                );
-            }
+        if req.host_mismatch_policy == HostMismatchPolicy::Error
+            && let Some(mismatch) = &host_mismatch
+        {
+            anyhow::bail!(
+                "host mismatch detected (--host-mismatch=error): {}",
+                mismatch.reasons.join("; ")
+            );
         }
 
         let Comparison { deltas, verdict } =
@@ -295,20 +299,13 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
         let (budget_str, direction_str) = if let Some(b) = budget {
             (
                 format!("{:.1}%", b.threshold * 100.0),
-                match b.direction {
-                    Direction::Lower => "lower",
-                    Direction::Higher => "higher",
-                },
+                direction_str(b.direction),
             )
         } else {
             ("".to_string(), "")
         };
 
-        let status_icon = match delta.status {
-            MetricStatus::Pass => "✅",
-            MetricStatus::Warn => "⚠️",
-            MetricStatus::Fail => "❌",
-        };
+        let status_icon = metric_status_icon(delta.status);
 
         out.push_str(&format!(
             "| `{metric}` | {b} {u} | {c} {u} | {pct} | {budget} ({dir}) | {status} |\n",
@@ -331,6 +328,23 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
     }
 
     out
+}
+
+/// Render markdown using a Handlebars template and a stable compare context.
+pub fn render_markdown_template(
+    compare: &CompareReceipt,
+    template: &str,
+) -> anyhow::Result<String> {
+    let mut handlebars = handlebars::Handlebars::new();
+    handlebars.set_strict_mode(true);
+    handlebars
+        .register_template_string("markdown", template)
+        .context("parse markdown template")?;
+
+    let context = markdown_template_context(compare);
+    handlebars
+        .render("markdown", &context)
+        .context("render markdown template")
 }
 
 pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
@@ -363,6 +377,52 @@ fn format_metric(metric: Metric) -> &'static str {
     metric.as_str()
 }
 
+fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value {
+    let header = match compare.verdict.status {
+        perfgate_types::VerdictStatus::Pass => "✅ perfgate: pass",
+        perfgate_types::VerdictStatus::Warn => "⚠️ perfgate: warn",
+        perfgate_types::VerdictStatus::Fail => "❌ perfgate: fail",
+    };
+
+    let rows: Vec<serde_json::Value> = compare
+        .deltas
+        .iter()
+        .map(|(metric, delta)| {
+            let budget = compare.budgets.get(metric);
+            let (budget_threshold_pct, budget_direction) = budget
+                .map(|b| (b.threshold * 100.0, direction_str(b.direction).to_string()))
+                .unwrap_or((0.0, String::new()));
+
+            json!({
+                "metric": format_metric(*metric),
+                "baseline": format_value(*metric, delta.baseline),
+                "current": format_value(*metric, delta.current),
+                "unit": metric.display_unit(),
+                "delta_pct": format_pct(delta.pct),
+                "budget_threshold_pct": budget_threshold_pct,
+                "budget_direction": budget_direction,
+                "status": metric_status_str(delta.status),
+                "status_icon": metric_status_icon(delta.status),
+                "raw": {
+                    "baseline": delta.baseline,
+                    "current": delta.current,
+                    "pct": delta.pct,
+                    "regression": delta.regression
+                }
+            })
+        })
+        .collect();
+
+    json!({
+        "header": header,
+        "bench": compare.bench,
+        "verdict": compare.verdict,
+        "rows": rows,
+        "reasons": compare.verdict.reasons,
+        "compare": compare
+    })
+}
+
 fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
     let (metric_part, status_part) = token.rsplit_once('_')?;
 
@@ -378,24 +438,23 @@ fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
 }
 
 fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
-    if let Some((metric, status)) = parse_reason_token(token) {
-        if let (Some(delta), Some(budget)) =
+    if let Some((metric, status)) = parse_reason_token(token)
+        && let (Some(delta), Some(budget)) =
             (compare.deltas.get(&metric), compare.budgets.get(&metric))
-        {
-            let pct = format_pct(delta.pct);
-            let warn_pct = budget.warn_threshold * 100.0;
-            let fail_pct = budget.threshold * 100.0;
+    {
+        let pct = format_pct(delta.pct);
+        let warn_pct = budget.warn_threshold * 100.0;
+        let fail_pct = budget.threshold * 100.0;
 
-            return match status {
-                MetricStatus::Warn => {
-                    format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
-                }
-                MetricStatus::Fail => {
-                    format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
-                }
-                MetricStatus::Pass => format!("- {token}\n"),
-            };
-        }
+        return match status {
+            MetricStatus::Warn => {
+                format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
+            }
+            MetricStatus::Fail => {
+                format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
+            }
+            MetricStatus::Pass => format!("- {token}\n"),
+        };
     }
 
     format!("- {token}\n")
@@ -403,7 +462,12 @@ fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
 
 fn format_value(metric: Metric, v: f64) -> String {
     match metric {
-        Metric::CpuMs | Metric::MaxRssKb | Metric::WallMs => format!("{:.0}", v),
+        Metric::BinaryBytes
+        | Metric::CpuMs
+        | Metric::CtxSwitches
+        | Metric::MaxRssKb
+        | Metric::PageFaults
+        | Metric::WallMs => format!("{:.0}", v),
         Metric::ThroughputPerS => format!("{:.3}", v),
     }
 }
@@ -411,6 +475,29 @@ fn format_value(metric: Metric, v: f64) -> String {
 fn format_pct(pct: f64) -> String {
     let sign = if pct > 0.0 { "+" } else { "" };
     format!("{}{:.2}%", sign, pct * 100.0)
+}
+
+fn direction_str(direction: Direction) -> &'static str {
+    match direction {
+        Direction::Lower => "lower",
+        Direction::Higher => "higher",
+    }
+}
+
+fn metric_status_icon(status: MetricStatus) -> &'static str {
+    match status {
+        MetricStatus::Pass => "✅",
+        MetricStatus::Warn => "⚠️",
+        MetricStatus::Fail => "❌",
+    }
+}
+
+fn metric_status_str(status: MetricStatus) -> &'static str {
+    match status {
+        MetricStatus::Pass => "pass",
+        MetricStatus::Warn => "warn",
+        MetricStatus::Fail => "fail",
+    }
 }
 
 #[cfg(test)]
@@ -513,7 +600,10 @@ mod tests {
                     max: wall_ms,
                 },
                 cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
                 max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: None,
             },
         }
@@ -583,6 +673,28 @@ mod tests {
         let md = render_markdown(&compare);
         assert!(md.contains("| metric | baseline"));
         assert!(md.contains("wall_ms"));
+    }
+
+    #[test]
+    fn markdown_template_renders_context_rows() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let template = "{{header}}\nbench={{bench.name}}\n{{#each rows}}metric={{metric}} status={{status}}\n{{/each}}";
+
+        let rendered = render_markdown_template(&compare, template).expect("render template");
+        assert!(rendered.contains("bench=bench"));
+        assert!(rendered.contains("metric=wall_ms"));
+        assert!(rendered.contains("status=warn"));
+    }
+
+    #[test]
+    fn markdown_template_strict_mode_rejects_unknown_fields() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let err = render_markdown_template(&compare, "{{does_not_exist}}").unwrap_err();
+        assert!(
+            err.to_string().contains("render markdown template"),
+            "unexpected error: {}",
+            err
+        );
     }
 
     #[test]
@@ -663,7 +775,10 @@ mod tests {
             exit_code: 0,
             timed_out: false,
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb: None,
+            binary_bytes: None,
             stdout: b"ok".to_vec(),
             stderr: Vec::new(),
         };
@@ -910,20 +1025,24 @@ mod property_tests {
     // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
+            Just(Metric::BinaryBytes),
+            Just(Metric::CpuMs),
+            Just(Metric::CtxSwitches),
             Just(Metric::WallMs),
             Just(Metric::MaxRssKb),
+            Just(Metric::PageFaults),
             Just(Metric::ThroughputPerS),
         ]
     }
 
     // Strategy for BTreeMap<Metric, Budget>
     fn budgets_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Budget>> {
-        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 0..4)
+        proptest::collection::btree_map(metric_strategy(), budget_strategy(), 0..8)
     }
 
     // Strategy for BTreeMap<Metric, Delta>
     fn deltas_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Delta>> {
-        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 0..4)
+        proptest::collection::btree_map(metric_strategy(), delta_strategy(), 0..8)
     }
 
     // Strategy for CompareReceipt
@@ -1013,12 +1132,7 @@ mod property_tests {
 
             // Verify a table row exists for each metric in deltas (Requirement 7.4)
             for metric in receipt.deltas.keys() {
-                let metric_name = match metric {
-                    Metric::CpuMs => "cpu_ms",
-                    Metric::MaxRssKb => "max_rss_kb",
-                    Metric::ThroughputPerS => "throughput_per_s",
-                    Metric::WallMs => "wall_ms",
-                };
+                let metric_name = metric.as_str();
                 prop_assert!(
                     md.contains(metric_name),
                     "Markdown should contain metric '{}'. Got:\n{}",
@@ -1127,12 +1241,7 @@ mod property_tests {
                     continue; // Pass metrics don't produce annotations
                 }
 
-                let metric_name = match metric {
-                    Metric::CpuMs => "cpu_ms",
-                    Metric::MaxRssKb => "max_rss_kb",
-                    Metric::ThroughputPerS => "throughput_per_s",
-                    Metric::WallMs => "wall_ms",
-                };
+                let metric_name = metric.as_str();
 
                 // Find the annotation for this metric
                 let matching_annotation = annotations.iter().find(|a| a.contains(metric_name));

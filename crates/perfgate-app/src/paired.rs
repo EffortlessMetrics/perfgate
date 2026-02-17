@@ -271,7 +271,10 @@ mod tests {
             exit_code,
             timed_out,
             cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
             max_rss_kb,
+            binary_bytes: None,
             stdout: stdout.to_vec(),
             stderr: stderr.to_vec(),
         }

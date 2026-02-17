@@ -1,61 +1,47 @@
-# perfgate
+# perfgate (CLI crate)
 
-Performance budgets and baseline diffs for CI / PR bots.
+Command-line entrypoint for perfgate.
 
-## Installation
+This crate wires Clap commands to application use-cases in `perfgate-app`, handles JSON/file I/O, and enforces exit code policy for CI usage.
+
+## Commands
+
+- `run`: execute a benchmark command and emit `perfgate.run.v1`.
+- `compare`: compare current vs baseline and emit `perfgate.compare.v1`.
+- `md`: render markdown from a compare receipt.
+- `github-annotations`: emit GitHub Actions annotation lines.
+- `report`: generate `perfgate.report.v1` (optionally markdown too).
+- `promote`: copy/normalize a run receipt into baseline storage.
+- `export`: export run/compare data (`csv`, `jsonl`, `html`, `prometheus`).
+- `check`: config-driven workflow for artifacts and gating.
+- `paired`: interleaved baseline/current benchmarking for noise reduction.
+
+## Quick Usage
 
 ```bash
-cargo install perfgate
-```
-
-## Usage
-
-```bash
-# Run a benchmark
 perfgate run --name my-bench --out run.json -- ./my-benchmark
-
-# Compare against baseline
 perfgate compare --baseline baseline.json --current run.json --out compare.json
-
-# Generate markdown for PR comments
-perfgate md --compare compare.json
-
-# Generate GitHub annotations
-perfgate github-annotations --compare compare.json
-
-# Generate structured report
-perfgate report --compare compare.json --out report.json
-
-# Promote current run to baseline
-perfgate promote --current run.json --to baselines/my-bench.json
-
-# Export data
-perfgate export --run run.json --format csv --out data.csv
-
-# Check against budget config
+perfgate md --compare compare.json --out comment.md
 perfgate check --config perfgate.toml --bench my-bench
-
-# Check in cockpit mode
-perfgate check --config perfgate.toml --bench my-bench --mode cockpit
-
-# Check all benchmarks
-perfgate check --config perfgate.toml --all
-
-# Paired benchmarking
-perfgate paired --baseline-cmd "sleep 0.01" --current-cmd "sleep 0.02" --repeat 10 --out compare.json
 ```
 
 ## Exit Codes
 
-- `0` - Success (or warn without `--fail-on-warn`)
-- `1` - Tool/runtime error (I/O, parse, spawn failures)
-- `2` - Policy fail (budget violated)
-- `3` - Warn treated as failure (with `--fail-on-warn`)
+- `0`: success (or warn without `--fail-on-warn`)
+- `1`: tool/runtime error
+- `2`: policy fail
+- `3`: warn treated as failure (`--fail-on-warn`)
 
-## Part of perfgate
+## Scope
 
-This is the CLI crate for the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+- This crate owns CLI UX, argument validation, and artifact file handling.
+- It does not implement core policy math (domain) or process primitives (adapters).
+
+## More Documentation
+
+- Workspace overview and CI examples: [`README.md`](../../README.md)
+- Testing strategy: [`TESTING.md`](../../TESTING.md)
 
 ## License
 
-Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+Licensed under either Apache-2.0 or MIT.

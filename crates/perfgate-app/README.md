@@ -1,23 +1,38 @@
 # perfgate-app
 
-Application layer for perfgate: use-cases and output rendering.
+Application-layer orchestration for perfgate workflows.
 
-This crate orchestrates the domain logic and adapters to implement:
+## Responsibilities
 
-- **Run use-case** - Execute benchmarks and produce run receipts
-- **Compare use-case** - Compare baseline vs current results
-- **Paired use-case** - Interleaved baseline/current benchmarking
-- **Report use-case** - Generate structured reports
-- **Sensor report** - Build `sensor.report.v1` envelopes for cockpit mode
-- **Markdown rendering** - PR comment formatting
-- **GitHub annotations** - CI annotation output
-- **Export functionality** - CSV and JSONL formats
-- **Promote** - Normalize and copy run receipts to baselines
+- Implements use-cases:
+  - `RunBenchUseCase`
+  - `CompareUseCase`
+  - `CheckUseCase`
+  - `ReportUseCase`
+  - `PromoteUseCase`
+  - `PairedRunUseCase`
+  - `ExportUseCase`
+- Coordinates `perfgate-domain` logic with `perfgate-adapters` runners/probes.
+- Renders markdown summaries and GitHub annotation lines.
+- Builds cockpit-mode sensor envelopes (`sensor.report.v1`) and structured findings.
+- Exposes stable request/response structs for CLI and other integrations.
 
-## Part of perfgate
+## Boundaries
 
-This crate is part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace for performance budgets and baseline diffs in CI.
+- No CLI flag parsing (that belongs in `perfgate`).
+- No direct filesystem artifact writing (done by CLI callers).
+- No low-level process/OS primitives (handled by `perfgate-adapters`).
+
+## Export Support
+
+`ExportUseCase` supports `csv`, `jsonl`, `html`, and `prometheus` output for run/compare receipts.
+
+## Workspace Role
+
+`perfgate-app` is the orchestration layer above domain + adapters and below the CLI:
+
+`perfgate-types` -> `perfgate-domain` -> `perfgate-adapters` -> `perfgate-app` -> `perfgate`
 
 ## License
 
-Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+Licensed under either Apache-2.0 or MIT.

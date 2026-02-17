@@ -7,7 +7,7 @@ mod fake;
 pub use fake::FakeProcessRunner;
 
 use anyhow::Context;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -24,9 +24,18 @@ pub struct RunResult {
     pub wall_ms: u64,
     pub exit_code: i32,
     pub timed_out: bool,
-    /// CPU time (user + system) in milliseconds (Unix only).
+    /// CPU time (user + system) in milliseconds.
+    /// Collected on Unix via rusage and best-effort on Windows.
     pub cpu_ms: Option<u64>,
+    /// Major page faults (Unix only).
+    pub page_faults: Option<u64>,
+    /// Voluntary + involuntary context switches (Unix only).
+    pub ctx_switches: Option<u64>,
+    /// Peak resident set size in KB.
+    /// Collected on Unix via rusage and best-effort on Windows.
     pub max_rss_kb: Option<u64>,
+    /// Size of executed binary in bytes (best-effort).
+    pub binary_bytes: Option<u64>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
@@ -64,7 +73,15 @@ impl ProcessRunner for StdProcessRunner {
             return run_unix(spec);
         }
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            if spec.timeout.is_some() {
+                return Err(AdapterError::TimeoutUnsupported);
+            }
+            run_windows(spec)
+        }
+
+        #[cfg(all(not(unix), not(windows)))]
         {
             if spec.timeout.is_some() {
                 return Err(AdapterError::TimeoutUnsupported);
@@ -82,11 +99,12 @@ fn truncate(mut bytes: Vec<u8>, cap: usize) -> Vec<u8> {
     bytes
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     use std::process::Command;
 
     let start = Instant::now();
+    let binary_bytes = binary_bytes_for_command(spec);
     let mut cmd = Command::new(&spec.argv[0]);
     if spec.argv.len() > 1 {
         cmd.args(&spec.argv[1..]);
@@ -112,10 +130,76 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         wall_ms,
         exit_code,
         timed_out: false,
-        cpu_ms: None, // Not available on non-Unix platforms
+        cpu_ms: None,
+        page_faults: None,
+        ctx_switches: None,
         max_rss_kb: None,
+        binary_bytes,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),
+    })
+}
+
+#[cfg(windows)]
+fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
+    use std::os::windows::io::AsRawHandle;
+    use std::process::{Command, Stdio};
+    use std::thread;
+
+    let start = Instant::now();
+    let binary_bytes = binary_bytes_for_command(spec);
+
+    let mut cmd = Command::new(&spec.argv[0]);
+    if spec.argv.len() > 1 {
+        cmd.args(&spec.argv[1..]);
+    }
+    if let Some(cwd) = &spec.cwd {
+        cmd.current_dir(cwd);
+    }
+    for (k, v) in &spec.env {
+        cmd.env(k, v);
+    }
+
+    cmd.stdin(Stdio::null());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("failed to spawn {:?}", spec.argv))
+        .map_err(AdapterError::Other)?;
+
+    let mut stdout = child.stdout.take().expect("stdout piped");
+    let mut stderr = child.stderr.take().expect("stderr piped");
+    let cap = spec.output_cap_bytes;
+
+    let out_handle = thread::spawn(move || read_with_cap(&mut stdout, cap));
+    let err_handle = thread::spawn(move || read_with_cap(&mut stderr, cap));
+
+    let status = child
+        .wait()
+        .with_context(|| format!("failed to wait for {:?}", spec.argv))
+        .map_err(AdapterError::Other)?;
+
+    let (cpu_ms, max_rss_kb) = probe_process_usage_windows(child.as_raw_handle());
+
+    let stdout = out_handle.join().unwrap_or_default();
+    let stderr = err_handle.join().unwrap_or_default();
+
+    let wall_ms = start.elapsed().as_millis() as u64;
+    let exit_code = status.code().unwrap_or(-1);
+
+    Ok(RunResult {
+        wall_ms,
+        exit_code,
+        timed_out: false,
+        cpu_ms,
+        page_faults: None,
+        ctx_switches: None,
+        max_rss_kb,
+        binary_bytes,
+        stdout,
+        stderr,
     })
 }
 
@@ -126,6 +210,7 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     use std::thread;
 
     let start = Instant::now();
+    let binary_bytes = binary_bytes_for_command(spec);
 
     let mut cmd = Command::new(&spec.argv[0]);
     if spec.argv.len() > 1 {
@@ -173,6 +258,8 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     let exit_code = exit_status.code().unwrap_or(-1);
 
     let cpu_ms = rusage.map(|ru| ru_cpu_ms(&ru));
+    let page_faults = rusage.map(|ru| ru_page_faults(&ru));
+    let ctx_switches = rusage.map(|ru| ru_ctx_switches(&ru));
     let max_rss_kb = rusage.map(|ru| ru_maxrss_kb(&ru));
 
     Ok(RunResult {
@@ -180,13 +267,15 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         exit_code,
         timed_out,
         cpu_ms,
+        page_faults,
+        ctx_switches,
         max_rss_kb,
+        binary_bytes,
         stdout,
         stderr,
     })
 }
 
-#[cfg(unix)]
 fn read_with_cap<R: std::io::Read>(reader: &mut R, cap: usize) -> Vec<u8> {
     let mut buf: Vec<u8> = Vec::new();
     let mut tmp = [0u8; 8192];
@@ -206,6 +295,85 @@ fn read_with_cap<R: std::io::Read>(reader: &mut R, cap: usize) -> Vec<u8> {
     }
 
     buf
+}
+
+#[cfg(windows)]
+fn probe_process_usage_windows(
+    handle: std::os::windows::io::RawHandle,
+) -> (Option<u64>, Option<u64>) {
+    use std::ffi::c_void;
+    use std::mem;
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct FileTime {
+        dwLowDateTime: u32,
+        dwHighDateTime: u32,
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct ProcessMemoryCounters {
+        cb: u32,
+        PageFaultCount: u32,
+        PeakWorkingSetSize: usize,
+        WorkingSetSize: usize,
+        QuotaPeakPagedPoolUsage: usize,
+        QuotaPagedPoolUsage: usize,
+        QuotaPeakNonPagedPoolUsage: usize,
+        QuotaNonPagedPoolUsage: usize,
+        PagefileUsage: usize,
+        PeakPagefileUsage: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetProcessTimes(
+            hProcess: *mut c_void,
+            lpCreationTime: *mut FileTime,
+            lpExitTime: *mut FileTime,
+            lpKernelTime: *mut FileTime,
+            lpUserTime: *mut FileTime,
+        ) -> i32;
+    }
+
+    #[link(name = "psapi")]
+    unsafe extern "system" {
+        fn GetProcessMemoryInfo(
+            Process: *mut c_void,
+            ppsmemCounters: *mut ProcessMemoryCounters,
+            cb: u32,
+        ) -> i32;
+    }
+
+    fn filetime_to_u64(ft: &FileTime) -> u64 {
+        ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64)
+    }
+
+    let raw = handle.cast::<c_void>();
+
+    let mut creation: FileTime = unsafe { mem::zeroed() };
+    let mut exit: FileTime = unsafe { mem::zeroed() };
+    let mut kernel: FileTime = unsafe { mem::zeroed() };
+    let mut user: FileTime = unsafe { mem::zeroed() };
+
+    let cpu_ms =
+        if unsafe { GetProcessTimes(raw, &mut creation, &mut exit, &mut kernel, &mut user) } != 0 {
+            let total_100ns = filetime_to_u64(&kernel).saturating_add(filetime_to_u64(&user));
+            Some(total_100ns / 10_000)
+        } else {
+            None
+        };
+
+    let mut counters: ProcessMemoryCounters = unsafe { mem::zeroed() };
+    counters.cb = mem::size_of::<ProcessMemoryCounters>() as u32;
+    let max_rss_kb = if unsafe { GetProcessMemoryInfo(raw, &mut counters, counters.cb) } != 0 {
+        Some((counters.PeakWorkingSetSize as u64) / 1024)
+    } else {
+        None
+    };
+
+    (cpu_ms, max_rss_kb)
 }
 
 #[cfg(unix)]
@@ -280,6 +448,23 @@ fn ru_cpu_ms(ru: &libc::rusage) -> u64 {
 }
 
 #[cfg(unix)]
+fn ru_page_faults(ru: &libc::rusage) -> u64 {
+    // ru_majflt is major page faults.
+    clamp_nonnegative_c_long(ru.ru_majflt)
+}
+
+#[cfg(unix)]
+fn ru_ctx_switches(ru: &libc::rusage) -> u64 {
+    // ru_nvcsw: voluntary; ru_nivcsw: involuntary context switches.
+    clamp_nonnegative_c_long(ru.ru_nvcsw).saturating_add(clamp_nonnegative_c_long(ru.ru_nivcsw))
+}
+
+#[cfg(unix)]
+fn clamp_nonnegative_c_long(v: libc::c_long) -> u64 {
+    if v < 0 { 0 } else { v as u64 }
+}
+
+#[cfg(unix)]
 fn ru_maxrss_kb(ru: &libc::rusage) -> u64 {
     let raw = ru.ru_maxrss as u64;
 
@@ -294,6 +479,58 @@ fn ru_maxrss_kb(ru: &libc::rusage) -> u64 {
     {
         raw
     }
+}
+
+fn binary_bytes_for_command(spec: &CommandSpec) -> Option<u64> {
+    let cmd = spec.argv.first()?;
+    let path = resolve_command_path(cmd, spec.cwd.as_deref())?;
+    std::fs::metadata(path).ok().map(|m| m.len())
+}
+
+fn resolve_command_path(command: &str, cwd: Option<&Path>) -> Option<PathBuf> {
+    let command_path = Path::new(command);
+
+    // If command contains separators or is absolute, resolve directly (relative to cwd if provided).
+    if command_path.is_absolute() || command_path.components().count() > 1 {
+        let candidate = if command_path.is_absolute() {
+            command_path.to_path_buf()
+        } else if let Some(dir) = cwd {
+            dir.join(command_path)
+        } else {
+            command_path.to_path_buf()
+        };
+        return candidate.is_file().then_some(candidate);
+    }
+
+    // Otherwise, resolve via PATH lookup.
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(command);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+
+        #[cfg(windows)]
+        {
+            if candidate.extension().is_none() {
+                let pathext = std::env::var_os("PATHEXT").unwrap_or(".COM;.EXE;.BAT;.CMD".into());
+                for ext in pathext.to_string_lossy().split(';') {
+                    let ext = ext.trim();
+                    if ext.is_empty() {
+                        continue;
+                    }
+                    let mut with_ext = candidate.clone();
+                    let normalized = ext.trim_start_matches('.');
+                    with_ext.set_extension(normalized);
+                    if with_ext.is_file() {
+                        return Some(with_ext);
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 // ----------------------------
@@ -415,7 +652,7 @@ fn probe_memory_windows() -> Option<u64> {
 
     #[repr(C)]
     #[allow(non_snake_case)]
-    struct MEMORYSTATUSEX {
+    struct MemoryStatusEx {
         dwLength: u32,
         dwMemoryLoad: u32,
         ullTotalPhys: u64,
@@ -429,11 +666,11 @@ fn probe_memory_windows() -> Option<u64> {
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
-        fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
+        fn GlobalMemoryStatusEx(lpBuffer: *mut MemoryStatusEx) -> i32;
     }
 
-    let mut status: MEMORYSTATUSEX = unsafe { mem::zeroed() };
-    status.dwLength = mem::size_of::<MEMORYSTATUSEX>() as u32;
+    let mut status: MemoryStatusEx = unsafe { mem::zeroed() };
+    status.dwLength = mem::size_of::<MemoryStatusEx>() as u32;
 
     let ret = unsafe { GlobalMemoryStatusEx(&mut status) };
 
@@ -745,6 +982,36 @@ mod tests {
             matches!(err, AdapterError::TimeoutUnsupported),
             "Expected AdapterError::TimeoutUnsupported, got {:?}",
             err
+        );
+    }
+
+    /// Test that Windows collects best-effort CPU and RSS metrics.
+    #[cfg(windows)]
+    #[test]
+    fn windows_collects_best_effort_metrics() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "echo".to_string(),
+                "hello".to_string(),
+            ],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 1024,
+        };
+
+        let result = runner.run(&spec).expect("windows run should succeed");
+        assert_eq!(result.exit_code, 0, "command should succeed");
+        assert!(
+            result.cpu_ms.is_some(),
+            "cpu_ms should be available on Windows (best-effort)"
+        );
+        assert!(
+            result.max_rss_kb.is_some(),
+            "max_rss_kb should be available on Windows (best-effort)"
         );
     }
 

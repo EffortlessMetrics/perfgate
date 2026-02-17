@@ -1,58 +1,94 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "CompareReceipt",
   "type": "object",
-  "required": [
-    "baseline_ref",
-    "bench",
-    "budgets",
-    "current_ref",
-    "deltas",
-    "schema",
-    "tool",
-    "verdict"
-  ],
   "properties": {
     "baseline_ref": {
-      "$ref": "#/definitions/CompareRef"
+      "$ref": "#/$defs/CompareRef"
     },
     "bench": {
-      "$ref": "#/definitions/BenchMeta"
+      "$ref": "#/$defs/BenchMeta"
     },
     "budgets": {
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/Budget"
-      }
+      "properties": {
+        "binary_bytes": {
+          "$ref": "#/$defs/Budget"
+        },
+        "cpu_ms": {
+          "$ref": "#/$defs/Budget"
+        },
+        "ctx_switches": {
+          "$ref": "#/$defs/Budget"
+        },
+        "max_rss_kb": {
+          "$ref": "#/$defs/Budget"
+        },
+        "page_faults": {
+          "$ref": "#/$defs/Budget"
+        },
+        "throughput_per_s": {
+          "$ref": "#/$defs/Budget"
+        },
+        "wall_ms": {
+          "$ref": "#/$defs/Budget"
+        }
+      },
+      "additionalProperties": false
     },
     "current_ref": {
-      "$ref": "#/definitions/CompareRef"
+      "$ref": "#/$defs/CompareRef"
     },
     "deltas": {
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/Delta"
-      }
+      "properties": {
+        "binary_bytes": {
+          "$ref": "#/$defs/Delta"
+        },
+        "cpu_ms": {
+          "$ref": "#/$defs/Delta"
+        },
+        "ctx_switches": {
+          "$ref": "#/$defs/Delta"
+        },
+        "max_rss_kb": {
+          "$ref": "#/$defs/Delta"
+        },
+        "page_faults": {
+          "$ref": "#/$defs/Delta"
+        },
+        "throughput_per_s": {
+          "$ref": "#/$defs/Delta"
+        },
+        "wall_ms": {
+          "$ref": "#/$defs/Delta"
+        }
+      },
+      "additionalProperties": false
     },
     "schema": {
       "type": "string"
     },
     "tool": {
-      "$ref": "#/definitions/ToolInfo"
+      "$ref": "#/$defs/ToolInfo"
     },
     "verdict": {
-      "$ref": "#/definitions/Verdict"
+      "$ref": "#/$defs/Verdict"
     }
   },
-  "definitions": {
+  "required": [
+    "schema",
+    "tool",
+    "bench",
+    "baseline_ref",
+    "current_ref",
+    "budgets",
+    "deltas",
+    "verdict"
+  ],
+  "$defs": {
     "BenchMeta": {
       "type": "object",
-      "required": [
-        "command",
-        "name",
-        "repeat",
-        "warmup"
-      ],
       "properties": {
         "command": {
           "description": "argv vector (no shell parsing).",
@@ -74,7 +110,7 @@
         "repeat": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "timeout_ms": {
           "type": [
@@ -82,12 +118,12 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warmup": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "work_units": {
           "type": [
@@ -95,20 +131,21 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
     },
     "Budget": {
       "type": "object",
-      "required": [
-        "direction",
-        "threshold",
-        "warn_threshold"
-      ],
       "properties": {
         "direction": {
-          "$ref": "#/definitions/Direction"
+          "$ref": "#/$defs/Direction"
         },
         "threshold": {
           "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
@@ -120,7 +157,12 @@
           "type": "number",
           "format": "double"
         }
-      }
+      },
+      "required": [
+        "threshold",
+        "warn_threshold",
+        "direction"
+      ]
     },
     "CompareRef": {
       "type": "object",
@@ -141,14 +183,6 @@
     },
     "Delta": {
       "type": "object",
-      "required": [
-        "baseline",
-        "current",
-        "pct",
-        "ratio",
-        "regression",
-        "status"
-      ],
       "properties": {
         "baseline": {
           "type": "number",
@@ -174,9 +208,17 @@
           "format": "double"
         },
         "status": {
-          "$ref": "#/definitions/MetricStatus"
+          "$ref": "#/$defs/MetricStatus"
         }
-      }
+      },
+      "required": [
+        "baseline",
+        "current",
+        "ratio",
+        "pct",
+        "regression",
+        "status"
+      ]
     },
     "Direction": {
       "type": "string",
@@ -195,10 +237,6 @@
     },
     "ToolInfo": {
       "type": "object",
-      "required": [
-        "name",
-        "version"
-      ],
       "properties": {
         "name": {
           "type": "string"
@@ -206,18 +244,17 @@
         "version": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
     },
     "Verdict": {
       "type": "object",
-      "required": [
-        "counts",
-        "reasons",
-        "status"
-      ],
       "properties": {
         "counts": {
-          "$ref": "#/definitions/VerdictCounts"
+          "$ref": "#/$defs/VerdictCounts"
         },
         "reasons": {
           "type": "array",
@@ -226,34 +263,39 @@
           }
         },
         "status": {
-          "$ref": "#/definitions/VerdictStatus"
+          "$ref": "#/$defs/VerdictStatus"
         }
-      }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
     },
     "VerdictCounts": {
       "type": "object",
-      "required": [
-        "fail",
-        "pass",
-        "warn"
-      ],
       "properties": {
         "fail": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "pass": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warn": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail"
+      ]
     },
     "VerdictStatus": {
       "type": "string",

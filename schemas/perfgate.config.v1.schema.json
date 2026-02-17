@@ -1,40 +1,53 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ConfigFile",
   "type": "object",
   "properties": {
     "bench": {
-      "default": [],
       "type": "array",
+      "default": [],
       "items": {
-        "$ref": "#/definitions/BenchConfigFile"
+        "$ref": "#/$defs/BenchConfigFile"
       }
     },
     "defaults": {
-      "default": {},
-      "allOf": [
-        {
-          "$ref": "#/definitions/DefaultsConfig"
-        }
-      ]
+      "$ref": "#/$defs/DefaultsConfig",
+      "default": {}
     }
   },
-  "definitions": {
+  "$defs": {
     "BenchConfigFile": {
       "type": "object",
-      "required": [
-        "command",
-        "name"
-      ],
       "properties": {
         "budgets": {
           "type": [
             "object",
             "null"
           ],
-          "additionalProperties": {
-            "$ref": "#/definitions/BudgetOverride"
-          }
+          "properties": {
+            "binary_bytes": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "cpu_ms": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "ctx_switches": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "max_rss_kb": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "page_faults": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "throughput_per_s": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "wall_ms": {
+              "$ref": "#/$defs/BudgetOverride"
+            }
+          },
+          "additionalProperties": false
         },
         "command": {
           "description": "argv vector (no shell parsing).",
@@ -55,7 +68,7 @@
             "null"
           ],
           "items": {
-            "$ref": "#/definitions/Metric"
+            "$ref": "#/$defs/Metric"
           }
         },
         "name": {
@@ -68,7 +81,7 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "timeout": {
           "description": "Duration string parseable by humantime, e.g. \"2s\".",
@@ -84,7 +97,7 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "work": {
           "type": [
@@ -92,9 +105,13 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "name",
+        "command"
+      ]
     },
     "BudgetOverride": {
       "type": "object",
@@ -102,7 +119,7 @@
         "direction": {
           "anyOf": [
             {
-              "$ref": "#/definitions/Direction"
+              "$ref": "#/$defs/Direction"
             },
             {
               "type": "null"
@@ -135,6 +152,20 @@
             "null"
           ]
         },
+        "baseline_pattern": {
+          "description": "Optional baseline discovery pattern. Supports `{bench}` placeholder.\nExample: `baselines/{bench}.json`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "markdown_template": {
+          "description": "Optional Handlebars template path for markdown comments.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "out_dir": {
           "type": [
             "string",
@@ -147,7 +178,7 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "threshold": {
           "type": [
@@ -162,7 +193,7 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warn_factor": {
           "type": [
@@ -183,8 +214,11 @@
     "Metric": {
       "type": "string",
       "enum": [
+        "binary_bytes",
         "cpu_ms",
+        "ctx_switches",
         "max_rss_kb",
+        "page_faults",
         "throughput_per_s",
         "wall_ms"
       ]

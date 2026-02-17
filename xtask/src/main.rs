@@ -3,6 +3,15 @@ use clap::{Parser, Subcommand, ValueEnum};
 use schemars::schema_for;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const SCHEMA_FILES: [&str; 5] = [
+    "perfgate.run.v1.schema.json",
+    "perfgate.compare.v1.schema.json",
+    "perfgate.config.v1.schema.json",
+    "perfgate.report.v1.schema.json",
+    "sensor.report.v1.schema.json",
+];
 
 #[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Repo automation for perfgate")]
@@ -57,7 +66,14 @@ enum Command {
         out_dir: PathBuf,
     },
 
-    /// Run the "usual" repo checks (fmt, clippy, test, schema, conform).
+    /// Verify committed schemas are locked to generated output (byte-for-byte).
+    SchemaCheck {
+        /// Schemas directory to verify
+        #[arg(long, default_value = "schemas")]
+        schemas_dir: PathBuf,
+    },
+
+    /// Run the "usual" repo checks (fmt, clippy, test, schema-check, conform).
     Ci,
 
     /// Validate JSON fixtures against the vendored sensor.report.v1 schema.
@@ -95,6 +111,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.cmd {
         Command::Schema { out_dir } => cmd_schema(&out_dir),
+        Command::SchemaCheck { schemas_dir } => cmd_schema_check(&schemas_dir),
         Command::Ci => cmd_ci(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::SyncFixtures => cmd_sync_fixtures(),
@@ -107,22 +124,50 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn cmd_ci() -> anyhow::Result<()> {
-    std::env::set_var("CARGO_TARGET_DIR", "target/ci");
-    run("cargo", ["fmt", "--all", "--", "--check"])?;
-    run(
+    let target_dir =
+        std::env::var("PERFGATE_CI_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
+    let cargo_env = vec![("CARGO_TARGET_DIR", target_dir.as_str())];
+    let xtask_target_dir = format!("{target_dir}/xtask-self");
+    let xtask_env = vec![("CARGO_TARGET_DIR", xtask_target_dir.as_str())];
+
+    run_with_env("cargo", ["fmt", "--all", "--", "--check"], &cargo_env)?;
+    run_with_env(
         "cargo",
         [
             "clippy",
+            "--workspace",
+            "--exclude",
+            "xtask",
             "--all-targets",
             "--all-features",
             "--",
             "-D",
             "warnings",
         ],
+        &cargo_env,
     )?;
-    run("cargo", ["test", "--all"])?;
-    run("cargo", ["run", "-p", "xtask", "--", "schema"])?;
-    run("cargo", ["run", "-p", "xtask", "--", "conform"])?;
+    run_with_env(
+        "cargo",
+        ["test", "--workspace", "--exclude", "xtask"],
+        &cargo_env,
+    )?;
+    run_with_env(
+        "cargo",
+        [
+            "clippy",
+            "-p",
+            "xtask",
+            "--all-targets",
+            "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        &xtask_env,
+    )?;
+    run_with_env("cargo", ["test", "-p", "xtask"], &xtask_env)?;
+    cmd_schema_check(Path::new("schemas"))?;
+    cmd_conform(None, None)?;
     Ok(())
 }
 
@@ -142,32 +187,18 @@ fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> a
 
     if let Some(path) = single_file {
         files_to_validate.push(path);
+    } else if let Some(dir) = fixtures_dir {
+        // Third-party mode: validate every JSON file in the provided directory.
+        files_to_validate.extend(collect_json_files(&dir, None)?);
     } else {
-        // Default: golden fixtures + contracts/fixtures
+        // Default: validate known sensor_report fixtures in golden + contracts dirs.
         let default_dirs = [
-            fixtures_dir
-                .unwrap_or_else(|| PathBuf::from("crates/perfgate-cli/tests/fixtures/golden")),
+            PathBuf::from("crates/perfgate-cli/tests/fixtures/golden"),
             PathBuf::from("contracts/fixtures"),
         ];
 
         for dir in &default_dirs {
-            if dir.is_dir() {
-                for entry in
-                    fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))?
-                {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "json").unwrap_or(false)
-                        && path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|n| n.starts_with("sensor_report_"))
-                            .unwrap_or(false)
-                    {
-                        files_to_validate.push(path);
-                    }
-                }
-            }
+            files_to_validate.extend(collect_json_files(dir, Some("sensor_report_"))?);
         }
     }
 
@@ -212,6 +243,35 @@ fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> a
     }
 
     Ok(())
+}
+
+fn collect_json_files(dir: &Path, prefix: Option<&str>) -> anyhow::Result<Vec<PathBuf>> {
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.extension().map(|e| e == "json").unwrap_or(false) {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if let Some(required_prefix) = prefix
+            && !name.starts_with(required_prefix)
+        {
+            continue;
+        }
+
+        files.push(path);
+    }
+
+    Ok(files)
 }
 
 fn cmd_sync_fixtures() -> anyhow::Result<()> {
@@ -517,36 +577,57 @@ fn run<const N: usize>(bin: &str, args: [&str; N]) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn run_with_env<const N: usize>(
+    bin: &str,
+    args: [&str; N],
+    envs: &[(&str, &str)],
+) -> anyhow::Result<()> {
+    if envs.is_empty() {
+        return run(bin, args);
+    }
+
+    let mut command = std::process::Command::new(bin);
+    command.args(args);
+    for &(k, v) in envs {
+        command.env(k, v);
+    }
+    let status = command.status().with_context(|| format!("running {bin}"))?;
+    if !status.success() {
+        anyhow::bail!("{bin} failed: {status}");
+    }
+    Ok(())
+}
+
 fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
     fs::create_dir_all(out_dir).with_context(|| format!("create dir {}", out_dir.display()))?;
 
     write_schema(
         out_dir,
-        "perfgate.run.v1.schema.json",
+        SCHEMA_FILES[0],
         schema_for!(perfgate_types::RunReceipt),
     )?;
 
     write_schema(
         out_dir,
-        "perfgate.compare.v1.schema.json",
+        SCHEMA_FILES[1],
         schema_for!(perfgate_types::CompareReceipt),
     )?;
 
     write_schema(
         out_dir,
-        "perfgate.config.v1.schema.json",
+        SCHEMA_FILES[2],
         schema_for!(perfgate_types::ConfigFile),
     )?;
 
     write_schema(
         out_dir,
-        "perfgate.report.v1.schema.json",
+        SCHEMA_FILES[3],
         schema_for!(perfgate_types::PerfgateReport),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.
     let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
-    let dest = out_dir.join("sensor.report.v1.schema.json");
+    let dest = out_dir.join(SCHEMA_FILES[4]);
     fs::copy(&vendored_schema, &dest).with_context(|| {
         format!(
             "copy vendored schema {} -> {}",
@@ -555,6 +636,92 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
         )
     })?;
 
+    Ok(())
+}
+
+fn cmd_schema_check(schemas_dir: &Path) -> anyhow::Result<()> {
+    if !schemas_dir.is_dir() {
+        anyhow::bail!(
+            "{} does not exist. Run: cargo run -p xtask -- schema",
+            schemas_dir.display()
+        );
+    }
+
+    let generated_dir = unique_work_dir("perfgate_schema_check");
+    let result = (|| -> anyhow::Result<()> {
+        cmd_schema(&generated_dir)?;
+        check_schema_mirror_at(&generated_dir, schemas_dir)
+    })();
+
+    let _ = fs::remove_dir_all(&generated_dir);
+    result
+}
+
+fn unique_work_dir(prefix: &str) -> PathBuf {
+    let mut dir = std::env::temp_dir();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    dir.push(format!("{prefix}_{}_{}", std::process::id(), nanos));
+    fs::create_dir_all(&dir).expect("create temp dir");
+    dir
+}
+
+fn check_schema_mirror_at(generated_dir: &Path, committed_dir: &Path) -> anyhow::Result<()> {
+    let mut drift = 0u32;
+
+    for name in SCHEMA_FILES {
+        let generated_path = generated_dir.join(name);
+        let committed_path = committed_dir.join(name);
+
+        if !committed_path.exists() {
+            println!("  DRIFT  {} missing in {}", name, committed_dir.display());
+            drift += 1;
+            continue;
+        }
+
+        let generated_bytes = fs::read(&generated_path)
+            .with_context(|| format!("read {}", generated_path.display()))?;
+        let committed_bytes = fs::read(&committed_path)
+            .with_context(|| format!("read {}", committed_path.display()))?;
+        if generated_bytes != committed_bytes {
+            println!("  DRIFT  {} differs from generated schema", name);
+            drift += 1;
+        }
+    }
+
+    for entry in fs::read_dir(committed_dir)
+        .with_context(|| format!("read dir {}", committed_dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.extension().map(|e| e == "json").unwrap_or(false) {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if !SCHEMA_FILES.contains(&name) {
+            println!(
+                "  DRIFT  {} unexpected in {}",
+                name,
+                committed_dir.display()
+            );
+            drift += 1;
+        }
+    }
+
+    if drift > 0 {
+        anyhow::bail!(
+            "{} schema file(s) drifted. Run: cargo run -p xtask -- schema",
+            drift
+        );
+    }
+
+    println!("  OK  schema files are locked and up to date");
     Ok(())
 }
 
@@ -614,15 +781,7 @@ mod tests {
             cmd_schema(&out_dir).expect("schema command");
         });
 
-        let expected = [
-            "perfgate.run.v1.schema.json",
-            "perfgate.compare.v1.schema.json",
-            "perfgate.config.v1.schema.json",
-            "perfgate.report.v1.schema.json",
-            "sensor.report.v1.schema.json",
-        ];
-
-        for name in expected {
+        for name in SCHEMA_FILES {
             let path = out_dir.join(name);
             assert!(path.exists(), "expected schema file {}", name);
             let bytes = fs::read(&path).expect("read schema");
@@ -652,6 +811,42 @@ mod tests {
         with_repo_cwd(|| {
             let result = cmd_conform(None, Some(bad_path.clone()));
             assert!(result.is_err(), "expected schema validation to fail");
+        });
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn cmd_conform_accepts_fixtures_dir_without_sensor_prefix() {
+        let temp_dir = unique_temp_dir("perfgate_fixtures_generic");
+        with_repo_cwd(|| {
+            let valid = fs::read_to_string("contracts/fixtures/sensor_report_pass.json")
+                .expect("read canonical fixture");
+            fs::write(temp_dir.join("third_party_report.json"), valid).expect("write fixture");
+
+            cmd_conform(Some(temp_dir.clone()), None).expect("fixtures dir should validate");
+        });
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn cmd_conform_rejects_invalid_generic_json_in_fixtures_dir() {
+        let temp_dir = unique_temp_dir("perfgate_fixtures_invalid");
+        with_repo_cwd(|| {
+            fs::write(
+                temp_dir.join("third_party_bad.json"),
+                r#"{"schema":"sensor.report.v1"}"#,
+            )
+            .expect("write bad fixture");
+
+            let err = cmd_conform(Some(temp_dir.clone()), None).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("failed schema validation"),
+                "unexpected: {}",
+                msg
+            );
         });
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -764,5 +959,69 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cmd_schema_check_accepts_matching_schemas() {
+        let out_dir = unique_temp_dir("perfgate_schema_check_ok");
+        with_repo_cwd(|| {
+            cmd_schema(&out_dir).expect("schema command");
+            cmd_schema_check(&out_dir).expect("schema check should pass");
+        });
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn cmd_schema_check_reports_missing_file() {
+        let out_dir = unique_temp_dir("perfgate_schema_check_missing");
+        with_repo_cwd(|| {
+            cmd_schema(&out_dir).expect("schema command");
+            fs::remove_file(out_dir.join(SCHEMA_FILES[0])).expect("remove file");
+
+            let err = cmd_schema_check(&out_dir).expect_err("schema check should fail");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("schema file(s) drifted"),
+                "unexpected: {}",
+                msg
+            );
+        });
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn cmd_schema_check_reports_extra_file() {
+        let out_dir = unique_temp_dir("perfgate_schema_check_extra");
+        with_repo_cwd(|| {
+            cmd_schema(&out_dir).expect("schema command");
+            fs::write(out_dir.join("unexpected.schema.json"), "{}").expect("write extra");
+
+            let err = cmd_schema_check(&out_dir).expect_err("schema check should fail");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("schema file(s) drifted"),
+                "unexpected: {}",
+                msg
+            );
+        });
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn cmd_schema_check_reports_different_file() {
+        let out_dir = unique_temp_dir("perfgate_schema_check_diff");
+        with_repo_cwd(|| {
+            cmd_schema(&out_dir).expect("schema command");
+            fs::write(out_dir.join(SCHEMA_FILES[1]), "{}").expect("rewrite schema");
+
+            let err = cmd_schema_check(&out_dir).expect_err("schema check should fail");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("schema file(s) drifted"),
+                "unexpected: {}",
+                msg
+            );
+        });
+        let _ = fs::remove_dir_all(&out_dir);
     }
 }

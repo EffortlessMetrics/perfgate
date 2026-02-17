@@ -32,7 +32,7 @@ cargo run -p perfgate -- --help
 | `github-annotations` | Emit GitHub Actions annotations |
 | `report` | Generate cockpit-compatible report from comparison |
 | `promote` | Promote a run receipt to become the new baseline |
-| `export` | Export data to CSV/JSONL for trend analysis |
+| `export` | Export data to CSV/JSONL/HTML/Prometheus for trend analysis |
 | `check` | Config-driven one-command workflow |
 | `paired` | Paired benchmarking with interleaved baseline/current runs |
 
@@ -96,6 +96,12 @@ perfgate compare \
 perfgate md \
   --compare artifacts/perfgate/compare.json \
   --out artifacts/perfgate/comment.md
+
+# Optional: custom Handlebars template
+perfgate md \
+  --compare artifacts/perfgate/compare.json \
+  --template .github/perfgate-comment.hbs \
+  --out artifacts/perfgate/comment.md
 ```
 
 ### 4) GitHub Actions annotations
@@ -110,6 +116,13 @@ perfgate github-annotations --compare artifacts/perfgate/compare.json
 perfgate report \
   --compare artifacts/perfgate/compare.json \
   --out artifacts/perfgate/report.json
+
+# Optional markdown with custom template
+perfgate report \
+  --compare artifacts/perfgate/compare.json \
+  --out artifacts/perfgate/report.json \
+  --md artifacts/perfgate/comment.md \
+  --md-template .github/perfgate-comment.hbs
 ```
 
 ### 6) Promote run to baseline
@@ -124,7 +137,7 @@ perfgate promote \
 
 ### 7) Export for trend analysis
 
-Export historical data to CSV or JSONL for external analysis tools:
+Export historical data to CSV, JSONL, HTML, or Prometheus text format:
 
 ```bash
 # Export to CSV
@@ -138,6 +151,18 @@ perfgate export \
   --run artifacts/perfgate/run.json \
   --format jsonl \
   --out trends/data.jsonl
+
+# Export to HTML summary
+perfgate export \
+  --compare artifacts/perfgate/compare.json \
+  --format html \
+  --out trends/summary.html
+
+# Export to Prometheus text format
+perfgate export \
+  --compare artifacts/perfgate/compare.json \
+  --format prometheus \
+  --out trends/metrics.prom
 ```
 
 ### 8) Config-driven workflow (check)
@@ -149,6 +174,15 @@ perfgate check --config perfgate.toml --bench pst_extract
 
 # Run all benchmarks in the config
 perfgate check --config perfgate.toml --all
+
+# Run a subset of benches in --all mode
+perfgate check --config perfgate.toml --all --bench-regex "^service/"
+
+# Emit GitHub Actions outputs (verdict/counts) for workflow branching
+perfgate check --config perfgate.toml --bench pst_extract --output-github
+
+# Use a custom markdown template
+perfgate check --config perfgate.toml --bench pst_extract --md-template .github/perfgate-comment.hbs
 ```
 
 #### Cockpit Mode
@@ -194,6 +228,8 @@ warmup = 1
 threshold = 0.20
 warn_factor = 0.90
 baseline_dir = "baselines"
+baseline_pattern = "baselines/{bench}.json"
+markdown_template = ".github/perfgate-comment.hbs"
 
 [[bench]]
 name = "pst_extract"
@@ -263,6 +299,11 @@ git commit -m "Update performance baseline"
 - **Artifact storage**: Store in S3/GCS/Azure Blob (scales better for many baselines)
 - **Database**: Store in a metrics database for advanced trend analysis
 
+## CI Guides
+
+- [GitHub Actions Getting Started](docs/GETTING_STARTED_GITHUB_ACTIONS.md)
+- [GitLab CI Getting Started](docs/GETTING_STARTED_GITLAB_CI.md)
+
 ## Output Schemas
 
 Receipts are versioned:
@@ -275,9 +316,10 @@ Generate JSON Schemas:
 
 ```bash
 cargo run -p xtask -- schema
+cargo run -p xtask -- schema-check
 ```
 
-Schemas are written to `schemas/`.
+Schemas are written to `schemas/`. `schema-check` verifies that committed schema files are byte-for-byte locked to generated output.
 
 Validate fixtures against the vendored schema:
 
@@ -287,26 +329,37 @@ cargo run -p xtask -- conform --file path/to/report.json
 cargo run -p xtask -- conform --fixtures path/to/dir
 ```
 
+`--fixtures` validates all `*.json` files in the provided directory, which supports third-party sensor artifact validation.
+
 ## Design
 
-Workspace structure:
-- `perfgate-types`: receipt/config types + JSON schema support
-- `perfgate-domain`: pure math/policy (stats + budget comparison)
-- `perfgate-adapters`: process runner + best-effort system metrics
-- `perfgate-app`: use-cases + Markdown/annotation rendering
-- `perfgate` (cli): clap interface + JSON read/write
-- `xtask`: schema generation
+Workspace crates:
+- [`crates/perfgate-types`](crates/perfgate-types/README.md): versioned receipt/config contracts and JSON schema types
+- [`crates/perfgate-domain`](crates/perfgate-domain/README.md): pure stats + budget policy + host mismatch logic
+- [`crates/perfgate-adapters`](crates/perfgate-adapters/README.md): process execution and host probing adapters
+- [`crates/perfgate-app`](crates/perfgate-app/README.md): use-case orchestration, rendering, and report/export flows
+- [`crates/perfgate-cli`](crates/perfgate-cli/README.md): user-facing `perfgate` CLI, JSON I/O, and exit policy
+- [`xtask`](xtask/README.md): workspace automation (schema, CI bundle, fixture conformance, mutants)
 
 ### Measurement model
 
 - Uses wall-clock time (median) for gating.
 - Supports optional `work_units` to compute `throughput_per_s`.
-- On Unix, attempts to collect `ru_maxrss` via `wait4()`.
+- Collects `binary_bytes` (best-effort executable size) on supported platforms.
+- On Unix, collects `cpu_ms`, `max_rss_kb`, `page_faults`, and `ctx_switches` via `wait4()/rusage`.
+- On Windows, collects best-effort `cpu_ms` and `max_rss_kb` via process APIs.
 
-### CPU Time Tracking (Unix only)
+### System Metrics
 
-On Unix platforms, perfgate collects CPU time metrics via `rusage`:
+On Unix platforms, perfgate collects process-level metrics via `rusage`:
 - `cpu_ms`: Combined user and system CPU time
+- `max_rss_kb`: Peak resident set size
+- `page_faults`: Major page faults
+- `ctx_switches`: Voluntary + involuntary context switches
+
+On Windows, perfgate collects best-effort:
+- `cpu_ms`: Combined user and system CPU time
+- `max_rss_kb`: Peak resident set size
 
 These metrics are included in the run receipt when available and can help identify whether performance changes are due to CPU-bound work or I/O wait.
 
@@ -323,9 +376,9 @@ perfgate compare \
 ```
 
 Options for `--host-mismatch`:
-- `ignore`: Silently allow comparisons across different hosts (default)
+- `ignore`: Silently allow comparisons across different hosts
 - `warn`: Emit a warning but continue with comparison
-- `fail`: Treat host mismatch as an error and exit with code 1
+- `error`: Treat host mismatch as an error and exit with code 1
 
 This is useful when baselines are generated on dedicated benchmark machines but CI runs on different hardware.
 

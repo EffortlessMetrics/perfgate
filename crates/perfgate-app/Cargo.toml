@@ -1,14 +1,16 @@
 [package]
 name = "perfgate-app"
-description = "Use-cases and rendering for perfgate receipts"
+description = "Application use-cases and renderers for perfgate workflows"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/perfgate-app"
 authors.workspace = true
 readme = "README.md"
-keywords = ["performance", "benchmarking", "budgets", "baseline", "rendering"]
+keywords = ["performance", "benchmarking", "budgets", "reporting", "ci"]
 categories = ["development-tools"]
 
 [dependencies]
@@ -19,6 +21,7 @@ anyhow.workspace = true
 humantime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+handlebars = "6"
 time.workspace = true
 uuid.workspace = true
 

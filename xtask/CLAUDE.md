@@ -6,6 +6,7 @@ Repo automation — schema generation, CI pipeline, and mutation testing. Not pu
 
 ```bash
 cargo run -p xtask -- schema              # generate JSON schemas
+cargo run -p xtask -- schema-check        # verify committed schemas are locked
 cargo run -p xtask -- ci                   # full CI check
 cargo run -p xtask -- conform             # validate fixtures against schema
 cargo run -p xtask -- conform --file f.json  # validate a single file
@@ -15,7 +16,7 @@ cargo run -p xtask -- mutants --crate perfgate-domain --summary
 
 ## What This Crate Contains
 
-A single `src/main.rs` with four commands.
+A single `src/main.rs` with automation commands.
 
 ### Commands
 
@@ -26,17 +27,23 @@ A single `src/main.rs` with four commands.
 - `perfgate.report.v1.schema.json`
 - `sensor.report.v1.schema.json` (copied from `contracts/schemas/`, not generated)
 
+**`schema-check`** — Verifies `schemas/` is byte-for-byte identical to fresh generated output:
+- Detects missing schema files
+- Detects modified/drifted schema files
+- Detects extra stale `*.json` files in `schemas/`
+- Exits non-zero with remediation hint (`xtask schema`)
+
 **`ci`** — Runs the full CI pipeline in order:
 1. `cargo fmt --all --check`
 2. `cargo clippy --all-targets --all-features -- -D warnings`
 3. `cargo test --all`
-4. `cargo run -p xtask -- schema`
+4. `cargo run -p xtask -- schema-check`
 5. `cargo run -p xtask -- conform`
 
 **`conform`** — Validates JSON fixtures against the vendored `sensor.report.v1` schema:
 - Default: validates all `sensor_report_*.json` files in golden fixture directories
 - `--file path/to/file.json`: validate a single file
-- `--fixtures path/to/dir`: validate all matching files in a directory
+- `--fixtures path/to/dir`: validate all `*.json` files in that directory (third-party mode)
 - Exits non-zero if any fixture fails validation
 
 **`mutants`** — Runs `cargo-mutants` with per-crate kill rate targets:

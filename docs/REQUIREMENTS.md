@@ -79,7 +79,11 @@ Compares a current run receipt against a baseline.
 **Behavior:**
 - Budgets MUST be built for metrics present in both baseline and current
 - `wall_ms` MUST always be included as a candidate metric
+- `binary_bytes` MUST be included only if present in both receipts
+- `cpu_ms` MUST be included only if present in both receipts
+- `ctx_switches` MUST be included only if present in both receipts
 - `max_rss_kb` MUST be included only if present in both receipts
+- `page_faults` MUST be included only if present in both receipts
 - `throughput_per_s` MUST be included only if present in both receipts
 - Comparison MUST use median values for all metrics
 - Verdict reasons MUST be stable tokens (e.g., `wall_ms_warn`, `wall_ms_fail`)
@@ -156,15 +160,20 @@ Config-driven one-command workflow.
 - `--allow-nonzero`: Do not fail when command returns nonzero
 - `--mode` (default: "standard"): Output mode (`standard` or `cockpit`)
 - `--all`: Run all benchmarks defined in config (multi-bench mode)
+- `--bench-regex`: Regex filter for benchmark names when used with `--all`
+- `--md-template`: Handlebars template path for markdown comments (fallback: `defaults.markdown_template`)
+- `--output-github`: Write verdict/count outputs to `$GITHUB_OUTPUT`
 - `--pretty`: Pretty-print JSON output
 
 **Behavior:**
 - MUST load config file and find bench by name (or run all with `--all`)
 - MUST run the benchmark using config parameters
 - MUST write all artifacts to `out_dir`
+- Baseline resolution order MUST be: `--baseline` > `defaults.baseline_pattern` > `defaults.baseline_dir` > `baselines/{bench}.json`
 - If baseline exists, MUST compare and generate report
 - If baseline missing without `--require-baseline`, MUST warn and exit 0
 - If baseline missing with `--require-baseline`, MUST exit 1
+- With `--output-github`, MUST emit `verdict`, `pass_count`, `warn_count`, `fail_count`, `bench_count`, and `exit_code`
 
 **Exit Codes:**
 - Exit 0: Pass (or warn without `--fail-on-warn`, or no baseline without `--require-baseline`)
@@ -193,7 +202,7 @@ Promotes a run receipt to become the new baseline.
 
 ### export
 
-Exports a run or compare receipt to CSV or JSONL format.
+Exports a run or compare receipt to CSV, JSONL, HTML, or Prometheus text format.
 
 **Required Arguments (mutually exclusive):**
 - `--run`: Path to run receipt
@@ -203,17 +212,19 @@ Exports a run or compare receipt to CSV or JSONL format.
 - `--out`: Output file path
 
 **Optional Arguments:**
-- `--format` (default: "csv"): Output format ("csv" or "jsonl")
+- `--format` (default: "csv"): Output format (`csv`, `jsonl`, `html`, or `prometheus`)
 
 **Behavior:**
 - CSV output MUST be RFC 4180 compliant with header row
 - JSONL output MUST have one JSON object per line
+- HTML output MUST contain a tabular summary representation
+- Prometheus output MUST use text exposition format with deterministic label/value emission
 - Compare export MUST produce one row per metric
 - Metrics MUST be sorted alphabetically for stable ordering
 - Output MUST be deterministic (same input = same output)
 
 **Run Export Columns:**
-`bench_name, wall_ms_median, wall_ms_min, wall_ms_max, max_rss_kb_median, throughput_median, sample_count, timestamp`
+`bench_name, wall_ms_median, wall_ms_min, wall_ms_max, binary_bytes_median, cpu_ms_median, ctx_switches_median, max_rss_kb_median, page_faults_median, throughput_median, sample_count, timestamp`
 
 **Compare Export Columns:**
 `bench_name, metric, baseline_value, current_value, regression_pct, status, threshold`
@@ -296,12 +307,21 @@ When comparing runs from different hosts, perfgate detects potential inconsisten
 - `error`: Exit 1 on mismatch
 - `ignore`: Silently allow comparisons across different hosts
 
-## CPU Time Tracking
+## System Metrics
 
-On Unix platforms, perfgate collects CPU time metrics via `rusage`:
+On Unix platforms, perfgate collects process metrics via `rusage`:
 - `cpu_ms`: Combined user and system CPU time
+- `max_rss_kb`: Peak resident set size
+- `page_faults`: Major page faults
+- `ctx_switches`: Voluntary + involuntary context switches
 
-These are optional fields in the run receipt sample. They are `None` on non-Unix platforms.
+On Windows platforms, perfgate collects best-effort:
+- `cpu_ms`: Combined user and system CPU time
+- `max_rss_kb`: Peak resident set size
+
+These are optional fields in the run receipt sample.
+
+`binary_bytes` is collected best-effort across platforms and MAY be `None` when the executable path cannot be resolved.
 
 ## Canonical Artifact Layout
 
@@ -394,7 +414,7 @@ Additional requirements:
 
 3. **Reports**: Report generation MUST be deterministic (verified by property tests)
 
-4. **Exports**: CSV and JSONL exports MUST be deterministic with stable ordering
+4. **Exports**: CSV, JSONL, HTML, and Prometheus exports MUST be deterministic with stable ordering
 
 5. **Rendering**: Markdown and annotation output MUST be stable
 
@@ -402,10 +422,23 @@ Additional requirements:
 
 ### RSS Collection
 
-- `max_rss_kb` is collected via `rusage` from `wait4()` on Unix only
+- `max_rss_kb` is collected via `rusage` from `wait4()` on Unix
 - On macOS, `ru_maxrss` is in bytes and MUST be converted to KB
 - On Linux, `ru_maxrss` is in KB and MUST be used directly
-- On non-Unix platforms, `max_rss_kb` MUST be `None`
+- On Windows, `max_rss_kb` SHOULD be collected best-effort via process APIs
+- On other non-Unix platforms, `max_rss_kb` MUST be `None`
+
+### CPU Collection
+
+- On Unix, `cpu_ms` MUST be collected from `rusage` (`user + system`)
+- On Windows, `cpu_ms` SHOULD be collected best-effort via process APIs
+- On other non-Unix platforms, `cpu_ms` MUST be `None`
+
+### Additional Unix Metrics
+
+- `page_faults` MUST use major faults (`ru_majflt`) from `rusage`
+- `ctx_switches` MUST use `ru_nvcsw + ru_nivcsw` from `rusage`
+- On non-Unix platforms, `page_faults` and `ctx_switches` MUST be `None`
 
 ### Timeout Behavior
 

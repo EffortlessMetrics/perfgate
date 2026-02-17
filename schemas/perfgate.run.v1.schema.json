@@ -1,47 +1,41 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "RunReceipt",
   "type": "object",
-  "required": [
-    "bench",
-    "run",
-    "samples",
-    "schema",
-    "stats",
-    "tool"
-  ],
   "properties": {
     "bench": {
-      "$ref": "#/definitions/BenchMeta"
+      "$ref": "#/$defs/BenchMeta"
     },
     "run": {
-      "$ref": "#/definitions/RunMeta"
+      "$ref": "#/$defs/RunMeta"
     },
     "samples": {
       "type": "array",
       "items": {
-        "$ref": "#/definitions/Sample"
+        "$ref": "#/$defs/Sample"
       }
     },
     "schema": {
       "type": "string"
     },
     "stats": {
-      "$ref": "#/definitions/Stats"
+      "$ref": "#/$defs/Stats"
     },
     "tool": {
-      "$ref": "#/definitions/ToolInfo"
+      "$ref": "#/$defs/ToolInfo"
     }
   },
-  "definitions": {
+  "required": [
+    "schema",
+    "tool",
+    "run",
+    "bench",
+    "samples",
+    "stats"
+  ],
+  "$defs": {
     "BenchMeta": {
       "type": "object",
-      "required": [
-        "command",
-        "name",
-        "repeat",
-        "warmup"
-      ],
       "properties": {
         "command": {
           "description": "argv vector (no shell parsing).",
@@ -63,7 +57,7 @@
         "repeat": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "timeout_ms": {
           "type": [
@@ -71,12 +65,12 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warmup": {
           "type": "integer",
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "work_units": {
           "type": [
@@ -84,17 +78,18 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
     },
     "F64Summary": {
       "type": "object",
-      "required": [
-        "max",
-        "median",
-        "min"
-      ],
       "properties": {
         "max": {
           "type": "number",
@@ -108,14 +103,15 @@
           "type": "number",
           "format": "double"
         }
-      }
+      },
+      "required": [
+        "median",
+        "min",
+        "max"
+      ]
     },
     "HostInfo": {
       "type": "object",
-      "required": [
-        "arch",
-        "os"
-      ],
       "properties": {
         "arch": {
           "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
@@ -128,10 +124,10 @@
             "null"
           ],
           "format": "uint32",
-          "minimum": 0.0
+          "minimum": 0
         },
         "hostname_hash": {
-          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving). When present, this is a SHA-256 hash of the actual hostname.",
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
           "type": [
             "string",
             "null"
@@ -144,28 +140,26 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "os": {
           "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
     },
     "RunMeta": {
       "type": "object",
-      "required": [
-        "ended_at",
-        "host",
-        "id",
-        "started_at"
-      ],
       "properties": {
         "ended_at": {
           "type": "string"
         },
         "host": {
-          "$ref": "#/definitions/HostInfo"
+          "$ref": "#/$defs/HostInfo"
         },
         "id": {
           "type": "string"
@@ -173,15 +167,26 @@
         "started_at": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
     },
     "Sample": {
       "type": "object",
-      "required": [
-        "exit_code",
-        "wall_ms"
-      ],
       "properties": {
+        "binary_bytes": {
+          "description": "Size of executed binary in bytes (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
         "cpu_ms": {
           "description": "CPU time (user + system) in milliseconds (Unix only).",
           "type": [
@@ -189,7 +194,16 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
+        },
+        "ctx_switches": {
+          "description": "Voluntary + involuntary context switches (Unix only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
         },
         "exit_code": {
           "type": "integer",
@@ -201,7 +215,16 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
+        },
+        "page_faults": {
+          "description": "Major page faults (Unix only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
         },
         "stderr": {
           "description": "Truncated stderr (bytes interpreted as UTF-8 lossily).",
@@ -218,31 +241,54 @@
           ]
         },
         "timed_out": {
-          "default": false,
-          "type": "boolean"
+          "type": "boolean",
+          "default": false
         },
         "wall_ms": {
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "warmup": {
-          "default": false,
-          "type": "boolean"
+          "type": "boolean",
+          "default": false
         }
-      }
+      },
+      "required": [
+        "wall_ms",
+        "exit_code"
+      ]
     },
     "Stats": {
       "type": "object",
-      "required": [
-        "wall_ms"
-      ],
       "properties": {
+        "binary_bytes": {
+          "description": "Size of executed binary in bytes (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "cpu_ms": {
           "description": "CPU time (user + system) summary in milliseconds (Unix only).",
           "anyOf": [
             {
-              "$ref": "#/definitions/U64Summary"
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ctx_switches": {
+          "description": "Voluntary + involuntary context switches summary (Unix only).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
             },
             {
               "type": "null"
@@ -252,7 +298,18 @@
         "max_rss_kb": {
           "anyOf": [
             {
-              "$ref": "#/definitions/U64Summary"
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_faults": {
+          "description": "Major page faults summary (Unix only).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
             },
             {
               "type": "null"
@@ -262,7 +319,7 @@
         "throughput_per_s": {
           "anyOf": [
             {
-              "$ref": "#/definitions/F64Summary"
+              "$ref": "#/$defs/F64Summary"
             },
             {
               "type": "null"
@@ -270,16 +327,15 @@
           ]
         },
         "wall_ms": {
-          "$ref": "#/definitions/U64Summary"
+          "$ref": "#/$defs/U64Summary"
         }
-      }
+      },
+      "required": [
+        "wall_ms"
+      ]
     },
     "ToolInfo": {
       "type": "object",
-      "required": [
-        "name",
-        "version"
-      ],
       "properties": {
         "name": {
           "type": "string"
@@ -287,32 +343,36 @@
         "version": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
     },
     "U64Summary": {
       "type": "object",
-      "required": [
-        "max",
-        "median",
-        "min"
-      ],
       "properties": {
         "max": {
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "median": {
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         },
         "min": {
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "median",
+        "min",
+        "max"
+      ]
     }
   }
 }

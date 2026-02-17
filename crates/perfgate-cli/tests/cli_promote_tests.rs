@@ -5,15 +5,10 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
-/// Returns the path to the test fixtures directory
-fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
+mod common;
+use common::fixtures_dir;
 
 /// Test basic promote copies file correctly
 ///

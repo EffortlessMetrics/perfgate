@@ -9,19 +9,12 @@
 //! - Artifact layout (correct file structure)
 //! - Exit code contract (exit 0 unless catastrophic)
 
-use assert_cmd::Command;
 use serde_json::Value;
-use std::env;
 use std::fs;
 use tempfile::tempdir;
 
-fn perfgate_cmd() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
-        cmd.env("LLVM_PROFILE_FILE", profile);
-    }
-    cmd
-}
+mod common;
+use common::perfgate_cmd;
 
 /// Returns a cross-platform command that exits successfully.
 #[cfg(unix)]
@@ -1096,9 +1089,90 @@ fn test_cockpit_multi_bench_counts_summed() {
     let summary = &report["data"]["summary"];
     assert_eq!(
         summary["total_count"].as_u64().unwrap(),
-        (info + warn + error) as u64,
+        info + warn + error,
         "total_count should be sum of counts"
     );
+}
+
+/// Test cockpit mode writes GitHub outputs when requested.
+#[test]
+fn test_cockpit_mode_output_github_writes_outputs() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_config_file(temp_dir.path(), "gh-cockpit-bench");
+    let github_output = temp_dir.path().join("github_output.txt");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("gh-cockpit-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit")
+        .arg("--output-github")
+        .env("GITHUB_OUTPUT", &github_output);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "cockpit mode should exit 0: stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(&github_output).expect("read GITHUB_OUTPUT");
+    assert!(content.contains("verdict="));
+    assert!(content.contains("pass_count="));
+    assert!(content.contains("warn_count="));
+    assert!(content.contains("fail_count="));
+    assert!(content.contains("bench_count=1"));
+}
+
+/// Test cockpit mode applies --md-template to generated comment.md.
+#[test]
+fn test_cockpit_mode_md_template_customizes_comment() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_config_file(temp_dir.path(), "template-bench");
+    let _baseline_path = create_baseline_receipt(temp_dir.path(), "template-bench");
+    let template_path = temp_dir.path().join("comment.hbs");
+
+    fs::write(
+        &template_path,
+        r#"bench={{bench.name}}
+{{#each rows}}metric={{metric}} status={{status}}
+{{/each}}
+"#,
+    )
+    .expect("write template");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("template-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit")
+        .arg("--md-template")
+        .arg(&template_path);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "cockpit mode should succeed: stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(out_dir.join("comment.md")).expect("read comment.md");
+    assert!(content.contains("bench=template-bench"));
+    assert!(content.contains("metric=wall_ms"));
 }
 
 /// Test multi-bench findings are prefixed with bench name and have bench_name in data.

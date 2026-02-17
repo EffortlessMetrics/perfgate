@@ -1,15 +1,17 @@
 [package]
 name = "perfgate-domain"
-description = "I/O-free budget policy and comparisons for perfgate"
+description = "I/O-free statistics, budget policy, and host mismatch logic for perfgate"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/perfgate-domain"
 authors.workspace = true
 readme = "README.md"
-keywords = ["performance", "benchmarking", "budgets", "regression", "statistics"]
-categories = ["development-tools", "mathematics"]
+keywords = ["performance", "benchmarking", "budgets", "statistics", "regression"]
+categories = ["algorithms", "development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true

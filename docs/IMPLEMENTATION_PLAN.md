@@ -74,6 +74,7 @@ P0 contract hardening expectations to keep in sync with docs and artifacts:
 - Baseline-missing is `warn` with a structured finding
 - `compare.json` is absent when baseline is missing, and stale compare artifacts are removed
 - Deterministic ordering for metrics, findings, and exports is preserved
+- Schema files are lock-checked byte-for-byte via `cargo run -p xtask -- schema-check`
 
 ### Envelope Alignment
 
@@ -119,8 +120,8 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 1. **CPU time** (`cpu_ms`): Combined user and system CPU time from `rusage`
    - **Status:** Implemented (v0.2.0)
-   - Platform: Unix only (optional fields in run receipt)
-   - Collected via `rusage` alongside `max_rss_kb`
+   - Platform: Unix + best-effort Windows (optional fields in run receipt)
+   - Collected via `rusage` on Unix and process APIs on Windows
 
 2. **Page faults** (`page_faults`): Major page faults from `rusage`
    - Direction: Lower
@@ -143,7 +144,7 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 ### Configuration Enhancements
 
-**Status:** Considered
+**Status:** Partially implemented
 
 1. **Metric-specific budgets in config:**
    ```toml
@@ -154,7 +155,7 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
    direction = "lower"
    ```
 
-2. **Baseline auto-discovery:**
+2. **Baseline auto-discovery:** (Implemented)
    ```toml
    [defaults]
    baseline_pattern = "baselines/{bench}.json"
@@ -167,19 +168,32 @@ Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
 
 ### CI Integration Improvements
 
-**Status:** Considered
+**Status:** Partially implemented
 
 1. **GitHub Actions output:**
    ```yaml
    - run: perfgate check --output-github
    ```
-   Would set outputs like `${{ steps.perfgate.outputs.verdict }}`
+   Sets outputs like `${{ steps.perfgate.outputs.verdict }}` in `$GITHUB_OUTPUT`.
 
-2. **Comment templates:**
-   Allow customizing markdown output with templates
+2. **Comment templates:** (Implemented)
+   Customize markdown output via Handlebars templates:
+   - `perfgate md --template`
+   - `perfgate report --md-template`
+   - `perfgate check --md-template`
 
 3. **Artifact upload helpers:**
    Integration with GitHub Actions artifacts
+
+### Contract Tooling
+
+**Status:** Partially implemented
+
+1. **Schema lock checks:** (Implemented)
+   `xtask schema-check` verifies `schemas/` matches generated schema output and rejects missing/modified/extra stale schema files.
+
+2. **Conformance validation:** (Implemented, stabilized)
+   `xtask conform --fixtures` validates all `*.json` files in a provided directory for third-party sensor validation, while default mode continues to validate canonical `sensor_report_*.json` fixture mirrors.
 
 ## Testing Requirements
 

@@ -1,18 +1,11 @@
 //! CLI integration tests for the report command.
 
-use assert_cmd::Command;
 use predicates::prelude::*;
-use std::env;
 use std::fs;
 use tempfile::tempdir;
 
-fn perfgate_cmd() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
-        cmd.env("LLVM_PROFILE_FILE", profile);
-    }
-    cmd
-}
+mod common;
+use common::perfgate_cmd;
 
 /// Creates a minimal compare receipt JSON for testing.
 fn create_compare_receipt(verdict_status: &str, metric_status: &str) -> String {
@@ -185,6 +178,42 @@ fn test_report_with_markdown_output() {
     let md_content = fs::read_to_string(&md_path).unwrap();
     assert!(md_content.contains("perfgate"));
     assert!(md_content.contains("fail"));
+}
+
+#[test]
+fn test_report_with_markdown_template() {
+    let dir = tempdir().unwrap();
+    let compare_path = dir.path().join("compare.json");
+    let report_path = dir.path().join("report.json");
+    let md_path = dir.path().join("comment.md");
+    let template_path = dir.path().join("comment.hbs");
+
+    fs::write(&compare_path, create_compare_receipt("fail", "fail")).unwrap();
+    fs::write(
+        &template_path,
+        r#"bench={{bench.name}}
+{{#each rows}}metric={{metric}} status={{status}}
+{{/each}}
+"#,
+    )
+    .unwrap();
+
+    perfgate_cmd()
+        .arg("report")
+        .arg("--compare")
+        .arg(&compare_path)
+        .arg("--out")
+        .arg(&report_path)
+        .arg("--md")
+        .arg(&md_path)
+        .arg("--md-template")
+        .arg(&template_path)
+        .assert()
+        .success();
+
+    let md_content = fs::read_to_string(&md_path).unwrap();
+    assert!(md_content.contains("bench=test-bench"));
+    assert!(md_content.contains("metric=wall_ms"));
 }
 
 #[test]

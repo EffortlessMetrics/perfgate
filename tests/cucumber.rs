@@ -106,8 +106,8 @@ impl PerfgateWorld {
                 started_at: "2024-01-01T00:00:00Z".to_string(),
                 ended_at: "2024-01-01T00:01:00Z".to_string(),
                 host: HostInfo {
-                    os: "linux".to_string(),
-                    arch: "x86_64".to_string(),
+                    os: std::env::consts::OS.to_string(),
+                    arch: std::env::consts::ARCH.to_string(),
                     cpu_count: None,
                     memory_bytes: None,
                     hostname_hash: None,
@@ -128,7 +128,10 @@ impl PerfgateWorld {
                 warmup: false,
                 timed_out: false,
                 cpu_ms: None,
-                max_rss_kb: Some(1024),
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }],
@@ -139,11 +142,10 @@ impl PerfgateWorld {
                     max: wall_ms_median.saturating_add(10),
                 },
                 cpu_ms: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1000,
-                    max: 1100,
-                }),
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
                 throughput_per_s: None,
             },
         }
@@ -1794,6 +1796,8 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
             warn_factor: Some(0.90),
             out_dir: None,
             baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
         },
         benches: vec![BenchConfigFile {
             name: bench_name,
@@ -1841,6 +1845,8 @@ async fn given_config_file_with_bench_threshold(
             warn_factor: Some(0.90),
             out_dir: None,
             baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
         },
         benches: vec![BenchConfigFile {
             name: bench_name,
@@ -1889,6 +1895,8 @@ async fn given_config_file_with_bench_threshold_warn(
             warn_factor: Some(warn_factor),
             out_dir: None,
             baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
         },
         benches: vec![BenchConfigFile {
             name: bench_name,
@@ -1934,6 +1942,8 @@ async fn given_config_file_with_defaults_repeat_warmup(
             warn_factor: Some(0.90),
             out_dir: None,
             baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
         },
         benches: vec![],
     };
@@ -1965,6 +1975,8 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
             warn_factor: Some(0.90),
             out_dir: None,
             baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
         },
         benches: vec![],
     };
@@ -2046,6 +2058,8 @@ async fn given_config_file_with_bench_baseline_dir(
             warn_factor: Some(0.90),
             out_dir: None,
             baseline_dir: Some(baseline_dir.clone()),
+            baseline_pattern: None,
+            markdown_template: None,
         },
         benches: vec![BenchConfigFile {
             name: bench_name,

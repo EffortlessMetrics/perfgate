@@ -2,18 +2,11 @@
 //!
 //! **Validates: Config-driven one-command workflow**
 
-use assert_cmd::Command;
-use std::env;
 use std::fs;
 use tempfile::tempdir;
 
-fn perfgate_cmd() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
-        cmd.env("LLVM_PROFILE_FILE", profile);
-    }
-    cmd
-}
+mod common;
+use common::perfgate_cmd;
 
 /// Returns a cross-platform command that exits successfully.
 #[cfg(unix)]
@@ -190,6 +183,47 @@ fn create_baseline_receipt_with_wall_ms(
     .expect("Failed to write baseline");
 
     baseline_path
+}
+
+/// Create a baseline receipt at an explicit path.
+fn create_baseline_receipt_at(path: &std::path::Path, bench_name: &str, wall_ms: u64) {
+    let receipt = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": {
+            "name": "perfgate",
+            "version": "0.1.0"
+        },
+        "run": {
+            "id": "baseline-run-id",
+            "started_at": "2024-01-01T00:00:00Z",
+            "ended_at": "2024-01-01T00:01:00Z",
+            "host": {
+                "os": "linux",
+                "arch": "x86_64"
+            }
+        },
+        "bench": {
+            "name": bench_name,
+            "command": ["echo", "hello"],
+            "repeat": 1,
+            "warmup": 0
+        },
+        "samples": [
+            {"wall_ms": wall_ms, "exit_code": 0, "warmup": false, "timed_out": false}
+        ],
+        "stats": {
+            "wall_ms": {
+                "median": wall_ms,
+                "min": wall_ms,
+                "max": wall_ms
+            }
+        }
+    });
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("Failed to create baseline parent dir");
+    }
+    fs::write(path, serde_json::to_string_pretty(&receipt).unwrap()).expect("write baseline");
 }
 
 /// Test basic check command with config file
@@ -693,6 +727,403 @@ fn test_check_all_runs_all_benches() {
             bench_name
         );
     }
+}
+
+/// Test baseline auto-discovery via defaults.baseline_pattern.
+#[test]
+fn test_check_baseline_pattern_autodiscovery() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = temp_dir.path().join("perfgate.toml");
+
+    let cmd = success_command();
+    let cmd_str = cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+[defaults]
+repeat = 1
+warmup = 0
+threshold = 0.20
+baseline_pattern = "custom-baselines/{{bench}}.json"
+
+[[bench]]
+name = "pattern-bench"
+command = [{}]
+"#,
+            cmd_str
+        ),
+    )
+    .expect("write config");
+
+    create_baseline_receipt_at(
+        &temp_dir
+            .path()
+            .join("custom-baselines")
+            .join("pattern-bench.json"),
+        "pattern-bench",
+        10_000,
+    );
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("pattern-bench")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "check should succeed with baseline_pattern: {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out_dir.join("compare.json").exists(),
+        "compare.json should exist (baseline discovered via baseline_pattern)"
+    );
+}
+
+/// Test --output-github writes verdict/count outputs to $GITHUB_OUTPUT.
+#[test]
+fn test_check_output_github_writes_outputs() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "gh-output-bench");
+    let _baseline_path = create_baseline_receipt(temp_dir.path(), "gh-output-bench");
+    let github_output = temp_dir.path().join("github_output.txt");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("gh-output-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--output-github")
+        .env("GITHUB_OUTPUT", &github_output);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "check should succeed with --output-github: {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(github_output.exists(), "GITHUB_OUTPUT file should exist");
+
+    let content = fs::read_to_string(&github_output).expect("read GITHUB_OUTPUT");
+    assert!(
+        content.contains("verdict="),
+        "should include verdict output"
+    );
+    assert!(content.contains("pass_count="), "should include pass_count");
+    assert!(content.contains("warn_count="), "should include warn_count");
+    assert!(content.contains("fail_count="), "should include fail_count");
+    assert!(
+        content.contains("bench_count=1"),
+        "should include bench_count"
+    );
+    assert!(content.contains("exit_code=0"), "should include exit code");
+}
+
+/// Test --output-github fails when GITHUB_OUTPUT is missing.
+#[test]
+fn test_check_output_github_requires_env_var() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "gh-missing-env");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("gh-missing-env")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--output-github")
+        .env_remove("GITHUB_OUTPUT");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        !output.status.success(),
+        "--output-github should fail without GITHUB_OUTPUT"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("GITHUB_OUTPUT"),
+        "stderr should mention GITHUB_OUTPUT: {}",
+        stderr
+    );
+}
+
+/// Test --output-github still writes outputs when check exits with fail (code 2).
+#[test]
+fn test_check_output_github_writes_on_fail_exit() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let github_output = temp_dir.path().join("github_output_fail.txt");
+
+    let cmd = slow_command();
+    let cmd_str = cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+[defaults]
+repeat = 1
+warmup = 0
+threshold = 0.01
+
+[[bench]]
+name = "fail-bench"
+command = [{}]
+"#,
+            cmd_str
+        ),
+    )
+    .expect("write config");
+
+    create_baseline_receipt_at(
+        &temp_dir.path().join("baselines").join("fail-bench.json"),
+        "fail-bench",
+        1,
+    );
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("fail-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--output-github")
+        .env("GITHUB_OUTPUT", &github_output);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "check should exit 2 on fail: stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(&github_output).expect("read GITHUB_OUTPUT");
+    assert!(content.contains("verdict=fail"));
+    assert!(content.contains("exit_code=2"));
+}
+
+/// Test --md-template customizes check comment output when baseline exists.
+#[test]
+fn test_check_md_template_customizes_comment() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config_file(temp_dir.path(), "templated-bench");
+    let _baseline_path = create_baseline_receipt(temp_dir.path(), "templated-bench");
+    let template_path = temp_dir.path().join("comment.hbs");
+
+    fs::write(
+        &template_path,
+        r#"bench={{bench.name}}
+{{#each rows}}metric={{metric}} status={{status}}
+{{/each}}
+"#,
+    )
+    .expect("write template");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("templated-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--md-template")
+        .arg(&template_path);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "check with template should succeed: {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(out_dir.join("comment.md")).expect("read comment.md");
+    assert!(content.contains("bench=templated-bench"));
+    assert!(content.contains("metric=wall_ms"));
+}
+
+/// Test defaults.markdown_template in config is used when --md-template is omitted.
+#[test]
+fn test_check_uses_config_markdown_template_fallback() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let template_path = temp_dir.path().join("fallback-comment.hbs");
+
+    let cmd = success_command();
+    let cmd_str = cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let template_literal = template_path.to_string_lossy().replace('\\', "\\\\");
+
+    fs::write(
+        &template_path,
+        r#"bench={{bench.name}}
+{{#each rows}}metric={{metric}}
+{{/each}}
+"#,
+    )
+    .expect("write template");
+
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+[defaults]
+repeat = 1
+warmup = 0
+threshold = 0.20
+markdown_template = "{}"
+
+[[bench]]
+name = "fallback-template-bench"
+command = [{}]
+"#,
+            template_literal, cmd_str
+        ),
+    )
+    .expect("write config");
+
+    create_baseline_receipt_at(
+        &temp_dir
+            .path()
+            .join("baselines")
+            .join("fallback-template-bench.json"),
+        "fallback-template-bench",
+        10_000,
+    );
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("fallback-template-bench")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "check should succeed: {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(out_dir.join("comment.md")).expect("read comment.md");
+    assert!(content.contains("bench=fallback-template-bench"));
+    assert!(content.contains("metric=wall_ms"));
+}
+
+/// Test --bench-regex filters benches when used with --all
+#[test]
+fn test_check_all_bench_regex_filters_benches() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_multi_bench_config(
+        temp_dir.path(),
+        &["bench-a", "bench-b", "service/api", "service/web"],
+    );
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--bench-regex")
+        .arg("^bench-")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+
+    assert!(
+        output.status.success(),
+        "check --all --bench-regex should succeed: exit code {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(out_dir.join("bench-a").exists(), "bench-a should run");
+    assert!(out_dir.join("bench-b").exists(), "bench-b should run");
+    assert!(
+        !out_dir.join("service/api").exists(),
+        "service/api should be filtered out"
+    );
+    assert!(
+        !out_dir.join("service/web").exists(),
+        "service/web should be filtered out"
+    );
+}
+
+/// Test --bench-regex fails when nothing matches
+#[test]
+fn test_check_all_bench_regex_no_match_fails() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_multi_bench_config(temp_dir.path(), &["bench-a", "bench-b"]);
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--bench-regex")
+        .arg("^does-not-match$")
+        .arg("--out-dir")
+        .arg(&out_dir);
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        !output.status.success(),
+        "check --all --bench-regex with no matches should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("did not match any benchmark names"),
+        "stderr should mention regex matched no benches: {}",
+        stderr
+    );
 }
 
 /// Test --all flag with baselines

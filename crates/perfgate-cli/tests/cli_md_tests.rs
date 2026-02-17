@@ -5,35 +5,10 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
-/// Returns the path to the test fixtures directory
-fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
-
-/// Helper function to run compare and generate a compare receipt
-fn generate_compare_receipt(
-    baseline: &PathBuf,
-    current: &PathBuf,
-    output_path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    cmd.arg("compare")
-        .arg("--baseline")
-        .arg(baseline)
-        .arg("--current")
-        .arg(current)
-        .arg("--out")
-        .arg(output_path);
-
-    // We don't care about the exit code here, just that the receipt is generated
-    let _ = cmd.output();
-    Ok(())
-}
+mod common;
+use common::{fixtures_dir, generate_compare_receipt, perfgate_cmd};
 
 /// Test markdown generation from compare receipt with pass verdict
 /// Verify output contains expected table structure and verdict emoji
@@ -292,11 +267,47 @@ fn test_md_contains_verdict_reasons() {
     let output = cmd.assert().success();
 
     // If the receipt has reasons, verify they appear in the markdown
-    if let Some(reasons) = receipt["verdict"]["reasons"].as_array() {
-        if !reasons.is_empty() {
-            output.stdout(predicate::str::contains("Notes:"));
-        }
+    if let Some(reasons) = receipt["verdict"]["reasons"].as_array()
+        && !reasons.is_empty()
+    {
+        output.stdout(predicate::str::contains("Notes:"));
     }
+}
+
+/// Test markdown template rendering with Handlebars.
+#[test]
+fn test_md_template_renders_custom_output() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let compare_receipt_path = temp_dir.path().join("compare.json");
+    let template_path = temp_dir.path().join("comment.hbs");
+
+    let baseline = fixtures_dir().join("baseline.json");
+    let current = fixtures_dir().join("current_pass.json");
+    generate_compare_receipt(&baseline, &current, &compare_receipt_path)
+        .expect("failed to generate compare receipt");
+
+    fs::write(
+        &template_path,
+        r#"{{header}}
+bench={{bench.name}}
+{{#each rows}}
+- {{metric}} {{status}} {{delta_pct}}
+{{/each}}
+"#,
+    )
+    .expect("write template");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("md")
+        .arg("--compare")
+        .arg(&compare_receipt_path)
+        .arg("--template")
+        .arg(&template_path);
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("bench=test-benchmark"))
+        .stdout(predicate::str::contains("- wall_ms"));
 }
 
 /// Test markdown table contains all expected metrics
@@ -325,4 +336,37 @@ fn test_md_contains_all_metrics() {
         .stdout(predicate::str::contains("wall_ms"))
         // Verify max_rss_kb metric is present (fixtures have this metric)
         .stdout(predicate::str::contains("max_rss_kb"));
+}
+
+/// Test markdown stdout is deterministic for the same compare receipt.
+#[test]
+fn test_md_stdout_deterministic() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let compare_receipt_path = temp_dir.path().join("compare.json");
+
+    let baseline = fixtures_dir().join("baseline.json");
+    let current = fixtures_dir().join("current_warn.json");
+    generate_compare_receipt(&baseline, &current, &compare_receipt_path)
+        .expect("failed to generate compare receipt");
+
+    let output1 = perfgate_cmd()
+        .arg("md")
+        .arg("--compare")
+        .arg(&compare_receipt_path)
+        .output()
+        .expect("first md run");
+    assert!(output1.status.success(), "first md run should succeed");
+
+    let output2 = perfgate_cmd()
+        .arg("md")
+        .arg("--compare")
+        .arg(&compare_receipt_path)
+        .output()
+        .expect("second md run");
+    assert!(output2.status.success(), "second md run should succeed");
+
+    assert_eq!(
+        output1.stdout, output2.stdout,
+        "markdown stdout should be byte-for-byte deterministic"
+    );
 }

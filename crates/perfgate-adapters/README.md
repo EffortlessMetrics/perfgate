@@ -1,23 +1,35 @@
 # perfgate-adapters
 
-Platform adapters for perfgate: process runner, system metrics, and filesystem operations.
+Infrastructure adapters for process execution and host probing.
 
-This crate provides the infrastructure layer:
+## Responsibilities
 
-- **Process runner** - Execute benchmarks and capture timing/metrics
-- **System metrics** - Collect `max_rss_kb`, `cpu_ms` and other resource usage (Unix via `rusage`)
-- **Timeout support** - Process timeouts with polling (Unix only)
-- **Host probing** - Collect OS, arch, CPU count, memory, and hostname hash
+- Runs benchmark commands through `StdProcessRunner` and `ProcessRunner`.
+- Captures wall-clock timing, exit code, timeout status, and capped stdout/stderr.
+- Collects process metrics when available:
+  - Unix: `cpu_ms`, `max_rss_kb`, `page_faults`, `ctx_switches` (via `wait4`/`rusage`)
+  - Windows: best-effort `cpu_ms` and `max_rss_kb`
+- Probes host info via `StdHostProbe` (`os`, `arch`, CPU count, memory, optional hostname hash).
+- Provides `FakeProcessRunner` for deterministic tests.
 
-## Platform Support
+## Platform Notes
 
-- **Unix** - Full support including memory metrics, CPU time, and timeouts
-- **Windows** - Basic support (no CPU time, timeouts return `AdapterError::TimeoutUnsupported`)
+- Unix supports command timeouts.
+- Windows currently returns `AdapterError::TimeoutUnsupported` if timeout is requested.
+- Other platforms run without timeout support and with limited metrics.
 
-## Part of perfgate
+## Boundaries
 
-This crate is part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace for performance budgets and baseline diffs in CI.
+- No policy or threshold logic.
+- No markdown/report rendering.
+- No CLI argument parsing.
+
+## Workspace Role
+
+`perfgate-adapters` is the "touch the world" layer used by application use-cases:
+
+`perfgate-types` + `perfgate-domain` + `perfgate-adapters` -> `perfgate-app`
 
 ## License
 
-Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+Licensed under either Apache-2.0 or MIT.

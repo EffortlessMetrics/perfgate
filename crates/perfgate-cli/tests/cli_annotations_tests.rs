@@ -4,35 +4,10 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
-/// Returns the path to the test fixtures directory
-fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
-
-/// Helper function to run compare and generate a compare receipt
-fn generate_compare_receipt(
-    baseline: &PathBuf,
-    current: &PathBuf,
-    output_path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
-    cmd.arg("compare")
-        .arg("--baseline")
-        .arg(baseline)
-        .arg("--current")
-        .arg(current)
-        .arg("--out")
-        .arg(output_path);
-
-    // We don't care about the exit code here, just that the receipt is generated
-    let _ = cmd.output();
-    Ok(())
-}
+mod common;
+use common::{fixtures_dir, generate_compare_receipt, perfgate_cmd};
 
 /// Test github-annotations with fail scenario
 /// Should emit `::error::` annotations for metrics with Fail status
@@ -251,4 +226,37 @@ fn test_github_annotations_one_per_metric() {
             line
         );
     }
+}
+
+/// Test annotation output is deterministic for the same compare receipt.
+#[test]
+fn test_github_annotations_deterministic() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let compare_receipt_path = temp_dir.path().join("compare.json");
+
+    let baseline = fixtures_dir().join("baseline.json");
+    let current = fixtures_dir().join("current_fail.json");
+    generate_compare_receipt(&baseline, &current, &compare_receipt_path)
+        .expect("failed to generate compare receipt");
+
+    let output1 = perfgate_cmd()
+        .arg("github-annotations")
+        .arg("--compare")
+        .arg(&compare_receipt_path)
+        .output()
+        .expect("first annotations run");
+    assert!(output1.status.success(), "first run should succeed");
+
+    let output2 = perfgate_cmd()
+        .arg("github-annotations")
+        .arg("--compare")
+        .arg(&compare_receipt_path)
+        .output()
+        .expect("second annotations run");
+    assert!(output2.status.success(), "second run should succeed");
+
+    assert_eq!(
+        output1.stdout, output2.stdout,
+        "annotation output should be byte-for-byte deterministic"
+    );
 }
