@@ -71,6 +71,10 @@ Compares a current run receipt against a baseline.
 - `--warn-factor` (default: 0.90): Warn threshold = threshold * warn_factor
 - `--metric-threshold`: Per-metric threshold override (e.g., `wall_ms=0.10`)
 - `--direction`: Per-metric direction override (e.g., `throughput_per_s=higher`)
+- `--metric-stat`: Per-metric statistic override (`median` or `p95`)
+- `--significance-alpha`: Optional p-value threshold for Welch's t-test
+- `--significance-min-samples` (default: 8): Minimum per-side sample count before significance is computed
+- `--require-significance`: Require significance for warn/fail escalation when `--significance-alpha` is set
 - `--fail-on-warn`: Treat warn verdict as exit 3
 - `--host-mismatch` (default: "warn"): Host mismatch policy (`warn`, `error`, `ignore`)
 - `--out` (default: "perfgate-compare.json"): Output file path
@@ -85,7 +89,7 @@ Compares a current run receipt against a baseline.
 - `max_rss_kb` MUST be included only if present in both receipts
 - `page_faults` MUST be included only if present in both receipts
 - `throughput_per_s` MUST be included only if present in both receipts
-- Comparison MUST use median values for all metrics
+- Comparison MUST use median values by default, with optional per-metric overrides (e.g., `p95`)
 - Verdict reasons MUST be stable tokens (e.g., `wall_ms_warn`, `wall_ms_fail`)
 - Output MUST conform to `perfgate.compare.v1` schema
 
@@ -158,6 +162,9 @@ Config-driven one-command workflow.
 - `--env`: Environment variables (repeatable)
 - `--output-cap-bytes` (default: 8192): Max bytes captured
 - `--allow-nonzero`: Do not fail when command returns nonzero
+- `--significance-alpha`: Optional p-value threshold for Welch's t-test
+- `--significance-min-samples` (default: 8): Minimum per-side sample count before significance is computed
+- `--require-significance`: Require significance for warn/fail escalation when `--significance-alpha` is set
 - `--mode` (default: "standard"): Output mode (`standard` or `cockpit`)
 - `--all`: Run all benchmarks defined in config (multi-bench mode)
 - `--bench-regex`: Regex filter for benchmark names when used with `--all`

@@ -8,9 +8,11 @@ pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
 
 use perfgate_types::{
     Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, Direction, F64Summary,
-    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, Metric, MetricStatus, Stats, U64Summary,
-    Verdict, VerdictCounts, VerdictStatus,
+    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus,
+    RunReceipt, Significance, SignificanceTest, Stats, U64Summary, Verdict, VerdictCounts,
+    VerdictStatus,
 };
+use statrs::distribution::{ContinuousCDF, StudentsT};
 use std::collections::BTreeMap;
 
 #[derive(Debug, thiserror::Error)]
@@ -20,6 +22,144 @@ pub enum DomainError {
 
     #[error("baseline value for {0:?} must be > 0")]
     InvalidBaseline(Metric),
+}
+
+#[cfg(test)]
+mod advanced_analytics_tests {
+    use super::*;
+    use perfgate_types::{BenchMeta, HostInfo, RunMeta, RunReceipt, Sample, ToolInfo};
+
+    fn make_run_receipt_with_walls(name: &str, walls: &[u64]) -> RunReceipt {
+        let samples: Vec<Sample> = walls
+            .iter()
+            .map(|&wall_ms| Sample {
+                wall_ms,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            })
+            .collect();
+
+        let stats = compute_stats(&samples, None).expect("compute stats");
+
+        RunReceipt {
+            schema: perfgate_types::RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "test".to_string(),
+            },
+            run: RunMeta {
+                id: format!("run-{}", name),
+                started_at: "2024-01-01T00:00:00Z".to_string(),
+                ended_at: "2024-01-01T00:00:01Z".to_string(),
+                host: HostInfo {
+                    os: "linux".to_string(),
+                    arch: "x86_64".to_string(),
+                    cpu_count: None,
+                    memory_bytes: None,
+                    hostname_hash: None,
+                },
+            },
+            bench: BenchMeta {
+                name: name.to_string(),
+                cwd: None,
+                command: vec!["echo".to_string(), "ok".to_string()],
+                repeat: walls.len() as u32,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples,
+            stats,
+        }
+    }
+
+    fn wall_budget(threshold: f64) -> BTreeMap<Metric, Budget> {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold,
+                warn_threshold: threshold * 0.9,
+                direction: Direction::Lower,
+            },
+        );
+        budgets
+    }
+
+    #[test]
+    fn compare_runs_uses_p95_when_requested() {
+        let baseline =
+            make_run_receipt_with_walls("bench", &[100, 100, 100, 100, 100, 100, 100, 200]);
+        let current =
+            make_run_receipt_with_walls("bench", &[100, 100, 100, 100, 100, 100, 100, 300]);
+
+        let budgets = wall_budget(0.20);
+        let mut stats = BTreeMap::new();
+        stats.insert(Metric::WallMs, MetricStatistic::P95);
+
+        let comparison =
+            compare_runs(&baseline, &current, &budgets, &stats, None).expect("compare runs");
+
+        let delta = comparison.deltas.get(&Metric::WallMs).expect("wall delta");
+        assert_eq!(delta.statistic, MetricStatistic::P95);
+        assert!(delta.current > delta.baseline);
+        assert_eq!(delta.status, MetricStatus::Fail);
+    }
+
+    #[test]
+    fn compare_runs_can_require_significance() {
+        let baseline =
+            make_run_receipt_with_walls("bench", &[50, 60, 70, 80, 90, 100, 110, 120, 130, 140]);
+        let current =
+            make_run_receipt_with_walls("bench", &[56, 66, 76, 86, 96, 106, 116, 126, 136, 146]);
+        let budgets = wall_budget(0.05);
+        let stats = BTreeMap::new();
+
+        let advisory = compare_runs(
+            &baseline,
+            &current,
+            &budgets,
+            &stats,
+            Some(SignificancePolicy {
+                alpha: 0.05,
+                min_samples: 8,
+                require_significance: false,
+            }),
+        )
+        .expect("compare advisory");
+        let advisory_delta = advisory.deltas.get(&Metric::WallMs).expect("wall delta");
+        assert_eq!(advisory_delta.status, MetricStatus::Fail);
+        assert!(
+            advisory_delta
+                .significance
+                .as_ref()
+                .map(|s| !s.significant)
+                .unwrap_or(false)
+        );
+
+        let enforced = compare_runs(
+            &baseline,
+            &current,
+            &budgets,
+            &stats,
+            Some(SignificancePolicy {
+                alpha: 0.05,
+                min_samples: 8,
+                require_significance: true,
+            }),
+        )
+        .expect("compare enforced");
+        let enforced_delta = enforced.deltas.get(&Metric::WallMs).expect("wall delta");
+        assert_eq!(enforced_delta.status, MetricStatus::Pass);
+    }
 }
 
 pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, DomainError> {
@@ -154,6 +294,13 @@ pub struct Comparison {
     pub verdict: Verdict,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct SignificancePolicy {
+    pub alpha: f64,
+    pub min_samples: usize,
+    pub require_significance: bool,
+}
+
 /// Compare stats under the provided budgets.
 ///
 /// Metrics without both baseline+current values are skipped (and therefore do not affect verdict).
@@ -219,6 +366,131 @@ pub fn compare_stats(
                 ratio,
                 pct,
                 regression,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status,
+            },
+        );
+    }
+
+    let status = if counts.fail > 0 {
+        VerdictStatus::Fail
+    } else if counts.warn > 0 {
+        VerdictStatus::Warn
+    } else {
+        VerdictStatus::Pass
+    };
+
+    Ok(Comparison {
+        deltas,
+        verdict: Verdict {
+            status,
+            counts,
+            reasons,
+        },
+    })
+}
+
+/// Compare full run receipts under the provided budgets.
+///
+/// This variant supports:
+/// - Per-metric statistic selection (`median` or `p95`)
+/// - Optional significance analysis with Welch's t-test
+pub fn compare_runs(
+    baseline: &RunReceipt,
+    current: &RunReceipt,
+    budgets: &BTreeMap<Metric, Budget>,
+    metric_statistics: &BTreeMap<Metric, MetricStatistic>,
+    significance_policy: Option<SignificancePolicy>,
+) -> Result<Comparison, DomainError> {
+    let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
+    let mut reasons: Vec<String> = Vec::new();
+
+    let mut counts = VerdictCounts {
+        pass: 0,
+        warn: 0,
+        fail: 0,
+    };
+
+    for (metric, budget) in budgets {
+        let statistic = metric_statistics
+            .get(metric)
+            .copied()
+            .unwrap_or(MetricStatistic::Median);
+
+        let b = metric_value_from_run(baseline, *metric, statistic);
+        let c = metric_value_from_run(current, *metric, statistic);
+
+        let (Some(bv), Some(cv)) = (b, c) else {
+            continue;
+        };
+
+        if bv <= 0.0 {
+            return Err(DomainError::InvalidBaseline(*metric));
+        }
+
+        let ratio = cv / bv;
+        let pct = (cv - bv) / bv;
+
+        let regression = match budget.direction {
+            Direction::Lower => pct.max(0.0),
+            Direction::Higher => (-pct).max(0.0),
+        };
+
+        let mut status = if regression > budget.threshold {
+            MetricStatus::Fail
+        } else if regression >= budget.warn_threshold {
+            MetricStatus::Warn
+        } else {
+            MetricStatus::Pass
+        };
+
+        let significance = significance_policy.and_then(|policy| {
+            let baseline_series = metric_series_from_run(baseline, *metric);
+            let current_series = metric_series_from_run(current, *metric);
+            compute_significance(
+                &baseline_series,
+                &current_series,
+                policy.alpha,
+                policy.min_samples,
+            )
+        });
+
+        if let Some(policy) = significance_policy
+            && policy.require_significance
+            && matches!(status, MetricStatus::Warn | MetricStatus::Fail)
+        {
+            let is_significant = significance
+                .as_ref()
+                .map(|sig| sig.significant)
+                .unwrap_or(false);
+            if !is_significant {
+                status = MetricStatus::Pass;
+            }
+        }
+
+        match status {
+            MetricStatus::Pass => counts.pass += 1,
+            MetricStatus::Warn => {
+                counts.warn += 1;
+                reasons.push(reason_token(*metric, MetricStatus::Warn));
+            }
+            MetricStatus::Fail => {
+                counts.fail += 1;
+                reasons.push(reason_token(*metric, MetricStatus::Fail));
+            }
+        }
+
+        deltas.insert(
+            *metric,
+            Delta {
+                baseline: bv,
+                current: cv,
+                ratio,
+                pct,
+                regression,
+                statistic,
+                significance,
                 status,
             },
         );
@@ -356,6 +628,164 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::PageFaults => stats.page_faults.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
         Metric::WallMs => Some(stats.wall_ms.median as f64),
+    }
+}
+
+fn metric_value_from_run(
+    run: &RunReceipt,
+    metric: Metric,
+    statistic: MetricStatistic,
+) -> Option<f64> {
+    match statistic {
+        MetricStatistic::Median => metric_value(&run.stats, metric),
+        MetricStatistic::P95 => {
+            let values = metric_series_from_run(run, metric);
+            if values.is_empty() {
+                metric_value(&run.stats, metric)
+            } else {
+                percentile(values, 0.95)
+            }
+        }
+    }
+}
+
+fn metric_series_from_run(run: &RunReceipt, metric: Metric) -> Vec<f64> {
+    let measured = run.samples.iter().filter(|s| !s.warmup);
+
+    match metric {
+        Metric::BinaryBytes => measured
+            .filter_map(|s| s.binary_bytes.map(|v| v as f64))
+            .collect(),
+        Metric::CpuMs => measured
+            .filter_map(|s| s.cpu_ms.map(|v| v as f64))
+            .collect(),
+        Metric::CtxSwitches => measured
+            .filter_map(|s| s.ctx_switches.map(|v| v as f64))
+            .collect(),
+        Metric::MaxRssKb => measured
+            .filter_map(|s| s.max_rss_kb.map(|v| v as f64))
+            .collect(),
+        Metric::PageFaults => measured
+            .filter_map(|s| s.page_faults.map(|v| v as f64))
+            .collect(),
+        Metric::ThroughputPerS => {
+            let Some(work) = run.bench.work_units else {
+                return Vec::new();
+            };
+            measured
+                .map(|s| {
+                    let secs = (s.wall_ms as f64) / 1000.0;
+                    if secs <= 0.0 {
+                        0.0
+                    } else {
+                        (work as f64) / secs
+                    }
+                })
+                .collect()
+        }
+        Metric::WallMs => measured.map(|s| s.wall_ms as f64).collect(),
+    }
+}
+
+fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    if values.len() == 1 {
+        return Some(values[0]);
+    }
+
+    let rank = q.clamp(0.0, 1.0) * (values.len() as f64 - 1.0);
+    let lower = rank.floor() as usize;
+    let upper = rank.ceil() as usize;
+
+    if lower == upper {
+        return Some(values[lower]);
+    }
+
+    let weight = rank - lower as f64;
+    Some(values[lower] + (values[upper] - values[lower]) * weight)
+}
+
+fn compute_significance(
+    baseline: &[f64],
+    current: &[f64],
+    alpha: f64,
+    min_samples: usize,
+) -> Option<Significance> {
+    if baseline.len() < min_samples || current.len() < min_samples {
+        return None;
+    }
+
+    if baseline.len() < 2 || current.len() < 2 {
+        return None;
+    }
+
+    let (base_mean, base_var) = mean_and_variance(baseline)?;
+    let (curr_mean, curr_var) = mean_and_variance(current)?;
+
+    let n1 = baseline.len() as f64;
+    let n2 = current.len() as f64;
+    let se2 = (base_var / n1) + (curr_var / n2);
+
+    let p_value = if se2 <= 0.0 {
+        if (base_mean - curr_mean).abs() < f64::EPSILON {
+            1.0
+        } else {
+            0.0
+        }
+    } else {
+        let t = (base_mean - curr_mean) / se2.sqrt();
+        let numerator = se2 * se2;
+        let denom_left = (base_var * base_var) / (n1 * n1 * (n1 - 1.0));
+        let denom_right = (curr_var * curr_var) / (n2 * n2 * (n2 - 1.0));
+        let df = numerator / (denom_left + denom_right);
+
+        if !df.is_finite() || df <= 0.0 {
+            return None;
+        }
+
+        let dist = StudentsT::new(0.0, 1.0, df).ok()?;
+        let tail = 1.0 - dist.cdf(t.abs());
+        (2.0 * tail).clamp(0.0, 1.0)
+    };
+
+    Some(Significance {
+        test: SignificanceTest::WelchT,
+        p_value,
+        alpha,
+        significant: p_value <= alpha,
+        baseline_samples: baseline.len() as u32,
+        current_samples: current.len() as u32,
+    })
+}
+
+fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
+    if values.is_empty() {
+        return None;
+    }
+
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let var = if values.len() > 1 {
+        values
+            .iter()
+            .map(|v| {
+                let d = v - mean;
+                d * d
+            })
+            .sum::<f64>()
+            / (values.len() as f64 - 1.0)
+    } else {
+        0.0
+    };
+
+    if mean.is_finite() && var.is_finite() {
+        Some((mean, var.max(0.0)))
+    } else {
+        None
     }
 }
 
@@ -3450,6 +3880,8 @@ mod tests {
                 ratio,
                 pct,
                 regression,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status,
             }
         }

@@ -442,8 +442,8 @@ mod tests {
     use super::*;
     use perfgate_types::{
         BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, HostInfo, Metric,
-        MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo, U64Summary, Verdict,
-        VerdictCounts, VerdictStatus,
+        MetricStatistic, MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo, U64Summary,
+        Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -555,6 +555,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Pass,
             },
         );
@@ -566,6 +568,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Fail,
             },
         );
@@ -730,8 +734,8 @@ mod property_tests {
     use super::*;
     use perfgate_types::{
         BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, F64Summary, HostInfo,
-        Metric, MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo, U64Summary, Verdict,
-        VerdictCounts, VerdictStatus,
+        Metric, MetricStatistic, MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo,
+        U64Summary, Verdict, VerdictCounts, VerdictStatus,
     };
     use proptest::prelude::*;
     use std::collections::BTreeMap;
@@ -974,6 +978,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
                     status,
                 }
             },

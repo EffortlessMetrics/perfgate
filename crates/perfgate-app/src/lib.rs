@@ -22,10 +22,12 @@ pub use sensor_report::{
 
 use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
-use perfgate_domain::{Comparison, compare_stats, compute_stats, detect_host_mismatch};
+use perfgate_domain::{
+    Comparison, SignificancePolicy, compare_runs, compute_stats, detect_host_mismatch,
+};
 use perfgate_types::{
     BenchMeta, Budget, CompareReceipt, CompareRef, Direction, HostMismatchInfo, HostMismatchPolicy,
-    Metric, MetricStatus, RunMeta, RunReceipt, Sample, ToolInfo,
+    Metric, MetricStatistic, MetricStatus, RunMeta, RunReceipt, Sample, ToolInfo,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -215,6 +217,8 @@ pub struct CompareRequest {
     pub baseline: RunReceipt,
     pub current: RunReceipt,
     pub budgets: BTreeMap<Metric, Budget>,
+    pub metric_statistics: BTreeMap<Metric, MetricStatistic>,
+    pub significance: Option<SignificancePolicy>,
     pub baseline_ref: CompareRef,
     pub current_ref: CompareRef,
     pub tool: ToolInfo,
@@ -252,8 +256,13 @@ impl CompareUseCase {
             );
         }
 
-        let Comparison { deltas, verdict } =
-            compare_stats(&req.baseline.stats, &req.current.stats, &req.budgets)?;
+        let Comparison { deltas, verdict } = compare_runs(
+            &req.baseline,
+            &req.current,
+            &req.budgets,
+            &req.metric_statistics,
+            req.significance,
+        )?;
 
         let receipt = CompareReceipt {
             schema: perfgate_types::COMPARE_SCHEMA_V1.to_string(),
@@ -309,7 +318,7 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
 
         out.push_str(&format!(
             "| `{metric}` | {b} {u} | {c} {u} | {pct} | {budget} ({dir}) | {status} |\n",
-            metric = format_metric(*metric),
+            metric = format_metric_with_statistic(*metric, delta.statistic),
             b = format_value(*metric, delta.baseline),
             c = format_value(*metric, delta.current),
             u = metric.display_unit(),
@@ -360,7 +369,7 @@ pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
         let msg = format!(
             "perfgate {bench} {metric}: {pct} (baseline {b}{u}, current {c}{u})",
             bench = compare.bench.name,
-            metric = format_metric(*metric),
+            metric = format_metric_with_statistic(*metric, delta.statistic),
             pct = format_pct(delta.pct),
             b = format_value(*metric, delta.baseline),
             c = format_value(*metric, delta.current),
@@ -375,6 +384,14 @@ pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
 
 fn format_metric(metric: Metric) -> &'static str {
     metric.as_str()
+}
+
+fn format_metric_with_statistic(metric: Metric, statistic: MetricStatistic) -> String {
+    if statistic == MetricStatistic::Median {
+        format_metric(metric).to_string()
+    } else {
+        format!("{} ({})", format_metric(metric), statistic.as_str())
+    }
 }
 
 fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value {
@@ -395,6 +412,8 @@ fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value {
 
             json!({
                 "metric": format_metric(*metric),
+                "metric_with_statistic": format_metric_with_statistic(*metric, delta.statistic),
+                "statistic": delta.statistic.as_str(),
                 "baseline": format_value(*metric, delta.baseline),
                 "current": format_value(*metric, delta.current),
                 "unit": metric.display_unit(),
@@ -407,7 +426,9 @@ fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value {
                     "baseline": delta.baseline,
                     "current": delta.current,
                     "pct": delta.pct,
-                    "regression": delta.regression
+                    "regression": delta.regression,
+                    "statistic": delta.statistic.as_str(),
+                    "significance": delta.significance
                 }
             })
         })
@@ -504,8 +525,8 @@ fn metric_status_str(status: MetricStatus) -> &'static str {
 mod tests {
     use super::*;
     use perfgate_types::{
-        Delta, HostInfo, RUN_SCHEMA_V1, RunMeta, RunReceipt, Stats, U64Summary, Verdict,
-        VerdictCounts, VerdictStatus,
+        Delta, HostInfo, MetricStatistic, RUN_SCHEMA_V1, RunMeta, RunReceipt, Stats, U64Summary,
+        Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -529,6 +550,8 @@ mod tests {
                 ratio: 1.15,
                 pct: 0.15,
                 regression: 0.15,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status,
             },
         );
@@ -630,6 +653,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Pass,
             },
         );
@@ -746,6 +771,8 @@ mod tests {
                 ratio: 1.5,
                 pct: 0.5,
                 regression: 0.5,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Fail,
             },
         );
@@ -757,6 +784,8 @@ mod tests {
                 ratio: 0.9,
                 pct: -0.1,
                 regression: 0.0,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Pass,
             },
         );
@@ -825,6 +854,8 @@ mod tests {
             baseline: baseline.clone(),
             current: current.clone(),
             budgets: budgets.clone(),
+            metric_statistics: BTreeMap::new(),
+            significance: None,
             baseline_ref: CompareRef {
                 path: None,
                 run_id: None,
@@ -846,6 +877,8 @@ mod tests {
             baseline: baseline.clone(),
             current: baseline.clone(),
             budgets: budgets.clone(),
+            metric_statistics: BTreeMap::new(),
+            significance: None,
             baseline_ref: CompareRef {
                 path: None,
                 run_id: None,
@@ -867,6 +900,8 @@ mod tests {
             baseline,
             current,
             budgets,
+            metric_statistics: BTreeMap::new(),
+            significance: None,
             baseline_ref: CompareRef {
                 path: None,
                 run_id: None,
@@ -890,7 +925,7 @@ mod tests {
 #[cfg(test)]
 mod property_tests {
     use super::*;
-    use perfgate_types::{Delta, Verdict, VerdictCounts, VerdictStatus};
+    use perfgate_types::{Delta, MetricStatistic, Verdict, VerdictCounts, VerdictStatus};
     use proptest::prelude::*;
 
     // --- Strategies for generating CompareReceipt ---
@@ -985,6 +1020,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
                     status,
                 }
             })

@@ -18,9 +18,9 @@ use tempfile::TempDir;
 // Re-export types we need for fixture creation
 use perfgate_types::{
     BenchConfigFile, BenchMeta, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile,
-    DefaultsConfig, Delta, HostInfo, Metric, MetricStatus, PerfgateReport, REPORT_SCHEMA_V1,
-    RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary, Verdict,
-    VerdictCounts, VerdictStatus,
+    DefaultsConfig, Delta, HostInfo, Metric, MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1,
+    PairedRunReceipt, PerfgateReport, REPORT_SCHEMA_V1, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample,
+    Stats, ToolInfo, U64Summary, Verdict, VerdictCounts, VerdictStatus,
 };
 
 /// World struct that holds state across BDD scenario steps.
@@ -68,6 +68,8 @@ pub struct PerfgateWorld {
     report_path2: Option<PathBuf>,
     /// Path to markdown output file (for report command)
     md_output_path: Option<PathBuf>,
+    /// Path to GitHub outputs file (for check --output-github)
+    github_output_path: Option<PathBuf>,
     /// Path to config file (for check command)
     config_path: Option<PathBuf>,
     /// Path to artifacts directory (for check command)
@@ -175,6 +177,8 @@ impl PerfgateWorld {
                 ratio,
                 pct,
                 regression,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: metric_status,
             },
         );
@@ -266,6 +270,24 @@ async fn given_current_receipt(world: &mut PerfgateWorld, wall_ms: u64) {
     world.ensure_temp_dir();
     world.current_wall_ms = Some(wall_ms);
     let receipt = world.create_run_receipt(wall_ms);
+    let current_path = world.temp_path().join("current.json");
+
+    let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
+    fs::write(&current_path, json).expect("Failed to write current receipt");
+    world.current_path = Some(current_path);
+}
+
+/// Create a current receipt with specified wall_ms median and custom host os
+#[given(expr = "a current receipt with wall_ms median of {int} and host os {string}")]
+async fn given_current_receipt_with_host_os(
+    world: &mut PerfgateWorld,
+    wall_ms: u64,
+    host_os: String,
+) {
+    world.ensure_temp_dir();
+    world.current_wall_ms = Some(wall_ms);
+    let mut receipt = world.create_run_receipt(wall_ms);
+    receipt.run.host.os = host_os;
     let current_path = world.temp_path().join("current.json");
 
     let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
@@ -434,6 +456,38 @@ async fn when_compare_with_threshold_and_warn_factor(
     world.output_path = Some(output_path);
 }
 
+/// Run perfgate compare with threshold and explicit host mismatch policy
+#[when(expr = "I run perfgate compare with threshold {float} and host-mismatch policy {string}")]
+async fn when_compare_with_threshold_and_host_mismatch_policy(
+    world: &mut PerfgateWorld,
+    threshold: f64,
+    policy: String,
+) {
+    world.ensure_temp_dir();
+    let baseline = world.baseline_path.clone().expect("Baseline path not set");
+    let current = world.current_path.clone().expect("Current path not set");
+    let output_path = world.temp_path().join("compare-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--current")
+        .arg(&current)
+        .arg("--threshold")
+        .arg(threshold.to_string())
+        .arg("--host-mismatch")
+        .arg(policy)
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate compare");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
 /// Run perfgate md command
 #[when("I run perfgate md")]
 async fn when_md(world: &mut PerfgateWorld) {
@@ -552,6 +606,28 @@ fn success_command() -> Vec<&'static str> {
     vec!["cmd", "/c", "exit", "0"]
 }
 
+/// Returns a cross-platform shell command string that exits successfully.
+#[cfg(unix)]
+fn success_shell_command() -> &'static str {
+    "true"
+}
+
+#[cfg(windows)]
+fn success_shell_command() -> &'static str {
+    "cmd /c exit 0"
+}
+
+/// Returns a cross-platform shell command string that exits with failure.
+#[cfg(unix)]
+fn fail_shell_command() -> &'static str {
+    "false"
+}
+
+#[cfg(windows)]
+fn fail_shell_command() -> &'static str {
+    "cmd /c exit 1"
+}
+
 /// Run perfgate run with repeat and warmup options
 #[when(expr = "I run perfgate run with repeat {int} and warmup {int}")]
 async fn when_run_with_repeat_and_warmup(world: &mut PerfgateWorld, repeat: u32, warmup: u32) {
@@ -633,6 +709,113 @@ async fn when_run_with_timeout(world: &mut PerfgateWorld, timeout: String) {
     }
 
     let output = cmd.output().expect("Failed to execute perfgate run");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired with shell command strings.
+#[when("I run perfgate paired with shell commands")]
+async fn when_paired_with_shell_commands(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-bench")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--baseline-cmd")
+        .arg(success_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired with repeat and warmup values.
+#[when(expr = "I run perfgate paired with repeat {int} and warmup {int}")]
+async fn when_paired_with_repeat_and_warmup(world: &mut PerfgateWorld, repeat: u32, warmup: u32) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-warmup-bench")
+        .arg("--repeat")
+        .arg(repeat.to_string())
+        .arg("--warmup")
+        .arg(warmup.to_string())
+        .arg("--baseline-cmd")
+        .arg(success_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired where baseline returns nonzero.
+#[when("I run perfgate paired with a failing baseline command")]
+async fn when_paired_with_failing_baseline(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-fail-bench")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--baseline-cmd")
+        .arg(fail_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired with allow-nonzero and failing baseline.
+#[when("I run perfgate paired with allow-nonzero and a failing baseline command")]
+async fn when_paired_with_allow_nonzero_and_failing_baseline(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-allow-nonzero-bench")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--allow-nonzero")
+        .arg("--baseline-cmd")
+        .arg(fail_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
     world.last_exit_code = Some(output.status.code().unwrap_or(-1));
     world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -734,6 +917,17 @@ async fn then_stderr_contains(world: &mut PerfgateWorld, expected: String) {
     );
 }
 
+/// Assert stderr does not contain expected text
+#[then(expr = "the stderr should not contain {string}")]
+async fn then_stderr_not_contains(world: &mut PerfgateWorld, unexpected: String) {
+    assert!(
+        !world.last_stderr.contains(&unexpected),
+        "Expected stderr to not contain '{}', got: {}",
+        unexpected,
+        world.last_stderr
+    );
+}
+
 /// Assert stdout is empty
 #[then("the stdout should be empty")]
 async fn then_stdout_empty(world: &mut PerfgateWorld) {
@@ -751,6 +945,17 @@ async fn then_output_file_exists(world: &mut PerfgateWorld) {
     assert!(
         output_path.exists(),
         "Output file should exist at {:?}",
+        output_path
+    );
+}
+
+/// Assert the output file does not exist
+#[then("the output file should not exist")]
+async fn then_output_file_not_exists(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    assert!(
+        !output_path.exists(),
+        "Output file should not exist at {:?}",
         output_path
     );
 }
@@ -922,6 +1127,69 @@ async fn then_compare_receipt_schema(world: &mut PerfgateWorld) {
     );
 }
 
+/// Assert the paired receipt has the correct schema version
+#[then("the paired receipt should have schema perfgate.paired.v1")]
+async fn then_paired_receipt_schema(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert_eq!(
+        receipt.schema, PAIRED_SCHEMA_V1,
+        "Expected schema '{}', got '{}'",
+        PAIRED_SCHEMA_V1, receipt.schema
+    );
+}
+
+/// Assert the paired receipt has the expected bench name
+#[then(expr = "the paired receipt should have bench name {string}")]
+async fn then_paired_receipt_bench_name(world: &mut PerfgateWorld, expected: String) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert_eq!(
+        receipt.bench.name, expected,
+        "Expected bench name '{}', got '{}'",
+        expected, receipt.bench.name
+    );
+}
+
+/// Assert the paired receipt has expected sample count
+#[then(expr = "the paired receipt should have {int} samples")]
+async fn then_paired_receipt_sample_count(world: &mut PerfgateWorld, expected: usize) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert_eq!(
+        receipt.samples.len(),
+        expected,
+        "Expected {} samples, got {}",
+        expected,
+        receipt.samples.len()
+    );
+}
+
+/// Assert the paired receipt has expected warmup sample count
+#[then(expr = "the paired receipt should have {int} warmup samples")]
+async fn then_paired_receipt_warmup_count(world: &mut PerfgateWorld, expected: usize) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    let warmup_count = receipt.samples.iter().filter(|s| s.warmup).count();
+    assert_eq!(
+        warmup_count, expected,
+        "Expected {} warmup samples, got {}",
+        expected, warmup_count
+    );
+}
+
 // ============================================================================
 // EXPORT STEPS
 // ============================================================================
@@ -972,6 +1240,29 @@ async fn when_export_run_to_jsonl(world: &mut PerfgateWorld) {
     world.export_path = Some(export_path);
 }
 
+/// Run perfgate export run to html
+#[when("I run perfgate export run to html")]
+async fn when_export_run_to_html(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let baseline = world.baseline_path.clone().expect("Baseline path not set");
+    let export_path = world.temp_path().join("export.html");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("export")
+        .arg("--run")
+        .arg(&baseline)
+        .arg("--format")
+        .arg("html")
+        .arg("--out")
+        .arg(&export_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate export");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.export_path = Some(export_path);
+}
+
 /// Run perfgate export compare to csv
 #[when("I run perfgate export compare to csv")]
 async fn when_export_compare_to_csv(world: &mut PerfgateWorld) {
@@ -1008,6 +1299,29 @@ async fn when_export_compare_to_jsonl(world: &mut PerfgateWorld) {
         .arg(&compare)
         .arg("--format")
         .arg("jsonl")
+        .arg("--out")
+        .arg(&export_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate export");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.export_path = Some(export_path);
+}
+
+/// Run perfgate export compare to prometheus
+#[when("I run perfgate export compare to prometheus")]
+async fn when_export_compare_to_prometheus(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let compare = world.compare_path.clone().expect("Compare path not set");
+    let export_path = world.temp_path().join("export.prom");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("export")
+        .arg("--compare")
+        .arg(&compare)
+        .arg("--format")
+        .arg("prometheus")
         .arg("--out")
         .arg(&export_path);
 
@@ -2089,6 +2403,50 @@ async fn given_config_file_with_bench_baseline_dir(
     fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
 }
 
+/// Create a config file with bench and baseline_pattern
+#[given(expr = "a config file with bench {string} and baseline_pattern {string}")]
+async fn given_config_file_with_bench_baseline_pattern(
+    world: &mut PerfgateWorld,
+    bench_name: String,
+    baseline_pattern: String,
+) {
+    world.ensure_temp_dir();
+
+    let config = ConfigFile {
+        defaults: DefaultsConfig {
+            repeat: Some(1),
+            warmup: Some(0),
+            threshold: Some(0.20),
+            warn_factor: Some(0.90),
+            out_dir: None,
+            baseline_dir: None,
+            baseline_pattern: Some(baseline_pattern),
+            markdown_template: None,
+        },
+        benches: vec![BenchConfigFile {
+            name: bench_name,
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: success_command().iter().map(|s| s.to_string()).collect(),
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        }],
+    };
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    let toml = toml::to_string_pretty(&config).expect("Failed to serialize config");
+    fs::write(&config_path, toml).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+    world.config = Some(config);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+}
+
 /// Create a baseline receipt for a specific bench
 #[given(expr = "a baseline receipt for bench {string} with wall_ms median of {int}")]
 async fn given_baseline_receipt_for_bench(
@@ -2239,6 +2597,56 @@ async fn when_check_with_baseline_path(
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
+/// Run perfgate check with --output-github
+#[when(expr = "I run perfgate check for bench {string} with --output-github")]
+async fn when_check_with_output_github(world: &mut PerfgateWorld, bench_name: String) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+    let github_output_path = world.temp_path().join("github_output.txt");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg(&bench_name)
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .arg("--output-github")
+        .current_dir(world.temp_path())
+        .env("GITHUB_OUTPUT", &github_output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate check");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.github_output_path = Some(github_output_path);
+}
+
+/// Run perfgate check in cockpit mode for a specific bench
+#[when(expr = "I run perfgate check for bench {string} in cockpit mode")]
+async fn when_check_for_bench_in_cockpit_mode(world: &mut PerfgateWorld, bench_name: String) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg(&bench_name)
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .arg("--mode")
+        .arg("cockpit")
+        .current_dir(world.temp_path());
+
+    let output = cmd.output().expect("Failed to execute perfgate check");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
 /// Assert the run.json artifact exists
 #[then("the run.json artifact should exist")]
 async fn then_run_json_artifact_exists(world: &mut PerfgateWorld) {
@@ -2305,6 +2713,66 @@ async fn then_comment_md_contains(world: &mut PerfgateWorld, expected: String) {
     assert!(
         content.to_lowercase().contains(&expected.to_lowercase()),
         "Expected comment.md to contain '{}', got: {}",
+        expected,
+        content
+    );
+}
+
+/// Assert report.json has sensor.report.v1 schema (cockpit mode)
+#[then("the report.json artifact should have schema sensor.report.v1")]
+async fn then_report_json_artifact_has_sensor_schema(world: &mut PerfgateWorld) {
+    let artifacts_dir = world.artifacts_dir.as_ref().expect("Artifacts dir not set");
+    let report_path = artifacts_dir.join("report.json");
+    let content = fs::read_to_string(&report_path).expect("Failed to read report.json");
+    let report: serde_json::Value =
+        serde_json::from_str(&content).expect("Failed to parse report.json");
+
+    assert_eq!(
+        report["schema"].as_str(),
+        Some("sensor.report.v1"),
+        "Expected report schema sensor.report.v1, got: {}",
+        content
+    );
+}
+
+/// Assert an artifact file exists at a path relative to artifacts directory
+#[then(expr = "the artifact file {string} should exist")]
+async fn then_artifact_file_exists(world: &mut PerfgateWorld, relative_path: String) {
+    let artifacts_dir = world.artifacts_dir.as_ref().expect("Artifacts dir not set");
+    let full_path = artifacts_dir.join(PathBuf::from(relative_path));
+    assert!(
+        full_path.exists(),
+        "Artifact should exist at {:?}",
+        full_path
+    );
+}
+
+/// Assert the GitHub output file exists
+#[then("the github output file should exist")]
+async fn then_github_output_file_exists(world: &mut PerfgateWorld) {
+    let output_path = world
+        .github_output_path
+        .as_ref()
+        .expect("GitHub output path not set");
+    assert!(
+        output_path.exists(),
+        "GITHUB_OUTPUT file should exist at {:?}",
+        output_path
+    );
+}
+
+/// Assert the GitHub output file contains expected text
+#[then(expr = "the github output should contain {string}")]
+async fn then_github_output_contains(world: &mut PerfgateWorld, expected: String) {
+    let output_path = world
+        .github_output_path
+        .as_ref()
+        .expect("GitHub output path not set");
+    let content = fs::read_to_string(output_path).expect("Failed to read GITHUB_OUTPUT");
+
+    assert!(
+        content.contains(&expected),
+        "Expected GITHUB_OUTPUT to contain '{}', got: {}",
         expected,
         content
     );

@@ -47,7 +47,7 @@ perfgate intentionally avoids these responsibilities:
 
 3. **Test runner/director**: perfgate does NOT orchestrate test suites or manage parallelism. It runs a single command specification
 
-4. **Statistical inference**: perfgate does NOT perform significance testing or confidence intervals. It uses simple threshold-based policy on medians
+4. **Heavy inferential modeling**: perfgate does NOT perform complex model-based inference or confidence-interval tuning. It supports optional Welch p-value analysis and simple threshold-based policy.
 
 5. **Host normalization**: perfgate does NOT normalize measurements across different hardware. Host fingerprinting is informational only
 

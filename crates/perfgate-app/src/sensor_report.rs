@@ -113,6 +113,9 @@ where
             output_cap_bytes: options.output_cap_bytes,
             allow_nonzero: options.allow_nonzero,
             host_mismatch_policy: options.host_mismatch_policy,
+            significance_alpha: None,
+            significance_min_samples: 8,
+            require_significance: false,
         },
     );
 

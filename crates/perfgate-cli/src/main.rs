@@ -9,10 +9,10 @@ use perfgate_app::{
     SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
     render_markdown_template,
 };
-use perfgate_domain::DomainError;
+use perfgate_domain::{DomainError, SignificancePolicy};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, Budget, CompareReceipt, CompareRef, ConfigFile,
-    ConfigValidationError, HostMismatchPolicy, Metric, PerfgateError, RunReceipt,
+    ConfigValidationError, HostMismatchPolicy, Metric, MetricStatistic, PerfgateError, RunReceipt,
     SensorVerdictStatus, ToolInfo,
 };
 use regex::Regex;
@@ -127,6 +127,22 @@ enum Command {
         #[arg(long, value_parser = parse_key_val_string)]
         direction: Vec<(String, String)>,
 
+        /// Override per-metric statistic, e.g. wall_ms=p95
+        #[arg(long, value_parser = parse_key_val_string)]
+        metric_stat: Vec<(String, String)>,
+
+        /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
+        #[arg(long)]
+        significance_alpha: Option<f64>,
+
+        /// Minimum samples required in each run before significance is computed.
+        #[arg(long, default_value_t = 8)]
+        significance_min_samples: u32,
+
+        /// When set with --significance-alpha, warn/fail statuses require significance.
+        #[arg(long, default_value_t = false)]
+        require_significance: bool,
+
         /// Treat WARN verdict as a failing exit code
         #[arg(long, default_value_t = false)]
         fail_on_warn: bool,
@@ -167,7 +183,7 @@ enum Command {
         compare: PathBuf,
     },
 
-    /// Export a run or compare receipt to CSV or JSONL format.
+    /// Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format.
     Export {
         /// Path to a run receipt (mutually exclusive with --compare)
         #[arg(long, conflicts_with = "compare")]
@@ -177,7 +193,7 @@ enum Command {
         #[arg(long, conflicts_with = "run")]
         compare: Option<PathBuf>,
 
-        /// Output format: csv or jsonl
+        /// Output format: csv, jsonl, html, or prometheus
         #[arg(long, default_value = "csv")]
         format: String,
 
@@ -306,6 +322,18 @@ enum Command {
         #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
         host_mismatch: HostMismatchPolicy,
 
+        /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
+        #[arg(long)]
+        significance_alpha: Option<f64>,
+
+        /// Minimum samples required in each run before significance is computed.
+        #[arg(long, default_value_t = 8)]
+        significance_min_samples: u32,
+
+        /// When set with --significance-alpha, warn/fail statuses require significance.
+        #[arg(long, default_value_t = false)]
+        require_significance: bool,
+
         /// Pretty-print JSON
         #[arg(long, default_value_t = false)]
         pretty: bool,
@@ -349,11 +377,13 @@ enum Command {
         #[arg(long, conflicts_with = "current_cmd")]
         current: Option<String>,
 
-        /// Baseline command (argv)
+        /// Baseline command.
+        /// Accepts either a quoted shell string or raw argv tokens.
         #[arg(long, num_args = 1.., conflicts_with = "baseline")]
         baseline_cmd: Option<Vec<String>>,
 
-        /// Current command (argv)
+        /// Current command.
+        /// Accepts either a quoted shell string or raw argv tokens.
         #[arg(long, num_args = 1.., conflicts_with = "current")]
         current_cmd: Option<Vec<String>>,
 
@@ -473,6 +503,10 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             warn_factor,
             metric_threshold,
             direction,
+            metric_stat,
+            significance_alpha,
+            significance_min_samples,
+            require_significance,
             fail_on_warn,
             host_mismatch,
             out,
@@ -490,10 +524,20 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
                 direction,
             )?;
 
+            let metric_statistics = build_metric_statistics(&budgets, metric_stat)?;
+
+            let significance = significance_alpha.map(|alpha| SignificancePolicy {
+                alpha,
+                min_samples: significance_min_samples as usize,
+                require_significance,
+            });
+
             let compare_result = CompareUseCase::execute(CompareRequest {
                 baseline: baseline_receipt.clone(),
                 current: current_receipt.clone(),
                 budgets,
+                metric_statistics,
+                significance,
                 baseline_ref: CompareRef {
                     path: Some(baseline.display().to_string()),
                     run_id: Some(baseline_receipt.run.id.clone()),
@@ -634,6 +678,9 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             output_cap_bytes,
             allow_nonzero,
             host_mismatch,
+            significance_alpha,
+            significance_min_samples,
+            require_significance,
             pretty,
             mode,
             md_template,
@@ -652,6 +699,9 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
                 output_cap_bytes,
                 allow_nonzero,
                 host_mismatch,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
                 pretty,
                 md_template,
                 output_github,
@@ -669,6 +719,9 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
                 output_cap_bytes,
                 allow_nonzero,
                 host_mismatch,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
                 pretty,
                 md_template,
                 output_github,
@@ -698,14 +751,14 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
             let baseline_command = match (baseline, baseline_cmd) {
                 (Some(s), None) => shell_words::split(&s)
                     .with_context(|| format!("failed to parse baseline command: {}", s))?,
-                (None, Some(argv)) => argv,
+                (None, Some(argv)) => normalize_paired_cli_command(argv, "--baseline-cmd")?,
                 _ => anyhow::bail!("either --baseline or --baseline-cmd must be specified"),
             };
 
             let current_command = match (current, current_cmd) {
                 (Some(s), None) => shell_words::split(&s)
                     .with_context(|| format!("failed to parse current command: {}", s))?,
-                (None, Some(argv)) => argv,
+                (None, Some(argv)) => normalize_paired_cli_command(argv, "--current-cmd")?,
                 _ => anyhow::bail!("either --current or --current-cmd must be specified"),
             };
 
@@ -766,6 +819,9 @@ fn run_check_standard(
     output_cap_bytes: usize,
     allow_nonzero: bool,
     host_mismatch: HostMismatchPolicy,
+    significance_alpha: Option<f64>,
+    significance_min_samples: u32,
+    require_significance: bool,
     pretty: bool,
     md_template: Option<PathBuf>,
     output_github: bool,
@@ -849,6 +905,9 @@ fn run_check_standard(
             output_cap_bytes,
             allow_nonzero,
             host_mismatch_policy: host_mismatch,
+            significance_alpha,
+            significance_min_samples,
+            require_significance,
         })?;
 
         // Write artifacts
@@ -979,6 +1038,9 @@ fn run_check_cockpit(
     output_cap_bytes: usize,
     allow_nonzero: bool,
     host_mismatch: HostMismatchPolicy,
+    significance_alpha: Option<f64>,
+    significance_min_samples: u32,
+    require_significance: bool,
     pretty: bool,
     md_template: Option<PathBuf>,
     output_github: bool,
@@ -1006,6 +1068,9 @@ fn run_check_cockpit(
         output_cap_bytes,
         allow_nonzero,
         host_mismatch,
+        significance_alpha,
+        significance_min_samples,
+        require_significance,
         pretty,
         &md_template,
         github_output_path.as_deref(),
@@ -1077,6 +1142,9 @@ fn run_check_cockpit_inner(
     output_cap_bytes: usize,
     allow_nonzero: bool,
     host_mismatch: HostMismatchPolicy,
+    significance_alpha: Option<f64>,
+    significance_min_samples: u32,
+    require_significance: bool,
     pretty: bool,
     md_template: &Option<PathBuf>,
     github_output_path: Option<&Path>,
@@ -1158,6 +1226,9 @@ fn run_check_cockpit_inner(
                 output_cap_bytes,
                 allow_nonzero,
                 host_mismatch_policy: host_mismatch,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
             })?;
 
             // Write native artifacts to extras/
@@ -1576,6 +1647,24 @@ fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
     }
 }
 
+fn normalize_paired_cli_command(args: Vec<String>, flag_name: &str) -> anyhow::Result<Vec<String>> {
+    if args.is_empty() {
+        anyhow::bail!("{} requires at least one argument", flag_name);
+    }
+
+    if args.len() == 1 && args[0].chars().any(char::is_whitespace) {
+        let raw = &args[0];
+        let parsed = shell_words::split(raw)
+            .with_context(|| format!("failed to parse {} shell string: {}", flag_name, raw))?;
+        if parsed.is_empty() {
+            anyhow::bail!("{} parsed to an empty command", flag_name);
+        }
+        return Ok(parsed);
+    }
+
+    Ok(args)
+}
+
 struct RemoteLocation {
     store: Arc<dyn object_store::ObjectStore>,
     object_path: ObjectPath,
@@ -1794,6 +1883,44 @@ fn build_budgets(
     }
 
     Ok(budgets)
+}
+
+fn build_metric_statistics(
+    budgets: &BTreeMap<Metric, Budget>,
+    overrides: Vec<(String, String)>,
+) -> anyhow::Result<BTreeMap<Metric, MetricStatistic>> {
+    let mut statistics = BTreeMap::new();
+
+    for (key, value) in overrides {
+        let metric = Metric::parse_key(&key)
+            .ok_or_else(|| anyhow::anyhow!("unknown metric for --metric-stat: {}", key))?;
+        if !budgets.contains_key(&metric) {
+            anyhow::bail!(
+                "metric-stat override for {} is not applicable (metric not present in both receipts)",
+                key
+            );
+        }
+
+        let statistic = parse_metric_statistic(&value).ok_or_else(|| {
+            anyhow::anyhow!(
+                "invalid statistic for {}: {} (expected median|p95)",
+                key,
+                value
+            )
+        })?;
+
+        statistics.insert(metric, statistic);
+    }
+
+    Ok(statistics)
+}
+
+fn parse_metric_statistic(s: &str) -> Option<MetricStatistic> {
+    match s {
+        "median" => Some(MetricStatistic::Median),
+        "p95" => Some(MetricStatistic::P95),
+        _ => None,
+    }
 }
 
 fn metric_key(metric: Metric) -> &'static str {
@@ -2029,6 +2156,35 @@ mod tests {
     }
 
     #[test]
+    fn normalize_paired_cli_command_splits_single_shell_string() {
+        let parsed =
+            normalize_paired_cli_command(vec!["cmd /c exit 0".to_string()], "--baseline-cmd")
+                .expect("parse shell string");
+        assert_eq!(parsed, vec!["cmd", "/c", "exit", "0"]);
+    }
+
+    #[test]
+    fn normalize_paired_cli_command_keeps_argv_tokens() {
+        let args = vec![
+            "cmd".to_string(),
+            "/c".to_string(),
+            "exit".to_string(),
+            "0".to_string(),
+        ];
+        let parsed =
+            normalize_paired_cli_command(args.clone(), "--baseline-cmd").expect("parse argv");
+        assert_eq!(parsed, args);
+    }
+
+    #[test]
+    fn normalize_paired_cli_command_keeps_single_token() {
+        let args = vec!["true".to_string()];
+        let parsed =
+            normalize_paired_cli_command(args.clone(), "--baseline-cmd").expect("single token");
+        assert_eq!(parsed, args);
+    }
+
+    #[test]
     fn resolve_baseline_path_prefers_cli_then_pattern_then_config_then_default() {
         let config = ConfigFile {
             defaults: DefaultsConfig {
@@ -2242,6 +2398,10 @@ mod tests {
             warn_factor: 0.90,
             metric_threshold: Vec::new(),
             direction: vec![("wall_ms".to_string(), "sideways".to_string())],
+            metric_stat: Vec::new(),
+            significance_alpha: None,
+            significance_min_samples: 8,
+            require_significance: false,
             fail_on_warn: false,
             host_mismatch: HostMismatchPolicy::Warn,
             out: out_path,
@@ -2251,6 +2411,51 @@ mod tests {
 
         assert!(
             err.to_string().contains("invalid direction"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn compare_command_rejects_invalid_metric_statistic() {
+        let dir = tempdir().unwrap();
+        let baseline_path = dir.path().join("baseline.json");
+        let current_path = dir.path().join("current.json");
+        let out_path = dir.path().join("compare.json");
+
+        write_json(
+            &baseline_path,
+            &make_receipt(make_stats_with_wall(100)),
+            false,
+        )
+        .unwrap();
+        write_json(
+            &current_path,
+            &make_receipt(make_stats_with_wall(100)),
+            false,
+        )
+        .unwrap();
+
+        let err = run_command(Command::Compare {
+            baseline: baseline_path,
+            current: current_path,
+            threshold: 0.20,
+            warn_factor: 0.90,
+            metric_threshold: Vec::new(),
+            direction: Vec::new(),
+            metric_stat: vec![("wall_ms".to_string(), "p99".to_string())],
+            significance_alpha: None,
+            significance_min_samples: 8,
+            require_significance: false,
+            fail_on_warn: false,
+            host_mismatch: HostMismatchPolicy::Warn,
+            out: out_path,
+            pretty: false,
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid statistic"),
             "unexpected error: {}",
             err
         );
@@ -2285,6 +2490,10 @@ mod tests {
                 warn_factor: 0.90,
                 metric_threshold: Vec::new(),
                 direction: Vec::new(),
+                metric_stat: Vec::new(),
+                significance_alpha: None,
+                significance_min_samples: 8,
+                require_significance: false,
                 fail_on_warn: false,
                 host_mismatch: HostMismatchPolicy::Warn,
                 out: out_clone,
@@ -2326,6 +2535,10 @@ mod tests {
                 warn_factor: 0.90,
                 metric_threshold: Vec::new(),
                 direction: Vec::new(),
+                metric_stat: Vec::new(),
+                significance_alpha: None,
+                significance_min_samples: 8,
+                require_significance: false,
                 fail_on_warn: true,
                 host_mismatch: HostMismatchPolicy::Warn,
                 out: out_clone,
@@ -2430,6 +2643,9 @@ mod tests {
                 8192,
                 false,
                 HostMismatchPolicy::Warn,
+                None,
+                8,
+                false,
                 false,
                 None,
                 false,
@@ -2467,6 +2683,9 @@ mod tests {
             8192,
             false,
             HostMismatchPolicy::Warn,
+            None,
+            8,
+            false,
             false,
             None,
             false,

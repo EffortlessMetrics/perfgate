@@ -523,6 +523,28 @@ impl Metric {
     }
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum MetricStatistic {
+    #[default]
+    Median,
+    P95,
+}
+
+impl MetricStatistic {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MetricStatistic::Median => "median",
+            MetricStatistic::P95 => "p95",
+        }
+    }
+}
+
+fn is_default_metric_statistic(stat: &MetricStatistic) -> bool {
+    *stat == MetricStatistic::Median
+}
+
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
@@ -546,6 +568,24 @@ pub struct Budget {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
+pub enum SignificanceTest {
+    WelchT,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Significance {
+    pub test: SignificanceTest,
+    pub p_value: f64,
+    pub alpha: f64,
+    pub significant: bool,
+    pub baseline_samples: u32,
+    pub current_samples: u32,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
 pub enum MetricStatus {
     Pass,
     Warn,
@@ -562,7 +602,7 @@ impl MetricStatus {
     }
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Delta {
     pub baseline: f64,
@@ -576,6 +616,12 @@ pub struct Delta {
 
     /// Positive regression amount, normalized as a fraction.
     pub regression: f64,
+
+    #[serde(default, skip_serializing_if = "is_default_metric_statistic")]
+    pub statistic: MetricStatistic,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub significance: Option<Significance>,
 
     pub status: MetricStatus,
 }
@@ -835,6 +881,9 @@ pub struct BudgetOverride {
     /// Warn fraction (warn_threshold = threshold * warn_factor).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warn_factor: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statistic: Option<MetricStatistic>,
 }
 
 #[cfg(test)]
@@ -892,6 +941,11 @@ mod tests {
         }
 
         assert!(Metric::parse_key("unknown").is_none());
+
+        assert_eq!(MetricStatistic::Median.as_str(), "median");
+        assert_eq!(MetricStatistic::P95.as_str(), "p95");
+        assert!(is_default_metric_statistic(&MetricStatistic::Median));
+        assert!(!is_default_metric_statistic(&MetricStatistic::P95));
     }
 
     #[test]
@@ -1513,6 +1567,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
                     status,
                 }
             })
@@ -1707,6 +1763,7 @@ mod property_tests {
                 threshold,
                 direction,
                 warn_factor,
+                statistic: None,
             })
     }
 

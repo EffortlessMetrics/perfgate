@@ -87,8 +87,13 @@ perfgate compare \
   --current artifacts/perfgate/run.json \
   --threshold 0.20 \
   --warn-factor 0.90 \
+  --metric-stat wall_ms=p95 \
+  --significance-alpha 0.05 \
+  --significance-min-samples 8 \
   --out artifacts/perfgate/compare.json
 ```
+
+`--metric-stat` lets you choose `median` or `p95` per metric. With `--significance-alpha`, compare/check also emits p-value metadata (Welch's t-test). Add `--require-significance` to require significance before warn/fail escalation.
 
 ### 3) Render a PR-ready comment
 
@@ -243,6 +248,7 @@ markdown_template = ".github/perfgate-comment.hbs"
 name = "pst_extract"
 command = ["sh", "-c", "sleep 0.02"]
 work = 1000
+budgets = { wall_ms = { threshold = 0.20, warn_factor = 0.90, statistic = "p95" }, max_rss_kb = { threshold = 0.15, warn_factor = 0.90, statistic = "median" } }
 ```
 
 #### Config Presets

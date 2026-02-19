@@ -207,6 +207,19 @@
           "type": "number",
           "format": "double"
         },
+        "significance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Significance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statistic": {
+          "$ref": "#/$defs/MetricStatistic"
+        },
         "status": {
           "$ref": "#/$defs/MetricStatus"
         }
@@ -227,12 +240,62 @@
         "higher"
       ]
     },
+    "MetricStatistic": {
+      "type": "string",
+      "enum": [
+        "median",
+        "p95"
+      ]
+    },
     "MetricStatus": {
       "type": "string",
       "enum": [
         "pass",
         "warn",
         "fail"
+      ]
+    },
+    "Significance": {
+      "type": "object",
+      "properties": {
+        "alpha": {
+          "type": "number",
+          "format": "double"
+        },
+        "baseline_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "current_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "p_value": {
+          "type": "number",
+          "format": "double"
+        },
+        "significant": {
+          "type": "boolean"
+        },
+        "test": {
+          "$ref": "#/$defs/SignificanceTest"
+        }
+      },
+      "required": [
+        "test",
+        "p_value",
+        "alpha",
+        "significant",
+        "baseline_samples",
+        "current_samples"
+      ]
+    },
+    "SignificanceTest": {
+      "type": "string",
+      "enum": [
+        "welch_t"
       ]
     },
     "ToolInfo": {

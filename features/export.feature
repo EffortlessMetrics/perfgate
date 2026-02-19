@@ -66,3 +66,17 @@ Feature: Export Command
     When I run perfgate export compare to csv
     Then the exit code should be 0
     And the metrics should be sorted alphabetically
+
+  Scenario: Export run receipt to HTML
+    Given a baseline receipt with wall_ms median of 1000
+    When I run perfgate export run to html
+    Then the exit code should be 0
+    And the export file should exist
+    And the export file should contain "<table"
+
+  Scenario: Export compare receipt to Prometheus
+    Given a compare receipt with pass verdict
+    When I run perfgate export compare to prometheus
+    Then the exit code should be 0
+    And the export file should exist
+    And the export file should contain "perfgate_compare_regression_pct"

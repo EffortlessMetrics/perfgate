@@ -123,8 +123,8 @@ fn metric_to_string(metric: perfgate_types::Metric) -> String {
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, Metric, MetricStatus,
-        ToolInfo, Verdict, VerdictCounts, VerdictStatus,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, Metric,
+        MetricStatistic, MetricStatus, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -148,6 +148,8 @@ mod tests {
                 ratio: 0.9,
                 pct: -0.1,
                 regression: 0.0,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Pass,
             },
         );
@@ -209,6 +211,8 @@ mod tests {
                 ratio: 1.19,
                 pct: 0.19,
                 regression: 0.19,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Warn,
             },
         );
@@ -270,6 +274,8 @@ mod tests {
                 ratio: 1.5,
                 pct: 0.5,
                 regression: 0.5,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Fail,
             },
         );
@@ -427,6 +433,8 @@ mod tests {
                 ratio: 1.19,
                 pct: 0.19,
                 regression: 0.19,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Warn,
             },
         );
@@ -438,6 +446,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Fail,
             },
         );
@@ -493,8 +503,8 @@ mod tests {
 mod property_tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, Metric, MetricStatus,
-        ToolInfo, Verdict, VerdictCounts, VerdictStatus,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, Metric,
+        MetricStatistic, MetricStatus, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
     };
     use proptest::prelude::*;
     use std::collections::BTreeMap;
@@ -578,6 +588,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
                     status,
                 }
             },

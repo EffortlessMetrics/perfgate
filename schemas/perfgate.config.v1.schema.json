@@ -126,6 +126,16 @@
             }
           ]
         },
+        "statistic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetricStatistic"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "threshold": {
           "type": [
             "number",
@@ -221,6 +231,13 @@
         "page_faults",
         "throughput_per_s",
         "wall_ms"
+      ]
+    },
+    "MetricStatistic": {
+      "type": "string",
+      "enum": [
+        "median",
+        "p95"
       ]
     }
   }

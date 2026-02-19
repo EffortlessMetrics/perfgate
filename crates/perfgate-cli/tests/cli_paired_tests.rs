@@ -671,13 +671,13 @@ fn test_paired_with_shell_strings() {
 
     #[cfg(unix)]
     {
-        cmd.arg("--baseline").arg("true");
-        cmd.arg("--current").arg("true");
+        cmd.arg("--baseline-cmd").arg("true");
+        cmd.arg("--current-cmd").arg("true");
     }
     #[cfg(windows)]
     {
-        cmd.arg("--baseline").arg("cmd /c exit 0");
-        cmd.arg("--current").arg("cmd /c exit 0");
+        cmd.arg("--baseline-cmd").arg("cmd /c exit 0");
+        cmd.arg("--current-cmd").arg("cmd /c exit 0");
     }
 
     cmd.arg("--out").arg(&output_path);
@@ -697,7 +697,7 @@ fn test_paired_with_shell_strings() {
     let baseline_cmd = receipt["bench"]["baseline_command"]
         .as_array()
         .expect("baseline_command should be array");
-    let _current_cmd = receipt["bench"]["current_command"]
+    let current_cmd = receipt["bench"]["current_command"]
         .as_array()
         .expect("current_command should be array");
 
@@ -712,5 +712,6 @@ fn test_paired_with_shell_strings() {
         assert_eq!(baseline_cmd[1], "/c");
         assert_eq!(baseline_cmd[2], "exit");
         assert_eq!(baseline_cmd[3], "0");
+        assert_eq!(current_cmd[0], "cmd");
     }
 }

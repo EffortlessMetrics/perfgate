@@ -77,7 +77,7 @@ To become the standard, low-friction "build truth" sensor for performance gating
   - [ ] Optional client/server mode to fetch baselines from a central service.
   - [ ] Centralized authentication and permission model for promoting baselines.
 - [ ] **Advanced Analytics**
-  - [ ] Statistical significance testing (p-values) for large sample sizes.
-  - [ ] Multi-dimensional gating (e.g., gate on `P95` wall time + `median` RSS).
+  - [x] Statistical significance testing (p-values) for large sample sizes.
+  - [x] Multi-dimensional gating (e.g., gate on `P95` wall time + `median` RSS).
 - [ ] **Schema Evolution**
   - [ ] Transition to `v2` schemas if breaking changes are required for advanced features.

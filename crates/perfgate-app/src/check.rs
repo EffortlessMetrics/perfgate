@@ -14,12 +14,14 @@ use crate::{
 };
 use anyhow::Context;
 use perfgate_adapters::{HostProbe, ProcessRunner};
+use perfgate_domain::SignificancePolicy;
 use perfgate_types::{
     BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CompareReceipt, CompareRef,
     ConfigFile, ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, FindingData, HostMismatchPolicy, Metric, MetricStatus, PerfgateError,
-    PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
-    VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts, VerdictStatus,
+    FINDING_CODE_METRIC_WARN, FindingData, HostMismatchPolicy, Metric, MetricStatistic,
+    MetricStatus, PerfgateError, PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary,
+    RunReceipt, Severity, ToolInfo, VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts,
+    VerdictStatus,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -62,6 +64,15 @@ pub struct CheckRequest {
 
     /// Policy for handling host mismatches when comparing against baseline.
     pub host_mismatch_policy: HostMismatchPolicy,
+
+    /// Optional p-value threshold for significance analysis.
+    pub significance_alpha: Option<f64>,
+
+    /// Minimum samples per side before significance is computed.
+    pub significance_min_samples: u32,
+
+    /// Require significance to escalate warn/fail statuses.
+    pub require_significance: bool,
 }
 
 /// Outcome of the check use case.
@@ -154,13 +165,20 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let report_path = req.out_dir.join("report.json");
         let (compare_receipt, compare_path, report) = if let Some(baseline) = &req.baseline {
             // Build budgets from config
-            let budgets = self.build_budgets(bench_config, &req.config, baseline, &run_receipt)?;
+            let (budgets, metric_statistics) =
+                self.build_budgets(bench_config, &req.config, baseline, &run_receipt)?;
 
             // Compare
             let compare_req = CompareRequest {
                 baseline: baseline.clone(),
                 current: run_receipt.clone(),
                 budgets,
+                metric_statistics,
+                significance: req.significance_alpha.map(|alpha| SignificancePolicy {
+                    alpha,
+                    min_samples: req.significance_min_samples as usize,
+                    require_significance: req.require_significance,
+                }),
                 baseline_ref: CompareRef {
                     path: req.baseline_path.as_ref().map(|p| p.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),
@@ -297,7 +315,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         config: &ConfigFile,
         baseline: &RunReceipt,
         current: &RunReceipt,
-    ) -> anyhow::Result<BTreeMap<Metric, Budget>> {
+    ) -> anyhow::Result<(BTreeMap<Metric, Budget>, BTreeMap<Metric, MetricStatistic>)> {
         let defaults = &config.defaults;
 
         // Global defaults
@@ -327,6 +345,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         }
 
         let mut budgets = BTreeMap::new();
+        let mut metric_statistics = BTreeMap::new();
 
         for metric in candidates {
             // Check for per-bench budget override
@@ -349,6 +368,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                 .and_then(|o| o.direction)
                 .unwrap_or_else(|| metric.default_direction());
 
+            let statistic = override_opt
+                .as_ref()
+                .and_then(|o| o.statistic)
+                .unwrap_or(MetricStatistic::Median);
+
             budgets.insert(
                 metric,
                 Budget {
@@ -357,9 +381,10 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                     direction,
                 },
             );
+            metric_statistics.insert(metric, statistic);
         }
 
-        Ok(budgets)
+        Ok((budgets, metric_statistics))
     }
 }
 
@@ -745,6 +770,9 @@ mod tests {
             output_cap_bytes: 1024,
             allow_nonzero: false,
             host_mismatch_policy,
+            significance_alpha: None,
+            significance_min_samples: 8,
+            require_significance: false,
         }
     }
 
@@ -769,6 +797,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                statistic: MetricStatistic::Median,
+                significance: None,
                 status: MetricStatus::Fail,
             },
         );
@@ -914,6 +944,9 @@ mod tests {
             output_cap_bytes: 512,
             allow_nonzero: true,
             host_mismatch_policy: HostMismatchPolicy::Warn,
+            significance_alpha: None,
+            significance_min_samples: 8,
+            require_significance: false,
         };
 
         let usecase = CheckUseCase::new(
@@ -984,6 +1017,7 @@ mod tests {
                 threshold: Some(0.3),
                 direction: Some(Direction::Higher),
                 warn_factor: Some(0.8),
+                statistic: Some(MetricStatistic::P95),
             },
         );
 
@@ -1048,7 +1082,7 @@ mod tests {
             TestClock::new("2024-01-01T00:00:00Z"),
         );
 
-        let budgets = usecase
+        let (budgets, statistics) = usecase
             .build_budgets(&bench, &config, &baseline, &current)
             .expect("build budgets");
 
@@ -1061,6 +1095,12 @@ mod tests {
         assert!((max_rss.threshold - 0.2).abs() < f64::EPSILON);
         assert!((max_rss.warn_threshold - 0.1).abs() < f64::EPSILON);
         assert_eq!(max_rss.direction, Direction::Lower);
+
+        assert_eq!(statistics.get(&Metric::WallMs), Some(&MetricStatistic::P95));
+        assert_eq!(
+            statistics.get(&Metric::MaxRssKb),
+            Some(&MetricStatistic::Median)
+        );
     }
 
     #[test]

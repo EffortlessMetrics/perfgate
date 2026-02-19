@@ -70,3 +70,29 @@ Feature: Check Command
     When I run perfgate check for bench "config-baseline-bench"
     Then the exit code should be 0
     And the compare.json artifact should exist
+
+  Scenario: Check resolves baseline from baseline_pattern
+    Given a config file with bench "pattern-bench" and baseline_pattern "custom-baselines/{bench}.json"
+    And a baseline receipt at "custom-baselines/pattern-bench.json" with wall_ms median of 1000
+    When I run perfgate check for bench "pattern-bench"
+    Then the exit code should be 0
+    And the compare.json artifact should exist
+
+  Scenario: Check writes GitHub outputs when requested
+    Given a config file with bench "github-output-bench"
+    And a baseline receipt for bench "github-output-bench" with wall_ms median of 1000
+    When I run perfgate check for bench "github-output-bench" with --output-github
+    Then the exit code should be 0
+    And the github output file should exist
+    And the github output should contain "verdict="
+    And the github output should contain "bench_count=1"
+
+  Scenario: Check cockpit mode writes sensor envelope and versioned extras
+    Given a config file with bench "cockpit-bench"
+    And a baseline receipt for bench "cockpit-bench" with wall_ms median of 1000
+    When I run perfgate check for bench "cockpit-bench" in cockpit mode
+    Then the exit code should be 0
+    And the report.json artifact should have schema sensor.report.v1
+    And the artifact file "extras/perfgate.run.v1.json" should exist
+    And the artifact file "extras/perfgate.compare.v1.json" should exist
+    And the artifact file "extras/perfgate.report.v1.json" should exist

@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cloud baseline backends** for `check` and `promote`:
   - `s3://...` baseline locations
   - `gs://...` baseline locations
+- **Per-metric statistic selection** for comparisons:
+  - `--metric-stat <metric>=median|p95` on `compare`
+  - `budgets.<metric>.statistic` in config-driven `check`
+- **Optional significance analysis** (Welch's t-test):
+  - `--significance-alpha`, `--significance-min-samples`, and `--require-significance` on `compare` and `check`
+  - P-value metadata emitted into compare deltas
 - **Schema lock verification** via `xtask schema-check`, with drift detection for missing/modified/extra schema files in `schemas/`.
 - **Stabilized `xtask conform` third-party mode**: `--fixtures` now validates all `*.json` files in the provided directory.
 - **CI provider guides**: added canonical getting-started docs for GitHub Actions and GitLab CI.

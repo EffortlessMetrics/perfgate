@@ -156,3 +156,27 @@ Feature: Compare Command
     When I run perfgate compare with threshold 0.20
     Then the exit code should be 2
     And the verdict should be fail
+
+  Scenario: Host mismatch warn policy emits warning and still compares
+    Given a baseline receipt with wall_ms median of 1000
+    And a current receipt with wall_ms median of 1000 and host os "different-os"
+    When I run perfgate compare with threshold 0.20 and host-mismatch policy "warn"
+    Then the exit code should be 0
+    And the verdict should be pass
+    And the stderr should contain "warning: host mismatch"
+
+  Scenario: Host mismatch error policy fails comparison
+    Given a baseline receipt with wall_ms median of 1000
+    And a current receipt with wall_ms median of 1000 and host os "different-os"
+    When I run perfgate compare with threshold 0.20 and host-mismatch policy "error"
+    Then the exit code should be 1
+    And the stderr should contain "host mismatch detected"
+    And the output file should not exist
+
+  Scenario: Host mismatch ignore policy suppresses warnings
+    Given a baseline receipt with wall_ms median of 1000
+    And a current receipt with wall_ms median of 1000 and host os "different-os"
+    When I run perfgate compare with threshold 0.20 and host-mismatch policy "ignore"
+    Then the exit code should be 0
+    And the verdict should be pass
+    And the stderr should not contain "host mismatch"
