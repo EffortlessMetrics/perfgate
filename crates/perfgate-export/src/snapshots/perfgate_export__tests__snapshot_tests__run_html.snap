@@ -1,0 +1,5 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: html
+---
+<!doctype html><html><head><meta charset="utf-8"><title>perfgate run export</title></head><body><h1>perfgate run export</h1><table border="1"><thead><tr><th>bench_name</th><th>wall_ms_median</th><th>wall_ms_min</th><th>wall_ms_max</th><th>binary_bytes_median</th><th>cpu_ms_median</th><th>ctx_switches_median</th><th>max_rss_kb_median</th><th>page_faults_median</th><th>throughput_median</th><th>sample_count</th><th>timestamp</th></tr></thead><tbody><tr><td>test-benchmark</td><td>100</td><td>98</td><td>102</td><td></td><td>50</td><td></td><td>1024</td><td></td><td></td><td>2</td><td>2024-01-15T10:00:00Z</td></tr></tbody></table></body></html>

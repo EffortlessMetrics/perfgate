@@ -1,0 +1,21 @@
+[package]
+name = "perfgate-sensor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Sensor report building for cockpit integration"
+keywords = ["sensor", "report", "cockpit", "integration"]
+categories = ["development-tools"]
+
+[dependencies]
+perfgate-types.workspace = true
+perfgate-sha256.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest = "1.7"
+insta.workspace = true

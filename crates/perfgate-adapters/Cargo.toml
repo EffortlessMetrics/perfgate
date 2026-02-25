@@ -15,6 +15,7 @@ categories = ["development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true
+perfgate-sha256.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 hostname = "0.4"

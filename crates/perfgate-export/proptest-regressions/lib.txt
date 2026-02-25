@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e1a8be612d542ce0f535f61306b234f2e1dd2b3ed2147de475754f143b8b13ef # shrinks to receipt = RunReceipt { schema: "perfgate.run.v1", tool: ToolInfo { name: "0", version: "a" }, run: RunMeta { id: "0", started_at: "2020-01-01T00:00:00Z", ended_at: "2020-01-01T00:00:00Z", host: HostInfo { os: "-", arch: "-", cpu_count: None, memory_bytes: None, hostname_hash: None } }, bench: BenchMeta { name: "A", cwd: None, command: ["a"], repeat: 1, warmup: 0, work_units: None, timeout_ms: None }, samples: [Sample { wall_ms: 0, exit_code: 0, warmup: false, timed_out: false, cpu_ms: Some(180), page_faults: None, ctx_switches: None, max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None }], stats: Stats { wall_ms: U64Summary { median: 382379, min: 306115, max: 746148 }, cpu_ms: Some(U64Summary { median: 542767, min: 492524, max: 560454 }), page_faults: Some(U64Summary { median: 566726, min: 161100, max: 615428 }), ctx_switches: Some(U64Summary { median: 243808, min: 40051, max: 357510 }), max_rss_kb: Some(U64Summary { median: 705433, min: 319532, max: 737942 }), binary_bytes: Some(U64Summary { median: 444124, min: 287400, max: 723216 }), throughput_per_s: Some(F64Summary { median: 468170.8268695263, min: 6909.442106187912, max: 604091.4571283802 }) } }

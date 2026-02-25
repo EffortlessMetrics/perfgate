@@ -1,0 +1,14 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: prom
+---
+perfgate_compare_baseline_value{bench="alpha-bench",metric="max_rss_kb"} 1024.000000
+perfgate_compare_current_value{bench="alpha-bench",metric="max_rss_kb"} 1280.000000
+perfgate_compare_regression_pct{bench="alpha-bench",metric="max_rss_kb"} 25.000000
+perfgate_compare_threshold_pct{bench="alpha-bench",metric="max_rss_kb"} 15.000000
+perfgate_compare_status{bench="alpha-bench",metric="max_rss_kb",status="fail"} 2
+perfgate_compare_baseline_value{bench="alpha-bench",metric="wall_ms"} 100.000000
+perfgate_compare_current_value{bench="alpha-bench",metric="wall_ms"} 110.000000
+perfgate_compare_regression_pct{bench="alpha-bench",metric="wall_ms"} 10.000000
+perfgate_compare_threshold_pct{bench="alpha-bench",metric="wall_ms"} 20.000000
+perfgate_compare_status{bench="alpha-bench",metric="wall_ms",status="pass"} 0

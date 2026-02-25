@@ -17,6 +17,10 @@ humantime = "2"
 perfgate-types = { path = "../crates/perfgate-types", features = ["arbitrary"] }
 perfgate-domain = { path = "../crates/perfgate-domain" }
 perfgate-app = { path = "../crates/perfgate-app" }
+perfgate-sha256 = { path = "../crates/perfgate-sha256" }
+perfgate-stats = { path = "../crates/perfgate-stats" }
+perfgate-validation = { path = "../crates/perfgate-validation" }
+perfgate-export = { path = "../crates/perfgate-export" }
 
 [[bin]]
 name = "parse_run_receipt"
@@ -57,5 +61,29 @@ doc = false
 [[bin]]
 name = "parse_report_receipt"
 path = "fuzz_targets/parse_report_receipt.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_sha256"
+path = "fuzz_targets/fuzz_sha256.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_stats"
+path = "fuzz_targets/fuzz_stats.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_validation"
+path = "fuzz_targets/fuzz_validation.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_export_csv"
+path = "fuzz_targets/fuzz_export_csv.rs"
 test = false
 doc = false

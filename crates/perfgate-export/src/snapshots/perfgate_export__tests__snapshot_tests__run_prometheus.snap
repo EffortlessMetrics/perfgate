@@ -1,0 +1,10 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: prom
+---
+perfgate_run_wall_ms_median{bench="test-benchmark"} 100
+perfgate_run_wall_ms_min{bench="test-benchmark"} 98
+perfgate_run_wall_ms_max{bench="test-benchmark"} 102
+perfgate_run_cpu_ms_median{bench="test-benchmark"} 50
+perfgate_run_max_rss_kb_median{bench="test-benchmark"} 1024
+perfgate_run_sample_count{bench="test-benchmark"} 2

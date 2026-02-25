@@ -19,9 +19,19 @@ use tempfile::TempDir;
 use perfgate_types::{
     BenchConfigFile, BenchMeta, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile,
     DefaultsConfig, Delta, HostInfo, Metric, MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1,
-    PairedRunReceipt, PerfgateReport, REPORT_SCHEMA_V1, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample,
-    Stats, ToolInfo, U64Summary, Verdict, VerdictCounts, VerdictStatus,
+    PairedRunReceipt, PerfgateReport, REPORT_SCHEMA_V1, RUN_SCHEMA_V1, ReportSummary, RunMeta,
+    RunReceipt, Sample, SensorReport, Stats, ToolInfo, U64Summary, Verdict, VerdictCounts,
+    VerdictStatus,
 };
+
+// Microcrate imports for direct testing
+use perfgate_export::{ExportFormat, ExportUseCase};
+use perfgate_host_detect::detect_host_mismatch;
+use perfgate_render::render_markdown;
+use perfgate_sensor::SensorReportBuilder;
+use perfgate_sha256::sha256_hex;
+use perfgate_stats::summarize_u64;
+use perfgate_validation::{ValidationError, validate_bench_name};
 
 /// World struct that holds state across BDD scenario steps.
 #[derive(Debug, Default, World)]
@@ -76,6 +86,32 @@ pub struct PerfgateWorld {
     artifacts_dir: Option<PathBuf>,
     /// Config file being built
     config: Option<ConfigFile>,
+    /// Microcrate test state: computed hash
+    computed_hash: Option<String>,
+    /// Microcrate test state: list of values for stats
+    stats_values: Vec<u64>,
+    /// Microcrate test state: computed median
+    computed_median: Option<u64>,
+    /// Microcrate test state: validation result
+    validation_result: Option<Result<(), ValidationError>>,
+    /// Microcrate test state: baseline host info
+    baseline_host: Option<Box<HostInfo>>,
+    /// Microcrate test state: current host info
+    current_host: Option<Box<HostInfo>>,
+    /// Microcrate test state: host mismatch result
+    host_mismatch: Option<Box<perfgate_types::HostMismatchInfo>>,
+    /// Microcrate test state: test run receipt for export
+    test_run_receipt: Option<Box<RunReceipt>>,
+    /// Microcrate test state: test compare receipt for render
+    test_compare_receipt: Option<Box<CompareReceipt>>,
+    /// Microcrate test state: test perfgate report for sensor
+    test_perfgate_report: Option<Box<PerfgateReport>>,
+    /// Microcrate test state: exported output
+    exported_output: Option<String>,
+    /// Microcrate test state: rendered markdown
+    rendered_markdown: Option<String>,
+    /// Microcrate test state: sensor report
+    sensor_report: Option<Box<SensorReport>>,
 }
 
 impl PerfgateWorld {
@@ -2808,6 +2844,505 @@ async fn then_run_json_has_warmup_samples(world: &mut PerfgateWorld, expected: u
         warmup_count, expected,
         "Expected {} warmup samples, got {}",
         expected, warmup_count
+    );
+}
+
+// ============================================================================
+// MICROCRATE INTEGRATION STEPS
+// ============================================================================
+
+/// Background: verify perfgate is installed
+#[given("a working perfgate installation")]
+async fn given_working_perfgate_installation(_world: &mut PerfgateWorld) {
+    // Perfgate is built as part of the test suite
+}
+
+// SHA-256 steps
+
+#[when(expr = "I compute SHA-256 of {string}")]
+async fn when_compute_sha256(world: &mut PerfgateWorld, input: String) {
+    world.computed_hash = Some(sha256_hex(input.as_bytes()));
+}
+
+#[then(expr = "the hash should be {string}")]
+async fn then_hash_should_be(world: &mut PerfgateWorld, expected: String) {
+    let hash = world.computed_hash.as_ref().expect("Hash not computed");
+    assert_eq!(
+        hash, &expected,
+        "Expected hash '{}', got '{}'",
+        expected, hash
+    );
+}
+
+// Stats steps
+
+#[given(expr = "a list of values {string}")]
+async fn given_list_of_values(world: &mut PerfgateWorld, values_str: String) {
+    let values: Vec<u64> = values_str
+        .split(',')
+        .map(|s| s.trim().parse().expect("Failed to parse value"))
+        .collect();
+    world.stats_values = values;
+}
+
+#[when("I compute the median")]
+async fn when_compute_median(world: &mut PerfgateWorld) {
+    let summary = summarize_u64(&world.stats_values).expect("Failed to compute stats");
+    world.computed_median = Some(summary.median);
+}
+
+#[then(expr = "the median should be {int}")]
+async fn then_median_should_be(world: &mut PerfgateWorld, expected: u64) {
+    let median = world.computed_median.expect("Median not computed");
+    assert_eq!(
+        median, expected,
+        "Expected median {}, got {}",
+        expected, median
+    );
+}
+
+// Validation steps
+
+#[when(expr = "I validate bench name {string}")]
+async fn when_validate_bench_name(world: &mut PerfgateWorld, name: String) {
+    world.validation_result = Some(validate_bench_name(&name));
+}
+
+#[then("the validation should pass")]
+async fn then_validation_should_pass(world: &mut PerfgateWorld) {
+    let result = world
+        .validation_result
+        .as_ref()
+        .expect("Validation not performed");
+    assert!(
+        result.is_ok(),
+        "Expected validation to pass, but got error: {:?}",
+        result
+    );
+}
+
+#[then(expr = "the validation should fail with {string}")]
+async fn then_validation_should_fail_with(world: &mut PerfgateWorld, expected_hint: String) {
+    let result = world
+        .validation_result
+        .as_ref()
+        .expect("Validation not performed");
+    assert!(
+        result.is_err(),
+        "Expected validation to fail, but it passed"
+    );
+    let err = result.as_ref().unwrap_err();
+    let err_str = err.to_string().to_lowercase();
+    assert!(
+        err_str.contains(&expected_hint.to_lowercase()),
+        "Expected error to contain '{}', got: {}",
+        expected_hint,
+        err_str
+    );
+}
+
+// Host detect steps
+
+#[given(expr = "baseline host with os {string}")]
+async fn given_baseline_host_os(world: &mut PerfgateWorld, os: String) {
+    world.baseline_host = Some(Box::new(HostInfo {
+        os,
+        arch: "x86_64".to_string(),
+        cpu_count: None,
+        memory_bytes: None,
+        hostname_hash: None,
+    }));
+}
+
+#[given(expr = "baseline host with cpu_count {int}")]
+async fn given_baseline_host_cpu(world: &mut PerfgateWorld, cpu_count: u32) {
+    let mut host = world.baseline_host.take().unwrap_or_else(|| {
+        Box::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        })
+    });
+    host.cpu_count = Some(cpu_count);
+    world.baseline_host = Some(host);
+}
+
+#[given(expr = "current host with os {string}")]
+async fn given_current_host_os(world: &mut PerfgateWorld, os: String) {
+    world.current_host = Some(Box::new(HostInfo {
+        os,
+        arch: "x86_64".to_string(),
+        cpu_count: None,
+        memory_bytes: None,
+        hostname_hash: None,
+    }));
+}
+
+#[given(expr = "current host with cpu_count {int}")]
+async fn given_current_host_cpu(world: &mut PerfgateWorld, cpu_count: u32) {
+    let mut host = world.current_host.take().unwrap_or_else(|| {
+        Box::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        })
+    });
+    host.cpu_count = Some(cpu_count);
+    world.current_host = Some(host);
+}
+
+#[when("I detect host mismatch")]
+async fn when_detect_host_mismatch(world: &mut PerfgateWorld) {
+    let baseline = world.baseline_host.as_ref().expect("Baseline host not set");
+    let current = world.current_host.as_ref().expect("Current host not set");
+    world.host_mismatch = detect_host_mismatch(baseline, current).map(Box::new);
+}
+
+#[then("a mismatch should be detected")]
+async fn then_mismatch_detected(world: &mut PerfgateWorld) {
+    assert!(
+        world.host_mismatch.is_some(),
+        "Expected host mismatch to be detected"
+    );
+}
+
+#[then("no mismatch should be detected")]
+async fn then_no_mismatch_detected(world: &mut PerfgateWorld) {
+    assert!(
+        world.host_mismatch.is_none(),
+        "Expected no host mismatch, but got: {:?}",
+        world.host_mismatch
+    );
+}
+
+#[then(expr = "the reason should contain {string}")]
+async fn then_reason_should_contain(world: &mut PerfgateWorld, expected: String) {
+    let mismatch = world.host_mismatch.as_ref().expect("No mismatch detected");
+    assert!(
+        mismatch.reasons.iter().any(|r| r.contains(&expected)),
+        "Expected reason to contain '{}', got: {:?}",
+        expected,
+        mismatch.reasons
+    );
+}
+
+// Export steps
+
+#[given(expr = "a run receipt for bench {string}")]
+async fn given_run_receipt_for_export(world: &mut PerfgateWorld, bench_name: String) {
+    world.test_run_receipt = Some(Box::new(RunReceipt {
+        schema: RUN_SCHEMA_V1.to_string(),
+        tool: ToolInfo {
+            name: "perfgate".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        run: RunMeta {
+            id: "test-run-001".to_string(),
+            started_at: "2024-01-15T10:00:00Z".to_string(),
+            ended_at: "2024-01-15T10:00:05Z".to_string(),
+            host: HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+        },
+        bench: BenchMeta {
+            name: bench_name,
+            cwd: None,
+            command: vec!["echo".to_string(), "hello".to_string()],
+            repeat: 5,
+            warmup: 0,
+            work_units: None,
+            timeout_ms: None,
+        },
+        samples: vec![Sample {
+            wall_ms: 100,
+            exit_code: 0,
+            warmup: false,
+            timed_out: false,
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: None,
+            binary_bytes: None,
+            stdout: None,
+            stderr: None,
+        }],
+        stats: Stats {
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: None,
+            binary_bytes: None,
+            throughput_per_s: None,
+        },
+    }));
+}
+
+#[when("I export to CSV format")]
+async fn when_export_to_csv(world: &mut PerfgateWorld) {
+    let receipt = world
+        .test_run_receipt
+        .as_ref()
+        .expect("Run receipt not set");
+    world.exported_output =
+        Some(ExportUseCase::export_run(receipt, ExportFormat::Csv).expect("Failed to export"));
+}
+
+#[then("the output should be valid CSV")]
+async fn then_output_valid_csv(world: &mut PerfgateWorld) {
+    let output = world.exported_output.as_ref().expect("Output not set");
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "CSV should have at least header and one data row"
+    );
+}
+
+#[then(expr = "the header should contain {string}")]
+async fn then_header_should_contain(world: &mut PerfgateWorld, expected: String) {
+    let output = world.exported_output.as_ref().expect("Output not set");
+    let header = output.lines().next().expect("No header line");
+    assert!(
+        header.contains(&expected),
+        "Expected header to contain '{}', got: {}",
+        expected,
+        header
+    );
+}
+
+// Render steps
+
+#[given(expr = "a compare receipt with status {string}")]
+async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: String) {
+    let verdict_status = match status.as_str() {
+        "pass" => VerdictStatus::Pass,
+        "warn" => VerdictStatus::Warn,
+        "fail" => VerdictStatus::Fail,
+        _ => panic!("Invalid status: {}", status),
+    };
+
+    let metric_status = match verdict_status {
+        VerdictStatus::Pass => MetricStatus::Pass,
+        VerdictStatus::Warn => MetricStatus::Warn,
+        VerdictStatus::Fail => MetricStatus::Fail,
+    };
+
+    let mut deltas = BTreeMap::new();
+    deltas.insert(
+        Metric::WallMs,
+        Delta {
+            baseline: 100.0,
+            current: 150.0,
+            ratio: 1.5,
+            pct: 0.5,
+            regression: 0.5,
+            statistic: MetricStatistic::Median,
+            significance: None,
+            status: metric_status,
+        },
+    );
+
+    world.test_compare_receipt = Some(Box::new(CompareReceipt {
+        schema: COMPARE_SCHEMA_V1.to_string(),
+        tool: ToolInfo {
+            name: "perfgate".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        bench: BenchMeta {
+            name: "test-bench".to_string(),
+            cwd: None,
+            command: vec!["true".to_string()],
+            repeat: 1,
+            warmup: 0,
+            work_units: None,
+            timeout_ms: None,
+        },
+        baseline_ref: CompareRef {
+            path: None,
+            run_id: None,
+        },
+        current_ref: CompareRef {
+            path: None,
+            run_id: None,
+        },
+        budgets: BTreeMap::new(),
+        deltas,
+        verdict: Verdict {
+            status: verdict_status,
+            counts: VerdictCounts {
+                pass: if verdict_status == VerdictStatus::Pass {
+                    1
+                } else {
+                    0
+                },
+                warn: if verdict_status == VerdictStatus::Warn {
+                    1
+                } else {
+                    0
+                },
+                fail: if verdict_status == VerdictStatus::Fail {
+                    1
+                } else {
+                    0
+                },
+            },
+            reasons: vec![],
+        },
+    }));
+}
+
+#[when("I render markdown")]
+async fn when_render_markdown(world: &mut PerfgateWorld) {
+    let compare = world
+        .test_compare_receipt
+        .as_ref()
+        .expect("Compare receipt not set");
+    world.rendered_markdown = Some(render_markdown(compare));
+}
+
+#[then(expr = "the output should contain {string}")]
+async fn then_output_should_contain(world: &mut PerfgateWorld, expected: String) {
+    let markdown = world
+        .rendered_markdown
+        .as_ref()
+        .expect("Markdown not rendered");
+    assert!(
+        markdown.contains(&expected),
+        "Expected output to contain '{}', got:\n{}",
+        expected,
+        markdown
+    );
+}
+
+#[then("the output should contain a markdown table")]
+async fn then_output_should_contain_table(world: &mut PerfgateWorld) {
+    let markdown = world
+        .rendered_markdown
+        .as_ref()
+        .expect("Markdown not rendered");
+    assert!(
+        markdown.contains("| metric |"),
+        "Expected markdown table, got:\n{}",
+        markdown
+    );
+}
+
+// Sensor steps
+
+#[given(expr = "a perfgate report with status {string}")]
+async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
+    let verdict_status = match status.as_str() {
+        "pass" => VerdictStatus::Pass,
+        "warn" => VerdictStatus::Warn,
+        "fail" => VerdictStatus::Fail,
+        _ => panic!("Invalid status: {}", status),
+    };
+
+    world.test_perfgate_report = Some(Box::new(PerfgateReport {
+        report_type: REPORT_SCHEMA_V1.to_string(),
+        verdict: Verdict {
+            status: verdict_status,
+            counts: VerdictCounts {
+                pass: if verdict_status == VerdictStatus::Pass {
+                    2
+                } else {
+                    0
+                },
+                warn: if verdict_status == VerdictStatus::Warn {
+                    1
+                } else {
+                    0
+                },
+                fail: if verdict_status == VerdictStatus::Fail {
+                    1
+                } else {
+                    0
+                },
+            },
+            reasons: vec![],
+        },
+        compare: None,
+        findings: vec![],
+        summary: ReportSummary {
+            pass_count: if verdict_status == VerdictStatus::Pass {
+                2
+            } else {
+                0
+            },
+            warn_count: if verdict_status == VerdictStatus::Warn {
+                1
+            } else {
+                0
+            },
+            fail_count: if verdict_status == VerdictStatus::Fail {
+                1
+            } else {
+                0
+            },
+            total_count: 2,
+        },
+    }));
+}
+
+#[when("I build a sensor report")]
+async fn when_build_sensor_report(world: &mut PerfgateWorld) {
+    let report = world
+        .test_perfgate_report
+        .as_ref()
+        .expect("Perfgate report not set");
+    let tool = ToolInfo {
+        name: "perfgate".to_string(),
+        version: "0.1.0".to_string(),
+    };
+
+    world.sensor_report = Some(Box::new(
+        SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+            .baseline(true, None)
+            .build(report),
+    ));
+}
+
+#[then(expr = "the sensor report should have schema {string}")]
+async fn then_sensor_report_schema(world: &mut PerfgateWorld, expected: String) {
+    let sensor_report = world
+        .sensor_report
+        .as_ref()
+        .expect("Sensor report not built");
+    assert_eq!(
+        sensor_report.schema, expected,
+        "Expected schema '{}', got '{}'",
+        expected, sensor_report.schema
+    );
+}
+
+#[then(expr = "the verdict status should be {string}")]
+async fn then_verdict_status_should_be(world: &mut PerfgateWorld, expected: String) {
+    let sensor_report = world
+        .sensor_report
+        .as_ref()
+        .expect("Sensor report not built");
+    let actual = match sensor_report.verdict.status {
+        perfgate_types::SensorVerdictStatus::Pass => "pass",
+        perfgate_types::SensorVerdictStatus::Warn => "warn",
+        perfgate_types::SensorVerdictStatus::Fail => "fail",
+        perfgate_types::SensorVerdictStatus::Skip => "skip",
+    };
+    assert_eq!(
+        actual, expected,
+        "Expected verdict status '{}', got '{}'",
+        expected, actual
     );
 }
 

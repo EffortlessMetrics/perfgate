@@ -2,7 +2,14 @@
 resolver = "2"
 members = [
   "crates/perfgate-types",
+  "crates/perfgate-validation",
+  "crates/perfgate-stats",
   "crates/perfgate-domain",
+  "crates/perfgate-host-detect",
+  "crates/perfgate-sha256",
+  "crates/perfgate-render",
+  "crates/perfgate-export",
+  "crates/perfgate-sensor",
   "crates/perfgate-adapters",
   "crates/perfgate-app",
   "crates/perfgate-cli",
@@ -45,6 +52,13 @@ tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 serde_json.workspace = true
 toml.workspace = true
 perfgate-types.workspace = true
+perfgate-validation.workspace = true
+perfgate-stats.workspace = true
+perfgate-host-detect.workspace = true
+perfgate-sha256.workspace = true
+perfgate-render.workspace = true
+perfgate-export.workspace = true
+perfgate-sensor.workspace = true
 
 [[test]]
 name = "cucumber"
@@ -77,6 +91,13 @@ libc = "0.2.181"
 
 # Internal crates
 perfgate-types = { path = "crates/perfgate-types", version = "0.3.0" }
+perfgate-validation = { path = "crates/perfgate-validation", version = "0.3.0" }
+perfgate-stats = { path = "crates/perfgate-stats", version = "0.3.0" }
 perfgate-domain = { path = "crates/perfgate-domain", version = "0.3.0" }
+perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.3.0" }
+perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.3.0" }
+perfgate-render = { path = "crates/perfgate-render", version = "0.3.0" }
+perfgate-export = { path = "crates/perfgate-export", version = "0.3.0" }
+perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.3.0" }
 perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.3.0" }
 perfgate-app = { path = "crates/perfgate-app", version = "0.3.0" }

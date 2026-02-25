@@ -1,0 +1,18 @@
+[package]
+name = "perfgate-validation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Validation functions for benchmark names and configuration"
+keywords = ["validation", "benchmarking", "names"]
+categories = ["development-tools"]
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1.7"

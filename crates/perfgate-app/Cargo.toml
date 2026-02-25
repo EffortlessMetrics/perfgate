@@ -17,14 +17,17 @@ categories = ["development-tools"]
 perfgate-types.workspace = true
 perfgate-domain.workspace = true
 perfgate-adapters.workspace = true
+perfgate-sha256.workspace = true
+perfgate-render.workspace = true
+perfgate-export.workspace = true
+perfgate-sensor.workspace = true
 anyhow.workspace = true
 humantime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-handlebars = "6"
 time.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
-proptest = "1"
+proptest = "1.7"

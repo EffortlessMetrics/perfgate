@@ -1,7 +1,26 @@
-//! Export use case for converting receipts to CSV or JSONL formats.
+//! Export formats for perfgate benchmarks.
 //!
-//! This module provides functionality for exporting run and compare receipts
-//! to formats suitable for trend analysis and time-series ingestion.
+//! This crate provides functionality for exporting run and compare receipts
+//! to various formats suitable for trend analysis and time-series ingestion.
+//!
+//! # Supported Formats
+//!
+//! - **CSV**: RFC 4180 compliant CSV with header row
+//! - **JSONL**: JSON Lines format (one JSON object per line)
+//! - **HTML**: HTML summary table
+//! - **Prometheus**: Prometheus text exposition format
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use perfgate_export::{ExportFormat, ExportUseCase};
+//!
+//! // Export a run receipt to CSV
+//! let csv = ExportUseCase::export_run(&run_receipt, ExportFormat::Csv)?;
+//!
+//! // Export a compare receipt to Prometheus format
+//! let prom = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Prometheus)?;
+//! ```
 
 use perfgate_types::{CompareReceipt, Metric, MetricStatus, RunReceipt};
 
@@ -143,7 +162,6 @@ impl ExportUseCase {
             })
             .collect();
 
-        // Sort by metric name for stable ordering
         rows.sort_by(|a, b| a.metric.cmp(&b.metric));
         rows
     }
@@ -152,10 +170,8 @@ impl ExportUseCase {
     fn run_row_to_csv(row: &RunExportRow) -> anyhow::Result<String> {
         let mut output = String::new();
 
-        // Header row
         output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp\n");
 
-        // Data row
         output.push_str(&csv_escape(&row.bench_name));
         output.push(',');
         output.push_str(&row.wall_ms_median.to_string());
@@ -209,12 +225,10 @@ impl ExportUseCase {
     fn compare_rows_to_csv(rows: &[CompareExportRow]) -> anyhow::Result<String> {
         let mut output = String::new();
 
-        // Header row
         output.push_str(
             "bench_name,metric,baseline_value,current_value,regression_pct,status,threshold\n",
         );
 
-        // Data rows
         for row in rows {
             output.push_str(&csv_escape(&row.bench_name));
             output.push(',');
@@ -418,7 +432,7 @@ fn status_to_string(status: MetricStatus) -> String {
 
 /// Escape a string for CSV per RFC 4180.
 /// If the string contains comma, double quote, or newline, wrap in quotes and escape quotes.
-fn csv_escape(s: &str) -> String {
+pub fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
@@ -618,8 +632,8 @@ mod tests {
 
         assert!(csv.starts_with("bench_name,wall_ms_median,"));
         assert!(csv.contains("test-benchmark"));
-        assert!(csv.contains("100,98,102")); // wall_ms stats
-        assert!(csv.contains("1024")); // max_rss_kb median
+        assert!(csv.contains("100,98,102"));
+        assert!(csv.contains("1024"));
         assert!(csv.contains("2024-01-15T10:00:00Z"));
     }
 
@@ -628,7 +642,6 @@ mod tests {
         let receipt = create_test_run_receipt();
         let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
 
-        // Should be valid JSON on a single line
         let lines: Vec<&str> = jsonl.trim().split('\n').collect();
         assert_eq!(lines.len(), 1);
 
@@ -646,7 +659,6 @@ mod tests {
         assert!(csv.contains("alpha-bench"));
         assert!(csv.contains("max_rss_kb"));
         assert!(csv.contains("wall_ms"));
-        // max_rss_kb should come before wall_ms (alphabetical)
         let max_rss_pos = csv.find("max_rss_kb").unwrap();
         let wall_ms_pos = csv.find("wall_ms").unwrap();
         assert!(max_rss_pos < wall_ms_pos);
@@ -658,14 +670,12 @@ mod tests {
         let jsonl = ExportUseCase::export_compare(&receipt, ExportFormat::Jsonl).unwrap();
 
         let lines: Vec<&str> = jsonl.trim().split('\n').collect();
-        assert_eq!(lines.len(), 2); // Two metrics
+        assert_eq!(lines.len(), 2);
 
-        // Both lines should be valid JSON
         for line in &lines {
             let _: serde_json::Value = serde_json::from_str(line).unwrap();
         }
 
-        // First line should be max_rss_kb (alphabetical)
         let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(first["metric"], "max_rss_kb");
     }
@@ -727,6 +737,57 @@ mod tests {
         assert!(prom.contains("perfgate_compare_regression_pct"));
         assert!(prom.contains("metric=\"max_rss_kb\""));
     }
+
+    #[test]
+    fn test_html_escape() {
+        assert_eq!(html_escape("simple"), "simple");
+        assert_eq!(html_escape("<script>"), "&lt;script&gt;");
+        assert_eq!(html_escape("a&b"), "a&amp;b");
+        assert_eq!(html_escape("\"quoted\""), "&quot;quoted&quot;");
+    }
+
+    #[test]
+    fn test_prometheus_escape() {
+        assert_eq!(prometheus_escape_label_value("simple"), "simple");
+        assert_eq!(prometheus_escape_label_value("has\"quote"), "has\\\"quote");
+        assert_eq!(
+            prometheus_escape_label_value("has\\backslash"),
+            "has\\\\backslash"
+        );
+    }
+
+    mod snapshot_tests {
+        use super::*;
+        use insta::assert_snapshot;
+
+        #[test]
+        fn test_run_html_snapshot() {
+            let receipt = create_test_run_receipt();
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert_snapshot!("run_html", html);
+        }
+
+        #[test]
+        fn test_run_prometheus_snapshot() {
+            let receipt = create_test_run_receipt();
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert_snapshot!("run_prometheus", prom);
+        }
+
+        #[test]
+        fn test_compare_html_snapshot() {
+            let receipt = create_test_compare_receipt();
+            let html = ExportUseCase::export_compare(&receipt, ExportFormat::Html).unwrap();
+            assert_snapshot!("compare_html", html);
+        }
+
+        #[test]
+        fn test_compare_prometheus_snapshot() {
+            let receipt = create_test_compare_receipt();
+            let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
+            assert_snapshot!("compare_prometheus", prom);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -740,12 +801,10 @@ mod property_tests {
     use proptest::prelude::*;
     use std::collections::BTreeMap;
 
-    // Strategy for generating valid non-empty strings (for names, IDs, etc.)
     fn non_empty_string() -> impl Strategy<Value = String> {
         "[a-zA-Z0-9_-]{1,20}".prop_map(|s| s)
     }
 
-    // Strategy for generating valid RFC3339 timestamps
     fn rfc3339_timestamp() -> impl Strategy<Value = String> {
         (
             2020u32..2030,
@@ -763,13 +822,11 @@ mod property_tests {
             })
     }
 
-    // Strategy for ToolInfo
     fn tool_info_strategy() -> impl Strategy<Value = ToolInfo> {
         (non_empty_string(), non_empty_string())
             .prop_map(|(name, version)| ToolInfo { name, version })
     }
 
-    // Strategy for HostInfo
     fn host_info_strategy() -> impl Strategy<Value = HostInfo> {
         (non_empty_string(), non_empty_string()).prop_map(|(os, arch)| HostInfo {
             os,
@@ -780,7 +837,6 @@ mod property_tests {
         })
     }
 
-    // Strategy for RunMeta
     fn run_meta_strategy() -> impl Strategy<Value = RunMeta> {
         (
             non_empty_string(),
@@ -796,7 +852,6 @@ mod property_tests {
             })
     }
 
-    // Strategy for BenchMeta
     fn bench_meta_strategy() -> impl Strategy<Value = BenchMeta> {
         (
             non_empty_string(),
@@ -820,18 +875,17 @@ mod property_tests {
             )
     }
 
-    // Strategy for Sample
     fn sample_strategy() -> impl Strategy<Value = Sample> {
         (
             0u64..100000,
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000),   // cpu_ms
-            proptest::option::of(0u64..1000000),   // page_faults
-            proptest::option::of(0u64..1000000),   // ctx_switches
-            proptest::option::of(0u64..1000000),   // max_rss_kb
-            proptest::option::of(0u64..100000000), // binary_bytes
+            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..1000000),
+            proptest::option::of(0u64..100000000),
         )
             .prop_map(
                 |(
@@ -860,7 +914,6 @@ mod property_tests {
             )
     }
 
-    // Strategy for U64Summary
     fn u64_summary_strategy() -> impl Strategy<Value = U64Summary> {
         (0u64..1000000, 0u64..1000000, 0u64..1000000).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
@@ -873,7 +926,6 @@ mod property_tests {
         })
     }
 
-    // Strategy for F64Summary - using finite positive floats
     fn f64_summary_strategy() -> impl Strategy<Value = F64Summary> {
         (0.0f64..1000000.0, 0.0f64..1000000.0, 0.0f64..1000000.0).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
@@ -886,15 +938,14 @@ mod property_tests {
         })
     }
 
-    // Strategy for Stats
     fn stats_strategy() -> impl Strategy<Value = Stats> {
         (
             u64_summary_strategy(),
-            proptest::option::of(u64_summary_strategy()), // cpu_ms
-            proptest::option::of(u64_summary_strategy()), // page_faults
-            proptest::option::of(u64_summary_strategy()), // ctx_switches
-            proptest::option::of(u64_summary_strategy()), // max_rss_kb
-            proptest::option::of(u64_summary_strategy()), // binary_bytes
+            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()),
+            proptest::option::of(u64_summary_strategy()),
             proptest::option::of(f64_summary_strategy()),
         )
             .prop_map(
@@ -918,7 +969,6 @@ mod property_tests {
             )
     }
 
-    // Strategy for RunReceipt
     fn run_receipt_strategy() -> impl Strategy<Value = RunReceipt> {
         (
             tool_info_strategy(),
@@ -937,12 +987,10 @@ mod property_tests {
             })
     }
 
-    // Strategy for Direction
     fn direction_strategy() -> impl Strategy<Value = Direction> {
         prop_oneof![Just(Direction::Lower), Just(Direction::Higher),]
     }
 
-    // Strategy for Budget
     fn budget_strategy() -> impl Strategy<Value = Budget> {
         (0.01f64..1.0, 0.01f64..1.0, direction_strategy()).prop_map(
             |(threshold, warn_factor, direction)| {
@@ -956,7 +1004,6 @@ mod property_tests {
         )
     }
 
-    // Strategy for MetricStatus
     fn metric_status_strategy() -> impl Strategy<Value = MetricStatus> {
         prop_oneof![
             Just(MetricStatus::Pass),
@@ -965,7 +1012,6 @@ mod property_tests {
         ]
     }
 
-    // Strategy for Delta
     fn delta_strategy() -> impl Strategy<Value = Delta> {
         (0.1f64..10000.0, 0.1f64..10000.0, metric_status_strategy()).prop_map(
             |(baseline, current, status)| {
@@ -986,7 +1032,6 @@ mod property_tests {
         )
     }
 
-    // Strategy for VerdictStatus
     fn verdict_status_strategy() -> impl Strategy<Value = VerdictStatus> {
         prop_oneof![
             Just(VerdictStatus::Pass),
@@ -995,7 +1040,6 @@ mod property_tests {
         ]
     }
 
-    // Strategy for VerdictCounts
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
         (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
             pass,
@@ -1004,7 +1048,6 @@ mod property_tests {
         })
     }
 
-    // Strategy for Verdict
     fn verdict_strategy() -> impl Strategy<Value = Verdict> {
         (
             verdict_status_strategy(),
@@ -1018,7 +1061,6 @@ mod property_tests {
             })
     }
 
-    // Strategy for Metric
     fn metric_strategy() -> impl Strategy<Value = Metric> {
         prop_oneof![
             Just(Metric::BinaryBytes),
@@ -1031,17 +1073,14 @@ mod property_tests {
         ]
     }
 
-    // Strategy for BTreeMap<Metric, Budget>
     fn budgets_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Budget>> {
         proptest::collection::btree_map(metric_strategy(), budget_strategy(), 1..8)
     }
 
-    // Strategy for BTreeMap<Metric, Delta>
     fn deltas_map_strategy() -> impl Strategy<Value = BTreeMap<Metric, Delta>> {
         proptest::collection::btree_map(metric_strategy(), delta_strategy(), 1..8)
     }
 
-    // Strategy for CompareRef
     fn compare_ref_strategy() -> impl Strategy<Value = CompareRef> {
         (
             proptest::option::of(non_empty_string()),
@@ -1050,7 +1089,6 @@ mod property_tests {
             .prop_map(|(path, run_id)| CompareRef { path, run_id })
     }
 
-    // Strategy for CompareReceipt
     fn compare_receipt_strategy() -> impl Strategy<Value = CompareReceipt> {
         (
             tool_info_strategy(),
@@ -1080,24 +1118,19 @@ mod property_tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(50))]
 
-        /// Property: CSV export should always produce valid CSV with expected columns
         #[test]
         fn run_export_csv_has_header_and_data(receipt in run_receipt_strategy()) {
             let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
 
-            // Check header is present
             prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp\n"));
 
-            // Check we have exactly 2 lines (header + data)
             let lines: Vec<&str> = csv.trim().split('\n').collect();
             prop_assert_eq!(lines.len(), 2);
 
-            // Check bench name is in output (may be quoted in CSV)
             let bench_in_csv = csv.contains(&receipt.bench.name) || csv.contains(&format!("\"{}\"", receipt.bench.name));
             prop_assert!(bench_in_csv, "CSV should contain bench name");
         }
 
-        /// Property: JSONL export should produce valid JSON
         #[test]
         fn run_export_jsonl_is_valid_json(receipt in run_receipt_strategy()) {
             let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
@@ -1105,7 +1138,6 @@ mod property_tests {
             let lines: Vec<&str> = jsonl.trim().split('\n').collect();
             prop_assert_eq!(lines.len(), 1);
 
-            // Should parse as valid JSON
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(lines[0]);
             prop_assert!(parsed.is_ok());
 
@@ -1113,15 +1145,12 @@ mod property_tests {
             prop_assert_eq!(json["bench_name"].as_str().unwrap(), receipt.bench.name);
         }
 
-        /// Property: Compare export CSV should have all metrics sorted alphabetically
         #[test]
         fn compare_export_csv_metrics_sorted(receipt in compare_receipt_strategy()) {
             let csv = ExportUseCase::export_compare(&receipt, ExportFormat::Csv).unwrap();
 
-            // Skip header line and collect data lines
             let lines: Vec<&str> = csv.trim().split('\n').skip(1).collect();
 
-            // Extract metric names from each line (second column)
             let mut metrics: Vec<String> = vec![];
             for line in &lines {
                 let parts: Vec<&str> = line.split(',').collect();
@@ -1130,14 +1159,12 @@ mod property_tests {
                 }
             }
 
-            // Verify metrics are sorted alphabetically
             let mut sorted_metrics = metrics.clone();
             sorted_metrics.sort();
 
             prop_assert_eq!(metrics, sorted_metrics, "Metrics should be sorted alphabetically");
         }
 
-        /// Property: Compare export JSONL should produce one line per metric
         #[test]
         fn compare_export_jsonl_line_per_metric(receipt in compare_receipt_strategy()) {
             let jsonl = ExportUseCase::export_compare(&receipt, ExportFormat::Jsonl).unwrap();
@@ -1145,14 +1172,12 @@ mod property_tests {
             let lines: Vec<&str> = jsonl.trim().split('\n').filter(|s| !s.is_empty()).collect();
             prop_assert_eq!(lines.len(), receipt.deltas.len());
 
-            // All lines should be valid JSON
             for line in &lines {
                 let parsed: Result<serde_json::Value, _> = serde_json::from_str(line);
                 prop_assert!(parsed.is_ok());
             }
         }
 
-        /// Property: Export should be deterministic (same input = same output)
         #[test]
         fn export_is_deterministic(receipt in run_receipt_strategy()) {
             let csv1 = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
@@ -1162,6 +1187,49 @@ mod property_tests {
             let jsonl1 = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
             let jsonl2 = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
             prop_assert_eq!(jsonl1, jsonl2);
+        }
+
+        #[test]
+        fn html_output_contains_valid_structure(receipt in run_receipt_strategy()) {
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+
+            prop_assert!(html.starts_with("<!doctype html>"));
+            prop_assert!(html.contains("<html>"));
+            prop_assert!(html.contains("</html>"));
+            prop_assert!(html.contains("<table"));
+            prop_assert!(html.contains("</table>"));
+            prop_assert!(html.contains(&receipt.bench.name));
+        }
+
+        #[test]
+        fn prometheus_output_valid_format(receipt in run_receipt_strategy()) {
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+
+            prop_assert!(prom.contains("perfgate_run_wall_ms_median"));
+            let bench_label = format!("bench=\"{}\"", receipt.bench.name);
+            prop_assert!(prom.contains(&bench_label));
+
+            for line in prom.lines() {
+                if !line.is_empty() {
+                    let has_open = line.chars().any(|c| c == '{');
+                    let has_close = line.chars().any(|c| c == '}');
+                    prop_assert!(has_open, "Prometheus line should contain opening brace");
+                    prop_assert!(has_close, "Prometheus line should contain closing brace");
+                }
+            }
+        }
+
+        #[test]
+        fn csv_escape_preserves_content(receipt in run_receipt_strategy()) {
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+
+            let quoted_bench = format!("\"{}\"", receipt.bench.name);
+            prop_assert!(csv.contains(&receipt.bench.name) || csv.contains(&quoted_bench));
+
+            for line in csv.lines() {
+                let quoted_count = line.matches('"').count();
+                prop_assert!(quoted_count % 2 == 0, "Quotes should be balanced in CSV");
+            }
         }
     }
 }

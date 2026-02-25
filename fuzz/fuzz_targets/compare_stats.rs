@@ -91,6 +91,9 @@ impl FuzzStats {
             } else {
                 None
             },
+            binary_bytes: None,
+            ctx_switches: None,
+            page_faults: None,
         }
     }
 }

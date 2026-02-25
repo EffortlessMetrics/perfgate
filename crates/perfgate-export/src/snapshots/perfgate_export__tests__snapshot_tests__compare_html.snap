@@ -1,0 +1,5 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: html
+---
+<!doctype html><html><head><meta charset="utf-8"><title>perfgate compare export</title></head><body><h1>perfgate compare export</h1><table border="1"><thead><tr><th>bench_name</th><th>metric</th><th>baseline_value</th><th>current_value</th><th>regression_pct</th><th>status</th><th>threshold</th></tr></thead><tbody><tr><td>alpha-bench</td><td>max_rss_kb</td><td>1024.000000</td><td>1280.000000</td><td>25.000000</td><td>fail</td><td>15.000000</td></tr><tr><td>alpha-bench</td><td>wall_ms</td><td>100.000000</td><td>110.000000</td><td>10.000000</td><td>pass</td><td>20.000000</td></tr></tbody></table></body></html>

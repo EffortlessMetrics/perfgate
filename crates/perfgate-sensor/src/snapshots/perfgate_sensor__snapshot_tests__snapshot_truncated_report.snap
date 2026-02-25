@@ -1,0 +1,91 @@
+---
+source: crates/perfgate-sensor/src/lib.rs
+assertion_line: 2206
+expression: sensor_report
+---
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-15T10:30:00Z",
+    "ended_at": "2024-01-15T10:31:00Z",
+    "duration_ms": 60000,
+    "capabilities": {
+      "baseline": {
+        "status": "available"
+      },
+      "engine": {
+        "status": "unavailable",
+        "reason": "platform_limited"
+      }
+    }
+  },
+  "verdict": {
+    "status": "fail",
+    "counts": {
+      "info": 0,
+      "warn": 0,
+      "error": 5
+    },
+    "reasons": [
+      "truncated"
+    ]
+  },
+  "findings": [
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "metric_0 regression",
+      "fingerprint": "13ef26ebfce200e02bcd23fbce678e293b3ff8e9595d853695213e9044cac188",
+      "data": {
+        "baseline": 100.0,
+        "current": 150.0,
+        "direction": "lower",
+        "metric_name": "metric_0",
+        "regression_pct": 50.0,
+        "threshold": 0.2
+      }
+    },
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "metric_1 regression",
+      "fingerprint": "1e591da573f2265ef622cceedcb7936827e21020f2e4e6b9284cd77332e32e2e",
+      "data": {
+        "baseline": 100.0,
+        "current": 150.0,
+        "direction": "lower",
+        "metric_name": "metric_1",
+        "regression_pct": 50.0,
+        "threshold": 0.2
+      }
+    },
+    {
+      "check_id": "tool.truncation",
+      "code": "truncated",
+      "severity": "info",
+      "message": "Showing 2 of 5 findings; 3 omitted",
+      "fingerprint": "56da901e22f89e98806bc021c1acd108256f0bae46907dcd825d334ab6e61432",
+      "data": {
+        "shown_findings": 2,
+        "total_findings": 5
+      }
+    }
+  ],
+  "data": {
+    "findings_emitted": 2,
+    "findings_total": 5,
+    "summary": {
+      "bench_count": 1,
+      "fail_count": 5,
+      "pass_count": 0,
+      "total_count": 5,
+      "warn_count": 0
+    }
+  }
+}

@@ -14,6 +14,11 @@ pub use paired::{
     PairedSampleHalf, PairedStats,
 };
 
+pub use perfgate_validation::{
+    BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
+    validate_bench_name,
+};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -51,58 +56,6 @@ pub const ERROR_KIND_EXEC: &str = "exec_error";
 
 // Baseline reason tokens.
 pub const BASELINE_REASON_NO_BASELINE: &str = "no_baseline";
-
-// Bench name validation.
-/// Maximum length for a bench name.
-pub const BENCH_NAME_MAX_LEN: usize = 64;
-
-/// Pattern for valid bench names: lowercase alphanumeric, dots, underscores, hyphens,
-/// with `/` as a path separator. No path traversal (`..`), empty segments, or uppercase.
-pub const BENCH_NAME_PATTERN: &str = r"^[a-z0-9_.\-]+(/[a-z0-9_.\-]+)*$";
-
-/// Validate a bench name. Returns Err with a descriptive message if invalid.
-///
-/// Rules:
-/// 1. Must not be empty
-/// 2. Must be at most 64 characters
-/// 3. Only lowercase `[a-z0-9_.\-]` per segment, `/` as separator
-/// 4. No empty segments, `.` segments, or `..` segments (path traversal)
-pub fn validate_bench_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("bench name must not be empty".to_string());
-    }
-    if name.len() > BENCH_NAME_MAX_LEN {
-        return Err(format!(
-            "bench name {:?} exceeds maximum length of {} characters",
-            name, BENCH_NAME_MAX_LEN
-        ));
-    }
-    if !name.chars().all(|c| {
-        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '/' || c == '-'
-    }) {
-        return Err(format!(
-            "bench name {:?} contains invalid characters; \
-             allowed: lowercase alphanumeric, dots, underscores, hyphens, slashes",
-            name
-        ));
-    }
-    for segment in name.split('/') {
-        if segment.is_empty() {
-            return Err(format!(
-                "bench name {:?} contains an empty path segment \
-                 (leading, trailing, or consecutive slashes are forbidden)",
-                name
-            ));
-        }
-        if segment == "." || segment == ".." {
-            return Err(format!(
-                "bench name {:?} contains a {:?} path segment (path traversal is forbidden)",
-                name, segment
-            ));
-        }
-    }
-    Ok(())
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigValidationError {
@@ -799,7 +752,7 @@ impl ConfigFile {
     /// Validate all bench names in this config. Returns an error if any name is invalid.
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
-            validate_bench_name(&bench.name)?;
+            validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
         }
         Ok(())
     }

@@ -1,0 +1,21 @@
+[package]
+name = "perfgate-sha256"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Minimal SHA-256 implementation for perfgate fingerprinting"
+keywords = ["sha256", "hash", "fingerprinting", "no-std"]
+categories = ["cryptography", "no-std"]
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []
+
+[dev-dependencies]
+proptest = "1.7"

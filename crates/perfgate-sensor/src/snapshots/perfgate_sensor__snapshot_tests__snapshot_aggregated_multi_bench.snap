@@ -1,0 +1,88 @@
+---
+source: crates/perfgate-sensor/src/lib.rs
+assertion_line: 2154
+expression: sensor_report
+---
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-15T10:30:00Z",
+    "ended_at": "2024-01-15T10:32:00Z",
+    "duration_ms": 120000,
+    "capabilities": {
+      "baseline": {
+        "status": "available"
+      },
+      "engine": {
+        "status": "unavailable",
+        "reason": "platform_limited"
+      }
+    }
+  },
+  "verdict": {
+    "status": "warn",
+    "counts": {
+      "info": 3,
+      "warn": 1,
+      "error": 0
+    },
+    "reasons": [
+      "wall_ms_warn"
+    ]
+  },
+  "findings": [
+    {
+      "check_id": "perf.budget",
+      "code": "metric_warn",
+      "severity": "warn",
+      "message": "[bench-a] wall_ms regression: +15.00%",
+      "fingerprint": "cfbee32ff6d9f8070a03b3bc4259298beb4c19474ba4d4d88e060344c32d6040",
+      "data": {
+        "bench_name": "bench-a"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "extras/bench-a/perfgate.compare.v1.json",
+      "type": "compare_receipt"
+    },
+    {
+      "path": "extras/bench-b/perfgate.compare.v1.json",
+      "type": "compare_receipt"
+    },
+    {
+      "path": "comment.md",
+      "type": "markdown"
+    },
+    {
+      "path": "extras/bench-a/perfgate.report.v1.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "extras/bench-b/perfgate.report.v1.json",
+      "type": "perfgate_report"
+    },
+    {
+      "path": "extras/bench-a/perfgate.run.v1.json",
+      "type": "run_receipt"
+    },
+    {
+      "path": "extras/bench-b/perfgate.run.v1.json",
+      "type": "run_receipt"
+    }
+  ],
+  "data": {
+    "summary": {
+      "bench_count": 2,
+      "fail_count": 0,
+      "pass_count": 3,
+      "total_count": 4,
+      "warn_count": 1
+    }
+  }
+}
