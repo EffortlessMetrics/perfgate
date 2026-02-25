@@ -19,6 +19,8 @@ pub use perfgate_validation::{
     validate_bench_name,
 };
 
+pub use perfgate_error::{ConfigValidationError, IoError as PerfgateError};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -56,29 +58,6 @@ pub const ERROR_KIND_EXEC: &str = "exec_error";
 
 // Baseline reason tokens.
 pub const BASELINE_REASON_NO_BASELINE: &str = "no_baseline";
-
-#[derive(Debug, thiserror::Error)]
-pub enum ConfigValidationError {
-    #[error("bench name validation: {0}")]
-    BenchName(String),
-
-    #[error("config validation: {0}")]
-    ConfigFile(String),
-}
-
-/// Typed error for non-config failures, enabling structural classification
-/// in `classify_error()` without string heuristics.
-#[derive(Debug, thiserror::Error)]
-pub enum PerfgateError {
-    #[error("baseline resolve: {0}")]
-    BaselineResolve(String),
-
-    #[error("write artifacts: {0}")]
-    ArtifactWrite(String),
-
-    #[error("run command: {0}")]
-    RunCommand(String),
-}
 
 // Truncation signaling constants.
 pub const CHECK_ID_TOOL_TRUNCATION: &str = "tool.truncation";

@@ -19,3 +19,8 @@ std = []
 
 [dev-dependencies]
 proptest = "1.7"
+criterion = "0.5"
+
+[[bench]]
+name = "sha256_bench"
+harness = false

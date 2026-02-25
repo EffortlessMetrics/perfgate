@@ -1,15 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/perfgate-error",
   "crates/perfgate-types",
   "crates/perfgate-validation",
   "crates/perfgate-stats",
+  "crates/perfgate-paired",
+  "crates/perfgate-budget",
   "crates/perfgate-domain",
   "crates/perfgate-host-detect",
   "crates/perfgate-sha256",
   "crates/perfgate-render",
   "crates/perfgate-export",
   "crates/perfgate-sensor",
+  "crates/perfgate-fake",
   "crates/perfgate-adapters",
   "crates/perfgate-app",
   "crates/perfgate-cli",
@@ -90,14 +94,18 @@ tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 libc = "0.2.181"
 
 # Internal crates
+perfgate-error = { path = "crates/perfgate-error", version = "0.3.0" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.3.0" }
 perfgate-validation = { path = "crates/perfgate-validation", version = "0.3.0" }
 perfgate-stats = { path = "crates/perfgate-stats", version = "0.3.0" }
+perfgate-paired = { path = "crates/perfgate-paired", version = "0.3.0" }
+perfgate-budget = { path = "crates/perfgate-budget", version = "0.3.0" }
 perfgate-domain = { path = "crates/perfgate-domain", version = "0.3.0" }
 perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.3.0" }
 perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.3.0" }
 perfgate-render = { path = "crates/perfgate-render", version = "0.3.0" }
 perfgate-export = { path = "crates/perfgate-export", version = "0.3.0" }
 perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.3.0" }
+perfgate-fake = { path = "crates/perfgate-fake", version = "0.3.0" }
 perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.3.0" }
 perfgate-app = { path = "crates/perfgate-app", version = "0.3.0" }

@@ -1,0 +1,20 @@
+[package]
+name = "perfgate-fake"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Test utilities and fake implementations for perfgate testing"
+keywords = ["testing", "fake", "mock", "benchmarking"]
+categories = ["development-tools::testing"]
+
+[dependencies]
+perfgate-adapters.workspace = true
+perfgate-types.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+# No additional dev dependencies needed

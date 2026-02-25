@@ -1,5 +1,5 @@
 [package]
-name = "perfgate-stats"
+name = "perfgate-paired"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,20 +7,16 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-description = "Statistical functions for benchmarking analysis"
-keywords = ["statistics", "median", "percentile", "benchmarking"]
+description = "Paired benchmarking statistics for A/B comparison"
+keywords = ["paired", "benchmarking", "statistics", "a/b-testing"]
 categories = ["mathematics", "development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true
+perfgate-stats.workspace = true
 perfgate-error.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 proptest = "1.7"
 approx = "0.5"
-criterion = "0.5"
-
-[[bench]]
-name = "stats_bench"
-harness = false

@@ -33,6 +33,24 @@ enum MutantsCrate {
     Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
+    #[value(name = "perfgate-sha256")]
+    Sha256,
+    #[value(name = "perfgate-stats")]
+    Stats,
+    #[value(name = "perfgate-validation")]
+    Validation,
+    #[value(name = "perfgate-host-detect")]
+    HostDetect,
+    #[value(name = "perfgate-export")]
+    Export,
+    #[value(name = "perfgate-render")]
+    Render,
+    #[value(name = "perfgate-sensor")]
+    Sensor,
+    #[value(name = "perfgate-paired")]
+    Paired,
+    #[value(name = "perfgate-fake")]
+    Fake,
 }
 
 impl MutantsCrate {
@@ -43,6 +61,15 @@ impl MutantsCrate {
             MutantsCrate::App => "perfgate-app",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
+            MutantsCrate::Sha256 => "perfgate-sha256",
+            MutantsCrate::Stats => "perfgate-stats",
+            MutantsCrate::Validation => "perfgate-validation",
+            MutantsCrate::HostDetect => "perfgate-host-detect",
+            MutantsCrate::Export => "perfgate-export",
+            MutantsCrate::Render => "perfgate-render",
+            MutantsCrate::Sensor => "perfgate-sensor",
+            MutantsCrate::Paired => "perfgate-paired",
+            MutantsCrate::Fake => "perfgate-fake",
         }
     }
 
@@ -53,6 +80,15 @@ impl MutantsCrate {
             MutantsCrate::App => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
+            MutantsCrate::Sha256 => 100,
+            MutantsCrate::Stats => 100,
+            MutantsCrate::Validation => 100,
+            MutantsCrate::HostDetect => 100,
+            MutantsCrate::Export => 90,
+            MutantsCrate::Render => 90,
+            MutantsCrate::Sensor => 90,
+            MutantsCrate::Paired => 100,
+            MutantsCrate::Fake => 70,
         }
     }
 }
@@ -104,6 +140,9 @@ enum Command {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
+
+    /// List all microcrates and their purposes.
+    Microcrates,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -120,6 +159,7 @@ fn main() -> anyhow::Result<()> {
             summary,
             args,
         } => cmd_mutants(crate_name, summary, args),
+        Command::Microcrates => cmd_microcrates(),
     }
 }
 
@@ -733,6 +773,119 @@ fn write_schema<T: serde::Serialize>(
     let path = out_dir.join(name);
     let json = serde_json::to_vec_pretty(&schema)?;
     fs::write(&path, json).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+/// List all microcrates and their purposes.
+fn cmd_microcrates() -> anyhow::Result<()> {
+    println!("Perfgate Microcrates");
+    println!("===================\n");
+
+    let microcrates = [
+        (
+            "perfgate-sha256",
+            "Minimal SHA-256 implementation (no_std compatible)",
+            100,
+        ),
+        (
+            "perfgate-stats",
+            "Statistical functions (median, percentile, variance)",
+            100,
+        ),
+        ("perfgate-validation", "Bench name validation logic", 100),
+        (
+            "perfgate-host-detect",
+            "Host mismatch detection for CI noise reduction",
+            100,
+        ),
+        (
+            "perfgate-export",
+            "Export formats (CSV, JSONL, HTML, Prometheus)",
+            90,
+        ),
+        (
+            "perfgate-render",
+            "Markdown and GitHub annotations rendering",
+            90,
+        ),
+        (
+            "perfgate-sensor",
+            "Sensor report builder for cockpit integration",
+            90,
+        ),
+        (
+            "perfgate-paired",
+            "Paired benchmarking statistics (A/B testing)",
+            100,
+        ),
+        (
+            "perfgate-fake",
+            "Test utilities and fake implementations",
+            70,
+        ),
+    ];
+
+    println!("{:<25} {:<55} {:>10}", "Crate", "Description", "Kill Rate");
+    println!("{:-<25} {:-<55} {:->10}", "", "", "");
+
+    for (name, desc, rate) in &microcrates {
+        println!("{:<25} {:<55} {:>9}%", name, desc, rate);
+    }
+
+    println!("\nCore Crates");
+    println!("-----------\n");
+
+    let core_crates = [
+        (
+            "perfgate-types",
+            "Receipt/config structs, JSON schema types",
+            95,
+        ),
+        ("perfgate-domain", "Pure math/policy (I/O-free)", 100),
+        (
+            "perfgate-adapters",
+            "Platform I/O (process execution, host probing)",
+            80,
+        ),
+        (
+            "perfgate-app",
+            "Use-cases, rendering, sensor report builder",
+            90,
+        ),
+        (
+            "perfgate-cli",
+            "CLI argument parsing and command dispatch",
+            70,
+        ),
+    ];
+
+    println!("{:<25} {:<55} {:>10}", "Crate", "Description", "Kill Rate");
+    println!("{:-<25} {:-<55} {:->10}", "", "", "");
+
+    for (name, desc, rate) in &core_crates {
+        println!("{:<25} {:<55} {:>9}%", name, desc, rate);
+    }
+
+    println!("\nDependency Flow");
+    println!("--------------\n");
+    println!("  perfgate-sha256 (standalone, no_std)");
+    println!("         ↓");
+    println!("  perfgate-stats (pure math)");
+    println!("         ↓");
+    println!("  perfgate-validation, perfgate-host-detect (pure logic)");
+    println!("         ↓");
+    println!("  perfgate-types (data contracts)");
+    println!("         ↓");
+    println!("  perfgate-export, perfgate-render, perfgate-sensor, perfgate-paired");
+    println!("         ↓");
+    println!("  perfgate-domain (policy)");
+    println!("         ↓");
+    println!("  perfgate-adapters (platform I/O)");
+    println!("         ↓");
+    println!("  perfgate-app (use cases)");
+    println!("         ↓");
+    println!("  perfgate-cli (entry point)");
+
     Ok(())
 }
 

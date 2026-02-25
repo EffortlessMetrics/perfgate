@@ -11,16 +11,10 @@
 //! - Percentile calculation
 //! - Mean and variance computation
 
+pub use perfgate_error::StatsError;
+
 use perfgate_types::{F64Summary, U64Summary};
 use std::cmp::Ordering;
-
-/// Error type for statistics operations.
-#[derive(Debug, thiserror::Error)]
-pub enum StatsError {
-    /// No samples were provided to the statistical function.
-    #[error("no samples to summarize")]
-    NoSamples,
-}
 
 pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
     if values.is_empty() {

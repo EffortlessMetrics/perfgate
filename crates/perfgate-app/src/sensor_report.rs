@@ -164,6 +164,7 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
             PerfgateError::BaselineResolve(_) => (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO),
             PerfgateError::ArtifactWrite(_) => (STAGE_WRITE_ARTIFACTS, ERROR_KIND_IO),
             PerfgateError::RunCommand(_) => (STAGE_RUN_COMMAND, ERROR_KIND_EXEC),
+            PerfgateError::Other(_) => (STAGE_RUN_COMMAND, ERROR_KIND_IO),
         };
     }
 

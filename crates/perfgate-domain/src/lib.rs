@@ -8,11 +8,15 @@ pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
 
 pub use perfgate_host_detect::detect_host_mismatch;
 
+pub use perfgate_budget::{
+    BudgetError, BudgetResult, aggregate_verdict, calculate_regression, determine_status,
+    evaluate_budget, evaluate_budgets, reason_token,
+};
+
 use perfgate_types::{
-    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, Direction, F64Summary,
-    FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus,
-    RunReceipt, Significance, SignificanceTest, Stats, U64Summary, Verdict, VerdictCounts,
-    VerdictStatus,
+    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, F64Summary, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Significance,
+    SignificanceTest, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
 };
 use statrs::distribution::{ContinuousCDF, StudentsT};
 use std::collections::BTreeMap;
@@ -29,7 +33,7 @@ pub enum DomainError {
 #[cfg(test)]
 mod advanced_analytics_tests {
     use super::*;
-    use perfgate_types::{BenchMeta, HostInfo, RunMeta, RunReceipt, Sample, ToolInfo};
+    use perfgate_types::{BenchMeta, Direction, HostInfo, RunMeta, RunReceipt, Sample, ToolInfo};
 
     fn make_run_receipt_with_walls(name: &str, walls: &[u64]) -> RunReceipt {
         let samples: Vec<Sample> = walls
@@ -303,6 +307,22 @@ pub struct SignificancePolicy {
     pub require_significance: bool,
 }
 
+fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) -> Verdict {
+    let status = if counts.fail > 0 {
+        VerdictStatus::Fail
+    } else if counts.warn > 0 {
+        VerdictStatus::Warn
+    } else {
+        VerdictStatus::Pass
+    };
+
+    Verdict {
+        status,
+        counts,
+        reasons,
+    }
+}
+
 /// Compare stats under the provided budgets.
 ///
 /// Metrics without both baseline+current values are skipped (and therefore do not affect verdict).
@@ -328,27 +348,10 @@ pub fn compare_stats(
             continue;
         };
 
-        if bv <= 0.0 {
-            return Err(DomainError::InvalidBaseline(*metric));
-        }
+        let result =
+            evaluate_budget(bv, cv, budget).map_err(|_| DomainError::InvalidBaseline(*metric))?;
 
-        let ratio = cv / bv;
-        let pct = (cv - bv) / bv;
-
-        let regression = match budget.direction {
-            Direction::Lower => pct.max(0.0),
-            Direction::Higher => (-pct).max(0.0),
-        };
-
-        let status = if regression > budget.threshold {
-            MetricStatus::Fail
-        } else if regression >= budget.warn_threshold {
-            MetricStatus::Warn
-        } else {
-            MetricStatus::Pass
-        };
-
-        match status {
+        match result.status {
             MetricStatus::Pass => counts.pass += 1,
             MetricStatus::Warn => {
                 counts.warn += 1;
@@ -363,34 +366,21 @@ pub fn compare_stats(
         deltas.insert(
             *metric,
             Delta {
-                baseline: bv,
-                current: cv,
-                ratio,
-                pct,
-                regression,
+                baseline: result.baseline,
+                current: result.current,
+                ratio: result.ratio,
+                pct: result.pct,
+                regression: result.regression,
                 statistic: MetricStatistic::Median,
                 significance: None,
-                status,
+                status: result.status,
             },
         );
     }
 
-    let status = if counts.fail > 0 {
-        VerdictStatus::Fail
-    } else if counts.warn > 0 {
-        VerdictStatus::Warn
-    } else {
-        VerdictStatus::Pass
-    };
+    let verdict = aggregate_verdict_from_counts(counts, reasons);
 
-    Ok(Comparison {
-        deltas,
-        verdict: Verdict {
-            status,
-            counts,
-            reasons,
-        },
-    })
+    Ok(Comparison { deltas, verdict })
 }
 
 /// Compare full run receipts under the provided budgets.
@@ -427,25 +417,10 @@ pub fn compare_runs(
             continue;
         };
 
-        if bv <= 0.0 {
-            return Err(DomainError::InvalidBaseline(*metric));
-        }
+        let result =
+            evaluate_budget(bv, cv, budget).map_err(|_| DomainError::InvalidBaseline(*metric))?;
 
-        let ratio = cv / bv;
-        let pct = (cv - bv) / bv;
-
-        let regression = match budget.direction {
-            Direction::Lower => pct.max(0.0),
-            Direction::Higher => (-pct).max(0.0),
-        };
-
-        let mut status = if regression > budget.threshold {
-            MetricStatus::Fail
-        } else if regression >= budget.warn_threshold {
-            MetricStatus::Warn
-        } else {
-            MetricStatus::Pass
-        };
+        let mut status = result.status;
 
         let significance = significance_policy.and_then(|policy| {
             let baseline_series = metric_series_from_run(baseline, *metric);
@@ -486,11 +461,11 @@ pub fn compare_runs(
         deltas.insert(
             *metric,
             Delta {
-                baseline: bv,
-                current: cv,
-                ratio,
-                pct,
-                regression,
+                baseline: result.baseline,
+                current: result.current,
+                ratio: result.ratio,
+                pct: result.pct,
+                regression: result.regression,
                 statistic,
                 significance,
                 status,
@@ -498,22 +473,9 @@ pub fn compare_runs(
         );
     }
 
-    let status = if counts.fail > 0 {
-        VerdictStatus::Fail
-    } else if counts.warn > 0 {
-        VerdictStatus::Warn
-    } else {
-        VerdictStatus::Pass
-    };
+    let verdict = aggregate_verdict_from_counts(counts, reasons);
 
-    Ok(Comparison {
-        deltas,
-        verdict: Verdict {
-            status,
-            counts,
-            reasons,
-        },
-    })
+    Ok(Comparison { deltas, verdict })
 }
 
 // ============================================================================
@@ -789,12 +751,6 @@ fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
     } else {
         None
     }
-}
-
-fn reason_token(metric: Metric, status: MetricStatus) -> String {
-    let metric_str = metric.as_str();
-    let status_str = status.as_str();
-    format!("{metric_str}_{status_str}")
 }
 
 #[cfg(test)]

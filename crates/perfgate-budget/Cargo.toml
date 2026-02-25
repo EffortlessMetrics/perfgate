@@ -1,5 +1,5 @@
 [package]
-name = "perfgate-validation"
+name = "perfgate-budget"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,13 +7,13 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-description = "Validation functions for benchmark names and configuration"
-keywords = ["validation", "benchmarking", "names"]
+description = "Budget evaluation logic for performance thresholds"
+keywords = ["budget", "threshold", "performance"]
 categories = ["development-tools"]
 
 [dependencies]
+perfgate-types.workspace = true
 thiserror.workspace = true
-perfgate-error.workspace = true
 
 [dev-dependencies]
 proptest = "1.7"

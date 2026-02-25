@@ -1,5 +1,5 @@
 [package]
-name = "perfgate-validation"
+name = "perfgate-error"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,13 +7,12 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-description = "Validation functions for benchmark names and configuration"
-keywords = ["validation", "benchmarking", "names"]
+description = "Unified error types for perfgate"
+keywords = ["error", "error-handling"]
 categories = ["development-tools"]
 
 [dependencies]
 thiserror.workspace = true
-perfgate-error.workspace = true
 
 [dev-dependencies]
 proptest = "1.7"

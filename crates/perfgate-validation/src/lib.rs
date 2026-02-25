@@ -1,7 +1,7 @@
 //! Validation functions for benchmark names and configuration.
 //!
-//! This crate provides validation logic extracted from `perfgate-types` for
-//! validating benchmark names according to a strict set of rules.
+//! This crate provides validation logic for validating benchmark names
+//! according to a strict set of rules.
 //!
 //! # Example
 //!
@@ -21,80 +21,9 @@
 //! assert!(validate_bench_name("bench/").is_err());   // trailing slash
 //! ```
 
-pub const BENCH_NAME_MAX_LEN: usize = 64;
-
-pub const BENCH_NAME_PATTERN: &str = r"^[a-z0-9_.\-]+(/[a-z0-9_.\-]+)*$";
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ValidationError {
-    #[error("bench name must not be empty")]
-    Empty,
-
-    #[error("bench name {name:?} exceeds maximum length of {max_len} characters")]
-    TooLong { name: String, max_len: usize },
-
-    #[error(
-        "bench name {name:?} contains invalid characters; \
-         allowed: lowercase alphanumeric, dots, underscores, hyphens, slashes"
-    )]
-    InvalidCharacters { name: String },
-
-    #[error(
-        "bench name {name:?} contains an empty path segment \
-         (leading, trailing, or consecutive slashes are forbidden)"
-    )]
-    EmptySegment { name: String },
-
-    #[error(
-        "bench name {name:?} contains a {segment:?} path segment (path traversal is forbidden)"
-    )]
-    PathTraversal { name: String, segment: String },
-}
-
-impl ValidationError {
-    pub fn name(&self) -> &str {
-        match self {
-            ValidationError::Empty => "",
-            ValidationError::TooLong { name, .. } => name,
-            ValidationError::InvalidCharacters { name } => name,
-            ValidationError::EmptySegment { name } => name,
-            ValidationError::PathTraversal { name, .. } => name,
-        }
-    }
-}
-
-pub fn validate_bench_name(name: &str) -> Result<(), ValidationError> {
-    if name.is_empty() {
-        return Err(ValidationError::Empty);
-    }
-    if name.len() > BENCH_NAME_MAX_LEN {
-        return Err(ValidationError::TooLong {
-            name: name.to_string(),
-            max_len: BENCH_NAME_MAX_LEN,
-        });
-    }
-    if !name.chars().all(|c| {
-        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '/' || c == '-'
-    }) {
-        return Err(ValidationError::InvalidCharacters {
-            name: name.to_string(),
-        });
-    }
-    for segment in name.split('/') {
-        if segment.is_empty() {
-            return Err(ValidationError::EmptySegment {
-                name: name.to_string(),
-            });
-        }
-        if segment == "." || segment == ".." {
-            return Err(ValidationError::PathTraversal {
-                name: name.to_string(),
-                segment: segment.to_string(),
-            });
-        }
-    }
-    Ok(())
-}
+pub use perfgate_error::{
+    BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError, validate_bench_name,
+};
 
 #[cfg(test)]
 mod tests {
@@ -381,23 +310,23 @@ mod property_tests {
         }
     }
 
-    fn is_invalid_chars_error(result: &Result<(), ValidationError>) -> bool {
+    fn is_invalid_chars_error(result: &std::result::Result<(), ValidationError>) -> bool {
         matches!(result, Err(ValidationError::InvalidCharacters { .. }))
     }
 
-    fn is_too_long_error(result: &Result<(), ValidationError>) -> bool {
+    fn is_too_long_error(result: &std::result::Result<(), ValidationError>) -> bool {
         matches!(result, Err(ValidationError::TooLong { .. }))
     }
 
-    fn is_empty_error(result: &Result<(), ValidationError>) -> bool {
+    fn is_empty_error(result: &std::result::Result<(), ValidationError>) -> bool {
         matches!(result, Err(ValidationError::Empty))
     }
 
-    fn is_empty_segment_error(result: &Result<(), ValidationError>) -> bool {
+    fn is_empty_segment_error(result: &std::result::Result<(), ValidationError>) -> bool {
         matches!(result, Err(ValidationError::EmptySegment { .. }))
     }
 
-    fn is_path_traversal_error(result: &Result<(), ValidationError>) -> bool {
+    fn is_path_traversal_error(result: &std::result::Result<(), ValidationError>) -> bool {
         matches!(result, Err(ValidationError::PathTraversal { .. }))
     }
 
@@ -409,10 +338,11 @@ mod property_tests {
         }
 
         #[test]
-        fn uppercase_always_fails(name in "[a-z0-9_-]*[A-Z][a-z0-9_-]*") {
-            prop_assume!(!name.is_empty());
+        fn uppercase_always_fails(name in "[a-z0-9_\\-]{1,30}[A-Z][a-z0-9_\\-]{1,30}") {
+            prop_assume!(name.len() <= BENCH_NAME_MAX_LEN);
             let result = validate_bench_name(&name);
-            prop_assert!(is_invalid_chars_error(&result));
+            prop_assert!(is_invalid_chars_error(&result),
+                "Expected InvalidCharacters error for name '{}' with uppercase, got {:?}", name, result);
         }
 
         #[test]
