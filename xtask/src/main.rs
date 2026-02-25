@@ -783,6 +783,11 @@ fn cmd_microcrates() -> anyhow::Result<()> {
 
     let microcrates = [
         (
+            "perfgate-error",
+            "Unified error types for error propagation",
+            100,
+        ),
+        (
             "perfgate-sha256",
             "Minimal SHA-256 implementation (no_std compatible)",
             100,
@@ -796,6 +801,16 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         (
             "perfgate-host-detect",
             "Host mismatch detection for CI noise reduction",
+            100,
+        ),
+        (
+            "perfgate-budget",
+            "Budget evaluation logic for performance thresholds",
+            100,
+        ),
+        (
+            "perfgate-significance",
+            "Statistical significance testing (Welch's t-test)",
             100,
         ),
         (
@@ -868,6 +883,8 @@ fn cmd_microcrates() -> anyhow::Result<()> {
 
     println!("\nDependency Flow");
     println!("--------------\n");
+    println!("  perfgate-error (innermost - unified errors)");
+    println!("         ↓");
     println!("  perfgate-sha256 (standalone, no_std)");
     println!("         ↓");
     println!("  perfgate-stats (pure math)");
@@ -875,6 +892,8 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("  perfgate-validation, perfgate-host-detect (pure logic)");
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
+    println!("         ↓");
+    println!("  perfgate-budget, perfgate-significance");
     println!("         ↓");
     println!("  perfgate-export, perfgate-render, perfgate-sensor, perfgate-paired");
     println!("         ↓");

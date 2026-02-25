@@ -5,6 +5,7 @@ members = [
   "crates/perfgate-types",
   "crates/perfgate-validation",
   "crates/perfgate-stats",
+  "crates/perfgate-significance",
   "crates/perfgate-paired",
   "crates/perfgate-budget",
   "crates/perfgate-domain",
@@ -63,10 +64,20 @@ perfgate-sha256.workspace = true
 perfgate-render.workspace = true
 perfgate-export.workspace = true
 perfgate-sensor.workspace = true
+perfgate-error.workspace = true
+perfgate-budget.workspace = true
+perfgate-domain.workspace = true
+perfgate-paired.workspace = true
+perfgate-app.workspace = true
+perfgate-significance.workspace = true
 
 [[test]]
 name = "cucumber"
 harness = false
+
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
@@ -98,6 +109,7 @@ perfgate-error = { path = "crates/perfgate-error", version = "0.3.0" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.3.0" }
 perfgate-validation = { path = "crates/perfgate-validation", version = "0.3.0" }
 perfgate-stats = { path = "crates/perfgate-stats", version = "0.3.0" }
+perfgate-significance = { path = "crates/perfgate-significance", version = "0.3.0" }
 perfgate-paired = { path = "crates/perfgate-paired", version = "0.3.0" }
 perfgate-budget = { path = "crates/perfgate-budget", version = "0.3.0" }
 perfgate-domain = { path = "crates/perfgate-domain", version = "0.3.0" }

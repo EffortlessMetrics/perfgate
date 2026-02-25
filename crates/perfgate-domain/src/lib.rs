@@ -13,12 +13,13 @@ pub use perfgate_budget::{
     evaluate_budget, evaluate_budgets, reason_token,
 };
 
+pub use perfgate_significance::{compute_significance, mean_and_variance};
+
 use perfgate_types::{
     Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, F64Summary, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Significance,
-    SignificanceTest, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, U64Summary,
+    Verdict, VerdictCounts, VerdictStatus,
 };
-use statrs::distribution::{ContinuousCDF, StudentsT};
 use std::collections::BTreeMap;
 
 #[derive(Debug, thiserror::Error)]
@@ -672,85 +673,6 @@ fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
 
     let weight = rank - lower as f64;
     Some(values[lower] + (values[upper] - values[lower]) * weight)
-}
-
-fn compute_significance(
-    baseline: &[f64],
-    current: &[f64],
-    alpha: f64,
-    min_samples: usize,
-) -> Option<Significance> {
-    if baseline.len() < min_samples || current.len() < min_samples {
-        return None;
-    }
-
-    if baseline.len() < 2 || current.len() < 2 {
-        return None;
-    }
-
-    let (base_mean, base_var) = mean_and_variance(baseline)?;
-    let (curr_mean, curr_var) = mean_and_variance(current)?;
-
-    let n1 = baseline.len() as f64;
-    let n2 = current.len() as f64;
-    let se2 = (base_var / n1) + (curr_var / n2);
-
-    let p_value = if se2 <= 0.0 {
-        if (base_mean - curr_mean).abs() < f64::EPSILON {
-            1.0
-        } else {
-            0.0
-        }
-    } else {
-        let t = (base_mean - curr_mean) / se2.sqrt();
-        let numerator = se2 * se2;
-        let denom_left = (base_var * base_var) / (n1 * n1 * (n1 - 1.0));
-        let denom_right = (curr_var * curr_var) / (n2 * n2 * (n2 - 1.0));
-        let df = numerator / (denom_left + denom_right);
-
-        if !df.is_finite() || df <= 0.0 {
-            return None;
-        }
-
-        let dist = StudentsT::new(0.0, 1.0, df).ok()?;
-        let tail = 1.0 - dist.cdf(t.abs());
-        (2.0 * tail).clamp(0.0, 1.0)
-    };
-
-    Some(Significance {
-        test: SignificanceTest::WelchT,
-        p_value,
-        alpha,
-        significant: p_value <= alpha,
-        baseline_samples: baseline.len() as u32,
-        current_samples: current.len() as u32,
-    })
-}
-
-fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
-    if values.is_empty() {
-        return None;
-    }
-
-    let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let var = if values.len() > 1 {
-        values
-            .iter()
-            .map(|v| {
-                let d = v - mean;
-                d * d
-            })
-            .sum::<f64>()
-            / (values.len() as f64 - 1.0)
-    } else {
-        0.0
-    };
-
-    if mean.is_finite() && var.is_finite() {
-        Some((mean, var.max(0.0)))
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

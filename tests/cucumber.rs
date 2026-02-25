@@ -25,13 +25,18 @@ use perfgate_types::{
 };
 
 // Microcrate imports for direct testing
+use perfgate_budget::{aggregate_verdict, evaluate_budget, reason_token as budget_reason_token};
+use perfgate_error::{
+    AdapterError, ConfigValidationError, IoError, PairedError, StatsError, ValidationError,
+};
 use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_host_detect::detect_host_mismatch;
 use perfgate_render::render_markdown;
 use perfgate_sensor::SensorReportBuilder;
 use perfgate_sha256::sha256_hex;
+use perfgate_significance::compute_significance;
 use perfgate_stats::summarize_u64;
-use perfgate_validation::{ValidationError, validate_bench_name};
+use perfgate_validation::validate_bench_name as validate_bench_name_fn;
 
 /// World struct that holds state across BDD scenario steps.
 #[derive(Debug, Default, World)]
@@ -112,6 +117,26 @@ pub struct PerfgateWorld {
     rendered_markdown: Option<String>,
     /// Microcrate test state: sensor report
     sensor_report: Option<Box<SensorReport>>,
+    /// Microcrate test state: perfgate error
+    perfgate_error: Option<perfgate_error::PerfgateError>,
+    /// Microcrate test state: budget configuration
+    test_budget: Option<perfgate_types::Budget>,
+    /// Microcrate test state: budget result
+    budget_result: Option<perfgate_budget::BudgetResult>,
+    /// Microcrate test state: budget error
+    budget_error: Option<String>,
+    /// Microcrate test state: budget statuses for aggregation
+    budget_statuses: Vec<perfgate_types::MetricStatus>,
+    /// Microcrate test state: aggregated verdict
+    aggregated_verdict: Option<perfgate_types::Verdict>,
+    /// Microcrate test state: reason token
+    reason_token: Option<String>,
+    /// Microcrate test state: significance baseline samples
+    significance_baseline: Vec<f64>,
+    /// Microcrate test state: significance current samples
+    significance_current: Vec<f64>,
+    /// Microcrate test state: significance result
+    significance_result: Option<perfgate_types::Significance>,
 }
 
 impl PerfgateWorld {
@@ -2905,7 +2930,7 @@ async fn then_median_should_be(world: &mut PerfgateWorld, expected: u64) {
 
 #[when(expr = "I validate bench name {string}")]
 async fn when_validate_bench_name(world: &mut PerfgateWorld, name: String) {
-    world.validation_result = Some(validate_bench_name(&name));
+    world.validation_result = Some(validate_bench_name_fn(&name));
 }
 
 #[then("the validation should pass")]
@@ -3343,6 +3368,412 @@ async fn then_verdict_status_should_be(world: &mut PerfgateWorld, expected: Stri
         actual, expected,
         "Expected verdict status '{}', got '{}'",
         expected, actual
+    );
+}
+
+// ============================================================================
+// ERROR MICROCRATE STEPS
+// ============================================================================
+
+#[when("I convert ValidationError::Empty to PerfgateError")]
+async fn when_convert_validation_error_empty(world: &mut PerfgateWorld) {
+    world.perfgate_error = Some(ValidationError::Empty.into());
+}
+
+#[when("I convert StatsError::NoSamples to PerfgateError")]
+async fn when_convert_stats_error_no_samples(world: &mut PerfgateWorld) {
+    world.perfgate_error = Some(StatsError::NoSamples.into());
+}
+
+#[when("I convert AdapterError::Timeout to PerfgateError")]
+async fn when_convert_adapter_error_timeout(world: &mut PerfgateWorld) {
+    world.perfgate_error = Some(AdapterError::Timeout.into());
+}
+
+#[when("I convert ConfigValidationError::BenchName to PerfgateError")]
+async fn when_convert_config_error_bench_name(world: &mut PerfgateWorld) {
+    world.perfgate_error = Some(ConfigValidationError::BenchName("test error".to_string()).into());
+}
+
+#[when("I convert IoError::BaselineResolve to PerfgateError")]
+async fn when_convert_io_error_baseline_resolve(world: &mut PerfgateWorld) {
+    world.perfgate_error = Some(IoError::BaselineResolve("file not found".to_string()).into());
+}
+
+#[when("I convert PairedError::NoSamples to PerfgateError")]
+async fn when_convert_paired_error_no_samples(world: &mut PerfgateWorld) {
+    world.perfgate_error = Some(PairedError::NoSamples.into());
+}
+
+#[when("I convert std::io::Error to PerfgateError")]
+async fn when_convert_std_io_error(world: &mut PerfgateWorld) {
+    let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+    world.perfgate_error = Some(std_err.into());
+}
+
+#[then(expr = "the error category should be {string}")]
+async fn then_error_category_should_be(world: &mut PerfgateWorld, expected: String) {
+    let err = world.perfgate_error.as_ref().expect("Error not set");
+    let category = err.category();
+    assert_eq!(
+        category.as_str(),
+        expected,
+        "Expected category '{}', got '{}'",
+        expected,
+        category.as_str()
+    );
+}
+
+#[then("the error should be recoverable")]
+async fn then_error_should_be_recoverable(world: &mut PerfgateWorld) {
+    let err = world.perfgate_error.as_ref().expect("Error not set");
+    assert!(
+        err.is_recoverable(),
+        "Expected error to be recoverable, but it is not"
+    );
+}
+
+#[then("the error should not be recoverable")]
+async fn then_error_should_not_be_recoverable(world: &mut PerfgateWorld) {
+    let err = world.perfgate_error.as_ref().expect("Error not set");
+    assert!(
+        !err.is_recoverable(),
+        "Expected error to not be recoverable, but it is"
+    );
+}
+
+#[then("the error exit code should be positive")]
+async fn then_error_exit_code_should_be_positive(world: &mut PerfgateWorld) {
+    let err = world.perfgate_error.as_ref().expect("Error not set");
+    let exit_code = err.exit_code();
+    assert!(
+        exit_code > 0,
+        "Expected exit code to be positive, got {}",
+        exit_code
+    );
+}
+
+#[then(expr = "the error exit code should be {int}")]
+async fn then_error_exit_code_value(world: &mut PerfgateWorld, expected: i32) {
+    let err = world.perfgate_error.as_ref().expect("Error not set");
+    let exit_code = err.exit_code();
+    assert_eq!(
+        exit_code, expected,
+        "Expected exit code {}, got {}",
+        expected, exit_code
+    );
+}
+
+// ============================================================================
+// BUDGET MICROCRATE STEPS
+// ============================================================================
+
+#[given(expr = "a budget with threshold {float} and warn_threshold {float} for Direction::Lower")]
+async fn given_budget_direction_lower(
+    world: &mut PerfgateWorld,
+    threshold: f64,
+    warn_threshold: f64,
+) {
+    world.test_budget = Some(perfgate_types::Budget {
+        threshold,
+        warn_threshold,
+        direction: perfgate_types::Direction::Lower,
+    });
+}
+
+#[given(expr = "a budget with threshold {float} and warn_threshold {float} for Direction::Higher")]
+async fn given_budget_direction_higher(
+    world: &mut PerfgateWorld,
+    threshold: f64,
+    warn_threshold: f64,
+) {
+    world.test_budget = Some(perfgate_types::Budget {
+        threshold,
+        warn_threshold,
+        direction: perfgate_types::Direction::Higher,
+    });
+}
+
+#[when(expr = "I evaluate budget with baseline {float} and current {float}")]
+async fn when_evaluate_budget(world: &mut PerfgateWorld, baseline: f64, current: f64) {
+    let budget = world.test_budget.as_ref().expect("Budget not set");
+    match evaluate_budget(baseline, current, budget) {
+        Ok(result) => {
+            world.budget_result = Some(result);
+            world.budget_error = None;
+        }
+        Err(e) => {
+            world.budget_result = None;
+            world.budget_error = Some(e.to_string());
+        }
+    }
+}
+
+#[then(expr = "the budget status should be {string}")]
+async fn then_budget_status_should_be(world: &mut PerfgateWorld, expected: String) {
+    let result = world.budget_result.as_ref().expect("Budget result not set");
+    let actual = match result.status {
+        perfgate_types::MetricStatus::Pass => "pass",
+        perfgate_types::MetricStatus::Warn => "warn",
+        perfgate_types::MetricStatus::Fail => "fail",
+    };
+    assert_eq!(
+        actual, expected,
+        "Expected budget status '{}', got '{}'",
+        expected, actual
+    );
+}
+
+#[then(expr = "the regression should be {float}")]
+async fn then_regression_should_be(world: &mut PerfgateWorld, expected: f64) {
+    let result = world.budget_result.as_ref().expect("Budget result not set");
+    assert!(
+        (result.regression - expected).abs() < 1e-10,
+        "Expected regression {}, got {}",
+        expected,
+        result.regression
+    );
+}
+
+#[then(expr = "the budget evaluation should fail with {string}")]
+async fn then_budget_evaluation_should_fail(world: &mut PerfgateWorld, expected_hint: String) {
+    let error = world
+        .budget_error
+        .as_ref()
+        .expect("Expected budget evaluation to fail");
+    assert!(
+        error.contains(&expected_hint),
+        "Expected error to contain '{}', got: {}",
+        expected_hint,
+        error
+    );
+}
+
+#[given(expr = "budget statuses {string}")]
+async fn given_budget_statuses(world: &mut PerfgateWorld, statuses_str: String) {
+    let statuses: Vec<perfgate_types::MetricStatus> = statuses_str
+        .split(',')
+        .map(|s| match s.trim() {
+            "pass" => perfgate_types::MetricStatus::Pass,
+            "warn" => perfgate_types::MetricStatus::Warn,
+            "fail" => perfgate_types::MetricStatus::Fail,
+            _ => panic!("Invalid status: {}", s),
+        })
+        .collect();
+    world.budget_statuses = statuses;
+}
+
+#[when("I aggregate the verdict")]
+async fn when_aggregate_verdict(world: &mut PerfgateWorld) {
+    world.aggregated_verdict = Some(aggregate_verdict(&world.budget_statuses));
+}
+
+#[then(expr = "the aggregated verdict should be {string}")]
+async fn then_aggregated_verdict_should_be(world: &mut PerfgateWorld, expected: String) {
+    let verdict = world
+        .aggregated_verdict
+        .as_ref()
+        .expect("Verdict not aggregated");
+    let actual = match verdict.status {
+        perfgate_types::VerdictStatus::Pass => "pass",
+        perfgate_types::VerdictStatus::Warn => "warn",
+        perfgate_types::VerdictStatus::Fail => "fail",
+    };
+    assert_eq!(
+        actual, expected,
+        "Expected verdict '{}', got '{}'",
+        expected, actual
+    );
+}
+
+#[then(expr = "the verdict counts should be pass {int}, warn {int}, fail {int}")]
+async fn then_verdict_counts(world: &mut PerfgateWorld, pass: u32, warn: u32, fail: u32) {
+    let verdict = world
+        .aggregated_verdict
+        .as_ref()
+        .expect("Verdict not aggregated");
+    assert_eq!(
+        verdict.counts.pass, pass,
+        "Expected {} pass, got {}",
+        pass, verdict.counts.pass
+    );
+    assert_eq!(
+        verdict.counts.warn, warn,
+        "Expected {} warn, got {}",
+        warn, verdict.counts.warn
+    );
+    assert_eq!(
+        verdict.counts.fail, fail,
+        "Expected {} fail, got {}",
+        fail, verdict.counts.fail
+    );
+}
+
+#[when(expr = "I generate a reason token for Metric::WallMs with status {string}")]
+async fn when_generate_reason_token(world: &mut PerfgateWorld, status_str: String) {
+    let status = match status_str.as_str() {
+        "pass" => perfgate_types::MetricStatus::Pass,
+        "warn" => perfgate_types::MetricStatus::Warn,
+        "fail" => perfgate_types::MetricStatus::Fail,
+        _ => panic!("Invalid status: {}", status_str),
+    };
+    world.reason_token = Some(budget_reason_token(perfgate_types::Metric::WallMs, status));
+}
+
+#[then(expr = "the reason token should be {string}")]
+async fn then_reason_token_should_be(world: &mut PerfgateWorld, expected: String) {
+    let token = world.reason_token.as_ref().expect("Reason token not set");
+    assert_eq!(
+        token, &expected,
+        "Expected reason token '{}', got '{}'",
+        expected, token
+    );
+}
+
+// ============================================================================
+// SIGNIFICANCE MICROCRATE STEPS
+// ============================================================================
+
+#[given(expr = "baseline samples {string}")]
+async fn given_baseline_samples(world: &mut PerfgateWorld, samples_str: String) {
+    world.significance_baseline = samples_str
+        .split(',')
+        .map(|s| s.trim().parse().expect("Failed to parse sample"))
+        .collect();
+}
+
+#[given(expr = "current samples {string}")]
+async fn given_current_samples(world: &mut PerfgateWorld, samples_str: String) {
+    world.significance_current = samples_str
+        .split(',')
+        .map(|s| s.trim().parse().expect("Failed to parse sample"))
+        .collect();
+}
+
+#[when(expr = "I compute significance with alpha {float} and min_samples {int}")]
+async fn when_compute_significance(world: &mut PerfgateWorld, alpha: f64, min_samples: usize) {
+    world.significance_result = compute_significance(
+        &world.significance_baseline,
+        &world.significance_current,
+        alpha,
+        min_samples,
+    );
+}
+
+#[then("the result should be significant")]
+async fn then_result_should_be_significant(world: &mut PerfgateWorld) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert!(
+        result.significant,
+        "Expected result to be significant, but it is not (p-value: {})",
+        result.p_value
+    );
+}
+
+#[then("the result should not be significant")]
+async fn then_result_should_not_be_significant(world: &mut PerfgateWorld) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert!(
+        !result.significant,
+        "Expected result to not be significant, but it is (p-value: {})",
+        result.p_value
+    );
+}
+
+#[then("the result should be none")]
+async fn then_result_should_be_none(world: &mut PerfgateWorld) {
+    assert!(
+        world.significance_result.is_none(),
+        "Expected result to be None, but got {:?}",
+        world.significance_result
+    );
+}
+
+#[then(expr = "the p-value should be less than {float}")]
+async fn then_p_value_should_be_less_than(world: &mut PerfgateWorld, threshold: f64) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert!(
+        result.p_value < threshold,
+        "Expected p-value < {}, got {}",
+        threshold,
+        result.p_value
+    );
+}
+
+#[then(expr = "the p-value should be approximately {float}")]
+async fn then_p_value_should_be_approximately(world: &mut PerfgateWorld, expected: f64) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert!(
+        (result.p_value - expected).abs() < 0.01,
+        "Expected p-value ≈ {}, got {}",
+        expected,
+        result.p_value
+    );
+}
+
+#[then(expr = "the p-value should be {float}")]
+async fn then_p_value_should_be(world: &mut PerfgateWorld, expected: f64) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert!(
+        (result.p_value - expected).abs() < 1e-10,
+        "Expected p-value {}, got {}",
+        expected,
+        result.p_value
+    );
+}
+
+#[then(expr = "the baseline sample count should be {int}")]
+async fn then_baseline_sample_count(world: &mut PerfgateWorld, expected: u32) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert_eq!(
+        result.baseline_samples, expected,
+        "Expected {} baseline samples, got {}",
+        expected, result.baseline_samples
+    );
+}
+
+#[then(expr = "the current sample count should be {int}")]
+async fn then_current_sample_count(world: &mut PerfgateWorld, expected: u32) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert_eq!(
+        result.current_samples, expected,
+        "Expected {} current samples, got {}",
+        expected, result.current_samples
+    );
+}
+
+#[then(expr = "the alpha value should be {float}")]
+async fn then_alpha_value_should_be(world: &mut PerfgateWorld, expected: f64) {
+    let result = world
+        .significance_result
+        .as_ref()
+        .expect("Significance result not set");
+    assert!(
+        (result.alpha - expected).abs() < 1e-10,
+        "Expected alpha {}, got {}",
+        expected,
+        result.alpha
     );
 }
 

@@ -21,6 +21,8 @@ perfgate-sha256 = { path = "../crates/perfgate-sha256" }
 perfgate-stats = { path = "../crates/perfgate-stats" }
 perfgate-validation = { path = "../crates/perfgate-validation" }
 perfgate-export = { path = "../crates/perfgate-export" }
+perfgate-budget = { path = "../crates/perfgate-budget" }
+perfgate-significance = { path = "../crates/perfgate-significance" }
 
 [[bin]]
 name = "parse_run_receipt"
@@ -85,5 +87,17 @@ doc = false
 [[bin]]
 name = "fuzz_export_csv"
 path = "fuzz_targets/fuzz_export_csv.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_budget"
+path = "fuzz_targets/fuzz_budget.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_significance"
+path = "fuzz_targets/fuzz_significance.rs"
 test = false
 doc = false

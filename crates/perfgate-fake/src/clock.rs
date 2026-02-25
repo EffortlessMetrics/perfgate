@@ -175,7 +175,7 @@ mod tests {
         let clock = Arc::new(FakeClock::new());
 
         let handles: Vec<_> = (0..4)
-            .map(|i| {
+            .map(|_i| {
                 let c = clock.clone();
                 thread::spawn(move || {
                     c.advance_millis(100);
@@ -184,7 +184,7 @@ mod tests {
             })
             .collect();
 
-        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let _results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
         assert_eq!(clock.now_millis(), 400);
     }

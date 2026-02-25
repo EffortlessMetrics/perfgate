@@ -408,7 +408,7 @@ mod property_tests {
 
         #[test]
         fn valid_char_roundtrip(c in valid_bench_char()) {
-            let name: String = std::iter::repeat(c).take(10).collect();
+            let name: String = std::iter::repeat_n(c, 10).collect();
             prop_assume!(name.len() <= BENCH_NAME_MAX_LEN);
             prop_assert!(validate_bench_name(&name).is_ok());
         }
