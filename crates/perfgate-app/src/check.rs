@@ -1273,4 +1273,140 @@ mod tests {
         assert!(outcome.failed);
         assert_eq!(outcome.exit_code, 3);
     }
+
+    #[test]
+    fn execute_require_baseline_without_baseline_returns_error() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "ok".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![bench],
+        };
+
+        let runner = TestRunner::new(vec![run_result(100, 0, false)]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let mut req = make_check_request(config, None, HostMismatchPolicy::Warn, false);
+        req.require_baseline = true;
+
+        let err = usecase.execute(req).unwrap_err();
+        assert!(
+            err.to_string().contains("baseline required"),
+            "expected baseline required error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn execute_bench_not_found_returns_error() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![],
+        };
+
+        let runner = TestRunner::new(vec![]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let req = make_check_request(config, None, HostMismatchPolicy::Warn, false);
+        let err = usecase.execute(req).unwrap_err();
+        assert!(
+            err.to_string().contains("not found"),
+            "expected bench not found error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn execute_with_baseline_pass_produces_exit_0() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "ok".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                repeat: None,
+                warmup: None,
+                threshold: Some(0.5),
+                warn_factor: Some(0.9),
+                out_dir: None,
+                baseline_dir: None,
+                baseline_pattern: None,
+                markdown_template: None,
+            },
+            benches: vec![bench],
+        };
+
+        let baseline = make_baseline_receipt(
+            100,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            None,
+        );
+
+        // Current is same as baseline → pass
+        let runner = TestRunner::new(vec![run_result(100, 0, false)]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase
+            .execute(make_check_request(
+                config,
+                Some(baseline),
+                HostMismatchPolicy::Warn,
+                false,
+            ))
+            .expect("check should succeed");
+
+        assert!(outcome.compare_receipt.is_some());
+        assert!(!outcome.failed);
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(
+            outcome.compare_receipt.as_ref().unwrap().verdict.status,
+            VerdictStatus::Pass
+        );
+    }
 }

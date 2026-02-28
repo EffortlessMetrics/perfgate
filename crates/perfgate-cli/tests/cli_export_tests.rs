@@ -389,6 +389,31 @@ fn test_export_missing_input_file() {
         .stderr(predicate::str::contains("read"));
 }
 
+/// Test export with non-existent compare input file fails gracefully
+#[test]
+fn test_export_missing_compare_input_file() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let export_path = temp_dir.path().join("export.csv");
+    let nonexistent = temp_dir.path().join("does_not_exist.json");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    cmd.arg("export")
+        .arg("--compare")
+        .arg(&nonexistent)
+        .arg("--out")
+        .arg(&export_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("read"));
+
+    // Output file should not exist
+    assert!(
+        !export_path.exists(),
+        "export file should not be created on failure"
+    );
+}
+
 // ============================================================================
 // Stable ordering tests
 // ============================================================================

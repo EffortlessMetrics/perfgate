@@ -96,3 +96,14 @@ Feature: Check Command
     And the artifact file "extras/perfgate.run.v1.json" should exist
     And the artifact file "extras/perfgate.compare.v1.json" should exist
     And the artifact file "extras/perfgate.report.v1.json" should exist
+
+  # Bench regex filtering scenarios
+  Scenario: Check with --bench-regex selects benchmarks by pattern
+    Given a config file with benches "alpha-bench,beta-bench,gamma-bench"
+    And a baseline receipt for bench "alpha-bench" with wall_ms median of 1000
+    And a baseline receipt for bench "beta-bench" with wall_ms median of 1000
+    When I run perfgate check for all benches with --bench-regex "alpha|beta"
+    Then the exit code should be 0
+    And the artifact file "alpha-bench/run.json" should exist
+    And the artifact file "beta-bench/run.json" should exist
+    And the artifact file "gamma-bench/run.json" should not exist

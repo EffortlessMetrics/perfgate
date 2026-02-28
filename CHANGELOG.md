@@ -29,6 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Schema lock verification** via `xtask schema-check`, with drift detection for missing/modified/extra schema files in `schemas/`.
 - **Stabilized `xtask conform` third-party mode**: `--fixtures` now validates all `*.json` files in the provided directory.
 - **CI provider guides**: added canonical getting-started docs for GitHub Actions and GitLab CI.
+- Unit tests for perfgate-render formatting functions
+- Unit tests for perfgate-export `ExportFormat::parse`
+- Unit tests for perfgate-sensor `SensorReportBuilder` methods
+- Snapshot tests for CSV/JSONL export formats
+- Snapshot tests for render formatting and template context
+- BDD scenarios for error paths and missing CLI flags
+- Property-based tests for domain, stats, budget, significance, paired, SHA256
+- Fuzz targets for paired stats, sensor reports, host detection
+- CLI help text tests
+- CLI edge case tests (`--pretty` flag, mismatched metrics, short commands, graceful error handling)
+- README files for 10 microcrates
+- Module-level docs for adapters crate
+- Examples for types, domain, significance, budget, sensor crates
+- Doc-tests for types, domain, render, export crates
+- Cross-crate integration tests
+- Config validation edge case tests
+
+### Changed
+
+- Enhanced CONTRIBUTING.md with PR checklist, code style guide, testing requirements
+
+### Fixed
+
+- Resolved stale pending snapshot in perfgate-render
 
 ## [0.3.0] - 2026-02-16
 

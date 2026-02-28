@@ -1,0 +1,6 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: jsonl
+---
+{"bench_name":"alpha-bench","metric":"max_rss_kb","baseline_value":1024.0,"current_value":1280.0,"regression_pct":25.0,"status":"fail","threshold":15.0}
+{"bench_name":"alpha-bench","metric":"wall_ms","baseline_value":100.0,"current_value":110.0,"regression_pct":10.0,"status":"pass","threshold":20.0}

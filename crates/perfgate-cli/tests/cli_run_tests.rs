@@ -233,6 +233,92 @@ fn test_run_receipt_contains_tool_info() {
     );
 }
 
+/// Test --pretty flag on run command produces indented JSON
+#[test]
+fn test_run_pretty_flag() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("pretty-test")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--pretty")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--");
+
+    for arg in success_command() {
+        cmd.arg(arg);
+    }
+
+    cmd.assert().success();
+
+    let content = fs::read_to_string(&output_path).expect("failed to read output file");
+
+    // Pretty-printed JSON should contain newlines and indentation
+    assert!(
+        content.contains('\n'),
+        "pretty-printed JSON should contain newlines"
+    );
+    assert!(
+        content.contains("  "),
+        "pretty-printed JSON should have indentation"
+    );
+
+    // Should still be valid JSON
+    let receipt: serde_json::Value =
+        serde_json::from_str(&content).expect("output should be valid JSON");
+    assert_eq!(receipt["schema"].as_str(), Some("perfgate.run.v1"));
+}
+
+/// Test run with a very short command (echo)
+#[test]
+fn test_run_with_echo_command() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("echo-test")
+        .arg("--repeat")
+        .arg("2")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--");
+
+    #[cfg(unix)]
+    {
+        cmd.arg("echo").arg("hello");
+    }
+    #[cfg(windows)]
+    {
+        cmd.arg("cmd").arg("/c").arg("echo").arg("hello");
+    }
+
+    cmd.assert().success();
+
+    let content = fs::read_to_string(&output_path).expect("failed to read output file");
+    let receipt: serde_json::Value =
+        serde_json::from_str(&content).expect("output should be valid JSON");
+
+    assert_eq!(receipt["schema"].as_str(), Some("perfgate.run.v1"));
+    assert_eq!(receipt["bench"]["name"].as_str(), Some("echo-test"));
+
+    let samples = receipt["samples"]
+        .as_array()
+        .expect("samples should be an array");
+    assert_eq!(samples.len(), 2, "should have 2 samples");
+
+    // All samples should have exit_code 0
+    for sample in samples {
+        assert_eq!(sample["exit_code"].as_i64(), Some(0));
+    }
+}
+
 /// Test that samples contain wall_ms and exit_code
 ///
 /// **Validates: Requirements 1.1, 9.1**

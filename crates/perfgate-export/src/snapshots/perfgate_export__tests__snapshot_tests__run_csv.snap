@@ -1,0 +1,6 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: csv
+---
+bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp
+test-benchmark,100,98,102,,50,,1024,,,2,2024-01-15T10:00:00Z

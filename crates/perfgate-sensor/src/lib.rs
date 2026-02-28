@@ -2206,3 +2206,409 @@ mod snapshot_tests {
         assert_json_snapshot!(sensor_report);
     }
 }
+
+#[cfg(test)]
+mod schema_conformance_tests {
+    use super::*;
+    use perfgate_types::{
+        FINDING_CODE_METRIC_FAIL, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, Verdict,
+        VerdictCounts,
+    };
+
+    fn make_tool_info() -> ToolInfo {
+        ToolInfo {
+            name: "perfgate".to_string(),
+            version: "0.1.0".to_string(),
+        }
+    }
+
+    fn make_pass_report() -> PerfgateReport {
+        PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 2,
+                    warn: 0,
+                    fail: 0,
+                },
+                reasons: vec![],
+            },
+            compare: None,
+            findings: vec![],
+            summary: ReportSummary {
+                pass_count: 2,
+                warn_count: 0,
+                fail_count: 0,
+                total_count: 2,
+            },
+        }
+    }
+
+    fn make_fail_report_with_finding() -> PerfgateReport {
+        PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 1,
+                },
+                reasons: vec!["wall_ms_fail".to_string()],
+            },
+            compare: None,
+            findings: vec![ReportFinding {
+                check_id: "perf.budget".to_string(),
+                code: FINDING_CODE_METRIC_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: "wall_ms regression: +25.00%".to_string(),
+                data: None,
+            }],
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 1,
+                total_count: 1,
+            },
+        }
+    }
+
+    /// Validate that a serialized SensorReport has the required top-level fields
+    /// matching the vendored sensor.report.v1 schema.
+    fn assert_schema_conformance(json: &serde_json::Value) {
+        let obj = json.as_object().expect("report should be a JSON object");
+
+        // Required fields per schema: schema, tool, run, verdict, findings, data
+        assert!(obj.contains_key("schema"), "missing 'schema' field");
+        assert!(obj.contains_key("tool"), "missing 'tool' field");
+        assert!(obj.contains_key("run"), "missing 'run' field");
+        assert!(obj.contains_key("verdict"), "missing 'verdict' field");
+        assert!(obj.contains_key("findings"), "missing 'findings' field");
+        assert!(obj.contains_key("data"), "missing 'data' field");
+
+        // schema must be the const value
+        assert_eq!(
+            obj["schema"].as_str().unwrap(),
+            "sensor.report.v1",
+            "schema field must be 'sensor.report.v1'"
+        );
+
+        // tool must have name and version
+        let tool = obj["tool"].as_object().expect("tool should be object");
+        assert!(tool.contains_key("name"), "tool missing 'name'");
+        assert!(tool.contains_key("version"), "tool missing 'version'");
+        assert!(tool["name"].is_string());
+        assert!(tool["version"].is_string());
+
+        // run must have started_at and capabilities
+        let run = obj["run"].as_object().expect("run should be object");
+        assert!(run.contains_key("started_at"), "run missing 'started_at'");
+        assert!(
+            run.contains_key("capabilities"),
+            "run missing 'capabilities'"
+        );
+        assert!(run["started_at"].is_string());
+        assert!(run["capabilities"].is_object());
+
+        // verdict must have status, counts, reasons
+        let verdict = obj["verdict"]
+            .as_object()
+            .expect("verdict should be object");
+        assert!(verdict.contains_key("status"), "verdict missing 'status'");
+        assert!(verdict.contains_key("counts"), "verdict missing 'counts'");
+        assert!(verdict.contains_key("reasons"), "verdict missing 'reasons'");
+
+        let valid_statuses = ["pass", "warn", "fail", "skip"];
+        let status = verdict["status"].as_str().unwrap();
+        assert!(
+            valid_statuses.contains(&status),
+            "verdict.status '{}' not in {:?}",
+            status,
+            valid_statuses
+        );
+
+        let counts = verdict["counts"]
+            .as_object()
+            .expect("counts should be object");
+        assert!(counts.contains_key("info"), "counts missing 'info'");
+        assert!(counts.contains_key("warn"), "counts missing 'warn'");
+        assert!(counts.contains_key("error"), "counts missing 'error'");
+        assert!(counts["info"].as_u64().is_some());
+        assert!(counts["warn"].as_u64().is_some());
+        assert!(counts["error"].as_u64().is_some());
+
+        assert!(verdict["reasons"].is_array());
+
+        // findings must be an array
+        assert!(obj["findings"].is_array());
+
+        // data must be an object
+        assert!(obj["data"].is_object());
+    }
+
+    /// Validate individual findings conform to the schema.
+    fn assert_finding_conformance(finding: &serde_json::Value) {
+        let obj = finding
+            .as_object()
+            .expect("finding should be a JSON object");
+
+        // Required: check_id, code, severity, message
+        assert!(obj.contains_key("check_id"), "finding missing 'check_id'");
+        assert!(obj.contains_key("code"), "finding missing 'code'");
+        assert!(obj.contains_key("severity"), "finding missing 'severity'");
+        assert!(obj.contains_key("message"), "finding missing 'message'");
+
+        assert!(obj["check_id"].is_string());
+        assert!(obj["code"].is_string());
+        assert!(obj["message"].is_string());
+
+        let valid_severities = ["info", "warn", "error"];
+        let severity = obj["severity"].as_str().unwrap();
+        assert!(
+            valid_severities.contains(&severity),
+            "finding.severity '{}' not in {:?}",
+            severity,
+            valid_severities
+        );
+
+        // fingerprint, if present, must be 64-char hex
+        if let Some(fp) = obj.get("fingerprint") {
+            let fp_str = fp.as_str().expect("fingerprint should be string");
+            assert_eq!(fp_str.len(), 64, "fingerprint should be 64-char hex");
+            assert!(
+                fp_str.chars().all(|c| c.is_ascii_hexdigit()),
+                "fingerprint should contain only hex chars"
+            );
+        }
+
+        // No additional properties beyond what the schema allows
+        let allowed_keys = [
+            "check_id",
+            "code",
+            "severity",
+            "message",
+            "fingerprint",
+            "data",
+        ];
+        for key in obj.keys() {
+            assert!(
+                allowed_keys.contains(&key.as_str()),
+                "unexpected finding field: '{}'",
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn pass_report_conforms_to_vendored_schema() {
+        let report = make_pass_report();
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .ended_at("2024-01-01T00:01:00Z".to_string(), 60000)
+            .baseline(true, None)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        assert_schema_conformance(&json);
+        assert!(json["findings"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn fail_report_conforms_to_vendored_schema() {
+        let report = make_fail_report_with_finding();
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .ended_at("2024-01-01T00:01:00Z".to_string(), 60000)
+            .baseline(true, None)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        assert_schema_conformance(&json);
+
+        let findings = json["findings"].as_array().unwrap();
+        assert!(!findings.is_empty());
+        for finding in findings {
+            assert_finding_conformance(finding);
+        }
+    }
+
+    #[test]
+    fn error_report_conforms_to_vendored_schema() {
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .ended_at("2024-01-01T00:00:01Z".to_string(), 1000)
+            .baseline(false, None)
+            .build_error(
+                "config parse failed",
+                perfgate_types::STAGE_CONFIG_PARSE,
+                perfgate_types::ERROR_KIND_PARSE,
+            );
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        assert_schema_conformance(&json);
+
+        let findings = json["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_finding_conformance(&findings[0]);
+        assert_eq!(findings[0]["severity"], "error");
+    }
+
+    #[test]
+    fn report_with_artifacts_conforms_to_vendored_schema() {
+        let report = make_pass_report();
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .artifact("report.json".to_string(), "sensor_report".to_string())
+            .artifact("comment.md".to_string(), "markdown".to_string())
+            .baseline(true, None)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        assert_schema_conformance(&json);
+
+        // artifacts, if present, must have path and type
+        let artifacts = json["artifacts"].as_array().unwrap();
+        assert_eq!(artifacts.len(), 2);
+        for artifact in artifacts {
+            let obj = artifact.as_object().unwrap();
+            assert!(obj.contains_key("path"), "artifact missing 'path'");
+            assert!(obj.contains_key("type"), "artifact missing 'type'");
+            assert!(obj["path"].is_string());
+            assert!(obj["type"].is_string());
+        }
+    }
+
+    #[test]
+    fn report_without_ended_at_conforms_to_vendored_schema() {
+        let report = make_pass_report();
+        // No ended_at or duration_ms — these are optional in the schema
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .baseline(true, None)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        assert_schema_conformance(&json);
+
+        let run = json["run"].as_object().unwrap();
+        assert!(!run.contains_key("ended_at") || run["ended_at"].is_string());
+        assert!(!run.contains_key("duration_ms") || run["duration_ms"].is_u64());
+    }
+
+    #[test]
+    fn truncated_report_findings_all_conform() {
+        use perfgate_types::FindingData;
+
+        let findings: Vec<ReportFinding> = (0..10)
+            .map(|i| ReportFinding {
+                check_id: "perf.budget".to_string(),
+                code: FINDING_CODE_METRIC_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: format!("metric_{} regression", i),
+                data: Some(FindingData {
+                    metric_name: format!("metric_{}", i),
+                    baseline: 100.0,
+                    current: 150.0,
+                    regression_pct: 50.0,
+                    threshold: 0.2,
+                    direction: perfgate_types::Direction::Lower,
+                }),
+            })
+            .collect();
+
+        let report = PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 10,
+                },
+                reasons: vec![],
+            },
+            compare: None,
+            findings,
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 0,
+                fail_count: 10,
+                total_count: 10,
+            },
+        };
+
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .baseline(true, None)
+            .max_findings(5)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        assert_schema_conformance(&json);
+
+        let findings = json["findings"].as_array().unwrap();
+        for finding in findings {
+            assert_finding_conformance(finding);
+        }
+    }
+
+    #[test]
+    fn serialized_report_no_additional_top_level_properties() {
+        let report = make_pass_report();
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .ended_at("2024-01-01T00:01:00Z".to_string(), 60000)
+            .baseline(true, None)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        let obj = json.as_object().unwrap();
+
+        // Schema says additionalProperties: false
+        let allowed_top_level = [
+            "schema",
+            "tool",
+            "run",
+            "verdict",
+            "findings",
+            "artifacts",
+            "data",
+        ];
+        for key in obj.keys() {
+            assert!(
+                allowed_top_level.contains(&key.as_str()),
+                "unexpected top-level field: '{}'",
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn verdict_counts_are_non_negative_integers() {
+        let report = make_fail_report_with_finding();
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .baseline(true, None)
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        let counts = &json["verdict"]["counts"];
+
+        assert!(counts["info"].as_u64().is_some(), "info should be u64");
+        assert!(counts["warn"].as_u64().is_some(), "warn should be u64");
+        assert!(counts["error"].as_u64().is_some(), "error should be u64");
+    }
+
+    #[test]
+    fn capabilities_baseline_has_valid_status() {
+        let report = make_pass_report();
+        let sensor = SensorReportBuilder::new(make_tool_info(), "2024-01-01T00:00:00Z".to_string())
+            .baseline(false, Some("no_baseline".to_string()))
+            .build(&report);
+
+        let json: serde_json::Value = serde_json::to_value(&sensor).unwrap();
+        let caps = &json["run"]["capabilities"];
+        let baseline = caps["baseline"].as_object().unwrap();
+        let status = baseline["status"].as_str().unwrap();
+        let valid = ["available", "unavailable", "skipped"];
+        assert!(
+            valid.contains(&status),
+            "capability status '{}' not in {:?}",
+            status,
+            valid
+        );
+    }
+}

@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ConfigFile",
+  "description": "Top-level configuration file (`perfgate.toml`).\n\n# Examples\n\n```\nuse perfgate_types::ConfigFile;\n\nlet toml_str = r#\"\n[defaults]\nrepeat = 5\nthreshold = 0.20\n\n[[bench]]\nname = \"my-bench\"\ncommand = [\"echo\", \"hello\"]\n\"#;\n\nlet config: ConfigFile = toml::from_str(toml_str).unwrap();\nassert_eq!(config.benches.len(), 1);\nassert_eq!(config.benches[0].name, \"my-bench\");\nassert_eq!(config.defaults.repeat, Some(5));\n```",
   "type": "object",
   "properties": {
     "bench": {

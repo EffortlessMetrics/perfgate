@@ -1,0 +1,74 @@
+---
+source: crates/perfgate-app/src/report.rs
+assertion_line: 394
+expression: "serde_json::to_value(&result.report).unwrap()"
+---
+{
+  "compare": {
+    "baseline_ref": {
+      "path": "baseline.json",
+      "run_id": "baseline-001"
+    },
+    "bench": {
+      "command": [
+        "echo",
+        "hello"
+      ],
+      "name": "test-bench",
+      "repeat": 5,
+      "warmup": 0
+    },
+    "budgets": {
+      "wall_ms": {
+        "direction": "lower",
+        "threshold": 0.2,
+        "warn_threshold": 0.18
+      }
+    },
+    "current_ref": {
+      "path": "current.json",
+      "run_id": "current-001"
+    },
+    "deltas": {
+      "wall_ms": {
+        "baseline": 1000.0,
+        "current": 900.0,
+        "pct": -0.1,
+        "ratio": 0.9,
+        "regression": 0.0,
+        "status": "pass"
+      }
+    },
+    "schema": "perfgate.compare.v1",
+    "tool": {
+      "name": "perfgate",
+      "version": "0.1.0"
+    },
+    "verdict": {
+      "counts": {
+        "fail": 0,
+        "pass": 1,
+        "warn": 0
+      },
+      "reasons": [],
+      "status": "pass"
+    }
+  },
+  "findings": [],
+  "report_type": "perfgate.report.v1",
+  "summary": {
+    "fail_count": 0,
+    "pass_count": 1,
+    "total_count": 1,
+    "warn_count": 0
+  },
+  "verdict": {
+    "counts": {
+      "fail": 0,
+      "pass": 1,
+      "warn": 0
+    },
+    "reasons": [],
+    "status": "pass"
+  }
+}

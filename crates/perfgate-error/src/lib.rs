@@ -525,6 +525,192 @@ mod tests {
         let err = ValidationError::Empty;
         assert_eq!(err.name(), "");
     }
+
+    #[test]
+    fn validation_error_empty_segment() {
+        let err = ValidationError::EmptySegment {
+            name: "bench//x".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("empty path segment"));
+        assert!(msg.contains("bench//x"));
+    }
+
+    #[test]
+    fn stats_error_no_samples_display() {
+        let err = StatsError::NoSamples;
+        assert_eq!(err.to_string(), "no samples to summarize");
+    }
+
+    #[test]
+    fn paired_error_no_samples_display() {
+        let err = PairedError::NoSamples;
+        assert_eq!(err.to_string(), "no samples to summarize");
+    }
+
+    #[test]
+    fn io_error_other_display() {
+        let err = IoError::Other("disk full".to_string());
+        assert!(err.to_string().contains("disk full"));
+    }
+
+    #[test]
+    fn perfgate_error_transparent_display_forwards() {
+        let inner = ValidationError::InvalidCharacters {
+            name: "MY_BENCH".to_string(),
+        };
+        let outer: PerfgateError = inner.clone().into();
+        assert_eq!(outer.to_string(), inner.to_string());
+    }
+
+    #[test]
+    fn perfgate_error_transparent_display_stats() {
+        let inner = StatsError::NoSamples;
+        let outer: PerfgateError = inner.clone().into();
+        assert_eq!(outer.to_string(), inner.to_string());
+    }
+
+    #[test]
+    fn perfgate_error_transparent_display_io() {
+        let inner = IoError::BaselineResolve("baselines/bench.json".to_string());
+        let outer: PerfgateError = inner.clone().into();
+        assert_eq!(outer.to_string(), inner.to_string());
+        assert!(outer.to_string().contains("baselines/bench.json"));
+    }
+
+    #[test]
+    fn validation_display_contains_bench_name() {
+        let err = ValidationError::TooLong {
+            name: "my-long-bench-name".to_string(),
+            max_len: 64,
+        };
+        assert!(err.to_string().contains("my-long-bench-name"));
+        assert!(err.to_string().contains("64"));
+
+        let err = ValidationError::InvalidCharacters {
+            name: "BAD_NAME".to_string(),
+        };
+        assert!(err.to_string().contains("BAD_NAME"));
+
+        let err = ValidationError::PathTraversal {
+            name: "foo/../bar".to_string(),
+            segment: "..".to_string(),
+        };
+        assert!(err.to_string().contains("foo/../bar"));
+        assert!(err.to_string().contains(".."));
+    }
+
+    #[test]
+    fn io_error_contains_file_path() {
+        let err = IoError::BaselineResolve("baselines/perf.json not found".to_string());
+        assert!(err.to_string().contains("baselines/perf.json"));
+
+        let err = IoError::ArtifactWrite("artifacts/perfgate/run.json".to_string());
+        assert!(err.to_string().contains("artifacts/perfgate/run.json"));
+
+        let err = IoError::RunCommand("failed to spawn /usr/bin/echo".to_string());
+        assert!(err.to_string().contains("/usr/bin/echo"));
+    }
+
+    #[test]
+    fn exit_code_is_always_one() {
+        let errors: Vec<PerfgateError> = vec![
+            ValidationError::Empty.into(),
+            ValidationError::TooLong {
+                name: "x".into(),
+                max_len: 64,
+            }
+            .into(),
+            ValidationError::InvalidCharacters { name: "X".into() }.into(),
+            ValidationError::EmptySegment { name: "/x".into() }.into(),
+            ValidationError::PathTraversal {
+                name: "..".into(),
+                segment: "..".into(),
+            }
+            .into(),
+            StatsError::NoSamples.into(),
+            AdapterError::EmptyArgv.into(),
+            AdapterError::Timeout.into(),
+            AdapterError::TimeoutUnsupported.into(),
+            AdapterError::Other("err".into()).into(),
+            ConfigValidationError::BenchName("b".into()).into(),
+            ConfigValidationError::ConfigFile("c".into()).into(),
+            IoError::BaselineResolve("r".into()).into(),
+            IoError::ArtifactWrite("w".into()).into(),
+            IoError::RunCommand("r".into()).into(),
+            IoError::Other("o".into()).into(),
+            PairedError::NoSamples.into(),
+        ];
+        for err in &errors {
+            assert_eq!(err.exit_code(), 1, "exit_code for {:?}", err);
+        }
+    }
+
+    #[test]
+    fn error_category_as_str_matches_display() {
+        let categories = [
+            ErrorCategory::Validation,
+            ErrorCategory::Stats,
+            ErrorCategory::Adapter,
+            ErrorCategory::Config,
+            ErrorCategory::Io,
+            ErrorCategory::Paired,
+        ];
+        for cat in &categories {
+            assert_eq!(cat.as_str(), cat.to_string());
+        }
+    }
+
+    #[test]
+    fn from_std_io_error_to_io_error() {
+        let std_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let err: IoError = std_err.into();
+        assert!(matches!(err, IoError::Other(_)));
+        assert!(err.to_string().contains("access denied"));
+    }
+
+    #[test]
+    fn is_recoverable_io_errors() {
+        let cases = vec![
+            PerfgateError::Io(IoError::BaselineResolve("x".into())),
+            PerfgateError::Io(IoError::ArtifactWrite("x".into())),
+            PerfgateError::Io(IoError::RunCommand("x".into())),
+            PerfgateError::Io(IoError::Other("x".into())),
+        ];
+        for err in cases {
+            assert!(
+                err.is_recoverable(),
+                "IO errors should be recoverable: {:?}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn is_not_recoverable_config_errors() {
+        let err = PerfgateError::Config(ConfigValidationError::BenchName("x".into()));
+        assert!(!err.is_recoverable());
+        let err = PerfgateError::Config(ConfigValidationError::ConfigFile("x".into()));
+        assert!(!err.is_recoverable());
+    }
+
+    #[test]
+    fn is_recoverable_adapter_other() {
+        let err = PerfgateError::Adapter(AdapterError::Other("transient".into()));
+        assert!(err.is_recoverable());
+    }
+
+    #[test]
+    fn is_not_recoverable_timeout_unsupported() {
+        let err = PerfgateError::Adapter(AdapterError::TimeoutUnsupported);
+        assert!(!err.is_recoverable());
+    }
+
+    #[test]
+    fn is_not_recoverable_paired_no_samples() {
+        let err = PerfgateError::Paired(PairedError::NoSamples);
+        assert!(!err.is_recoverable());
+    }
 }
 
 #[cfg(test)]

@@ -471,6 +471,51 @@ async fn given_fail_on_warn_flag(world: &mut PerfgateWorld) {
     world.extra_args.push("--fail-on-warn".to_string());
 }
 
+/// Create a baseline receipt with explicit wall_ms sample values
+#[given(expr = "a baseline receipt with wall_ms samples {string}")]
+async fn given_baseline_receipt_with_samples(world: &mut PerfgateWorld, samples_str: String) {
+    world.ensure_temp_dir();
+    let values: Vec<u64> = samples_str
+        .split(',')
+        .map(|s| s.trim().parse().expect("Failed to parse sample"))
+        .collect();
+    let mut sorted = values.clone();
+    sorted.sort_unstable();
+    world.baseline_wall_ms = Some(sorted[sorted.len() / 2]);
+    let receipt = world.create_run_receipt_from_samples(&values);
+    let baseline_path = world.temp_path().join("baseline.json");
+    let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize baseline");
+    fs::write(&baseline_path, json).expect("Failed to write baseline receipt");
+    world.baseline_path = Some(baseline_path);
+}
+
+/// Create a current receipt with explicit wall_ms sample values
+#[given(expr = "a current receipt with wall_ms samples {string}")]
+async fn given_current_receipt_with_samples(world: &mut PerfgateWorld, samples_str: String) {
+    world.ensure_temp_dir();
+    let values: Vec<u64> = samples_str
+        .split(',')
+        .map(|s| s.trim().parse().expect("Failed to parse sample"))
+        .collect();
+    let mut sorted = values.clone();
+    sorted.sort_unstable();
+    world.current_wall_ms = Some(sorted[sorted.len() / 2]);
+    let receipt = world.create_run_receipt_from_samples(&values);
+    let current_path = world.temp_path().join("current.json");
+    let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
+    fs::write(&current_path, json).expect("Failed to write current receipt");
+    world.current_path = Some(current_path);
+}
+
+/// Create a markdown template file
+#[given(expr = "a markdown template file with content {string}")]
+async fn given_markdown_template_file(world: &mut PerfgateWorld, content: String) {
+    world.ensure_temp_dir();
+    let template_path = world.temp_path().join("template.hbs");
+    fs::write(&template_path, &content).expect("Failed to write template file");
+    world.template_path = Some(template_path);
+}
+
 /// Create a baseline receipt with specified max_rss_kb
 #[given(expr = "a baseline receipt with max_rss_kb median of {int}")]
 async fn given_baseline_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u64) {
@@ -641,6 +686,77 @@ async fn when_compare_with_threshold_and_host_mismatch_policy(
     world.output_path = Some(output_path);
 }
 
+/// Run perfgate compare with threshold and significance-alpha
+#[when(expr = "I run perfgate compare with threshold {float} and significance-alpha {float}")]
+async fn when_compare_with_significance_alpha(
+    world: &mut PerfgateWorld,
+    threshold: f64,
+    alpha: f64,
+) {
+    world.ensure_temp_dir();
+    let baseline = world.baseline_path.clone().expect("Baseline path not set");
+    let current = world.current_path.clone().expect("Current path not set");
+    let output_path = world.temp_path().join("compare-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--current")
+        .arg(&current)
+        .arg("--threshold")
+        .arg(threshold.to_string())
+        .arg("--significance-alpha")
+        .arg(alpha.to_string())
+        .arg("--significance-min-samples")
+        .arg("2")
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate compare");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate compare with threshold, significance-alpha and require-significance
+#[when(
+    expr = "I run perfgate compare with threshold {float} and significance-alpha {float} and require-significance"
+)]
+async fn when_compare_with_require_significance(
+    world: &mut PerfgateWorld,
+    threshold: f64,
+    alpha: f64,
+) {
+    world.ensure_temp_dir();
+    let baseline = world.baseline_path.clone().expect("Baseline path not set");
+    let current = world.current_path.clone().expect("Current path not set");
+    let output_path = world.temp_path().join("compare-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--current")
+        .arg(&current)
+        .arg("--threshold")
+        .arg(threshold.to_string())
+        .arg("--significance-alpha")
+        .arg(alpha.to_string())
+        .arg("--significance-min-samples")
+        .arg("2")
+        .arg("--require-significance")
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate compare");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
 /// Run perfgate md command
 #[when("I run perfgate md")]
 async fn when_md(world: &mut PerfgateWorld) {
@@ -674,6 +790,25 @@ async fn when_md_with_output(world: &mut PerfgateWorld) {
     world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
     world.output_path = Some(output_path);
+}
+
+/// Run perfgate md command with a custom template
+#[when("I run perfgate md with template")]
+async fn when_md_with_template(world: &mut PerfgateWorld) {
+    let compare = world.compare_path.clone().expect("Compare path not set");
+    let template = world.template_path.clone().expect("Template path not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("md")
+        .arg("--compare")
+        .arg(&compare)
+        .arg("--template")
+        .arg(&template);
+
+    let output = cmd.output().expect("Failed to execute perfgate md");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
 /// Run perfgate github-annotations command
@@ -868,6 +1003,75 @@ async fn when_run_with_timeout(world: &mut PerfgateWorld, timeout: String) {
     world.output_path = Some(output_path);
 }
 
+/// Run perfgate run with --output-cap-bytes
+#[when(expr = "I run perfgate run with output-cap-bytes {int}")]
+async fn when_run_with_output_cap_bytes(world: &mut PerfgateWorld, cap: usize) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("run-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("test-bench")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--repeat")
+        .arg("1")
+        .arg("--output-cap-bytes")
+        .arg(cap.to_string())
+        .arg("--");
+
+    for arg in echo_command() {
+        cmd.arg(arg);
+    }
+
+    let output = cmd.output().expect("Failed to execute perfgate run");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate run with --env KEY=VALUE
+#[when(expr = "I run perfgate run with env {string}")]
+async fn when_run_with_env(world: &mut PerfgateWorld, env_pair: String) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("run-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("test-bench")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--repeat")
+        .arg("1")
+        .arg("--env")
+        .arg(&env_pair)
+        .arg("--");
+
+    for arg in success_command() {
+        cmd.arg(arg);
+    }
+
+    let output = cmd.output().expect("Failed to execute perfgate run");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Returns a cross-platform command that produces output.
+#[cfg(unix)]
+fn echo_command() -> Vec<&'static str> {
+    vec!["echo", "hello world from perfgate"]
+}
+
+#[cfg(windows)]
+fn echo_command() -> Vec<&'static str> {
+    vec!["cmd", "/c", "echo", "hello world from perfgate"]
+}
+
 /// Run perfgate run with a command that does not exist
 #[when("I run perfgate run with a non-existent command")]
 async fn when_run_with_nonexistent_command(world: &mut PerfgateWorld) {
@@ -1049,6 +1253,43 @@ async fn then_compare_receipt_contains_wall_ms_delta(world: &mut PerfgateWorld) 
         receipt.deltas.contains_key(&Metric::WallMs),
         "Compare receipt should contain wall_ms delta"
     );
+}
+
+/// Assert the compare receipt wall_ms delta has significance metadata
+#[then("the compare receipt wall_ms delta should have significance metadata")]
+async fn then_compare_receipt_has_significance(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: CompareReceipt =
+        serde_json::from_str(&content).expect("Failed to parse compare receipt");
+
+    let delta = receipt
+        .deltas
+        .get(&Metric::WallMs)
+        .expect("wall_ms delta should exist");
+    assert!(
+        delta.significance.is_some(),
+        "wall_ms delta should have significance metadata, got None"
+    );
+}
+
+/// Assert the run receipt sample stdout is at most N bytes
+#[then(expr = "the run receipt sample stdout should be at most {int} bytes")]
+async fn then_run_receipt_stdout_capped(world: &mut PerfgateWorld, max_bytes: usize) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse run receipt");
+
+    for sample in &receipt.samples {
+        if let Some(ref stdout) = sample.stdout {
+            assert!(
+                stdout.len() <= max_bytes,
+                "Sample stdout ({} bytes) exceeds cap of {} bytes",
+                stdout.len(),
+                max_bytes
+            );
+        }
+    }
 }
 
 /// Assert the reasons include a specific token
@@ -2718,6 +2959,55 @@ async fn given_current_run_would_have(_world: &mut PerfgateWorld, _wall_ms: u64)
     // In real tests, we can't control what the run produces
 }
 
+/// Create a config file with multiple bench definitions
+#[given(expr = "a config file with benches {string}")]
+async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_str: String) {
+    world.ensure_temp_dir();
+
+    let bench_names: Vec<&str> = bench_names_str.split(',').map(|s| s.trim()).collect();
+    let benches = bench_names
+        .iter()
+        .map(|name| BenchConfigFile {
+            name: name.to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: success_command().iter().map(|s| s.to_string()).collect(),
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        })
+        .collect();
+
+    let config = ConfigFile {
+        defaults: DefaultsConfig {
+            repeat: Some(1),
+            warmup: Some(0),
+            threshold: Some(0.20),
+            warn_factor: Some(0.90),
+            out_dir: None,
+            baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
+        },
+        benches,
+    };
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    let toml = toml::to_string_pretty(&config).expect("Failed to serialize config");
+    fs::write(&config_path, toml).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+    world.config = Some(config);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+
+    let baselines_dir = world.temp_path().join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
+}
+
 /// Run perfgate check for a specific bench
 #[when(expr = "I run perfgate check for bench {string}")]
 async fn when_check_for_bench(world: &mut PerfgateWorld, bench_name: String) {
@@ -2869,6 +3159,29 @@ async fn when_check_for_bench_in_cockpit_mode(world: &mut PerfgateWorld, bench_n
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
+/// Run perfgate check for all benches with --bench-regex
+#[when(expr = "I run perfgate check for all benches with --bench-regex {string}")]
+async fn when_check_all_with_bench_regex(world: &mut PerfgateWorld, regex: String) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--bench-regex")
+        .arg(&regex)
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .current_dir(world.temp_path());
+
+    let output = cmd.output().expect("Failed to execute perfgate check");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
 /// Assert the run.json artifact exists
 #[then("the run.json artifact should exist")]
 async fn then_run_json_artifact_exists(world: &mut PerfgateWorld) {
@@ -2965,6 +3278,18 @@ async fn then_artifact_file_exists(world: &mut PerfgateWorld, relative_path: Str
     assert!(
         full_path.exists(),
         "Artifact should exist at {:?}",
+        full_path
+    );
+}
+
+/// Assert an artifact file does NOT exist at a path relative to artifacts directory
+#[then(expr = "the artifact file {string} should not exist")]
+async fn then_artifact_file_not_exists(world: &mut PerfgateWorld, relative_path: String) {
+    let artifacts_dir = world.artifacts_dir.as_ref().expect("Artifacts dir not set");
+    let full_path = artifacts_dir.join(PathBuf::from(relative_path));
+    assert!(
+        !full_path.exists(),
+        "Artifact should NOT exist at {:?}",
         full_path
     );
 }

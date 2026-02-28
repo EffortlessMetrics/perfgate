@@ -127,3 +127,11 @@ Feature: Markdown Command
     And the markdown file should contain "metric"
     And the markdown file should contain "baseline (median)"
     And the markdown file should contain "current (median)"
+
+  # Custom template rendering scenarios
+  Scenario: Md with custom --template flag renders from template
+    Given a compare receipt with pass verdict
+    And a markdown template file with content "CUSTOM:{{bench.name}}"
+    When I run perfgate md with template
+    Then the exit code should be 0
+    And the markdown should contain "CUSTOM:test-bench"

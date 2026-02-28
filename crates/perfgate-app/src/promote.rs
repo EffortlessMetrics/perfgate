@@ -208,4 +208,45 @@ mod tests {
         assert_eq!(result.receipt.tool.name, receipt.tool.name);
         assert_eq!(result.receipt.tool.version, receipt.tool.version);
     }
+
+    #[test]
+    fn test_promote_preserves_optional_none_fields() {
+        let mut receipt = create_test_receipt();
+        receipt.run.host.cpu_count = None;
+        receipt.run.host.memory_bytes = None;
+        receipt.run.host.hostname_hash = None;
+        receipt.bench.cwd = None;
+        receipt.bench.work_units = None;
+        receipt.bench.timeout_ms = None;
+
+        let result = PromoteUseCase::execute(PromoteRequest {
+            receipt,
+            normalize: true,
+        });
+
+        assert!(result.receipt.run.host.cpu_count.is_none());
+        assert!(result.receipt.run.host.memory_bytes.is_none());
+        assert!(result.receipt.run.host.hostname_hash.is_none());
+        assert!(result.receipt.bench.cwd.is_none());
+        assert!(result.receipt.bench.work_units.is_none());
+    }
+
+    #[test]
+    fn test_promote_normalize_idempotent() {
+        let receipt = create_test_receipt();
+
+        let first = PromoteUseCase::execute(PromoteRequest {
+            receipt,
+            normalize: true,
+        });
+
+        let second = PromoteUseCase::execute(PromoteRequest {
+            receipt: first.receipt.clone(),
+            normalize: true,
+        });
+
+        assert_eq!(first.receipt.run.id, second.receipt.run.id);
+        assert_eq!(first.receipt.run.started_at, second.receipt.run.started_at);
+        assert_eq!(first.receipt.run.ended_at, second.receipt.run.ended_at);
+    }
 }

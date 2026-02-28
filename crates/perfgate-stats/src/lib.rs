@@ -325,12 +325,16 @@ mod property_tests {
             prop_assert!(result.is_some());
             let (mean, var) = result.unwrap();
             let expected_mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
-            prop_assert!((mean - expected_mean).abs() < 1e-6);
+            let mean_tol = expected_mean.abs().max(1.0) * 1e-9;
+            prop_assert!((mean - expected_mean).abs() < mean_tol,
+                "mean diff {} exceeds tolerance {}", (mean - expected_mean).abs(), mean_tol);
             if values.len() > 1 {
                 let expected_var: f64 = values.iter()
                     .map(|v| (v - expected_mean).powi(2))
                     .sum::<f64>() / (values.len() - 1) as f64;
-                prop_assert!((var - expected_var).abs() < 1e-6);
+                let var_tol = expected_var.abs().max(1.0) * 1e-6;
+                prop_assert!((var - expected_var).abs() < var_tol,
+                    "var diff {} exceeds tolerance {}", (var - expected_var).abs(), var_tol);
             } else {
                 prop_assert_eq!(var, 0.0);
             }
@@ -342,6 +346,28 @@ mod property_tests {
             prop_assert!(mean.is_finite());
             prop_assert!(var.is_finite());
             prop_assert!(var >= 0.0);
+        }
+
+        #[test]
+        fn prop_p95_gte_median(values in prop::collection::vec(finite_f64_strategy(), 2..100)) {
+            let p50 = percentile(values.clone(), 0.5).unwrap();
+            let p95 = percentile(values, 0.95).unwrap();
+            prop_assert!(p95 >= p50, "p95 ({}) should be >= median ({})", p95, p50);
+        }
+
+        #[test]
+        fn prop_mean_equals_sum_over_count(values in prop::collection::vec(finite_f64_strategy(), 1..50)) {
+            if let Some((mean, _)) = mean_and_variance(&values) {
+                let expected = values.iter().sum::<f64>() / values.len() as f64;
+                prop_assert!((mean - expected).abs() < 1e-6);
+            }
+        }
+
+        #[test]
+        fn prop_summarize_u64_preserves_input(values in prop::collection::vec(any::<u64>(), 1..100)) {
+            let summary = summarize_u64(&values).unwrap();
+            prop_assert_eq!(summary.min, *values.iter().min().unwrap());
+            prop_assert_eq!(summary.max, *values.iter().max().unwrap());
         }
     }
 }

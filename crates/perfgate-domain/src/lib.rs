@@ -169,6 +169,18 @@ mod advanced_analytics_tests {
     }
 }
 
+/// Compute median/min/max summary from a slice of `u64` values.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_domain::summarize_u64;
+///
+/// let summary = summarize_u64(&[120, 100, 110, 105, 115]).unwrap();
+/// assert_eq!(summary.median, 110);
+/// assert_eq!(summary.min, 100);
+/// assert_eq!(summary.max, 120);
+/// ```
 pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, DomainError> {
     if values.is_empty() {
         return Err(DomainError::NoSamples);
@@ -219,6 +231,30 @@ fn median_f64_sorted(sorted: &[f64]) -> f64 {
 /// Compute perfgate stats from samples.
 ///
 /// Warmup samples (`sample.warmup == true`) are excluded.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_domain::compute_stats;
+/// use perfgate_types::Sample;
+///
+/// let samples = vec![
+///     Sample {
+///         wall_ms: 100, exit_code: 0, warmup: false, timed_out: false,
+///         cpu_ms: None, page_faults: None, ctx_switches: None,
+///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+///     },
+///     Sample {
+///         wall_ms: 120, exit_code: 0, warmup: false, timed_out: false,
+///         cpu_ms: None, page_faults: None, ctx_switches: None,
+///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+///     },
+/// ];
+///
+/// let stats = compute_stats(&samples, None).unwrap();
+/// assert_eq!(stats.wall_ms.min, 100);
+/// assert_eq!(stats.wall_ms.max, 120);
+/// ```
 pub fn compute_stats(
     samples: &[perfgate_types::Sample],
     work_units: Option<u64>,
@@ -327,6 +363,33 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// Compare stats under the provided budgets.
 ///
 /// Metrics without both baseline+current values are skipped (and therefore do not affect verdict).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_domain::compare_stats;
+/// use perfgate_types::*;
+/// use std::collections::BTreeMap;
+///
+/// let baseline = Stats {
+///     wall_ms: U64Summary { median: 100, min: 90, max: 110 },
+///     cpu_ms: None, page_faults: None, ctx_switches: None,
+///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+/// };
+/// let current = Stats {
+///     wall_ms: U64Summary { median: 105, min: 95, max: 115 },
+///     cpu_ms: None, page_faults: None, ctx_switches: None,
+///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+/// };
+///
+/// let mut budgets = BTreeMap::new();
+/// budgets.insert(Metric::WallMs, Budget {
+///     threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower,
+/// });
+///
+/// let cmp = compare_stats(&baseline, &current, &budgets).unwrap();
+/// assert_eq!(cmp.verdict.status, VerdictStatus::Pass);
+/// ```
 pub fn compare_stats(
     baseline: &Stats,
     current: &Stats,
@@ -532,6 +595,37 @@ pub struct Report {
 /// - Number of findings equals count of warn + fail status deltas
 /// - Report verdict matches compare verdict
 /// - Findings are ordered deterministically (by metric name)
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_domain::derive_report;
+/// use perfgate_types::*;
+/// use std::collections::BTreeMap;
+///
+/// let receipt = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 5, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: None, run_id: None },
+///     current_ref: CompareRef { path: None, run_id: None },
+///     budgets: BTreeMap::new(),
+///     deltas: BTreeMap::new(),
+///     verdict: Verdict {
+///         status: VerdictStatus::Pass,
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         reasons: vec![],
+///     },
+/// };
+///
+/// let report = derive_report(&receipt);
+/// assert_eq!(report.verdict, VerdictStatus::Pass);
+/// assert!(report.findings.is_empty());
+/// ```
 pub fn derive_report(receipt: &CompareReceipt) -> Report {
     let mut findings = Vec::new();
 
@@ -2409,6 +2503,275 @@ mod tests {
                     comparison.verdict.counts.fail, 0,
                     "Fail count should be 0"
                 );
+            }
+        }
+
+        // =====================================================================
+        // Property: compare_stats determinism
+        // =====================================================================
+
+        proptest! {
+            #[test]
+            fn prop_compare_stats_determinism(
+                baseline_wall in 1u64..10000,
+                current_wall in 1u64..10000,
+                (threshold, warn_threshold) in threshold_pair_strategy(),
+            ) {
+                let baseline = Stats {
+                    wall_ms: U64Summary { median: baseline_wall, min: baseline_wall, max: baseline_wall },
+                    cpu_ms: None, page_faults: None, ctx_switches: None,
+                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                };
+                let current = Stats {
+                    wall_ms: U64Summary { median: current_wall, min: current_wall, max: current_wall },
+                    cpu_ms: None, page_faults: None, ctx_switches: None,
+                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                };
+                let mut budgets = BTreeMap::new();
+                budgets.insert(Metric::WallMs, Budget {
+                    threshold, warn_threshold, direction: Direction::Lower,
+                });
+
+                let r1 = compare_stats(&baseline, &current, &budgets).unwrap();
+                let r2 = compare_stats(&baseline, &current, &budgets).unwrap();
+                prop_assert_eq!(r1, r2, "compare_stats must be deterministic");
+            }
+        }
+
+        // =====================================================================
+        // Property: compare_runs determinism
+        // =====================================================================
+
+        fn make_run_receipt_for_prop(name: &str, wall: u64) -> RunReceipt {
+            use perfgate_types::{BenchMeta, HostInfo, RUN_SCHEMA_V1, RunMeta, ToolInfo};
+            let sample = non_warmup_sample(wall);
+            let stats = compute_stats(&[sample.clone()], None).unwrap();
+            RunReceipt {
+                schema: RUN_SCHEMA_V1.to_string(),
+                tool: ToolInfo {
+                    name: "perfgate".into(),
+                    version: "test".into(),
+                },
+                run: RunMeta {
+                    id: format!("run-{name}"),
+                    started_at: "2024-01-01T00:00:00Z".into(),
+                    ended_at: "2024-01-01T00:00:01Z".into(),
+                    host: HostInfo {
+                        os: "linux".into(),
+                        arch: "x86_64".into(),
+                        cpu_count: None,
+                        memory_bytes: None,
+                        hostname_hash: None,
+                    },
+                },
+                bench: BenchMeta {
+                    name: name.into(),
+                    cwd: None,
+                    command: vec!["echo".into()],
+                    repeat: 1,
+                    warmup: 0,
+                    work_units: None,
+                    timeout_ms: None,
+                },
+                samples: vec![sample],
+                stats,
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn prop_compare_runs_determinism(
+                baseline_wall in 1u64..10000,
+                current_wall in 1u64..10000,
+                (threshold, warn_threshold) in threshold_pair_strategy(),
+            ) {
+                let baseline = make_run_receipt_for_prop("base", baseline_wall);
+                let current = make_run_receipt_for_prop("cur", current_wall);
+                let mut budgets = BTreeMap::new();
+                budgets.insert(Metric::WallMs, Budget {
+                    threshold, warn_threshold, direction: Direction::Lower,
+                });
+                let stats_map = BTreeMap::new();
+
+                let c1 = compare_runs(&baseline, &current, &budgets, &stats_map, None).unwrap();
+                let c2 = compare_runs(&baseline, &current, &budgets, &stats_map, None).unwrap();
+                prop_assert_eq!(c1, c2, "compare_runs must be deterministic");
+            }
+        }
+
+        // =====================================================================
+        // Property: derive_report consistency
+        // =====================================================================
+
+        fn make_compare_receipt(
+            deltas: BTreeMap<Metric, Delta>,
+            budgets: BTreeMap<Metric, Budget>,
+            verdict: Verdict,
+        ) -> CompareReceipt {
+            use perfgate_types::{BenchMeta, COMPARE_SCHEMA_V1, CompareRef, ToolInfo};
+            CompareReceipt {
+                schema: COMPARE_SCHEMA_V1.to_string(),
+                tool: ToolInfo {
+                    name: "perfgate".into(),
+                    version: "test".into(),
+                },
+                bench: BenchMeta {
+                    name: "bench".into(),
+                    cwd: None,
+                    command: vec!["echo".into()],
+                    repeat: 1,
+                    warmup: 0,
+                    work_units: None,
+                    timeout_ms: None,
+                },
+                baseline_ref: CompareRef {
+                    path: None,
+                    run_id: None,
+                },
+                current_ref: CompareRef {
+                    path: None,
+                    run_id: None,
+                },
+                budgets,
+                deltas,
+                verdict,
+            }
+        }
+
+        fn arb_metric_status() -> impl Strategy<Value = MetricStatus> {
+            prop_oneof![
+                Just(MetricStatus::Pass),
+                Just(MetricStatus::Warn),
+                Just(MetricStatus::Fail),
+            ]
+        }
+
+        fn arb_delta(status: MetricStatus) -> Delta {
+            Delta {
+                baseline: 100.0,
+                current: 110.0,
+                ratio: 1.1,
+                pct: 0.1,
+                regression: 0.1,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status,
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn prop_derive_report_finding_count(
+                wall_status in arb_metric_status(),
+                rss_status in arb_metric_status(),
+                cpu_status in arb_metric_status(),
+            ) {
+                let statuses = vec![
+                    (Metric::WallMs, wall_status),
+                    (Metric::MaxRssKb, rss_status),
+                    (Metric::CpuMs, cpu_status),
+                ];
+                let mut deltas = BTreeMap::new();
+                let budgets = BTreeMap::new();
+                let mut warn_count = 0u32;
+                let mut fail_count = 0u32;
+                let mut pass_count = 0u32;
+                for (m, s) in &statuses {
+                    deltas.insert(*m, arb_delta(*s));
+                    match s {
+                        MetricStatus::Pass => pass_count += 1,
+                        MetricStatus::Warn => warn_count += 1,
+                        MetricStatus::Fail => fail_count += 1,
+                    }
+                }
+                let verdict = Verdict {
+                    status: if fail_count > 0 { VerdictStatus::Fail }
+                            else if warn_count > 0 { VerdictStatus::Warn }
+                            else { VerdictStatus::Pass },
+                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count },
+                    reasons: vec![],
+                };
+                let receipt = make_compare_receipt(deltas, budgets, verdict.clone());
+                let report = derive_report(&receipt);
+
+                prop_assert_eq!(
+                    report.findings.len() as u32,
+                    warn_count + fail_count,
+                    "finding_count must equal warn_count + fail_count"
+                );
+            }
+
+            #[test]
+            fn prop_derive_report_verdict_consistency(
+                wall_status in arb_metric_status(),
+                rss_status in arb_metric_status(),
+            ) {
+                let statuses = vec![
+                    (Metric::WallMs, wall_status),
+                    (Metric::MaxRssKb, rss_status),
+                ];
+                let mut deltas = BTreeMap::new();
+                let budgets = BTreeMap::new();
+                let mut warn_count = 0u32;
+                let mut fail_count = 0u32;
+                let mut pass_count = 0u32;
+                for (m, s) in &statuses {
+                    deltas.insert(*m, arb_delta(*s));
+                    match s {
+                        MetricStatus::Pass => pass_count += 1,
+                        MetricStatus::Warn => warn_count += 1,
+                        MetricStatus::Fail => fail_count += 1,
+                    }
+                }
+                let expected_status = if fail_count > 0 { VerdictStatus::Fail }
+                    else if warn_count > 0 { VerdictStatus::Warn }
+                    else { VerdictStatus::Pass };
+                let verdict = Verdict {
+                    status: expected_status,
+                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count },
+                    reasons: vec![],
+                };
+                let receipt = make_compare_receipt(deltas, budgets, verdict);
+                let report = derive_report(&receipt);
+
+                prop_assert_eq!(
+                    report.verdict, expected_status,
+                    "report verdict must match worst finding status"
+                );
+            }
+        }
+
+        // =====================================================================
+        // Property: summarize_u64/f64 sample_count & median bounds
+        // =====================================================================
+
+        proptest! {
+            #[test]
+            fn prop_summarize_u64_median_between_min_max(
+                values in prop::collection::vec(any::<u64>(), 1..100)
+            ) {
+                let s = summarize_u64(&values).unwrap();
+                prop_assert!(s.min <= s.median, "min <= median");
+                prop_assert!(s.median <= s.max, "median <= max");
+            }
+
+            #[test]
+            fn prop_summarize_f64_median_between_min_max(
+                values in prop::collection::vec(finite_f64_strategy(), 1..100)
+            ) {
+                let s = summarize_f64(&values).unwrap();
+                prop_assert!(s.min <= s.median, "min <= median");
+                prop_assert!(s.median <= s.max, "median <= max");
+            }
+
+            #[test]
+            fn prop_compute_stats_sample_count(
+                walls in prop::collection::vec(1u64..10000, 1..50)
+            ) {
+                let samples: Vec<Sample> = walls.iter().map(|&w| non_warmup_sample(w)).collect();
+                let stats = compute_stats(&samples, None).unwrap();
+                let expected = summarize_u64(&walls).unwrap();
+                prop_assert_eq!(stats.wall_ms, expected, "stats.wall_ms must match direct summarize");
             }
         }
     }

@@ -1,0 +1,6 @@
+---
+source: crates/perfgate-render/src/lib.rs
+assertion_line: 781
+expression: "render_reason_line(&compare, \"unknown_metric_warn\")"
+---
+- unknown_metric_warn

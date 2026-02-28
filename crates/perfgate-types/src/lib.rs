@@ -345,6 +345,25 @@ pub struct F64Summary {
     pub max: f64,
 }
 
+/// Aggregated statistics for a benchmark run.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::{Stats, U64Summary};
+///
+/// let stats = Stats {
+///     wall_ms: U64Summary { median: 100, min: 90, max: 120 },
+///     cpu_ms: None,
+///     page_faults: None,
+///     ctx_switches: None,
+///     max_rss_kb: Some(U64Summary { median: 4096, min: 4000, max: 4200 }),
+///     binary_bytes: None,
+///     throughput_per_s: None,
+/// };
+/// assert_eq!(stats.wall_ms.median, 100);
+/// assert_eq!(stats.max_rss_kb.unwrap().median, 4096);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Stats {
@@ -373,6 +392,42 @@ pub struct Stats {
     pub throughput_per_s: Option<F64Summary>,
 }
 
+/// A versioned receipt from a single benchmark run (`perfgate.run.v1`).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::*;
+///
+/// let receipt = RunReceipt {
+///     schema: RUN_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     run: RunMeta {
+///         id: "run-1".into(),
+///         started_at: "2024-01-01T00:00:00Z".into(),
+///         ended_at: "2024-01-01T00:00:01Z".into(),
+///         host: HostInfo {
+///             os: "linux".into(), arch: "x86_64".into(),
+///             cpu_count: None, memory_bytes: None, hostname_hash: None,
+///         },
+///     },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into(), "hello".into()],
+///         repeat: 3, warmup: 0, work_units: None, timeout_ms: None,
+///     },
+///     samples: vec![],
+///     stats: Stats {
+///         wall_ms: U64Summary { median: 100, min: 90, max: 120 },
+///         cpu_ms: None, page_faults: None, ctx_switches: None,
+///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///     },
+/// };
+///
+/// // Serialize to JSON
+/// let json = serde_json::to_string(&receipt).unwrap();
+/// assert!(json.contains("perfgate.run.v1"));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RunReceipt {
@@ -585,6 +640,28 @@ pub struct VerdictCounts {
     pub fail: u32,
 }
 
+/// Overall verdict for a comparison, with pass/warn/fail counts.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::{Verdict, VerdictStatus, VerdictCounts};
+///
+/// let verdict = Verdict {
+///     status: VerdictStatus::Pass,
+///     counts: VerdictCounts { pass: 2, warn: 0, fail: 0 },
+///     reasons: vec![],
+/// };
+/// assert_eq!(verdict.status, VerdictStatus::Pass);
+///
+/// let failing = Verdict {
+///     status: VerdictStatus::Fail,
+///     counts: VerdictCounts { pass: 1, warn: 0, fail: 1 },
+///     reasons: vec!["wall_ms.fail".into()],
+/// };
+/// assert_eq!(failing.status, VerdictStatus::Fail);
+/// assert!(!failing.reasons.is_empty());
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Verdict {
@@ -593,6 +670,34 @@ pub struct Verdict {
     pub reasons: Vec<String>,
 }
 
+/// A versioned receipt comparing baseline vs current (`perfgate.compare.v1`).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::*;
+/// use std::collections::BTreeMap;
+///
+/// let receipt = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 5, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: Some("base.json".into()), run_id: None },
+///     current_ref: CompareRef { path: Some("cur.json".into()), run_id: None },
+///     budgets: BTreeMap::new(),
+///     deltas: BTreeMap::new(),
+///     verdict: Verdict {
+///         status: VerdictStatus::Pass,
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         reasons: vec![],
+///     },
+/// };
+/// assert_eq!(receipt.schema, "perfgate.compare.v1");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CompareReceipt {
@@ -717,6 +822,28 @@ pub struct PerfgateReport {
 // Optional config file schema
 // ----------------------------
 
+/// Top-level configuration file (`perfgate.toml`).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::ConfigFile;
+///
+/// let toml_str = r#"
+/// [defaults]
+/// repeat = 5
+/// threshold = 0.20
+///
+/// [[bench]]
+/// name = "my-bench"
+/// command = ["echo", "hello"]
+/// "#;
+///
+/// let config: ConfigFile = toml::from_str(toml_str).unwrap();
+/// assert_eq!(config.benches.len(), 1);
+/// assert_eq!(config.benches[0].name, "my-bench");
+/// assert_eq!(config.defaults.repeat, Some(5));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ConfigFile {
@@ -1120,6 +1247,736 @@ mod tests {
             }],
         };
         assert!(config.validate().is_ok());
+    }
+
+    // ---- Serde round-trip unit tests ----
+
+    #[test]
+    fn run_receipt_serde_roundtrip_typical() {
+        let receipt = RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "1.2.3".into(),
+            },
+            run: RunMeta {
+                id: "abc-123".into(),
+                started_at: "2024-06-15T10:00:00Z".into(),
+                ended_at: "2024-06-15T10:00:05Z".into(),
+                host: HostInfo {
+                    os: "linux".into(),
+                    arch: "x86_64".into(),
+                    cpu_count: Some(8),
+                    memory_bytes: Some(16_000_000_000),
+                    hostname_hash: Some("cafebabe".into()),
+                },
+            },
+            bench: BenchMeta {
+                name: "my-bench".into(),
+                cwd: Some("/tmp".into()),
+                command: vec!["echo".into(), "hello".into()],
+                repeat: 5,
+                warmup: 1,
+                work_units: Some(1000),
+                timeout_ms: Some(30000),
+            },
+            samples: vec![
+                Sample {
+                    wall_ms: 100,
+                    exit_code: 0,
+                    warmup: true,
+                    timed_out: false,
+                    cpu_ms: Some(80),
+                    page_faults: Some(10),
+                    ctx_switches: Some(5),
+                    max_rss_kb: Some(2048),
+                    binary_bytes: Some(4096),
+                    stdout: Some("ok".into()),
+                    stderr: None,
+                },
+                Sample {
+                    wall_ms: 95,
+                    exit_code: 0,
+                    warmup: false,
+                    timed_out: false,
+                    cpu_ms: Some(75),
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: Some(2000),
+                    binary_bytes: None,
+                    stdout: None,
+                    stderr: Some("warn".into()),
+                },
+            ],
+            stats: Stats {
+                wall_ms: U64Summary {
+                    median: 95,
+                    min: 90,
+                    max: 100,
+                },
+                cpu_ms: Some(U64Summary {
+                    median: 75,
+                    min: 70,
+                    max: 80,
+                }),
+                page_faults: Some(U64Summary {
+                    median: 10,
+                    min: 10,
+                    max: 10,
+                }),
+                ctx_switches: Some(U64Summary {
+                    median: 5,
+                    min: 5,
+                    max: 5,
+                }),
+                max_rss_kb: Some(U64Summary {
+                    median: 2048,
+                    min: 2000,
+                    max: 2100,
+                }),
+                binary_bytes: Some(U64Summary {
+                    median: 4096,
+                    min: 4096,
+                    max: 4096,
+                }),
+                throughput_per_s: Some(F64Summary {
+                    median: 10.526,
+                    min: 10.0,
+                    max: 11.111,
+                }),
+            },
+        };
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: RunReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
+    }
+
+    #[test]
+    fn run_receipt_serde_roundtrip_edge_empty_samples() {
+        let receipt = RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "p".into(),
+                version: "0".into(),
+            },
+            run: RunMeta {
+                id: "".into(),
+                started_at: "".into(),
+                ended_at: "".into(),
+                host: HostInfo {
+                    os: "".into(),
+                    arch: "".into(),
+                    cpu_count: None,
+                    memory_bytes: None,
+                    hostname_hash: None,
+                },
+            },
+            bench: BenchMeta {
+                name: "b".into(),
+                cwd: None,
+                command: vec![],
+                repeat: 0,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples: vec![],
+            stats: Stats {
+                wall_ms: U64Summary {
+                    median: 0,
+                    min: 0,
+                    max: 0,
+                },
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            },
+        };
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: RunReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
+    }
+
+    #[test]
+    fn run_receipt_serde_roundtrip_edge_large_values() {
+        let receipt = RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "99.99.99".into(),
+            },
+            run: RunMeta {
+                id: "max-run".into(),
+                started_at: "2099-12-31T23:59:59Z".into(),
+                ended_at: "2099-12-31T23:59:59Z".into(),
+                host: HostInfo {
+                    os: "linux".into(),
+                    arch: "aarch64".into(),
+                    cpu_count: Some(u32::MAX),
+                    memory_bytes: Some(u64::MAX),
+                    hostname_hash: None,
+                },
+            },
+            bench: BenchMeta {
+                name: "big".into(),
+                cwd: None,
+                command: vec!["run".into()],
+                repeat: u32::MAX,
+                warmup: u32::MAX,
+                work_units: Some(u64::MAX),
+                timeout_ms: Some(u64::MAX),
+            },
+            samples: vec![Sample {
+                wall_ms: u64::MAX,
+                exit_code: i32::MIN,
+                warmup: false,
+                timed_out: true,
+                cpu_ms: Some(u64::MAX),
+                page_faults: Some(u64::MAX),
+                ctx_switches: Some(u64::MAX),
+                max_rss_kb: Some(u64::MAX),
+                binary_bytes: Some(u64::MAX),
+                stdout: None,
+                stderr: None,
+            }],
+            stats: Stats {
+                wall_ms: U64Summary {
+                    median: u64::MAX,
+                    min: 0,
+                    max: u64::MAX,
+                },
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                throughput_per_s: Some(F64Summary {
+                    median: f64::MAX,
+                    min: 0.0,
+                    max: f64::MAX,
+                }),
+            },
+        };
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: RunReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
+    }
+
+    #[test]
+    fn compare_receipt_serde_roundtrip_typical() {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.18,
+                direction: Direction::Lower,
+            },
+        );
+        budgets.insert(
+            Metric::MaxRssKb,
+            Budget {
+                threshold: 0.15,
+                warn_threshold: 0.1,
+                direction: Direction::Lower,
+            },
+        );
+
+        let mut deltas = BTreeMap::new();
+        deltas.insert(
+            Metric::WallMs,
+            Delta {
+                baseline: 1000.0,
+                current: 1100.0,
+                ratio: 1.1,
+                pct: 0.1,
+                regression: 0.1,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Pass,
+            },
+        );
+        deltas.insert(
+            Metric::MaxRssKb,
+            Delta {
+                baseline: 2048.0,
+                current: 2500.0,
+                ratio: 1.2207,
+                pct: 0.2207,
+                regression: 0.2207,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Fail,
+            },
+        );
+
+        let receipt = CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "1.0.0".into(),
+            },
+            bench: BenchMeta {
+                name: "test".into(),
+                cwd: None,
+                command: vec!["echo".into()],
+                repeat: 5,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: Some("base.json".into()),
+                run_id: Some("r1".into()),
+            },
+            current_ref: CompareRef {
+                path: Some("cur.json".into()),
+                run_id: Some("r2".into()),
+            },
+            budgets,
+            deltas,
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 0,
+                    fail: 1,
+                },
+                reasons: vec!["max_rss_kb_fail".into()],
+            },
+        };
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: CompareReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
+    }
+
+    #[test]
+    fn compare_receipt_serde_roundtrip_edge_empty_maps() {
+        let receipt = CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "p".into(),
+                version: "0".into(),
+            },
+            bench: BenchMeta {
+                name: "b".into(),
+                cwd: None,
+                command: vec![],
+                repeat: 0,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            budgets: BTreeMap::new(),
+            deltas: BTreeMap::new(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 0,
+                },
+                reasons: vec![],
+            },
+        };
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: CompareReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
+    }
+
+    #[test]
+    fn report_receipt_serde_roundtrip() {
+        let report = PerfgateReport {
+            report_type: REPORT_SCHEMA_V1.to_string(),
+            verdict: Verdict {
+                status: VerdictStatus::Warn,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 1,
+                    fail: 0,
+                },
+                reasons: vec!["wall_ms_warn".into()],
+            },
+            compare: None,
+            findings: vec![ReportFinding {
+                check_id: CHECK_ID_BUDGET.into(),
+                code: FINDING_CODE_METRIC_WARN.into(),
+                severity: Severity::Warn,
+                message: "Performance regression near threshold for wall_ms".into(),
+                data: Some(FindingData {
+                    metric_name: "wall_ms".into(),
+                    baseline: 100.0,
+                    current: 119.0,
+                    regression_pct: 0.19,
+                    threshold: 0.2,
+                    direction: Direction::Lower,
+                }),
+            }],
+            summary: ReportSummary {
+                pass_count: 1,
+                warn_count: 1,
+                fail_count: 0,
+                total_count: 2,
+            },
+        };
+        let json = serde_json::to_string(&report).unwrap();
+        let back: PerfgateReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
+
+    #[test]
+    fn config_file_serde_roundtrip_typical() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                repeat: Some(10),
+                warmup: Some(2),
+                threshold: Some(0.2),
+                warn_factor: Some(0.9),
+                out_dir: Some("artifacts/perfgate".into()),
+                baseline_dir: Some("baselines".into()),
+                baseline_pattern: Some("baselines/{bench}.json".into()),
+                markdown_template: None,
+            },
+            benches: vec![BenchConfigFile {
+                name: "my-bench".into(),
+                cwd: Some("/home/user/project".into()),
+                work: Some(1000),
+                timeout: Some("5s".into()),
+                command: vec!["cargo".into(), "bench".into()],
+                repeat: Some(20),
+                warmup: Some(3),
+                metrics: Some(vec![Metric::WallMs, Metric::MaxRssKb]),
+                budgets: Some({
+                    let mut m = BTreeMap::new();
+                    m.insert(
+                        Metric::WallMs,
+                        BudgetOverride {
+                            threshold: Some(0.15),
+                            direction: Some(Direction::Lower),
+                            warn_factor: Some(0.85),
+                            statistic: Some(MetricStatistic::P95),
+                        },
+                    );
+                    m
+                }),
+            }],
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: ConfigFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, back);
+    }
+
+    #[test]
+    fn config_file_serde_roundtrip_edge_empty() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![],
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: ConfigFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, back);
+    }
+
+    #[test]
+    fn stats_serde_roundtrip_all_fields() {
+        let stats = Stats {
+            wall_ms: U64Summary {
+                median: 500,
+                min: 100,
+                max: 900,
+            },
+            cpu_ms: Some(U64Summary {
+                median: 400,
+                min: 80,
+                max: 800,
+            }),
+            page_faults: Some(U64Summary {
+                median: 50,
+                min: 10,
+                max: 100,
+            }),
+            ctx_switches: Some(U64Summary {
+                median: 20,
+                min: 5,
+                max: 40,
+            }),
+            max_rss_kb: Some(U64Summary {
+                median: 4096,
+                min: 2048,
+                max: 8192,
+            }),
+            binary_bytes: Some(U64Summary {
+                median: 1024,
+                min: 1024,
+                max: 1024,
+            }),
+            throughput_per_s: Some(F64Summary {
+                median: 2.0,
+                min: 1.111,
+                max: 10.0,
+            }),
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        let back: Stats = serde_json::from_str(&json).unwrap();
+        assert_eq!(stats, back);
+    }
+
+    #[test]
+    fn stats_serde_roundtrip_edge_zeros() {
+        let stats = Stats {
+            wall_ms: U64Summary {
+                median: 0,
+                min: 0,
+                max: 0,
+            },
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: None,
+            binary_bytes: None,
+            throughput_per_s: Some(F64Summary {
+                median: 0.0,
+                min: 0.0,
+                max: 0.0,
+            }),
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        let back: Stats = serde_json::from_str(&json).unwrap();
+        assert_eq!(stats, back);
+    }
+
+    #[test]
+    fn backward_compat_run_receipt_missing_host_extensions() {
+        // Old format: host has only os/arch, no cpu_count/memory_bytes/hostname_hash
+        let json = r#"{
+            "schema": "perfgate.run.v1",
+            "tool": {"name": "perfgate", "version": "0.0.1"},
+            "run": {
+                "id": "old-run",
+                "started_at": "2023-06-01T00:00:00Z",
+                "ended_at": "2023-06-01T00:01:00Z",
+                "host": {"os": "macos", "arch": "aarch64"}
+            },
+            "bench": {
+                "name": "legacy",
+                "command": ["./bench"],
+                "repeat": 1,
+                "warmup": 0
+            },
+            "samples": [{"wall_ms": 50, "exit_code": 0}],
+            "stats": {
+                "wall_ms": {"median": 50, "min": 50, "max": 50}
+            }
+        }"#;
+
+        let receipt: RunReceipt =
+            serde_json::from_str(json).expect("old format without host extensions");
+        assert_eq!(receipt.run.host.os, "macos");
+        assert_eq!(receipt.run.host.arch, "aarch64");
+        assert!(receipt.run.host.cpu_count.is_none());
+        assert!(receipt.run.host.memory_bytes.is_none());
+        assert!(receipt.run.host.hostname_hash.is_none());
+        assert_eq!(receipt.bench.name, "legacy");
+        assert_eq!(receipt.samples.len(), 1);
+        assert!(!receipt.samples[0].warmup);
+        assert!(!receipt.samples[0].timed_out);
+    }
+
+    #[test]
+    fn backward_compat_compare_receipt_without_significance() {
+        let json = r#"{
+            "schema": "perfgate.compare.v1",
+            "tool": {"name": "perfgate", "version": "0.0.1"},
+            "bench": {
+                "name": "old-cmp",
+                "command": ["echo"],
+                "repeat": 3,
+                "warmup": 0
+            },
+            "baseline_ref": {"path": "base.json"},
+            "current_ref": {"path": "cur.json"},
+            "budgets": {
+                "wall_ms": {"threshold": 0.2, "warn_threshold": 0.1, "direction": "lower"}
+            },
+            "deltas": {
+                "wall_ms": {
+                    "baseline": 100.0,
+                    "current": 105.0,
+                    "ratio": 1.05,
+                    "pct": 0.05,
+                    "regression": 0.05,
+                    "status": "pass"
+                }
+            },
+            "verdict": {
+                "status": "pass",
+                "counts": {"pass": 1, "warn": 0, "fail": 0},
+                "reasons": []
+            }
+        }"#;
+
+        let receipt: CompareReceipt =
+            serde_json::from_str(json).expect("compare without significance");
+        assert_eq!(receipt.deltas.len(), 1);
+        let delta = receipt.deltas.get(&Metric::WallMs).unwrap();
+        assert!(delta.significance.is_none());
+        assert_eq!(delta.statistic, MetricStatistic::Median); // default
+        assert_eq!(delta.status, MetricStatus::Pass);
+    }
+
+    #[test]
+    fn backward_compat_unknown_fields_are_ignored() {
+        let json = r#"{
+            "schema": "perfgate.run.v1",
+            "tool": {"name": "perfgate", "version": "0.1.0"},
+            "run": {
+                "id": "test",
+                "started_at": "2024-01-01T00:00:00Z",
+                "ended_at": "2024-01-01T00:01:00Z",
+                "host": {"os": "linux", "arch": "x86_64", "future_field": "ignored"}
+            },
+            "bench": {
+                "name": "test",
+                "command": ["echo"],
+                "repeat": 1,
+                "warmup": 0,
+                "some_new_option": true
+            },
+            "samples": [{"wall_ms": 10, "exit_code": 0, "extra_metric": 42}],
+            "stats": {
+                "wall_ms": {"median": 10, "min": 10, "max": 10},
+                "new_metric": {"median": 1, "min": 1, "max": 1}
+            },
+            "new_top_level_field": "should be ignored"
+        }"#;
+
+        let receipt: RunReceipt =
+            serde_json::from_str(json).expect("unknown fields should be ignored");
+        assert_eq!(receipt.bench.name, "test");
+        assert_eq!(receipt.samples.len(), 1);
+    }
+
+    #[test]
+    fn roundtrip_run_receipt_all_optionals_none() {
+        let receipt = RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "0.1.0".into(),
+            },
+            run: RunMeta {
+                id: "rt".into(),
+                started_at: "2024-01-01T00:00:00Z".into(),
+                ended_at: "2024-01-01T00:01:00Z".into(),
+                host: HostInfo {
+                    os: "linux".into(),
+                    arch: "x86_64".into(),
+                    cpu_count: None,
+                    memory_bytes: None,
+                    hostname_hash: None,
+                },
+            },
+            bench: BenchMeta {
+                name: "minimal".into(),
+                cwd: None,
+                command: vec!["true".into()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples: vec![Sample {
+                wall_ms: 1,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            }],
+            stats: Stats {
+                wall_ms: U64Summary {
+                    median: 1,
+                    min: 1,
+                    max: 1,
+                },
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            },
+        };
+
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: RunReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
+
+        // Verify optional fields are omitted from JSON
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let host = &value["run"]["host"];
+        assert!(host.get("cpu_count").is_none());
+        assert!(host.get("memory_bytes").is_none());
+        assert!(host.get("hostname_hash").is_none());
+    }
+
+    #[test]
+    fn roundtrip_compare_receipt_all_optionals_none() {
+        let receipt = CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "0.1.0".into(),
+            },
+            bench: BenchMeta {
+                name: "minimal".into(),
+                cwd: None,
+                command: vec!["true".into()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            budgets: BTreeMap::new(),
+            deltas: BTreeMap::new(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 0,
+                },
+                reasons: vec![],
+            },
+        };
+
+        let json = serde_json::to_string(&receipt).unwrap();
+        let back: CompareReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(receipt, back);
     }
 
     /// Test backward compatibility: full RunReceipt without new host fields parses

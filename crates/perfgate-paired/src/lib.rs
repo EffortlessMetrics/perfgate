@@ -932,10 +932,41 @@ mod tests {
 #[cfg(test)]
 mod property_tests {
     use super::*;
+    use perfgate_types::{PairedSample, PairedSampleHalf};
     use proptest::prelude::*;
 
     fn finite_f64_strategy() -> impl Strategy<Value = f64> {
         -1e100f64..1e100f64
+    }
+
+    fn make_paired_samples(baseline: &[u64], current: &[u64]) -> Vec<PairedSample> {
+        baseline
+            .iter()
+            .zip(current.iter())
+            .enumerate()
+            .map(|(i, (&b, &c))| PairedSample {
+                pair_index: i as u32,
+                warmup: false,
+                baseline: PairedSampleHalf {
+                    wall_ms: b,
+                    exit_code: 0,
+                    timed_out: false,
+                    max_rss_kb: None,
+                    stdout: None,
+                    stderr: None,
+                },
+                current: PairedSampleHalf {
+                    wall_ms: c,
+                    exit_code: 0,
+                    timed_out: false,
+                    max_rss_kb: None,
+                    stdout: None,
+                    stderr: None,
+                },
+                wall_diff_ms: c as i64 - b as i64,
+                rss_diff_kb: None,
+            })
+            .collect()
     }
 
     proptest! {
@@ -1108,6 +1139,70 @@ mod property_tests {
 
             let is_significant = comparison.ci_95_lower > 0.0 || comparison.ci_95_upper < 0.0;
             prop_assert_eq!(comparison.is_significant, is_significant);
+        }
+
+        #[test]
+        fn prop_paired_stats_deterministic(
+            baseline in prop::collection::vec(1u64..10000u64, 5..50),
+            current in prop::collection::vec(1u64..10000u64, 5..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let samples = make_paired_samples(&baseline[..len], &current[..len]);
+            let r1 = compute_paired_stats(&samples, None);
+            let r2 = compute_paired_stats(&samples, None);
+            match (r1, r2) {
+                (Ok(s1), Ok(s2)) => {
+                    prop_assert_eq!(s1.wall_diff_ms.mean, s2.wall_diff_ms.mean);
+                    prop_assert_eq!(s1.wall_diff_ms.median, s2.wall_diff_ms.median);
+                    prop_assert_eq!(s1.wall_diff_ms.std_dev, s2.wall_diff_ms.std_dev);
+                    prop_assert_eq!(s1.wall_diff_ms.count, s2.wall_diff_ms.count);
+                }
+                (Err(_), Err(_)) => {}
+                _ => prop_assert!(false, "both calls must produce the same result"),
+            }
+        }
+
+        #[test]
+        fn prop_ci_contains_mean_diff_from_samples(
+            baseline in prop::collection::vec(1u64..10000u64, 5..50),
+            current in prop::collection::vec(1u64..10000u64, 5..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let samples = make_paired_samples(&baseline[..len], &current[..len]);
+            if let Ok(stats) = compute_paired_stats(&samples, None) {
+                let cmp = compare_paired_stats(&stats);
+                prop_assert!(
+                    cmp.ci_95_lower <= cmp.mean_diff_ms,
+                    "CI lower {} must be <= mean {}",
+                    cmp.ci_95_lower, cmp.mean_diff_ms
+                );
+                prop_assert!(
+                    cmp.ci_95_upper >= cmp.mean_diff_ms,
+                    "CI upper {} must be >= mean {}",
+                    cmp.ci_95_upper, cmp.mean_diff_ms
+                );
+            }
+        }
+
+        #[test]
+        fn prop_reversing_negates_mean_diff(
+            baseline in prop::collection::vec(1u64..10000u64, 5..50),
+            current in prop::collection::vec(1u64..10000u64, 5..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let fwd = make_paired_samples(&baseline[..len], &current[..len]);
+            let rev = make_paired_samples(&current[..len], &baseline[..len]);
+            if let (Ok(fwd_stats), Ok(rev_stats)) =
+                (compute_paired_stats(&fwd, None), compute_paired_stats(&rev, None))
+            {
+                let fwd_cmp = compare_paired_stats(&fwd_stats);
+                let rev_cmp = compare_paired_stats(&rev_stats);
+                prop_assert!(
+                    (fwd_cmp.mean_diff_ms + rev_cmp.mean_diff_ms).abs() < 1e-10,
+                    "reversing must negate mean diff: {} vs {}",
+                    fwd_cmp.mean_diff_ms, rev_cmp.mean_diff_ms
+                );
+            }
         }
     }
 }

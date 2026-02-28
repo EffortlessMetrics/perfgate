@@ -388,6 +388,118 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_report_from_pass() {
+        let compare = create_pass_compare_receipt();
+        let result = ReportUseCase::execute(ReportRequest { compare });
+        insta::assert_json_snapshot!("report_pass", serde_json::to_value(&result.report).unwrap());
+    }
+
+    #[test]
+    fn snapshot_report_from_warn() {
+        let compare = create_warn_compare_receipt();
+        let result = ReportUseCase::execute(ReportRequest { compare });
+        insta::assert_json_snapshot!("report_warn", serde_json::to_value(&result.report).unwrap());
+    }
+
+    #[test]
+    fn snapshot_report_from_fail() {
+        let compare = create_fail_compare_receipt();
+        let result = ReportUseCase::execute(ReportRequest { compare });
+        insta::assert_json_snapshot!("report_fail", serde_json::to_value(&result.report).unwrap());
+    }
+
+    #[test]
+    fn snapshot_report_multi_metric_findings() {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.18,
+                direction: Direction::Lower,
+            },
+        );
+        budgets.insert(
+            Metric::MaxRssKb,
+            Budget {
+                threshold: 0.15,
+                warn_threshold: 0.135,
+                direction: Direction::Lower,
+            },
+        );
+
+        let mut deltas = BTreeMap::new();
+        deltas.insert(
+            Metric::WallMs,
+            Delta {
+                baseline: 1000.0,
+                current: 1190.0,
+                ratio: 1.19,
+                pct: 0.19,
+                regression: 0.19,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Warn,
+            },
+        );
+        deltas.insert(
+            Metric::MaxRssKb,
+            Delta {
+                baseline: 1024.0,
+                current: 1280.0,
+                ratio: 1.25,
+                pct: 0.25,
+                regression: 0.25,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Fail,
+            },
+        );
+
+        let compare = CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            bench: BenchMeta {
+                name: "multi-metric".to_string(),
+                cwd: None,
+                command: vec!["bench".to_string()],
+                repeat: 10,
+                warmup: 2,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: Some("baseline.json".to_string()),
+                run_id: Some("base-001".to_string()),
+            },
+            current_ref: CompareRef {
+                path: Some("current.json".to_string()),
+                run_id: Some("cur-001".to_string()),
+            },
+            budgets,
+            deltas,
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 1,
+                },
+                reasons: vec!["wall_ms_warn".to_string(), "max_rss_kb_fail".to_string()],
+            },
+        };
+
+        let result = ReportUseCase::execute(ReportRequest { compare });
+        insta::assert_json_snapshot!(
+            "report_multi_metric",
+            serde_json::to_value(&result.report).unwrap()
+        );
+    }
+
+    #[test]
     fn test_report_is_deterministic() {
         let compare = create_fail_compare_receipt();
 

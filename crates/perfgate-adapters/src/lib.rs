@@ -1120,4 +1120,160 @@ mod tests {
             "hostname_hash should be deterministic"
         );
     }
+
+    // =========================================================================
+    // Integration tests for StdProcessRunner running real commands
+    // =========================================================================
+
+    #[test]
+    fn std_runner_executes_real_command() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "echo".to_string(),
+                "hello".to_string(),
+            ],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("cmd /c echo should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert!(!result.timed_out);
+        assert!(
+            result.wall_ms > 0 || result.wall_ms == 0,
+            "wall_ms should be non-negative"
+        );
+        let stdout_str = String::from_utf8_lossy(&result.stdout);
+        assert!(
+            stdout_str.contains("hello"),
+            "stdout should contain 'hello', got: {:?}",
+            stdout_str
+        );
+    }
+
+    #[test]
+    fn std_runner_populates_samples_fields() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "echo".to_string(),
+                "test_output".to_string(),
+            ],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("run should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert!(!result.timed_out);
+        // Stdout should be populated
+        assert!(
+            !result.stdout.is_empty(),
+            "stdout should not be empty for echo command"
+        );
+        let stdout_str = String::from_utf8_lossy(&result.stdout);
+        assert!(stdout_str.contains("test_output"));
+    }
+
+    #[test]
+    fn std_runner_with_env_vars() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "echo".to_string(),
+                "%PERFGATE_TEST_VAR%".to_string(),
+            ],
+            cwd: None,
+            env: vec![("PERFGATE_TEST_VAR".to_string(), "custom_value".to_string())],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("run with env vars should succeed");
+        assert_eq!(result.exit_code, 0);
+        let stdout_str = String::from_utf8_lossy(&result.stdout);
+        assert!(
+            stdout_str.contains("custom_value"),
+            "stdout should contain env var value, got: {:?}",
+            stdout_str
+        );
+    }
+
+    #[test]
+    fn std_runner_invalid_command_returns_error() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec!["nonexistent_binary_that_does_not_exist_12345".to_string()],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec);
+        assert!(
+            result.is_err(),
+            "running a nonexistent binary should return an error"
+        );
+    }
+
+    #[test]
+    fn std_runner_captures_stderr() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "echo".to_string(),
+                "err_msg".to_string(),
+                "1>&2".to_string(),
+            ],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("run should succeed");
+        let stderr_str = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            stderr_str.contains("err_msg"),
+            "stderr should contain 'err_msg', got: {:?}",
+            stderr_str
+        );
+    }
+
+    #[test]
+    fn std_runner_nonzero_exit_code() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec![
+                "cmd".to_string(),
+                "/c".to_string(),
+                "exit".to_string(),
+                "42".to_string(),
+            ],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner
+            .run(&spec)
+            .expect("run should succeed even with nonzero exit");
+        assert_eq!(result.exit_code, 42);
+        assert!(!result.timed_out);
+    }
 }

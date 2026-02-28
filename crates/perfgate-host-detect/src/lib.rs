@@ -398,6 +398,113 @@ mod tests {
         let mismatch = detect_host_mismatch(&baseline, &current);
         assert!(mismatch.is_some());
     }
+
+    #[test]
+    fn identical_fully_populated_no_mismatch() {
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: Some(8),
+            memory_bytes: Some(16 * 1024 * 1024 * 1024),
+            hostname_hash: Some("abc123def456".to_string()),
+        };
+        assert!(detect_host_mismatch(&host, &host.clone()).is_none());
+    }
+
+    #[test]
+    fn equal_cpu_count_no_mismatch() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(16);
+        current.cpu_count = Some(16);
+        assert!(detect_host_mismatch(&baseline, &current).is_none());
+    }
+
+    #[test]
+    fn equal_memory_no_mismatch() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.memory_bytes = Some(32 * 1024 * 1024 * 1024);
+        current.memory_bytes = Some(32 * 1024 * 1024 * 1024);
+        assert!(detect_host_mismatch(&baseline, &current).is_none());
+    }
+
+    #[test]
+    fn os_mismatch_reason_contains_both_values() {
+        let baseline = make_host_info("macos", "x86_64");
+        let current = make_host_info("linux", "x86_64");
+        let reasons = detect_host_mismatch(&baseline, &current).unwrap().reasons;
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("macos"));
+        assert!(reasons[0].contains("linux"));
+    }
+
+    #[test]
+    fn arch_mismatch_reason_contains_both_values() {
+        let baseline = make_host_info("linux", "arm64");
+        let current = make_host_info("linux", "x86_64");
+        let reasons = detect_host_mismatch(&baseline, &current).unwrap().reasons;
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("arm64"));
+        assert!(reasons[0].contains("x86_64"));
+    }
+
+    #[test]
+    fn cpu_mismatch_reason_contains_counts_and_ratio() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(2);
+        current.cpu_count = Some(8);
+        let reasons = detect_host_mismatch(&baseline, &current).unwrap().reasons;
+        assert!(reasons[0].contains("baseline=2"));
+        assert!(reasons[0].contains("current=8"));
+        assert!(reasons[0].contains("4.0x"));
+    }
+
+    #[test]
+    fn hostname_mismatch_only_one_reason() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.hostname_hash = Some("aaa".to_string());
+        current.hostname_hash = Some("bbb".to_string());
+        let reasons = detect_host_mismatch(&baseline, &current).unwrap().reasons;
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("hostname mismatch"));
+    }
+
+    #[test]
+    fn multiple_mismatches_os_and_arch() {
+        let baseline = make_host_info("linux", "x86_64");
+        let current = make_host_info("windows", "aarch64");
+        let reasons = detect_host_mismatch(&baseline, &current).unwrap().reasons;
+        assert_eq!(reasons.len(), 2);
+        assert!(reasons.iter().any(|r| r.contains("OS mismatch")));
+        assert!(reasons.iter().any(|r| r.contains("architecture mismatch")));
+    }
+
+    #[test]
+    fn all_none_optional_fields_no_mismatch() {
+        let baseline = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let current = baseline.clone();
+        assert!(detect_host_mismatch(&baseline, &current).is_none());
+    }
+
+    #[test]
+    fn both_zero_cpu_and_zero_memory_no_mismatch() {
+        let mut baseline = make_host_info("linux", "x86_64");
+        let mut current = make_host_info("linux", "x86_64");
+        baseline.cpu_count = Some(0);
+        current.cpu_count = Some(0);
+        baseline.memory_bytes = Some(0);
+        current.memory_bytes = Some(0);
+        assert!(detect_host_mismatch(&baseline, &current).is_none());
+    }
 }
 
 #[cfg(test)]

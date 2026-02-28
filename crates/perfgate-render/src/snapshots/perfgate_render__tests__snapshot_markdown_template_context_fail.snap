@@ -1,0 +1,98 @@
+---
+source: crates/perfgate-render/src/lib.rs
+assertion_line: 799
+expression: ctx
+---
+{
+  "bench": {
+    "command": [
+      "true"
+    ],
+    "name": "bench",
+    "repeat": 1,
+    "warmup": 0
+  },
+  "compare": {
+    "baseline_ref": {},
+    "bench": {
+      "command": [
+        "true"
+      ],
+      "name": "bench",
+      "repeat": 1,
+      "warmup": 0
+    },
+    "budgets": {
+      "wall_ms": {
+        "direction": "lower",
+        "threshold": 0.2,
+        "warn_threshold": 0.1
+      }
+    },
+    "current_ref": {},
+    "deltas": {
+      "wall_ms": {
+        "baseline": 100.0,
+        "current": 115.0,
+        "pct": 0.15,
+        "ratio": 1.15,
+        "regression": 0.15,
+        "status": "fail"
+      }
+    },
+    "schema": "perfgate.compare.v1",
+    "tool": {
+      "name": "perfgate",
+      "version": "0.1.0"
+    },
+    "verdict": {
+      "counts": {
+        "fail": 1,
+        "pass": 0,
+        "warn": 0
+      },
+      "reasons": [
+        "wall_ms_fail"
+      ],
+      "status": "fail"
+    }
+  },
+  "header": "❌ perfgate: fail",
+  "reasons": [
+    "wall_ms_fail"
+  ],
+  "rows": [
+    {
+      "baseline": "100",
+      "budget_direction": "lower",
+      "budget_threshold_pct": 20.0,
+      "current": "115",
+      "delta_pct": "+15.00%",
+      "metric": "wall_ms",
+      "metric_with_statistic": "wall_ms",
+      "raw": {
+        "baseline": 100.0,
+        "current": 115.0,
+        "pct": 0.15,
+        "regression": 0.15,
+        "significance": null,
+        "statistic": "median"
+      },
+      "statistic": "median",
+      "status": "fail",
+      "status_icon": "❌",
+      "unit": "ms"
+    }
+  ],
+  "verdict": {
+    "counts": {
+      "fail": 1,
+      "pass": 0,
+      "warn": 0
+    },
+    "reasons": [
+      "wall_ms_fail"
+    ],
+    "status": "fail"
+  }
+}

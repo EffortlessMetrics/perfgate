@@ -442,6 +442,53 @@ mod tests {
             }
 
             #[test]
+            fn prop_u64_p_value_in_range(
+                baseline in prop::collection::vec(1u64..10000u64, 5..50),
+                current in prop::collection::vec(1u64..10000u64, 5..50),
+            ) {
+                let baseline_f64: Vec<f64> = baseline.iter().map(|&v| v as f64).collect();
+                let current_f64: Vec<f64> = current.iter().map(|&v| v as f64).collect();
+                if let Some(sig) = compute_significance(&baseline_f64, &current_f64, 0.05, 5) {
+                    prop_assert!(sig.p_value >= 0.0, "p-value must be >= 0");
+                    prop_assert!(sig.p_value <= 1.0, "p-value must be <= 1");
+                }
+            }
+
+            #[test]
+            fn prop_u64_identical_distributions_not_significant(
+                values in prop::collection::vec(1u64..10000u64, 5..50),
+            ) {
+                let values_f64: Vec<f64> = values.iter().map(|&v| v as f64).collect();
+                if let Some(sig) = compute_significance(&values_f64, &values_f64, 0.05, 5) {
+                    prop_assert!(!sig.significant, "identical distributions should not be significant");
+                }
+            }
+
+            #[test]
+            fn prop_u64_significance_deterministic(
+                baseline in prop::collection::vec(1u64..10000u64, 5..50),
+                current in prop::collection::vec(1u64..10000u64, 5..50),
+            ) {
+                let baseline_f64: Vec<f64> = baseline.iter().map(|&v| v as f64).collect();
+                let current_f64: Vec<f64> = current.iter().map(|&v| v as f64).collect();
+                let r1 = compute_significance(&baseline_f64, &current_f64, 0.05, 5);
+                let r2 = compute_significance(&baseline_f64, &current_f64, 0.05, 5);
+                prop_assert_eq!(r1, r2, "significance test must be deterministic");
+            }
+
+            #[test]
+            fn prop_u64_very_different_distributions_significant(
+                values in prop::collection::vec(1u64..10000u64, 5..50),
+            ) {
+                let baseline_f64: Vec<f64> = values.iter().map(|&v| v as f64).collect();
+                // Offset must dwarf std_dev of uniform(1,10000) ≈ 2887 to guarantee significance.
+                let current_f64: Vec<f64> = values.iter().map(|&v| v as f64 + 1_000_000.0).collect();
+                if let Some(sig) = compute_significance(&baseline_f64, &current_f64, 0.05, 5) {
+                    prop_assert!(sig.significant, "very different distributions must be significant");
+                }
+            }
+
+            #[test]
             fn prop_variance_bessel_correction(values in prop::collection::vec(0.0f64..100.0, 3..50)) {
                 let result = mean_and_variance(&values);
 

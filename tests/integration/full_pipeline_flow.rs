@@ -6,12 +6,12 @@
 //! - RunReceipt → CSV export → structure verification
 
 use perfgate_budget::evaluate_budget;
-use perfgate_domain::{compute_stats, compare_stats};
+use perfgate_domain::{compare_stats, compute_stats};
 use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_sensor::SensorReportBuilder;
 use perfgate_types::{
-    BenchMeta, Budget, Direction, HostInfo, Metric, MetricStatus, PerfgateReport, RUN_SCHEMA_V1,
-    REPORT_SCHEMA_V1, ReportSummary, RunMeta, RunReceipt, Sample, SensorVerdictStatus, ToolInfo,
+    BenchMeta, Budget, Direction, HostInfo, Metric, MetricStatus, PerfgateReport, REPORT_SCHEMA_V1,
+    RUN_SCHEMA_V1, ReportSummary, RunMeta, RunReceipt, Sample, SensorVerdictStatus, ToolInfo,
     Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
@@ -71,8 +71,14 @@ fn make_run_receipt_from_samples(samples: Vec<Sample>) -> RunReceipt {
 #[test]
 fn full_pipeline_pass_verdict() {
     // 1. Create samples
-    let baseline_samples: Vec<Sample> = vec![100, 102, 98, 101, 99].into_iter().map(make_sample).collect();
-    let current_samples: Vec<Sample> = vec![103, 105, 101, 104, 102].into_iter().map(make_sample).collect();
+    let baseline_samples: Vec<Sample> = vec![100, 102, 98, 101, 99]
+        .into_iter()
+        .map(make_sample)
+        .collect();
+    let current_samples: Vec<Sample> = vec![103, 105, 101, 104, 102]
+        .into_iter()
+        .map(make_sample)
+        .collect();
 
     // 2. Compute stats via compute_stats (which uses summarize_u64 internally)
     let baseline_stats = compute_stats(&baseline_samples, None).unwrap();
@@ -157,7 +163,12 @@ fn full_pipeline_fail_verdict() {
 
     assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
     assert_eq!(comparison.verdict.counts.fail, 1);
-    assert!(comparison.verdict.reasons.contains(&"wall_ms_fail".to_string()));
+    assert!(
+        comparison
+            .verdict
+            .reasons
+            .contains(&"wall_ms_fail".to_string())
+    );
 
     let delta = comparison.deltas.get(&Metric::WallMs).unwrap();
     assert_eq!(delta.status, MetricStatus::Fail);
@@ -167,12 +178,60 @@ fn full_pipeline_fail_verdict() {
 #[test]
 fn full_pipeline_multiple_metrics() {
     let baseline_samples: Vec<Sample> = vec![
-        Sample { wall_ms: 100, exit_code: 0, warmup: false, timed_out: false, cpu_ms: None, page_faults: None, ctx_switches: None, max_rss_kb: Some(1000), binary_bytes: None, stdout: None, stderr: None },
-        Sample { wall_ms: 100, exit_code: 0, warmup: false, timed_out: false, cpu_ms: None, page_faults: None, ctx_switches: None, max_rss_kb: Some(1000), binary_bytes: None, stdout: None, stderr: None },
+        Sample {
+            wall_ms: 100,
+            exit_code: 0,
+            warmup: false,
+            timed_out: false,
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(1000),
+            binary_bytes: None,
+            stdout: None,
+            stderr: None,
+        },
+        Sample {
+            wall_ms: 100,
+            exit_code: 0,
+            warmup: false,
+            timed_out: false,
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(1000),
+            binary_bytes: None,
+            stdout: None,
+            stderr: None,
+        },
     ];
     let current_samples: Vec<Sample> = vec![
-        Sample { wall_ms: 105, exit_code: 0, warmup: false, timed_out: false, cpu_ms: None, page_faults: None, ctx_switches: None, max_rss_kb: Some(1500), binary_bytes: None, stdout: None, stderr: None },
-        Sample { wall_ms: 105, exit_code: 0, warmup: false, timed_out: false, cpu_ms: None, page_faults: None, ctx_switches: None, max_rss_kb: Some(1500), binary_bytes: None, stdout: None, stderr: None },
+        Sample {
+            wall_ms: 105,
+            exit_code: 0,
+            warmup: false,
+            timed_out: false,
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(1500),
+            binary_bytes: None,
+            stdout: None,
+            stderr: None,
+        },
+        Sample {
+            wall_ms: 105,
+            exit_code: 0,
+            warmup: false,
+            timed_out: false,
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(1500),
+            binary_bytes: None,
+            stdout: None,
+            stderr: None,
+        },
     ];
 
     let baseline_stats = compute_stats(&baseline_samples, None).unwrap();
@@ -181,19 +240,33 @@ fn full_pipeline_multiple_metrics() {
     let mut budgets = BTreeMap::new();
     budgets.insert(
         Metric::WallMs,
-        Budget { threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower },
+        Budget {
+            threshold: 0.20,
+            warn_threshold: 0.10,
+            direction: Direction::Lower,
+        },
     );
     budgets.insert(
         Metric::MaxRssKb,
-        Budget { threshold: 0.30, warn_threshold: 0.15, direction: Direction::Lower },
+        Budget {
+            threshold: 0.30,
+            warn_threshold: 0.15,
+            direction: Direction::Lower,
+        },
     );
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
     // wall_ms: 5% regression -> pass
-    assert_eq!(comparison.deltas.get(&Metric::WallMs).unwrap().status, MetricStatus::Pass);
+    assert_eq!(
+        comparison.deltas.get(&Metric::WallMs).unwrap().status,
+        MetricStatus::Pass
+    );
     // max_rss_kb: 50% regression -> fail
-    assert_eq!(comparison.deltas.get(&Metric::MaxRssKb).unwrap().status, MetricStatus::Fail);
+    assert_eq!(
+        comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+        MetricStatus::Fail
+    );
     // Overall: fail dominates
     assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
 }
@@ -228,7 +301,11 @@ fn full_pipeline_improvement_is_pass() {
     let mut budgets = BTreeMap::new();
     budgets.insert(
         Metric::WallMs,
-        Budget { threshold: 0.05, warn_threshold: 0.03, direction: Direction::Lower },
+        Budget {
+            threshold: 0.05,
+            warn_threshold: 0.03,
+            direction: Direction::Lower,
+        },
     );
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
@@ -250,7 +327,11 @@ fn sensor_report_from_run_receipt_pass() {
         report_type: REPORT_SCHEMA_V1.to_string(),
         verdict: Verdict {
             status: VerdictStatus::Pass,
-            counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+            counts: VerdictCounts {
+                pass: 1,
+                warn: 0,
+                fail: 0,
+            },
             reasons: vec![],
         },
         compare: None,
@@ -263,12 +344,9 @@ fn sensor_report_from_run_receipt_pass() {
         },
     };
 
-    let builder = SensorReportBuilder::new(
-        receipt.tool.clone(),
-        receipt.run.started_at.clone(),
-    )
-    .ended_at(receipt.run.ended_at.clone(), 60000)
-    .baseline(true, None);
+    let builder = SensorReportBuilder::new(receipt.tool.clone(), receipt.run.started_at.clone())
+        .ended_at(receipt.run.ended_at.clone(), 60000)
+        .baseline(true, None);
 
     let sensor_report = builder.build(&perfgate_report);
 
@@ -277,7 +355,10 @@ fn sensor_report_from_run_receipt_pass() {
     assert_eq!(sensor_report.tool.name, "perfgate");
     assert_eq!(sensor_report.verdict.status, SensorVerdictStatus::Pass);
     assert_eq!(sensor_report.run.started_at, "2024-01-01T00:00:00Z");
-    assert_eq!(sensor_report.run.ended_at, Some("2024-01-01T00:01:00Z".to_string()));
+    assert_eq!(
+        sensor_report.run.ended_at,
+        Some("2024-01-01T00:01:00Z".to_string())
+    );
     assert_eq!(sensor_report.run.duration_ms, Some(60000));
     assert!(sensor_report.findings.is_empty());
 }
@@ -291,12 +372,21 @@ fn sensor_report_serializes_to_valid_json() {
         report_type: REPORT_SCHEMA_V1.to_string(),
         verdict: Verdict {
             status: VerdictStatus::Pass,
-            counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+            counts: VerdictCounts {
+                pass: 1,
+                warn: 0,
+                fail: 0,
+            },
             reasons: vec![],
         },
         compare: None,
         findings: vec![],
-        summary: ReportSummary { pass_count: 1, warn_count: 0, fail_count: 0, total_count: 1 },
+        summary: ReportSummary {
+            pass_count: 1,
+            warn_count: 0,
+            fail_count: 0,
+            total_count: 1,
+        },
     };
 
     let builder = SensorReportBuilder::new(receipt.tool.clone(), receipt.run.started_at.clone())
@@ -317,7 +407,10 @@ fn sensor_report_serializes_to_valid_json() {
 
 #[test]
 fn export_run_receipt_csv_structure() {
-    let samples: Vec<Sample> = vec![100, 102, 98, 101, 99].into_iter().map(make_sample).collect();
+    let samples: Vec<Sample> = vec![100, 102, 98, 101, 99]
+        .into_iter()
+        .map(make_sample)
+        .collect();
     let receipt = make_run_receipt_from_samples(samples);
 
     let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();

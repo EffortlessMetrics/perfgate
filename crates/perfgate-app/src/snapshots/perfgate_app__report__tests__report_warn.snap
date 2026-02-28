@@ -1,0 +1,93 @@
+---
+source: crates/perfgate-app/src/report.rs
+assertion_line: 401
+expression: "serde_json::to_value(&result.report).unwrap()"
+---
+{
+  "compare": {
+    "baseline_ref": {
+      "path": "baseline.json",
+      "run_id": "baseline-001"
+    },
+    "bench": {
+      "command": [
+        "echo",
+        "hello"
+      ],
+      "name": "test-bench",
+      "repeat": 5,
+      "warmup": 0
+    },
+    "budgets": {
+      "wall_ms": {
+        "direction": "lower",
+        "threshold": 0.2,
+        "warn_threshold": 0.18
+      }
+    },
+    "current_ref": {
+      "path": "current.json",
+      "run_id": "current-001"
+    },
+    "deltas": {
+      "wall_ms": {
+        "baseline": 1000.0,
+        "current": 1190.0,
+        "pct": 0.19,
+        "ratio": 1.19,
+        "regression": 0.19,
+        "status": "warn"
+      }
+    },
+    "schema": "perfgate.compare.v1",
+    "tool": {
+      "name": "perfgate",
+      "version": "0.1.0"
+    },
+    "verdict": {
+      "counts": {
+        "fail": 0,
+        "pass": 0,
+        "warn": 1
+      },
+      "reasons": [
+        "wall_ms_warn"
+      ],
+      "status": "warn"
+    }
+  },
+  "findings": [
+    {
+      "check_id": "perf.budget",
+      "code": "metric_warn",
+      "data": {
+        "baseline": 1000.0,
+        "current": 1190.0,
+        "direction": "lower",
+        "metric_name": "wall_ms",
+        "regression_pct": 0.19,
+        "threshold": 0.2
+      },
+      "message": "Performance regression near threshold for wall_ms: 19.00% regression (threshold: 20.00%)",
+      "severity": "warn"
+    }
+  ],
+  "report_type": "perfgate.report.v1",
+  "summary": {
+    "fail_count": 0,
+    "pass_count": 0,
+    "total_count": 1,
+    "warn_count": 1
+  },
+  "verdict": {
+    "counts": {
+      "fail": 0,
+      "pass": 0,
+      "warn": 1
+    },
+    "reasons": [
+      "wall_ms_warn"
+    ],
+    "status": "warn"
+  }
+}

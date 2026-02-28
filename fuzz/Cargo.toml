@@ -23,6 +23,9 @@ perfgate-validation = { path = "../crates/perfgate-validation" }
 perfgate-export = { path = "../crates/perfgate-export" }
 perfgate-budget = { path = "../crates/perfgate-budget" }
 perfgate-significance = { path = "../crates/perfgate-significance" }
+perfgate-paired = { path = "../crates/perfgate-paired" }
+perfgate-sensor = { path = "../crates/perfgate-sensor" }
+perfgate-host-detect = { path = "../crates/perfgate-host-detect" }
 
 [[bin]]
 name = "parse_run_receipt"
@@ -99,5 +102,23 @@ doc = false
 [[bin]]
 name = "fuzz_significance"
 path = "fuzz_targets/fuzz_significance.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_paired"
+path = "fuzz_targets/fuzz_paired.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_sensor_report"
+path = "fuzz_targets/fuzz_sensor_report.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_host_detect"
+path = "fuzz_targets/fuzz_host_detect.rs"
 test = false
 doc = false

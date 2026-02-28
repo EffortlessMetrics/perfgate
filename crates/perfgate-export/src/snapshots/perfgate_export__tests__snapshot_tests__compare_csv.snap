@@ -1,0 +1,7 @@
+---
+source: crates/perfgate-export/src/lib.rs
+expression: csv
+---
+bench_name,metric,baseline_value,current_value,regression_pct,status,threshold
+alpha-bench,max_rss_kb,1024.000000,1280.000000,25.000000,fail,15.000000
+alpha-bench,wall_ms,100.000000,110.000000,10.000000,pass,20.000000

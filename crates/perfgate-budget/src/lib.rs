@@ -613,5 +613,41 @@ mod property_tests {
                 prop_assert_eq!(verdict.status, VerdictStatus::Pass);
             }
         }
+
+        #[test]
+        fn prop_evaluate_budget_deterministic(
+            baseline in 1.0f64..10000.0,
+            current in 0.1f64..20000.0,
+            budget in budget_strategy(),
+        ) {
+            let r1 = evaluate_budget(baseline, current, &budget).unwrap();
+            let r2 = evaluate_budget(baseline, current, &budget).unwrap();
+            prop_assert_eq!(r1, r2, "evaluate_budget must be deterministic");
+        }
+
+        #[test]
+        fn prop_zero_regression_is_pass(
+            threshold in 0.01f64..1.0,
+            warn_factor in 0.01f64..=1.0,
+        ) {
+            let warn_threshold = threshold * warn_factor;
+            let status = determine_status(0.0, threshold, warn_threshold);
+            prop_assert_eq!(status, MetricStatus::Pass, "zero regression should always be Pass");
+        }
+
+        #[test]
+        fn prop_negative_regression_clamped(
+            baseline in 1.0f64..10000.0,
+            improvement_factor in 0.01f64..1.0,
+            direction in prop_oneof![Just(Direction::Lower), Just(Direction::Higher)],
+        ) {
+            // When current is an improvement, regression should be 0
+            let current = match direction {
+                Direction::Lower => baseline * (1.0 - improvement_factor),   // lower = better
+                Direction::Higher => baseline * (1.0 + improvement_factor),  // higher = better
+            };
+            let regression = calculate_regression(baseline, current, direction);
+            prop_assert_eq!(regression, 0.0, "improvements should yield zero regression");
+        }
     }
 }

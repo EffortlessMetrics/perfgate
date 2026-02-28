@@ -1,0 +1,6 @@
+---
+source: crates/perfgate-render/src/lib.rs
+assertion_line: 755
+expression: "render_reason_line(&compare, \"wall_ms_warn\")"
+---
+- wall_ms_warn: +15.00% (warn >= 10.00%, fail > 20.00%)

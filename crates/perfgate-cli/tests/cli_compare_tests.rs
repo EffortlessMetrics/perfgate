@@ -307,3 +307,87 @@ fn test_compare_with_custom_threshold() {
         "verdict should be pass with higher threshold"
     );
 }
+
+/// Test --pretty flag on compare command produces indented JSON
+#[test]
+fn test_compare_pretty_flag() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("compare.json");
+
+    let baseline = fixtures_dir().join("baseline.json");
+    let current = fixtures_dir().join("current_pass.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--current")
+        .arg(&current)
+        .arg("--pretty")
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert().success();
+
+    let content = fs::read_to_string(&output_path).expect("failed to read output file");
+
+    // Pretty-printed JSON should contain newlines and indentation
+    assert!(
+        content.contains('\n'),
+        "pretty-printed JSON should contain newlines"
+    );
+    assert!(
+        content.contains("  "),
+        "pretty-printed JSON should have indentation"
+    );
+
+    // Should still be valid JSON with correct schema
+    let receipt: serde_json::Value =
+        serde_json::from_str(&content).expect("output should be valid JSON");
+    assert_eq!(receipt["schema"].as_str(), Some("perfgate.compare.v1"));
+}
+
+/// Test compare with mismatched metric sets between baseline and current
+///
+/// Baseline has wall_ms + max_rss_kb; current has wall_ms + cpu_user_ms.
+/// Compare should still succeed for the common metric (wall_ms).
+#[test]
+fn test_compare_mismatched_metrics() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("compare.json");
+
+    let baseline = fixtures_dir().join("baseline.json");
+    let current = fixtures_dir().join("current_extra_metric.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--current")
+        .arg(&current)
+        .arg("--out")
+        .arg(&output_path);
+
+    // Should succeed (not crash) even with mismatched metrics
+    let output = cmd.output().expect("failed to execute perfgate compare");
+    // Accept any exit code (pass/warn/fail) but not a crash (code 1 for tool error is also ok)
+    assert!(
+        output.status.code().is_some(),
+        "process should exit cleanly, not crash"
+    );
+
+    // Output file should exist and be valid JSON
+    assert!(output_path.exists(), "output file should exist");
+
+    let content = fs::read_to_string(&output_path).expect("failed to read output file");
+    let receipt: serde_json::Value =
+        serde_json::from_str(&content).expect("output should be valid JSON");
+
+    assert_eq!(receipt["schema"].as_str(), Some("perfgate.compare.v1"));
+
+    // Deltas should include the common metric wall_ms
+    assert!(
+        receipt["deltas"]["wall_ms"].is_object(),
+        "deltas should contain the common metric wall_ms"
+    );
+}

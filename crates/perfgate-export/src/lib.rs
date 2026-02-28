@@ -39,6 +39,15 @@ pub enum ExportFormat {
 
 impl ExportFormat {
     /// Parse format from string.
+    ///
+    /// ```
+    /// use perfgate_export::ExportFormat;
+    ///
+    /// assert_eq!(ExportFormat::parse("csv"), Some(ExportFormat::Csv));
+    /// assert_eq!(ExportFormat::parse("jsonl"), Some(ExportFormat::Jsonl));
+    /// assert_eq!(ExportFormat::parse("prometheus"), Some(ExportFormat::Prometheus));
+    /// assert_eq!(ExportFormat::parse("unknown"), None);
+    /// ```
     pub fn parse(s: &str) -> Option<Self> {
         s.parse().ok()
     }
@@ -91,7 +100,42 @@ pub struct CompareExportRow {
 pub struct ExportUseCase;
 
 impl ExportUseCase {
-    /// Export a RunReceipt to the specified format.
+    /// Export a [`RunReceipt`] to the specified format.
+    ///
+    /// ```
+    /// # use std::collections::BTreeMap;
+    /// # use perfgate_types::*;
+    /// # use perfgate_export::{ExportFormat, ExportUseCase};
+    /// let receipt = RunReceipt {
+    ///     schema: RUN_SCHEMA_V1.to_string(),
+    ///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+    ///     run: RunMeta {
+    ///         id: "r1".into(),
+    ///         started_at: "2024-01-01T00:00:00Z".into(),
+    ///         ended_at: "2024-01-01T00:00:01Z".into(),
+    ///         host: HostInfo { os: "linux".into(), arch: "x86_64".into(),
+    ///             cpu_count: None, memory_bytes: None, hostname_hash: None },
+    ///     },
+    ///     bench: BenchMeta {
+    ///         name: "bench".into(), cwd: None,
+    ///         command: vec!["echo".into()], repeat: 1, warmup: 0,
+    ///         work_units: None, timeout_ms: None,
+    ///     },
+    ///     samples: vec![Sample {
+    ///         wall_ms: 42, exit_code: 0, warmup: false, timed_out: false,
+    ///         cpu_ms: None, page_faults: None, ctx_switches: None,
+    ///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+    ///     }],
+    ///     stats: Stats {
+    ///         wall_ms: U64Summary { median: 42, min: 42, max: 42 },
+    ///         cpu_ms: None, page_faults: None, ctx_switches: None,
+    ///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+    ///     },
+    /// };
+    /// let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+    /// assert!(csv.contains("bench"));
+    /// assert!(csv.contains("42"));
+    /// ```
     pub fn export_run(receipt: &RunReceipt, format: ExportFormat) -> anyhow::Result<String> {
         let row = Self::run_to_row(receipt);
 
@@ -103,7 +147,38 @@ impl ExportUseCase {
         }
     }
 
-    /// Export a CompareReceipt to the specified format.
+    /// Export a [`CompareReceipt`] to the specified format.
+    ///
+    /// ```
+    /// # use std::collections::BTreeMap;
+    /// # use perfgate_types::*;
+    /// # use perfgate_export::{ExportFormat, ExportUseCase};
+    /// let receipt = CompareReceipt {
+    ///     schema: COMPARE_SCHEMA_V1.to_string(),
+    ///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+    ///     bench: BenchMeta {
+    ///         name: "bench".into(), cwd: None,
+    ///         command: vec!["echo".into()], repeat: 1, warmup: 0,
+    ///         work_units: None, timeout_ms: None,
+    ///     },
+    ///     baseline_ref: CompareRef { path: None, run_id: None },
+    ///     current_ref: CompareRef { path: None, run_id: None },
+    ///     budgets: BTreeMap::new(),
+    ///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
+    ///         baseline: 100.0, current: 105.0, ratio: 1.05, pct: 0.05,
+    ///         regression: 0.05, statistic: MetricStatistic::Median,
+    ///         significance: None, status: MetricStatus::Pass,
+    ///     })]),
+    ///     verdict: Verdict {
+    ///         status: VerdictStatus::Pass,
+    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+    ///         reasons: vec![],
+    ///     },
+    /// };
+    /// let csv = ExportUseCase::export_compare(&receipt, ExportFormat::Csv).unwrap();
+    /// assert!(csv.contains("wall_ms"));
+    /// assert!(csv.contains("100"));
+    /// ```
     pub fn export_compare(
         receipt: &CompareReceipt,
         format: ExportFormat,
@@ -786,6 +861,350 @@ mod tests {
             let receipt = create_test_compare_receipt();
             let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
             assert_snapshot!("compare_prometheus", prom);
+        }
+    }
+
+    mod edge_case_tests {
+        use super::*;
+
+        fn create_empty_run_receipt() -> RunReceipt {
+            RunReceipt {
+                schema: RUN_SCHEMA_V1.to_string(),
+                tool: ToolInfo {
+                    name: "perfgate".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+                run: RunMeta {
+                    id: "empty-run".to_string(),
+                    started_at: "2024-01-01T00:00:00Z".to_string(),
+                    ended_at: "2024-01-01T00:00:01Z".to_string(),
+                    host: HostInfo {
+                        os: "linux".to_string(),
+                        arch: "x86_64".to_string(),
+                        cpu_count: None,
+                        memory_bytes: None,
+                        hostname_hash: None,
+                    },
+                },
+                bench: BenchMeta {
+                    name: "empty-bench".to_string(),
+                    cwd: None,
+                    command: vec!["true".to_string()],
+                    repeat: 0,
+                    warmup: 0,
+                    work_units: None,
+                    timeout_ms: None,
+                },
+                samples: vec![],
+                stats: Stats {
+                    wall_ms: U64Summary {
+                        median: 0,
+                        min: 0,
+                        max: 0,
+                    },
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
+                },
+            }
+        }
+
+        fn create_empty_compare_receipt() -> CompareReceipt {
+            CompareReceipt {
+                schema: COMPARE_SCHEMA_V1.to_string(),
+                tool: ToolInfo {
+                    name: "perfgate".to_string(),
+                    version: "0.1.0".to_string(),
+                },
+                bench: BenchMeta {
+                    name: "empty-bench".to_string(),
+                    cwd: None,
+                    command: vec!["true".to_string()],
+                    repeat: 0,
+                    warmup: 0,
+                    work_units: None,
+                    timeout_ms: None,
+                },
+                baseline_ref: CompareRef {
+                    path: None,
+                    run_id: None,
+                },
+                current_ref: CompareRef {
+                    path: None,
+                    run_id: None,
+                },
+                budgets: BTreeMap::new(),
+                deltas: BTreeMap::new(),
+                verdict: Verdict {
+                    status: VerdictStatus::Pass,
+                    counts: VerdictCounts {
+                        pass: 0,
+                        warn: 0,
+                        fail: 0,
+                    },
+                    reasons: vec![],
+                },
+            }
+        }
+
+        fn create_run_receipt_with_bench_name(name: &str) -> RunReceipt {
+            let mut receipt = create_empty_run_receipt();
+            receipt.bench.name = name.to_string();
+            receipt.samples.push(Sample {
+                wall_ms: 42,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            });
+            receipt.stats.wall_ms = U64Summary {
+                median: 42,
+                min: 42,
+                max: 42,
+            };
+            receipt
+        }
+
+        // --- Empty receipt tests ---
+
+        #[test]
+        fn empty_run_receipt_csv_has_header_and_one_row() {
+            let receipt = create_empty_run_receipt();
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            let lines: Vec<&str> = csv.trim().split('\n').collect();
+            assert_eq!(lines.len(), 2, "should have header + 1 data row");
+            assert!(lines[0].starts_with("bench_name,"));
+            assert!(csv.contains("empty-bench"));
+        }
+
+        #[test]
+        fn empty_run_receipt_jsonl_is_valid() {
+            let receipt = create_empty_run_receipt();
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["bench_name"], "empty-bench");
+            assert_eq!(parsed["sample_count"], 0);
+        }
+
+        #[test]
+        fn empty_run_receipt_html_is_valid() {
+            let receipt = create_empty_run_receipt();
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.starts_with("<!doctype html>"));
+            assert!(html.contains("<table"));
+            assert!(html.contains("</table>"));
+            assert!(html.contains("empty-bench"));
+        }
+
+        #[test]
+        fn empty_run_receipt_prometheus_is_valid() {
+            let receipt = create_empty_run_receipt();
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains("perfgate_run_wall_ms_median"));
+            assert!(prom.contains("bench=\"empty-bench\""));
+            assert!(prom.contains("perfgate_run_sample_count"));
+        }
+
+        #[test]
+        fn empty_compare_receipt_csv_has_header_only() {
+            let receipt = create_empty_compare_receipt();
+            let csv = ExportUseCase::export_compare(&receipt, ExportFormat::Csv).unwrap();
+            let lines: Vec<&str> = csv.trim().split('\n').collect();
+            assert_eq!(lines.len(), 1, "should have header only with no deltas");
+            assert!(lines[0].starts_with("bench_name,metric,"));
+        }
+
+        #[test]
+        fn empty_compare_receipt_jsonl_is_empty() {
+            let receipt = create_empty_compare_receipt();
+            let jsonl = ExportUseCase::export_compare(&receipt, ExportFormat::Jsonl).unwrap();
+            assert!(
+                jsonl.trim().is_empty(),
+                "JSONL should be empty for no deltas"
+            );
+        }
+
+        #[test]
+        fn empty_compare_receipt_html_has_valid_structure() {
+            let receipt = create_empty_compare_receipt();
+            let html = ExportUseCase::export_compare(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.starts_with("<!doctype html>"));
+            assert!(html.contains("<table"));
+            assert!(html.contains("</table>"));
+            assert!(html.contains("<thead>"));
+            assert!(html.contains("</tbody>"));
+        }
+
+        #[test]
+        fn empty_compare_receipt_prometheus_is_empty() {
+            let receipt = create_empty_compare_receipt();
+            let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(
+                prom.trim().is_empty(),
+                "Prometheus output should be empty for no deltas"
+            );
+        }
+
+        // --- CSV special characters tests ---
+
+        #[test]
+        fn csv_bench_name_with_comma() {
+            let receipt = create_run_receipt_with_bench_name("bench,with,commas");
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(
+                csv.contains("\"bench,with,commas\""),
+                "comma-containing bench name should be quoted"
+            );
+            let lines: Vec<&str> = csv.trim().split('\n').collect();
+            assert_eq!(lines.len(), 2, "should still have exactly 2 lines");
+        }
+
+        #[test]
+        fn csv_bench_name_with_quotes() {
+            let receipt = create_run_receipt_with_bench_name("bench\"quoted\"name");
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(
+                csv.contains("\"bench\"\"quoted\"\"name\""),
+                "quotes should be escaped as double-quotes in CSV"
+            );
+        }
+
+        #[test]
+        fn csv_bench_name_with_newline() {
+            let receipt = create_run_receipt_with_bench_name("bench\nwith\nnewlines");
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(
+                csv.contains("\"bench\nwith\nnewlines\""),
+                "newline-containing bench name should be quoted"
+            );
+        }
+
+        #[test]
+        fn csv_bench_name_with_commas_and_quotes() {
+            let receipt = create_run_receipt_with_bench_name("a,\"b\",c");
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            // Must be properly escaped per RFC 4180
+            assert!(csv.contains("\"a,\"\"b\"\",c\""));
+        }
+
+        // --- JSONL unicode tests ---
+
+        #[test]
+        fn jsonl_bench_name_with_unicode() {
+            let receipt = create_run_receipt_with_bench_name("ベンチマーク-速度");
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["bench_name"], "ベンチマーク-速度");
+        }
+
+        #[test]
+        fn jsonl_bench_name_with_emoji() {
+            let receipt = create_run_receipt_with_bench_name("bench-🚀-fast");
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["bench_name"], "bench-🚀-fast");
+        }
+
+        #[test]
+        fn jsonl_bench_name_with_special_json_chars() {
+            let receipt = create_run_receipt_with_bench_name("bench\\with\"special\tchars");
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["bench_name"], "bench\\with\"special\tchars");
+        }
+
+        // --- HTML empty data tests ---
+
+        #[test]
+        fn html_run_with_all_optional_metrics_none() {
+            let receipt = create_empty_run_receipt();
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains("<html>"));
+            assert!(html.contains("</html>"));
+            // Should not panic or error even with all None optional metrics
+            assert!(html.contains("empty-bench"));
+        }
+
+        #[test]
+        fn html_bench_name_with_html_chars() {
+            let receipt = create_run_receipt_with_bench_name("<script>alert('xss')</script>");
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(
+                !html.contains("<script>"),
+                "HTML special chars should be escaped"
+            );
+            assert!(html.contains("&lt;script&gt;"));
+        }
+
+        // --- Prometheus metric name tests ---
+
+        #[test]
+        fn prometheus_bench_name_with_quotes() {
+            let receipt = create_run_receipt_with_bench_name("bench\"name");
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(
+                prom.contains("bench="),
+                "Prometheus output should have bench label"
+            );
+            assert!(
+                !prom.contains("bench=\"bench\"name\""),
+                "raw quotes should be escaped"
+            );
+            assert!(prom.contains("bench=\"bench\\\"name\""));
+        }
+
+        #[test]
+        fn prometheus_bench_name_with_backslash() {
+            let receipt = create_run_receipt_with_bench_name("bench\\path");
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains("bench=\"bench\\\\path\""));
+        }
+
+        #[test]
+        fn prometheus_compare_with_all_metric_types() {
+            let mut receipt = create_empty_compare_receipt();
+            receipt.bench.name = "full-metrics".to_string();
+            receipt.deltas.insert(
+                Metric::WallMs,
+                Delta {
+                    baseline: 100.0,
+                    current: 110.0,
+                    ratio: 1.1,
+                    pct: 0.1,
+                    regression: 0.1,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
+                    status: MetricStatus::Pass,
+                },
+            );
+            receipt.deltas.insert(
+                Metric::MaxRssKb,
+                Delta {
+                    baseline: 1024.0,
+                    current: 1024.0,
+                    ratio: 1.0,
+                    pct: 0.0,
+                    regression: 0.0,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
+                    status: MetricStatus::Pass,
+                },
+            );
+            let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains("metric=\"wall_ms\""));
+            assert!(prom.contains("metric=\"max_rss_kb\""));
+            assert!(prom.contains("perfgate_compare_baseline_value"));
+            assert!(prom.contains("perfgate_compare_current_value"));
+            assert!(prom.contains("perfgate_compare_status"));
         }
     }
 }

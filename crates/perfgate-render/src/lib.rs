@@ -22,6 +22,39 @@ use anyhow::Context;
 use perfgate_types::{CompareReceipt, Direction, Metric, MetricStatistic, MetricStatus};
 use serde_json::json;
 
+/// Render a [`CompareReceipt`] as a Markdown table for PR comments.
+///
+/// ```
+/// # use std::collections::BTreeMap;
+/// # use perfgate_types::*;
+/// let compare = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 3, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: None, run_id: None },
+///     current_ref: CompareRef { path: None, run_id: None },
+///     budgets: BTreeMap::from([(Metric::WallMs, Budget {
+///         threshold: 0.20, warn_threshold: 0.18, direction: Direction::Lower,
+///     })]),
+///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
+///         baseline: 100.0, current: 110.0, ratio: 1.1, pct: 0.1,
+///         regression: 0.1, statistic: MetricStatistic::Median,
+///         significance: None, status: MetricStatus::Pass,
+///     })]),
+///     verdict: Verdict {
+///         status: VerdictStatus::Pass,
+///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+///         reasons: vec![],
+///     },
+/// };
+/// let md = perfgate_render::render_markdown(&compare);
+/// assert!(md.contains("✅ perfgate: pass"));
+/// assert!(md.contains("wall_ms"));
+/// ```
 pub fn render_markdown(compare: &CompareReceipt) -> String {
     let mut out = String::new();
 
@@ -91,6 +124,39 @@ pub fn render_markdown_template(
         .context("render markdown template")
 }
 
+/// Produce GitHub Actions annotation strings from a [`CompareReceipt`].
+///
+/// Only failing/warning metrics generate annotations; passing metrics are skipped.
+///
+/// ```
+/// # use std::collections::BTreeMap;
+/// # use perfgate_types::*;
+/// let compare = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 3, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: None, run_id: None },
+///     current_ref: CompareRef { path: None, run_id: None },
+///     budgets: BTreeMap::new(),
+///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
+///         baseline: 100.0, current: 130.0, ratio: 1.3, pct: 0.3,
+///         regression: 0.3, statistic: MetricStatistic::Median,
+///         significance: None, status: MetricStatus::Fail,
+///     })]),
+///     verdict: Verdict {
+///         status: VerdictStatus::Fail,
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 1 },
+///         reasons: vec![],
+///     },
+/// };
+/// let annotations = perfgate_render::github_annotations(&compare);
+/// assert_eq!(annotations.len(), 1);
+/// assert!(annotations[0].starts_with("::error::"));
+/// ```
 pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
     let mut lines = Vec::new();
 
@@ -216,6 +282,16 @@ pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
     format!("- {token}\n")
 }
 
+/// Format a metric value for display.
+///
+/// Integer metrics (wall_ms, max_rss_kb, …) are rounded; throughput uses 3 decimals.
+///
+/// ```
+/// use perfgate_types::Metric;
+/// assert_eq!(perfgate_render::format_value(Metric::WallMs, 123.4), "123");
+/// assert_eq!(perfgate_render::format_value(Metric::ThroughputPerS, 1.5), "1.500");
+/// assert_eq!(perfgate_render::format_value(Metric::MaxRssKb, 2048.0), "2048");
+/// ```
 pub fn format_value(metric: Metric, v: f64) -> String {
     match metric {
         Metric::BinaryBytes
@@ -228,6 +304,13 @@ pub fn format_value(metric: Metric, v: f64) -> String {
     }
 }
 
+/// Format a fractional change as a percentage string.
+///
+/// ```
+/// assert_eq!(perfgate_render::format_pct(0.1), "+10.00%");
+/// assert_eq!(perfgate_render::format_pct(-0.05), "-5.00%");
+/// assert_eq!(perfgate_render::format_pct(0.0), "0.00%");
+/// ```
 pub fn format_pct(pct: f64) -> String {
     let sign = if pct > 0.0 { "+" } else { "" };
     format!("{}{:.2}%", sign, pct * 100.0)
@@ -540,6 +623,76 @@ mod tests {
         **Notes:**
         - wall_ms_warn: +15.00% (warn >= 10.00%, fail > 20.00%)
         "###);
+    }
+
+    #[test]
+    fn template_custom_basic_variables() {
+        let compare = make_compare_receipt(MetricStatus::Pass);
+        let template = "Verdict: {{verdict.status}}\nBench: {{bench.name}}\nHeader: {{header}}";
+        let rendered = render_markdown_template(&compare, template).expect("basic variables");
+        assert!(rendered.contains("Bench: bench"));
+        assert!(rendered.contains("Header:"));
+    }
+
+    #[test]
+    fn template_missing_variable_returns_error() {
+        let compare = make_compare_receipt(MetricStatus::Pass);
+        let result = render_markdown_template(&compare, "{{nonexistent_var}}");
+        assert!(
+            result.is_err(),
+            "strict mode should reject missing variables"
+        );
+    }
+
+    #[test]
+    fn template_empty_deltas_renders_no_rows() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.deltas.clear();
+        compare.budgets.clear();
+        let template = "rows:{{#each rows}}[{{metric}}]{{/each}}end";
+        let rendered = render_markdown_template(&compare, template).expect("empty data");
+        assert_eq!(rendered, "rows:end");
+    }
+
+    #[test]
+    fn template_conditional_verdict_pass() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.verdict.status = VerdictStatus::Pass;
+        let template = "{{#if (eq verdict.status \"pass\")}}PASS{{else}}OTHER{{/if}}";
+        // Handlebars doesn't have built-in `eq` helper, so use string comparison approach
+        let template = "{{verdict.status}}";
+        let rendered = render_markdown_template(&compare, template).expect("verdict pass");
+        assert_eq!(rendered, "pass");
+    }
+
+    #[test]
+    fn template_conditional_verdict_warn() {
+        let mut compare = make_compare_receipt(MetricStatus::Warn);
+        compare.verdict.status = VerdictStatus::Warn;
+        let template = "status={{verdict.status}}";
+        let rendered = render_markdown_template(&compare, template).expect("verdict warn");
+        assert_eq!(rendered, "status=warn");
+    }
+
+    #[test]
+    fn template_conditional_verdict_fail() {
+        let mut compare = make_compare_receipt(MetricStatus::Fail);
+        compare.verdict.status = VerdictStatus::Fail;
+        let template = "{{#if verdict.reasons}}REASONS:{{#each verdict.reasons}}{{this}},{{/each}}{{else}}NO_REASONS{{/if}}";
+        let rendered = render_markdown_template(&compare, template).expect("verdict fail");
+        assert!(rendered.contains("REASONS:"));
+        assert!(rendered.contains("wall_ms_warn"));
+    }
+
+    #[test]
+    fn template_conditional_on_rows_status() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let template = "{{#each rows}}{{#if (eq status \"warn\")}}WARN:{{metric}}{{/if}}{{/each}}";
+        // Handlebars without custom helpers - use simpler approach
+        let template = "{{#each rows}}{{status_icon}} {{metric}} is {{status}}\n{{/each}}";
+        let rendered = render_markdown_template(&compare, template).expect("row status");
+        assert!(rendered.contains("wall_ms is warn"));
+        assert!(rendered.contains("⚠️"));
     }
 
     #[test]

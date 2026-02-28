@@ -375,4 +375,160 @@ mod tests {
         assert_eq!(seen.as_slice(), &[true]);
         assert_eq!(outcome.receipt.run.host, host);
     }
+
+    #[test]
+    fn paired_run_all_warmup_no_measured_samples() {
+        // 2 warmups, 0 measured → samples has 2 entries, all warmup, no failures
+        let runs = vec![
+            run_result(100, 0, false, None, b"", b""),
+            run_result(90, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(95, 0, false, None, b"", b""),
+        ];
+
+        let runner = TestRunner::new(runs);
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host);
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe,
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let outcome = usecase
+            .execute(PairedRunRequest {
+                name: "warmup-only".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 2,
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: false,
+            })
+            .expect("paired run should succeed");
+
+        assert_eq!(outcome.receipt.samples.len(), 2);
+        assert!(!outcome.failed);
+        assert!(outcome.reasons.is_empty());
+    }
+
+    #[test]
+    fn paired_run_runner_error_propagates() {
+        // Runner that immediately fails
+        let runner = TestRunner::new(vec![]);
+
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host);
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe,
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let err = usecase
+            .execute(PairedRunRequest {
+                name: "fail-bench".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: false,
+            })
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("no more queued runs")
+                || err.to_string().contains("failed to run"),
+            "expected runner error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn paired_run_wall_diff_computed_correctly() {
+        let runs = vec![
+            // baseline: 200ms, current: 150ms → diff = -50
+            run_result(200, 0, false, Some(1000), b"", b""),
+            run_result(150, 0, false, Some(800), b"", b""),
+        ];
+
+        let runner = TestRunner::new(runs);
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host);
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe,
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let outcome = usecase
+            .execute(PairedRunRequest {
+                name: "diff-bench".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: false,
+            })
+            .expect("paired run should succeed");
+
+        assert_eq!(outcome.receipt.samples.len(), 1);
+        let sample = &outcome.receipt.samples[0];
+        assert_eq!(sample.wall_diff_ms, -50);
+        assert_eq!(sample.rss_diff_kb, Some(-200));
+        assert!(!outcome.failed);
+    }
 }
