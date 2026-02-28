@@ -172,19 +172,20 @@ pub fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
         return None;
     }
 
-    let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let var = if values.len() > 1 {
-        values
-            .iter()
-            .map(|v| {
-                let d = v - mean;
-                d * d
-            })
-            .sum::<f64>()
-            / (values.len() as f64 - 1.0)
-    } else {
-        0.0
-    };
+    // Welford's online one-pass algorithm for numerical stability
+    let mut n: u64 = 0;
+    let mut mean = 0.0_f64;
+    let mut m2 = 0.0_f64;
+
+    for &x in values {
+        n += 1;
+        let delta = x - mean;
+        mean += delta / n as f64;
+        let delta2 = x - mean;
+        m2 += delta * delta2;
+    }
+
+    let var = if n > 1 { m2 / (n as f64 - 1.0) } else { 0.0 };
 
     if mean.is_finite() && var.is_finite() {
         Some((mean, var.max(0.0)))

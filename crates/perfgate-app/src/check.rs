@@ -174,11 +174,16 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                 current: run_receipt.clone(),
                 budgets,
                 metric_statistics,
-                significance: req.significance_alpha.map(|alpha| SignificancePolicy {
-                    alpha,
-                    min_samples: req.significance_min_samples as usize,
-                    require_significance: req.require_significance,
-                }),
+                significance: req
+                    .significance_alpha
+                    .map(|alpha| {
+                        SignificancePolicy::new(
+                            alpha,
+                            req.significance_min_samples as usize,
+                            req.require_significance,
+                        )
+                    })
+                    .transpose()?,
                 baseline_ref: CompareRef {
                     path: req.baseline_path.as_ref().map(|p| p.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),

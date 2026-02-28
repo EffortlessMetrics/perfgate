@@ -132,7 +132,7 @@ enum Command {
         metric_stat: Vec<(String, String)>,
 
         /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_significance_alpha)]
         significance_alpha: Option<f64>,
 
         /// Minimum samples required in each run before significance is computed.
@@ -323,7 +323,7 @@ enum Command {
         host_mismatch: HostMismatchPolicy,
 
         /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_significance_alpha)]
         significance_alpha: Option<f64>,
 
         /// Minimum samples required in each run before significance is computed.
@@ -526,11 +526,15 @@ fn run_command(cmd: Command) -> anyhow::Result<()> {
 
             let metric_statistics = build_metric_statistics(&budgets, metric_stat)?;
 
-            let significance = significance_alpha.map(|alpha| SignificancePolicy {
-                alpha,
-                min_samples: significance_min_samples as usize,
-                require_significance,
-            });
+            let significance = significance_alpha
+                .map(|alpha| {
+                    SignificancePolicy::new(
+                        alpha,
+                        significance_min_samples as usize,
+                        require_significance,
+                    )
+                })
+                .transpose()?;
 
             let compare_result = CompareUseCase::execute(CompareRequest {
                 baseline: baseline_receipt.clone(),
@@ -1647,6 +1651,16 @@ fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
     }
 }
 
+fn parse_significance_alpha(s: &str) -> Result<f64, String> {
+    let alpha: f64 = s.parse().map_err(|_| format!("invalid float value: {s}"))?;
+    if !(0.0..=1.0).contains(&alpha) {
+        return Err(format!(
+            "significance alpha must be between 0.0 and 1.0, got {alpha}"
+        ));
+    }
+    Ok(alpha)
+}
+
 fn normalize_paired_cli_command(args: Vec<String>, flag_name: &str) -> anyhow::Result<Vec<String>> {
     if args.is_empty() {
         anyhow::bail!("{} requires at least one argument", flag_name);
@@ -1698,6 +1712,10 @@ where
 }
 
 fn is_object_not_found(err: &object_store::Error) -> bool {
+    // Fallback: some cloud provider drivers wrap the NotFound error
+    // in a generic error, so we check the message text as a heuristic.
+    // This is fragile but necessary for providers that don't expose
+    // a structured NotFound variant.
     matches!(err, object_store::Error::NotFound { .. })
         || err.to_string().to_ascii_lowercase().contains("not found")
 }
@@ -2150,6 +2168,48 @@ mod tests {
         let err = parse_host_mismatch_policy("maybe").unwrap_err();
         assert!(
             err.contains("invalid host mismatch policy"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_significance_alpha_accepts_valid_values() {
+        assert!((parse_significance_alpha("0.0").unwrap() - 0.0).abs() < f64::EPSILON);
+        assert!((parse_significance_alpha("0.05").unwrap() - 0.05).abs() < f64::EPSILON);
+        assert!((parse_significance_alpha("0.5").unwrap() - 0.5).abs() < f64::EPSILON);
+        assert!((parse_significance_alpha("1.0").unwrap() - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_significance_alpha_rejects_out_of_range() {
+        let err = parse_significance_alpha("-0.1").unwrap_err();
+        assert!(
+            err.contains("significance alpha must be between 0.0 and 1.0"),
+            "unexpected error: {}",
+            err
+        );
+
+        let err = parse_significance_alpha("1.1").unwrap_err();
+        assert!(
+            err.contains("significance alpha must be between 0.0 and 1.0"),
+            "unexpected error: {}",
+            err
+        );
+
+        let err = parse_significance_alpha("2.0").unwrap_err();
+        assert!(
+            err.contains("significance alpha must be between 0.0 and 1.0"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_significance_alpha_rejects_non_numeric() {
+        let err = parse_significance_alpha("abc").unwrap_err();
+        assert!(
+            err.contains("invalid float value"),
             "unexpected error: {}",
             err
         );

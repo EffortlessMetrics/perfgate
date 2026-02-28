@@ -46,7 +46,7 @@ jobs:
 
       - name: Run perfgate
         id: perfgate
-        uses: EffortlessMetrics/perfgate@main
+        uses: EffortlessMetrics/perfgate@v0.3.0
         with:
           config: perfgate.toml
           all: "true"
@@ -83,7 +83,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build perfgate
-        run: cargo install --path crates/perfgate-cli --force
+        run: cargo install --path crates/perfgate-cli --locked --force
 
       - name: Run perfgate checks
         id: perfgate

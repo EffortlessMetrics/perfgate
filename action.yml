@@ -62,22 +62,22 @@ inputs:
 
 outputs:
   verdict:
-    description: "Overall verdict (pass|warn|fail|skip)"
+    description: "Overall verdict (pass|warn|fail|skip); requires output_github=true"
     value: ${{ steps.run_check.outputs.verdict }}
   pass_count:
-    description: "Count of passing checks"
+    description: "Count of passing checks; requires output_github=true"
     value: ${{ steps.run_check.outputs.pass_count }}
   warn_count:
-    description: "Count of warning checks"
+    description: "Count of warning checks; requires output_github=true"
     value: ${{ steps.run_check.outputs.warn_count }}
   fail_count:
-    description: "Count of failing checks"
+    description: "Count of failing checks; requires output_github=true"
     value: ${{ steps.run_check.outputs.fail_count }}
   bench_count:
-    description: "Count of benches evaluated"
+    description: "Count of benches evaluated; requires output_github=true"
     value: ${{ steps.run_check.outputs.bench_count }}
   exit_code:
-    description: "perfgate process exit code"
+    description: "perfgate process exit code (0=pass, 1=error, 2=fail, 3=warn-as-fail); always available"
     value: ${{ steps.run_check.outputs.exit_code }}
 
 runs:
@@ -141,14 +141,12 @@ runs:
         status=$?
         set -e
 
-        if [[ "${{ inputs.output_github }}" != "true" ]]; then
-          echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
-        fi
+        echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
 
         exit "${status}"
 
     - name: Upload perfgate artifacts
-      if: ${{ inputs.upload_artifact == 'true' }}
+      if: always() && inputs.upload_artifact == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact_name }}

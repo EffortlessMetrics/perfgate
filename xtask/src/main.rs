@@ -3,7 +3,6 @@ use clap::{Parser, Subcommand, ValueEnum};
 use schemars::schema_for;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const SCHEMA_FILES: [&str; 5] = [
     "perfgate.run.v1.schema.json",
@@ -680,14 +679,20 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
 }
 
 fn cmd_schema_check(schemas_dir: &Path) -> anyhow::Result<()> {
-    if !schemas_dir.is_dir() {
+    if !schemas_dir.exists() {
         anyhow::bail!(
             "{} does not exist. Run: cargo run -p xtask -- schema",
             schemas_dir.display()
         );
     }
+    if !schemas_dir.is_dir() {
+        anyhow::bail!(
+            "{} is not a directory. Run: cargo run -p xtask -- schema",
+            schemas_dir.display()
+        );
+    }
 
-    let generated_dir = unique_work_dir("perfgate_schema_check");
+    let generated_dir = xtask::unique_temp_dir("perfgate_schema_check");
     let result = (|| -> anyhow::Result<()> {
         cmd_schema(&generated_dir)?;
         check_schema_mirror_at(&generated_dir, schemas_dir)
@@ -695,17 +700,6 @@ fn cmd_schema_check(schemas_dir: &Path) -> anyhow::Result<()> {
 
     let _ = fs::remove_dir_all(&generated_dir);
     result
-}
-
-fn unique_work_dir(prefix: &str) -> PathBuf {
-    let mut dir = std::env::temp_dir();
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos();
-    dir.push(format!("{prefix}_{}_{}", std::process::id(), nanos));
-    fs::create_dir_all(&dir).expect("create temp dir");
-    dir
 }
 
 fn check_schema_mirror_at(generated_dir: &Path, committed_dir: &Path) -> anyhow::Result<()> {

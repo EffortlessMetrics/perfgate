@@ -1128,19 +1128,18 @@ mod tests {
     fn std_runner_executes_real_command() {
         let runner = StdProcessRunner;
         let spec = CommandSpec {
-            argv: vec![
-                "cmd".to_string(),
-                "/c".to_string(),
-                "echo".to_string(),
-                "hello".to_string(),
-            ],
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "echo".into(), "hello".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "echo hello".into()]
+            },
             cwd: None,
             env: vec![],
             timeout: None,
             output_cap_bytes: 4096,
         };
 
-        let result = runner.run(&spec).expect("cmd /c echo should succeed");
+        let result = runner.run(&spec).expect("echo should succeed");
         assert_eq!(result.exit_code, 0);
         assert!(!result.timed_out);
 
@@ -1156,12 +1155,16 @@ mod tests {
     fn std_runner_populates_samples_fields() {
         let runner = StdProcessRunner;
         let spec = CommandSpec {
-            argv: vec![
-                "cmd".to_string(),
-                "/c".to_string(),
-                "echo".to_string(),
-                "test_output".to_string(),
-            ],
+            argv: if cfg!(windows) {
+                vec![
+                    "cmd".into(),
+                    "/c".into(),
+                    "echo".into(),
+                    "test_output".into(),
+                ]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "echo test_output".into()]
+            },
             cwd: None,
             env: vec![],
             timeout: None,
@@ -1184,12 +1187,20 @@ mod tests {
     fn std_runner_with_env_vars() {
         let runner = StdProcessRunner;
         let spec = CommandSpec {
-            argv: vec![
-                "cmd".to_string(),
-                "/c".to_string(),
-                "echo".to_string(),
-                "%PERFGATE_TEST_VAR%".to_string(),
-            ],
+            argv: if cfg!(windows) {
+                vec![
+                    "cmd".into(),
+                    "/c".into(),
+                    "echo".into(),
+                    "%PERFGATE_TEST_VAR%".into(),
+                ]
+            } else {
+                vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "echo $PERFGATE_TEST_VAR".into(),
+                ]
+            },
             cwd: None,
             env: vec![("PERFGATE_TEST_VAR".to_string(), "custom_value".to_string())],
             timeout: None,
@@ -1228,13 +1239,17 @@ mod tests {
     fn std_runner_captures_stderr() {
         let runner = StdProcessRunner;
         let spec = CommandSpec {
-            argv: vec![
-                "cmd".to_string(),
-                "/c".to_string(),
-                "echo".to_string(),
-                "err_msg".to_string(),
-                "1>&2".to_string(),
-            ],
+            argv: if cfg!(windows) {
+                vec![
+                    "cmd".into(),
+                    "/c".into(),
+                    "echo".into(),
+                    "err_msg".into(),
+                    "1>&2".into(),
+                ]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "echo err_msg >&2".into()]
+            },
             cwd: None,
             env: vec![],
             timeout: None,
@@ -1254,12 +1269,11 @@ mod tests {
     fn std_runner_nonzero_exit_code() {
         let runner = StdProcessRunner;
         let spec = CommandSpec {
-            argv: vec![
-                "cmd".to_string(),
-                "/c".to_string(),
-                "exit".to_string(),
-                "42".to_string(),
-            ],
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "exit".into(), "42".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "exit 42".into()]
+            },
             cwd: None,
             env: vec![],
             timeout: None,

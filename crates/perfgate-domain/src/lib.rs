@@ -29,6 +29,9 @@ pub enum DomainError {
 
     #[error("baseline value for {0:?} must be > 0")]
     InvalidBaseline(Metric),
+
+    #[error("significance alpha must be between 0.0 and 1.0, got {0}")]
+    InvalidAlpha(f64),
 }
 
 #[cfg(test)]
@@ -342,6 +345,23 @@ pub struct SignificancePolicy {
     pub alpha: f64,
     pub min_samples: usize,
     pub require_significance: bool,
+}
+
+impl SignificancePolicy {
+    pub fn new(
+        alpha: f64,
+        min_samples: usize,
+        require_significance: bool,
+    ) -> Result<Self, DomainError> {
+        if !(0.0..=1.0).contains(&alpha) {
+            return Err(DomainError::InvalidAlpha(alpha));
+        }
+        Ok(Self {
+            alpha,
+            min_samples,
+            require_significance,
+        })
+    }
 }
 
 fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) -> Verdict {
@@ -3848,6 +3868,42 @@ mod tests {
             let error3 = DomainError::InvalidBaseline(Metric::MaxRssKb);
             let message3 = format!("{}", error3);
             assert_eq!(message3, "baseline value for MaxRssKb must be > 0");
+        }
+
+        /// Test that DomainError::InvalidAlpha has the expected error message.
+        #[test]
+        fn invalid_alpha_error_has_descriptive_message() {
+            let error = DomainError::InvalidAlpha(1.5);
+            let message = format!("{}", error);
+            assert_eq!(
+                message,
+                "significance alpha must be between 0.0 and 1.0, got 1.5"
+            );
+        }
+
+        /// Test that SignificancePolicy::new accepts valid alpha values.
+        #[test]
+        fn significance_policy_new_accepts_valid_alpha() {
+            for alpha in [0.0, 0.05, 0.5, 1.0] {
+                let policy = SignificancePolicy::new(alpha, 8, false);
+                assert!(policy.is_ok(), "alpha={alpha} should be valid");
+                let p = policy.unwrap();
+                assert!((p.alpha - alpha).abs() < f64::EPSILON);
+            }
+        }
+
+        /// Test that SignificancePolicy::new rejects out-of-range alpha values.
+        #[test]
+        fn significance_policy_new_rejects_invalid_alpha() {
+            for alpha in [-0.1, 1.1, 2.0] {
+                let result = SignificancePolicy::new(alpha, 8, false);
+                match result {
+                    Err(DomainError::InvalidAlpha(v)) => {
+                        assert!((v - alpha).abs() < f64::EPSILON);
+                    }
+                    other => panic!("expected InvalidAlpha for alpha={alpha}, got: {other:?}"),
+                }
+            }
         }
     }
 
