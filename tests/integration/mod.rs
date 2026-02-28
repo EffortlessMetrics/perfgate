@@ -14,6 +14,7 @@
 mod budget_significance_flow;
 mod error_propagation;
 mod export_render_flow;
+mod full_pipeline_flow;
 mod host_detect_to_app;
 mod sensor_flow;
 mod stats_to_domain;

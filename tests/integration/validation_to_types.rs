@@ -226,3 +226,222 @@ fn config_empty_benches_is_valid() {
 
     assert!(config.validate().is_ok());
 }
+
+// --- Config validation edge cases ---
+
+#[test]
+fn config_duplicate_bench_names_passes_validation() {
+    // ConfigFile::validate() only checks bench names individually,
+    // so duplicates are accepted at the type level.
+    let config = ConfigFile {
+        defaults: DefaultsConfig::default(),
+        benches: vec![
+            BenchConfigFile {
+                name: "same-name".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            },
+            BenchConfigFile {
+                name: "same-name".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            },
+        ],
+    };
+
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn config_negative_threshold_deserializes() {
+    let toml_str = r#"
+[defaults]
+threshold = -0.5
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.defaults.threshold, Some(-0.5));
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn config_threshold_greater_than_one_deserializes() {
+    let toml_str = r#"
+[defaults]
+threshold = 1.5
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.defaults.threshold, Some(1.5));
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn config_nan_threshold_in_toml_deserializes_as_nan() {
+    let toml_str = r#"
+[defaults]
+threshold = nan
+"#;
+    // TOML spec allows nan/inf as float values
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert!(config.defaults.threshold.unwrap().is_nan());
+}
+
+#[test]
+fn config_infinity_threshold_in_toml_deserializes_as_inf() {
+    let toml_str = r#"
+[defaults]
+threshold = inf
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert!(config.defaults.threshold.unwrap().is_infinite());
+}
+
+#[test]
+fn config_budget_override_negative_threshold() {
+    let toml_str = r#"
+[[bench]]
+name = "my-bench"
+command = ["echo"]
+
+[bench.budgets.wall_ms]
+threshold = -0.1
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    let budget = config.benches[0].budgets.as_ref().unwrap();
+    assert_eq!(
+        budget
+            .get(&perfgate_types::Metric::WallMs)
+            .unwrap()
+            .threshold,
+        Some(-0.1)
+    );
+}
+
+#[test]
+fn config_budget_override_threshold_greater_than_one() {
+    let toml_str = r#"
+[[bench]]
+name = "my-bench"
+command = ["echo"]
+
+[bench.budgets.wall_ms]
+threshold = 2.0
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    let budget = config.benches[0].budgets.as_ref().unwrap();
+    assert_eq!(
+        budget
+            .get(&perfgate_types::Metric::WallMs)
+            .unwrap()
+            .threshold,
+        Some(2.0)
+    );
+}
+
+#[test]
+fn config_invalid_metric_name_in_toml_is_rejected() {
+    let toml_str = r#"
+[[bench]]
+name = "my-bench"
+command = ["echo"]
+metrics = ["not_a_real_metric"]
+"#;
+    assert!(toml::from_str::<ConfigFile>(toml_str).is_err());
+}
+
+#[test]
+fn config_valid_metric_names_in_toml() {
+    let toml_str = r#"
+[[bench]]
+name = "my-bench"
+command = ["echo"]
+metrics = ["wall_ms", "max_rss_kb", "cpu_ms"]
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    let metrics = config.benches[0].metrics.as_ref().unwrap();
+    assert_eq!(metrics.len(), 3);
+}
+
+#[test]
+fn config_empty_bench_name_rejected() {
+    let config = ConfigFile {
+        defaults: DefaultsConfig::default(),
+        benches: vec![BenchConfigFile {
+            name: String::new(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string()],
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        }],
+    };
+
+    let err = config.validate().unwrap_err();
+    assert!(err.contains("empty"));
+}
+
+#[test]
+fn config_path_traversal_variants_rejected() {
+    for name in &["../evil", "bench/../etc/passwd", "./sneaky", "a/../../b"] {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            benches: vec![BenchConfigFile {
+                name: name.to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+            }],
+        };
+
+        assert!(
+            config.validate().is_err(),
+            "expected validation to reject path traversal: {name}"
+        );
+    }
+}
+
+#[test]
+fn config_zero_threshold_deserializes() {
+    let toml_str = r#"
+[defaults]
+threshold = 0.0
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.defaults.threshold, Some(0.0));
+}
+
+#[test]
+fn config_warn_factor_edge_values() {
+    let toml_str = r#"
+[defaults]
+warn_factor = 0.0
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.defaults.warn_factor, Some(0.0));
+
+    let toml_str = r#"
+[defaults]
+warn_factor = -1.0
+"#;
+    let config: ConfigFile = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.defaults.warn_factor, Some(-1.0));
+}
