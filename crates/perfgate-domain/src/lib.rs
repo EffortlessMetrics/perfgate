@@ -2545,7 +2545,7 @@ mod tests {
         fn make_run_receipt_for_prop(name: &str, wall: u64) -> RunReceipt {
             use perfgate_types::{BenchMeta, HostInfo, RUN_SCHEMA_V1, RunMeta, ToolInfo};
             let sample = non_warmup_sample(wall);
-            let stats = compute_stats(&[sample.clone()], None).unwrap();
+            let stats = compute_stats(std::slice::from_ref(&sample), None).unwrap();
             RunReceipt {
                 schema: RUN_SCHEMA_V1.to_string(),
                 tool: ToolInfo {

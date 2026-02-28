@@ -658,7 +658,6 @@ mod tests {
     fn template_conditional_verdict_pass() {
         let mut compare = make_compare_receipt(MetricStatus::Pass);
         compare.verdict.status = VerdictStatus::Pass;
-        let template = "{{#if (eq verdict.status \"pass\")}}PASS{{else}}OTHER{{/if}}";
         // Handlebars doesn't have built-in `eq` helper, so use string comparison approach
         let template = "{{verdict.status}}";
         let rendered = render_markdown_template(&compare, template).expect("verdict pass");
@@ -687,7 +686,6 @@ mod tests {
     #[test]
     fn template_conditional_on_rows_status() {
         let compare = make_compare_receipt(MetricStatus::Warn);
-        let template = "{{#each rows}}{{#if (eq status \"warn\")}}WARN:{{metric}}{{/if}}{{/each}}";
         // Handlebars without custom helpers - use simpler approach
         let template = "{{#each rows}}{{status_icon}} {{metric}} is {{status}}\n{{/each}}";
         let rendered = render_markdown_template(&compare, template).expect("row status");

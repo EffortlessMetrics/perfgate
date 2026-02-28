@@ -1,0 +1,10 @@
+# Cargo mutants configuration
+# https://mutants.rs/config.html
+
+# Exclude equivalent mutants in SHA-256 implementation
+# XOR and OR are mathematically equivalent in these specific expressions:
+# - ch(x, y, z) = (x AND y) XOR (NOT x AND z) - operands are mutually exclusive
+# - maj(x, y, z) - majority function has equivalent formulations
+exclude_re = [
+    "replace \\^ with \\| in sha256_hex",
+]

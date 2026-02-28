@@ -71,7 +71,7 @@ impl ProcessRunner for StdProcessRunner {
 
         #[cfg(unix)]
         {
-            return run_unix(spec);
+            run_unix(spec)
         }
 
         #[cfg(windows)]
@@ -401,23 +401,22 @@ fn wait4_with_timeout(
 
         if res == 0 {
             // still running
-            if let Some(t) = timeout {
-                if start.elapsed() >= t {
-                    timed_out = true;
-                    unsafe {
-                        libc::kill(pid, libc::SIGKILL);
-                    }
-                    // Reap it.
-                    let res2 =
-                        unsafe { libc::wait4(pid, &mut status as *mut libc::c_int, 0, &mut ru) };
-                    if res2 != pid {
-                        return Err(AdapterError::Other(anyhow::anyhow!(
-                            "wait4 after kill failed: {:?}",
-                            std::io::Error::last_os_error()
-                        )));
-                    }
-                    break;
+            if let Some(t) = timeout
+                && start.elapsed() >= t
+            {
+                timed_out = true;
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
                 }
+                // Reap it.
+                let res2 = unsafe { libc::wait4(pid, &mut status as *mut libc::c_int, 0, &mut ru) };
+                if res2 != pid {
+                    return Err(AdapterError::Other(anyhow::anyhow!(
+                        "wait4 after kill failed: {:?}",
+                        std::io::Error::last_os_error()
+                    )));
+                }
+                break;
             }
             std::thread::sleep(Duration::from_millis(10));
             continue;
@@ -615,10 +614,10 @@ fn probe_memory_linux() -> Option<u64> {
         if line.starts_with("MemTotal:") {
             // Format: "MemTotal:       16384000 kB"
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(kb) = parts[1].parse::<u64>() {
-                    return Some(kb * 1024); // Convert KB to bytes
-                }
+            if parts.len() >= 2
+                && let Ok(kb) = parts[1].parse::<u64>()
+            {
+                return Some(kb * 1024); // Convert KB to bytes
             }
         }
     }
@@ -1144,10 +1143,7 @@ mod tests {
         let result = runner.run(&spec).expect("cmd /c echo should succeed");
         assert_eq!(result.exit_code, 0);
         assert!(!result.timed_out);
-        assert!(
-            result.wall_ms > 0 || result.wall_ms == 0,
-            "wall_ms should be non-negative"
-        );
+
         let stdout_str = String::from_utf8_lossy(&result.stdout);
         assert!(
             stdout_str.contains("hello"),
