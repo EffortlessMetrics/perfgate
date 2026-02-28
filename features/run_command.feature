@@ -99,3 +99,24 @@ Feature: Run Command
     And the output file should exist
     And the output file should contain valid JSON
     And the run receipt should have 2 samples
+
+  # Output capture scenarios
+  Scenario: Run with --output-cap-bytes flag truncates captured output
+    When I run perfgate run with output-cap-bytes 4
+    Then the exit code should be 0
+    And the output file should exist
+    And the output file should contain valid JSON
+    And the run receipt sample stdout should be at most 4 bytes
+
+  # Environment variable scenarios
+  Scenario: Run with --env flag sets environment variables
+    When I run perfgate run with env "PERFGATE_BDD_VAR=hello42"
+    Then the exit code should be 0
+    And the output file should exist
+    And the output file should contain valid JSON
+
+  # Error path scenarios
+  Scenario: Run with non-existent command
+    When I run perfgate run with a non-existent command
+    Then the exit code should be 1
+    And the stderr should contain "failed to run command"

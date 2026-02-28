@@ -180,3 +180,41 @@ Feature: Compare Command
     Then the exit code should be 0
     And the verdict should be pass
     And the stderr should not contain "host mismatch"
+
+  # Significance analysis scenarios
+  Scenario: Compare with --significance-alpha flag
+    Given a baseline receipt with wall_ms samples "100,110,105,108,112,103,107,109,111,106"
+    And a current receipt with wall_ms samples "100,110,105,108,112,103,107,109,111,106"
+    When I run perfgate compare with threshold 0.20 and significance-alpha 0.05
+    Then the exit code should be 0
+    And the verdict should be pass
+    And the compare receipt wall_ms delta should have significance metadata
+
+  Scenario: Compare with --require-significance flag downgrades non-significant regression
+    Given a baseline receipt with wall_ms samples "100,110,105,108,112,103,107,109,111,106"
+    And a current receipt with wall_ms samples "200,210,205,208,212,203,207,209,211,206"
+    When I run perfgate compare with threshold 0.05 and significance-alpha 0.05 and require-significance
+    Then the exit code should be 2
+    And the verdict should be fail
+
+  # Error path scenarios
+  Scenario: Compare with non-existent baseline file
+    Given a non-existent baseline file
+    And a current receipt with wall_ms median of 1000
+    When I run perfgate compare with threshold 0.20
+    Then the exit code should be 1
+    And the stderr should contain "read"
+
+  Scenario: Compare with invalid JSON baseline
+    Given an invalid JSON baseline file
+    And a current receipt with wall_ms median of 1000
+    When I run perfgate compare with threshold 0.20
+    Then the exit code should be 1
+    And the stderr should contain "parse"
+
+  Scenario: Compare with empty baseline file
+    Given an empty baseline file
+    And a current receipt with wall_ms median of 1000
+    When I run perfgate compare with threshold 0.20
+    Then the exit code should be 1
+    And the stderr should contain "parse"

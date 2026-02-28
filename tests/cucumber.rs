@@ -91,6 +91,8 @@ pub struct PerfgateWorld {
     artifacts_dir: Option<PathBuf>,
     /// Config file being built
     config: Option<ConfigFile>,
+    /// Path to markdown template file (for md --template)
+    template_path: Option<PathBuf>,
     /// Microcrate test state: computed hash
     computed_hash: Option<String>,
     /// Microcrate test state: list of values for stats
@@ -204,6 +206,71 @@ impl PerfgateWorld {
                     min: wall_ms_median.saturating_sub(10),
                     max: wall_ms_median.saturating_add(10),
                 },
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            },
+        }
+    }
+
+    /// Create a RunReceipt from explicit wall_ms sample values
+    pub fn create_run_receipt_from_samples(&self, wall_ms_values: &[u64]) -> RunReceipt {
+        let mut sorted = wall_ms_values.to_vec();
+        sorted.sort_unstable();
+        let median = sorted[sorted.len() / 2];
+        let min = *sorted.first().unwrap();
+        let max = *sorted.last().unwrap();
+
+        let samples = wall_ms_values
+            .iter()
+            .map(|&v| Sample {
+                wall_ms: v,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            })
+            .collect();
+
+        RunReceipt {
+            schema: RUN_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            run: RunMeta {
+                id: format!("test-run-{}", median),
+                started_at: "2024-01-01T00:00:00Z".to_string(),
+                ended_at: "2024-01-01T00:01:00Z".to_string(),
+                host: HostInfo {
+                    os: std::env::consts::OS.to_string(),
+                    arch: std::env::consts::ARCH.to_string(),
+                    cpu_count: None,
+                    memory_bytes: None,
+                    hostname_hash: None,
+                },
+            },
+            bench: BenchMeta {
+                name: "test-bench".to_string(),
+                cwd: None,
+                command: vec!["echo".to_string(), "hello".to_string()],
+                repeat: wall_ms_values.len() as u32,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            samples,
+            stats: Stats {
+                wall_ms: U64Summary { median, min, max },
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -436,6 +503,31 @@ async fn given_current_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u
     let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
     fs::write(&current_path, json).expect("Failed to write current receipt");
     world.current_path = Some(current_path);
+}
+
+/// Set up a non-existent baseline file path (file is not created on disk)
+#[given("a non-existent baseline file")]
+async fn given_nonexistent_baseline(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    world.baseline_path = Some(world.temp_path().join("nonexistent-baseline.json"));
+}
+
+/// Set up a baseline file containing invalid JSON
+#[given("an invalid JSON baseline file")]
+async fn given_invalid_json_baseline(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("invalid-baseline.json");
+    fs::write(&path, "{ not valid json }").expect("Failed to write invalid JSON");
+    world.baseline_path = Some(path);
+}
+
+/// Set up an empty baseline file
+#[given("an empty baseline file")]
+async fn given_empty_baseline(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("empty-baseline.json");
+    fs::write(&path, "").expect("Failed to write empty file");
+    world.baseline_path = Some(path);
 }
 
 // ============================================================================
@@ -768,6 +860,30 @@ async fn when_run_with_timeout(world: &mut PerfgateWorld, timeout: String) {
     for arg in success_command() {
         cmd.arg(arg);
     }
+
+    let output = cmd.output().expect("Failed to execute perfgate run");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate run with a command that does not exist
+#[when("I run perfgate run with a non-existent command")]
+async fn when_run_with_nonexistent_command(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("run-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("test-bench")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--repeat")
+        .arg("1")
+        .arg("--")
+        .arg("nonexistent_command_xyz_12345");
 
     let output = cmd.output().expect("Failed to execute perfgate run");
     world.last_exit_code = Some(output.status.code().unwrap_or(-1));
@@ -1441,6 +1557,51 @@ async fn when_export_run_default_format(world: &mut PerfgateWorld) {
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
+        .arg("--out")
+        .arg(&export_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate export");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.export_path = Some(export_path);
+}
+
+/// Run perfgate export run with an invalid format string
+#[when("I run perfgate export run with invalid format")]
+async fn when_export_run_invalid_format(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let baseline = world.baseline_path.clone().expect("Baseline path not set");
+    let export_path = world.temp_path().join("export.out");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("export")
+        .arg("--run")
+        .arg(&baseline)
+        .arg("--format")
+        .arg("badformat")
+        .arg("--out")
+        .arg(&export_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate export");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.export_path = Some(export_path);
+}
+
+/// Run perfgate export run with a non-existent input file
+#[when("I run perfgate export run with a non-existent file")]
+async fn when_export_run_nonexistent_file(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let export_path = world.temp_path().join("export.csv");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("export")
+        .arg("--run")
+        .arg("nonexistent-run-receipt.json")
+        .arg("--format")
+        .arg("csv")
         .arg("--out")
         .arg(&export_path);
 

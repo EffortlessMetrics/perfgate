@@ -80,3 +80,15 @@ Feature: Export Command
     Then the exit code should be 0
     And the export file should exist
     And the export file should contain "perfgate_compare_regression_pct"
+
+  # Error path scenarios
+  Scenario: Export with invalid format
+    Given a baseline receipt with wall_ms median of 1000
+    When I run perfgate export run with invalid format
+    Then the exit code should be 1
+    And the stderr should contain "invalid format"
+
+  Scenario: Export with non-existent run file
+    When I run perfgate export run with a non-existent file
+    Then the exit code should be 1
+    And the stderr should contain "read"
