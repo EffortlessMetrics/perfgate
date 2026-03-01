@@ -1,0 +1,38 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+expression: "help_output(&[\"run\", \"--help\"])"
+---
+Run a command repeatedly and emit a run receipt (JSON)
+
+Usage: perfgate.exe run [OPTIONS] --name <NAME> -- <COMMAND>...
+
+Arguments:
+  <COMMAND>...  Command to run (argv) after `--`
+
+Options:
+      --name <NAME>
+          Bench identifier (used for baselines and reporting)
+      --repeat <REPEAT>
+          Number of measured samples [default: 5]
+      --warmup <WARMUP>
+          Warmup samples (excluded from stats) [default: 0]
+      --work <WORK>
+          Units of work completed per run (enables throughput_per_s)
+      --cwd <CWD>
+          Working directory
+      --timeout <TIMEOUT>
+          Per-run timeout (e.g. "2s")
+      --env <ENV>
+          Environment variable (KEY=VALUE). Repeatable
+      --output-cap-bytes <OUTPUT_CAP_BYTES>
+          Max bytes captured from stdout/stderr per run [default: 8192]
+      --allow-nonzero
+          Do not fail the tool when the command returns nonzero
+      --include-hostname-hash
+          Include a hashed hostname in the host fingerprint for noise mitigation. The hostname is SHA-256 hashed for privacy
+      --out <OUT>
+          Output file path [default: perfgate.json]
+      --pretty
+          Pretty-print JSON
+  -h, --help
+          Print help

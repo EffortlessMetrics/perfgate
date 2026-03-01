@@ -1,0 +1,27 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+expression: "help_output(&[\"promote\", \"--help\"])"
+---
+Promote a run receipt to become the new baseline.
+
+This command copies a run receipt to a baseline location, optionally normalizing run-specific fields (run_id, timestamps) to make baselines more stable across runs. Typically used on trusted branches (e.g., main) after successful benchmark runs.
+
+Exit codes: 0 for success, 1 for errors.
+
+Usage: perfgate.exe promote [OPTIONS] --current <CURRENT> --to <TO>
+
+Options:
+      --current <CURRENT>
+          Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote
+
+      --to <TO>
+          Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written
+
+      --normalize
+          Strip run-specific fields (run_id, timestamps) for stable baselines
+
+      --pretty
+          Pretty-print JSON
+
+  -h, --help
+          Print help (see a summary with '-h')

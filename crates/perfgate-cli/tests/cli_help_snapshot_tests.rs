@@ -136,3 +136,39 @@ fn cli_help_github_annotations() {
         .stdout(predicate::str::contains("GitHub Actions annotations"))
         .stdout(predicate::str::contains("--compare"));
 }
+
+// ── insta full-output snapshot tests ─────────────────────────────────
+
+fn help_output(args: &[&str]) -> String {
+    let output = perfgate_cmd()
+        .args(args)
+        .output()
+        .expect("failed to run perfgate");
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).expect("non-UTF-8 help output")
+}
+
+#[test]
+fn snapshot_help_main() {
+    insta::assert_snapshot!("help_main", help_output(&["--help"]));
+}
+
+#[test]
+fn snapshot_help_run() {
+    insta::assert_snapshot!("help_run", help_output(&["run", "--help"]));
+}
+
+#[test]
+fn snapshot_help_compare() {
+    insta::assert_snapshot!("help_compare", help_output(&["compare", "--help"]));
+}
+
+#[test]
+fn snapshot_help_check() {
+    insta::assert_snapshot!("help_check", help_output(&["check", "--help"]));
+}
+
+#[test]
+fn snapshot_help_promote() {
+    insta::assert_snapshot!("help_promote", help_output(&["promote", "--help"]));
+}

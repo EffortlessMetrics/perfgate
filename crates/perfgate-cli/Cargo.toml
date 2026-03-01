@@ -33,6 +33,7 @@ url = "2.5.7"
 
 [dev-dependencies]
 assert_cmd.workspace = true
+insta.workspace = true
 jsonschema = "0.26"
 predicates.workspace = true
 tempfile = "3"
