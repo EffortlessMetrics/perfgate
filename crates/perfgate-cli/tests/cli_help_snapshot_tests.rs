@@ -141,7 +141,7 @@ fn cli_help_github_annotations() {
 
 fn help_output(args: &[&str]) -> String {
     let output = perfgate_cmd()
-        .env("COLUMNS", "80")
+        .env("COLUMNS", "200")
         .args(args)
         .output()
         .expect("failed to run perfgate");
