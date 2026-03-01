@@ -12,6 +12,7 @@
 //! - Error propagation across crates
 
 mod budget_significance_flow;
+mod cross_crate_pipeline;
 mod error_propagation;
 mod export_render_flow;
 mod full_pipeline_flow;
