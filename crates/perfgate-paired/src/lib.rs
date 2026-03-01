@@ -1204,5 +1204,97 @@ mod property_tests {
                 );
             }
         }
+
+        /// Full pipeline determinism: compute + compare yields identical results.
+        #[test]
+        fn prop_full_pipeline_determinism(
+            baseline in prop::collection::vec(1u64..10000u64, 5..50),
+            current in prop::collection::vec(1u64..10000u64, 5..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let samples = make_paired_samples(&baseline[..len], &current[..len]);
+            let stats1 = compute_paired_stats(&samples, None).unwrap();
+            let stats2 = compute_paired_stats(&samples, None).unwrap();
+            let cmp1 = compare_paired_stats(&stats1);
+            let cmp2 = compare_paired_stats(&stats2);
+            prop_assert_eq!(cmp1, cmp2, "identical inputs must produce identical comparisons");
+        }
+
+        /// Sample count in output matches number of non-warmup input samples.
+        #[test]
+        fn prop_sample_count_preserved(
+            baseline in prop::collection::vec(1u64..10000u64, 2..50),
+            current in prop::collection::vec(1u64..10000u64, 2..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let samples = make_paired_samples(&baseline[..len], &current[..len]);
+            let non_warmup = samples.iter().filter(|s| !s.warmup).count() as u32;
+            let stats = compute_paired_stats(&samples, None).unwrap();
+            prop_assert_eq!(
+                stats.wall_diff_ms.count, non_warmup,
+                "output count {} must equal non-warmup input count {}",
+                stats.wall_diff_ms.count, non_warmup
+            );
+        }
+
+        /// Swapping baseline/current flips the sign of pct_change.
+        #[test]
+        fn prop_diff_symmetry_direction_flips(
+            baseline in prop::collection::vec(1u64..10000u64, 5..50),
+            current in prop::collection::vec(1u64..10000u64, 5..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let fwd = make_paired_samples(&baseline[..len], &current[..len]);
+            let rev = make_paired_samples(&current[..len], &baseline[..len]);
+            if let (Ok(fwd_stats), Ok(rev_stats)) =
+                (compute_paired_stats(&fwd, None), compute_paired_stats(&rev, None))
+            {
+                let fwd_cmp = compare_paired_stats(&fwd_stats);
+                let rev_cmp = compare_paired_stats(&rev_stats);
+                // If forward shows regression (positive diff), reverse must show improvement.
+                if fwd_cmp.mean_diff_ms > 0.0 {
+                    prop_assert!(
+                        rev_cmp.mean_diff_ms < 0.0,
+                        "if forward is regression ({:.2}), reverse must be improvement ({:.2})",
+                        fwd_cmp.mean_diff_ms, rev_cmp.mean_diff_ms
+                    );
+                } else if fwd_cmp.mean_diff_ms < 0.0 {
+                    prop_assert!(
+                        rev_cmp.mean_diff_ms > 0.0,
+                        "if forward is improvement ({:.2}), reverse must be regression ({:.2})",
+                        fwd_cmp.mean_diff_ms, rev_cmp.mean_diff_ms
+                    );
+                }
+                // Median must also flip.
+                prop_assert!(
+                    (fwd_cmp.median_diff_ms + rev_cmp.median_diff_ms).abs() < 1e-10,
+                    "median diff must negate: {:.2} vs {:.2}",
+                    fwd_cmp.median_diff_ms, rev_cmp.median_diff_ms
+                );
+            }
+        }
+
+        /// Mean difference is bounded by min and max of individual pair diffs.
+        #[test]
+        fn prop_mean_bounded_by_min_max(
+            baseline in prop::collection::vec(1u64..10000u64, 2..50),
+            current in prop::collection::vec(1u64..10000u64, 2..50),
+        ) {
+            let len = baseline.len().min(current.len());
+            let samples = make_paired_samples(&baseline[..len], &current[..len]);
+            if let Ok(stats) = compute_paired_stats(&samples, None) {
+                let diff = &stats.wall_diff_ms;
+                prop_assert!(
+                    diff.mean >= diff.min,
+                    "mean {:.2} must be >= min {:.2}",
+                    diff.mean, diff.min
+                );
+                prop_assert!(
+                    diff.mean <= diff.max,
+                    "mean {:.2} must be <= max {:.2}",
+                    diff.mean, diff.max
+                );
+            }
+        }
     }
 }
