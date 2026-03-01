@@ -78,6 +78,38 @@ use perfgate_types::{PairedDiffSummary, PairedSample, PairedStats};
 
 pub use perfgate_error::PairedError;
 
+/// Compute summary statistics from paired benchmark samples.
+///
+/// Filters out warmup samples, then computes wall-time, RSS, and
+/// throughput summaries for both baseline and current runs, as well
+/// as the distribution of their paired differences.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_paired::{compute_paired_stats, PairedError};
+/// use perfgate_types::{PairedSample, PairedSampleHalf};
+///
+/// let samples = vec![PairedSample {
+///     pair_index: 0,
+///     warmup: false,
+///     baseline: PairedSampleHalf {
+///         wall_ms: 100, exit_code: 0, timed_out: false,
+///         max_rss_kb: None, stdout: None, stderr: None,
+///     },
+///     current: PairedSampleHalf {
+///         wall_ms: 110, exit_code: 0, timed_out: false,
+///         max_rss_kb: None, stdout: None, stderr: None,
+///     },
+///     wall_diff_ms: 10,
+///     rss_diff_kb: None,
+/// }];
+///
+/// let stats = compute_paired_stats(&samples, None)?;
+/// assert_eq!(stats.wall_diff_ms.mean, 10.0);
+/// assert_eq!(stats.wall_diff_ms.count, 1);
+/// # Ok::<(), PairedError>(())
+/// ```
 pub fn compute_paired_stats(
     samples: &[PairedSample],
     work_units: Option<u64>,
@@ -169,6 +201,26 @@ pub fn compute_paired_stats(
     })
 }
 
+/// Summarize the distribution of paired differences.
+///
+/// Computes mean, median, std-dev, min, max, and count for a slice
+/// of difference values. Returns [`PairedError::NoSamples`] when the
+/// slice is empty.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_paired::{summarize_paired_diffs, PairedError};
+///
+/// let diffs = vec![-5.0, -3.0, -7.0];
+/// let summary = summarize_paired_diffs(&diffs)?;
+/// assert_eq!(summary.count, 3);
+/// assert_eq!(summary.mean, -5.0);
+/// assert_eq!(summary.median, -5.0);
+/// assert_eq!(summary.min, -7.0);
+/// assert_eq!(summary.max, -3.0);
+/// # Ok::<(), PairedError>(())
+/// ```
 pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, PairedError> {
     if diffs.is_empty() {
         return Err(PairedError::NoSamples);
@@ -196,6 +248,33 @@ pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, Paired
     })
 }
 
+/// Result of comparing paired statistics, including significance testing.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_paired::{compare_paired_stats, PairedComparison};
+/// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
+///
+/// let stats = PairedStats {
+///     baseline_wall_ms: U64Summary { median: 100, min: 100, max: 100 },
+///     current_wall_ms: U64Summary { median: 120, min: 120, max: 120 },
+///     wall_diff_ms: PairedDiffSummary {
+///         mean: 20.0, median: 20.0, std_dev: 3.0,
+///         min: 17.0, max: 23.0, count: 10,
+///     },
+///     baseline_max_rss_kb: None,
+///     current_max_rss_kb: None,
+///     rss_diff_kb: None,
+///     baseline_throughput_per_s: None,
+///     current_throughput_per_s: None,
+///     throughput_diff_per_s: None,
+/// };
+///
+/// let cmp: PairedComparison = compare_paired_stats(&stats);
+/// assert!(cmp.is_significant);
+/// assert_eq!(cmp.mean_diff_ms, 20.0);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct PairedComparison {
     pub mean_diff_ms: f64,
@@ -207,6 +286,37 @@ pub struct PairedComparison {
     pub is_significant: bool,
 }
 
+/// Compare paired statistics and compute a confidence interval.
+///
+/// Uses a paired t-test approach: t = 1.96 for n ≥ 30, t = 2.0 otherwise.
+/// A result is significant when the 95 % CI does not span zero.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_paired::compare_paired_stats;
+/// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
+///
+/// let stats = PairedStats {
+///     baseline_wall_ms: U64Summary { median: 100, min: 90, max: 110 },
+///     current_wall_ms: U64Summary { median: 110, min: 100, max: 120 },
+///     wall_diff_ms: PairedDiffSummary {
+///         mean: 10.0, median: 10.0, std_dev: 2.0,
+///         min: 8.0, max: 12.0, count: 5,
+///     },
+///     baseline_max_rss_kb: None,
+///     current_max_rss_kb: None,
+///     rss_diff_kb: None,
+///     baseline_throughput_per_s: None,
+///     current_throughput_per_s: None,
+///     throughput_diff_per_s: None,
+/// };
+///
+/// let cmp = compare_paired_stats(&stats);
+/// assert!(cmp.is_significant);
+/// assert_eq!(cmp.mean_diff_ms, 10.0);
+/// assert!(cmp.pct_change > 0.0);
+/// ```
 pub fn compare_paired_stats(stats: &PairedStats) -> PairedComparison {
     let diff = &stats.wall_diff_ms;
     let n = diff.count as f64;
