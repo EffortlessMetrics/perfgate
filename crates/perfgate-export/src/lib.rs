@@ -530,9 +530,9 @@ fn prometheus_escape_label_value(s: &str) -> String {
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, HostInfo, Metric,
-        MetricStatistic, MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo, U64Summary,
-        Verdict, VerdictCounts, VerdictStatus,
+        BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareRef, Delta, Direction, F64Summary, HostInfo,
+        Metric, MetricStatistic, MetricStatus, RUN_SCHEMA_V1, RunMeta, Sample, Stats, ToolInfo,
+        U64Summary, Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -1205,6 +1205,469 @@ mod tests {
             assert!(prom.contains("perfgate_compare_baseline_value"));
             assert!(prom.contains("perfgate_compare_current_value"));
             assert!(prom.contains("perfgate_compare_status"));
+        }
+
+        // --- Single-sample run receipt ---
+
+        #[test]
+        fn single_sample_run_exports_all_formats() {
+            let receipt = create_run_receipt_with_bench_name("single");
+
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(csv.contains("single"));
+            assert_eq!(csv.trim().lines().count(), 2);
+
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["sample_count"], 1);
+
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains("<td>single</td>"));
+
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains("perfgate_run_sample_count{bench=\"single\"} 1"));
+        }
+
+        // --- Huge values ---
+
+        #[test]
+        fn huge_values_run_receipt() {
+            let mut receipt = create_empty_run_receipt();
+            receipt.bench.name = "huge".to_string();
+            receipt.stats.wall_ms = U64Summary {
+                median: u64::MAX,
+                min: u64::MAX - 1,
+                max: u64::MAX,
+            };
+            receipt.stats.max_rss_kb = Some(U64Summary {
+                median: u64::MAX,
+                min: u64::MAX,
+                max: u64::MAX,
+            });
+
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(csv.contains(&u64::MAX.to_string()));
+
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["wall_ms_median"], u64::MAX);
+
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains(&u64::MAX.to_string()));
+
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains(&u64::MAX.to_string()));
+        }
+
+        // --- Warmup-only samples yield sample_count == 0 ---
+
+        #[test]
+        fn warmup_only_samples_count_zero() {
+            let mut receipt = create_empty_run_receipt();
+            receipt.samples = vec![
+                Sample {
+                    wall_ms: 10,
+                    exit_code: 0,
+                    warmup: true,
+                    timed_out: false,
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    binary_bytes: None,
+                    stdout: None,
+                    stderr: None,
+                },
+                Sample {
+                    wall_ms: 11,
+                    exit_code: 0,
+                    warmup: true,
+                    timed_out: false,
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    binary_bytes: None,
+                    stdout: None,
+                    stderr: None,
+                },
+            ];
+
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["sample_count"], 0);
+
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            // sample_count column is second-to-last; verify 0
+            let data_line = csv.lines().nth(1).unwrap();
+            assert!(
+                data_line.contains(",0,"),
+                "warmup-only should yield sample_count 0"
+            );
+        }
+
+        // --- CSV with carriage return ---
+
+        #[test]
+        fn csv_bench_name_with_carriage_return() {
+            let receipt = create_run_receipt_with_bench_name("bench\rwith\rcr");
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(
+                csv.contains("\"bench\rwith\rcr\""),
+                "carriage-return-containing bench name should be quoted"
+            );
+        }
+
+        // --- CSV compare with special chars in bench name ---
+
+        #[test]
+        fn csv_compare_special_chars_in_bench_name() {
+            let mut receipt = create_empty_compare_receipt();
+            receipt.bench.name = "bench,\"special\"\nname".to_string();
+            receipt.deltas.insert(
+                Metric::WallMs,
+                Delta {
+                    baseline: 100.0,
+                    current: 105.0,
+                    ratio: 1.05,
+                    pct: 0.05,
+                    regression: 0.05,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
+                    status: MetricStatus::Pass,
+                },
+            );
+            let csv = ExportUseCase::export_compare(&receipt, ExportFormat::Csv).unwrap();
+            // RFC 4180: commas/quotes/newlines inside must be quoted, quotes doubled
+            assert!(csv.contains("\"bench,\"\"special\"\"\nname\""));
+        }
+
+        // --- Unicode bench name across all formats ---
+
+        #[test]
+        fn unicode_bench_name_all_formats() {
+            let name = "日本語ベンチ_αβγ_🚀";
+            let receipt = create_run_receipt_with_bench_name(name);
+
+            let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+            assert!(csv.contains(name));
+
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+            assert_eq!(parsed["bench_name"], name);
+
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains(name));
+
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains(name));
+        }
+
+        // --- HTML compare with mixed statuses ---
+
+        #[test]
+        fn html_compare_mixed_statuses() {
+            let mut receipt = create_empty_compare_receipt();
+            receipt.bench.name = "mixed".to_string();
+            for (metric, status) in [
+                (Metric::WallMs, MetricStatus::Pass),
+                (Metric::CpuMs, MetricStatus::Warn),
+                (Metric::MaxRssKb, MetricStatus::Fail),
+            ] {
+                receipt.deltas.insert(
+                    metric,
+                    Delta {
+                        baseline: 100.0,
+                        current: 120.0,
+                        ratio: 1.2,
+                        pct: 0.2,
+                        regression: 0.2,
+                        statistic: MetricStatistic::Median,
+                        significance: None,
+                        status,
+                    },
+                );
+            }
+            let html = ExportUseCase::export_compare(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains("<td>pass</td>"));
+            assert!(html.contains("<td>warn</td>"));
+            assert!(html.contains("<td>fail</td>"));
+            // 3 data rows
+            assert_eq!(html.matches("<tr><td>").count(), 3);
+        }
+
+        // --- HTML empty bench name ---
+
+        #[test]
+        fn html_empty_bench_name() {
+            let receipt = create_run_receipt_with_bench_name("");
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains("<td></td>"));
+            assert!(html.contains("<html>"));
+        }
+
+        // --- Prometheus run with all optional metrics present ---
+
+        #[test]
+        fn prometheus_run_all_optional_metrics_present() {
+            let mut receipt = create_empty_run_receipt();
+            receipt.bench.name = "full".to_string();
+            receipt.stats.cpu_ms = Some(U64Summary {
+                median: 50,
+                min: 48,
+                max: 52,
+            });
+            receipt.stats.page_faults = Some(U64Summary {
+                median: 10,
+                min: 8,
+                max: 12,
+            });
+            receipt.stats.ctx_switches = Some(U64Summary {
+                median: 5,
+                min: 3,
+                max: 7,
+            });
+            receipt.stats.max_rss_kb = Some(U64Summary {
+                median: 2048,
+                min: 2000,
+                max: 2100,
+            });
+            receipt.stats.binary_bytes = Some(U64Summary {
+                median: 100000,
+                min: 99000,
+                max: 101000,
+            });
+            receipt.stats.throughput_per_s = Some(F64Summary {
+                median: 1234.567890,
+                min: 1200.0,
+                max: 1300.0,
+            });
+
+            let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains("perfgate_run_cpu_ms_median{bench=\"full\"} 50"));
+            assert!(prom.contains("perfgate_run_page_faults_median{bench=\"full\"} 10"));
+            assert!(prom.contains("perfgate_run_ctx_switches_median{bench=\"full\"} 5"));
+            assert!(prom.contains("perfgate_run_max_rss_kb_median{bench=\"full\"} 2048"));
+            assert!(prom.contains("perfgate_run_binary_bytes_median{bench=\"full\"} 100000"));
+            assert!(prom.contains("perfgate_run_throughput_per_s_median{bench=\"full\"} 1234.567890"));
+        }
+
+        // --- Prometheus compare status code mapping ---
+
+        #[test]
+        fn prometheus_compare_status_codes() {
+            let mut receipt = create_empty_compare_receipt();
+            receipt.bench.name = "status-test".to_string();
+            for (metric, status, expected_code) in [
+                (Metric::WallMs, MetricStatus::Pass, "0"),
+                (Metric::CpuMs, MetricStatus::Warn, "1"),
+                (Metric::MaxRssKb, MetricStatus::Fail, "2"),
+            ] {
+                receipt.deltas.insert(
+                    metric,
+                    Delta {
+                        baseline: 100.0,
+                        current: 110.0,
+                        ratio: 1.1,
+                        pct: 0.1,
+                        regression: 0.1,
+                        statistic: MetricStatistic::Median,
+                        significance: None,
+                        status,
+                    },
+                );
+                receipt.budgets.insert(
+                    metric,
+                    Budget {
+                        threshold: 0.2,
+                        warn_threshold: 0.15,
+                        direction: Direction::Lower,
+                    },
+                );
+                let _ = expected_code; // used below
+            }
+
+            let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
+            assert!(prom.contains("status=\"pass\"} 0"));
+            assert!(prom.contains("status=\"warn\"} 1"));
+            assert!(prom.contains("status=\"fail\"} 2"));
+        }
+
+        // --- JSONL compare round-trip field validation ---
+
+        #[test]
+        fn jsonl_compare_fields_match_receipt() {
+            let receipt = create_test_compare_receipt();
+            let jsonl = ExportUseCase::export_compare(&receipt, ExportFormat::Jsonl).unwrap();
+
+            let lines: Vec<&str> = jsonl.trim().lines().collect();
+            assert_eq!(lines.len(), receipt.deltas.len());
+
+            for line in lines {
+                let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+                assert_eq!(parsed["bench_name"], "alpha-bench");
+                let metric_name = parsed["metric"].as_str().unwrap();
+                assert!(
+                    ["wall_ms", "max_rss_kb"].contains(&metric_name),
+                    "unexpected metric: {}",
+                    metric_name
+                );
+                assert!(parsed["baseline_value"].as_f64().unwrap() > 0.0);
+                assert!(parsed["current_value"].as_f64().unwrap() > 0.0);
+                let status = parsed["status"].as_str().unwrap();
+                assert!(
+                    ["pass", "warn", "fail"].contains(&status),
+                    "unexpected status: {}",
+                    status
+                );
+            }
+        }
+
+        // --- JSONL run round-trip ---
+
+        #[test]
+        fn jsonl_run_round_trip() {
+            let receipt = create_test_run_receipt();
+            let jsonl = ExportUseCase::export_run(&receipt, ExportFormat::Jsonl).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+
+            assert_eq!(parsed["bench_name"], receipt.bench.name);
+            assert_eq!(parsed["wall_ms_median"], receipt.stats.wall_ms.median);
+            assert_eq!(parsed["wall_ms_min"], receipt.stats.wall_ms.min);
+            assert_eq!(parsed["wall_ms_max"], receipt.stats.wall_ms.max);
+            assert_eq!(
+                parsed["cpu_ms_median"],
+                receipt.stats.cpu_ms.as_ref().unwrap().median
+            );
+            assert_eq!(
+                parsed["max_rss_kb_median"],
+                receipt.stats.max_rss_kb.as_ref().unwrap().median
+            );
+            assert_eq!(
+                parsed["sample_count"],
+                receipt.samples.iter().filter(|s| !s.warmup).count()
+            );
+            assert_eq!(parsed["timestamp"], receipt.run.started_at);
+        }
+
+        // --- HTML structure tests ---
+
+        #[test]
+        fn html_run_all_optional_metrics_present() {
+            let mut receipt = create_empty_run_receipt();
+            receipt.bench.name = "full-html".to_string();
+            receipt.stats.cpu_ms = Some(U64Summary {
+                median: 50,
+                min: 48,
+                max: 52,
+            });
+            receipt.stats.throughput_per_s = Some(F64Summary {
+                median: 999.123456,
+                min: 900.0,
+                max: 1100.0,
+            });
+
+            let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
+            assert!(html.contains("<td>50</td>"));
+            assert!(html.contains("999.123456"));
+            assert!(html.contains("full-html"));
+        }
+
+        // --- CSV escape edge cases ---
+
+        #[test]
+        fn csv_escape_empty_string() {
+            assert_eq!(csv_escape(""), "");
+        }
+
+        #[test]
+        fn csv_escape_only_quotes() {
+            assert_eq!(csv_escape("\"\"\""), "\"\"\"\"\"\"\"\"");
+        }
+
+        #[test]
+        fn csv_escape_no_special_chars() {
+            assert_eq!(csv_escape("plain-bench_name.v2"), "plain-bench_name.v2");
+        }
+
+        // --- Prometheus escape edge cases ---
+
+        #[test]
+        fn prometheus_escape_newline_preserved() {
+            // Newlines are not escaped by prometheus_escape_label_value
+            // (the function only escapes backslash and double-quote)
+            let result = prometheus_escape_label_value("a\nb");
+            assert_eq!(result, "a\nb");
+        }
+
+        #[test]
+        fn prometheus_escape_empty() {
+            assert_eq!(prometheus_escape_label_value(""), "");
+        }
+
+        // --- HTML escape edge cases ---
+
+        #[test]
+        fn html_escape_all_special_chars_combined() {
+            assert_eq!(
+                html_escape("<tag attr=\"val\">&</tag>"),
+                "&lt;tag attr=&quot;val&quot;&gt;&amp;&lt;/tag&gt;"
+            );
+        }
+
+        #[test]
+        fn html_escape_empty() {
+            assert_eq!(html_escape(""), "");
+        }
+
+        // --- ExportFormat::parse edge cases ---
+
+        #[test]
+        fn format_parse_prom_alias() {
+            assert_eq!(ExportFormat::parse("prom"), Some(ExportFormat::Prometheus));
+            assert_eq!(ExportFormat::parse("PROM"), Some(ExportFormat::Prometheus));
+        }
+
+        #[test]
+        fn format_parse_empty_string() {
+            assert_eq!(ExportFormat::parse(""), None);
+        }
+
+        // --- Compare CSV threshold values ---
+
+        #[test]
+        fn compare_csv_threshold_percentage() {
+            let receipt = create_test_compare_receipt();
+            let csv = ExportUseCase::export_compare(&receipt, ExportFormat::Csv).unwrap();
+            // Budget threshold 0.2 → exported as 20.000000
+            assert!(csv.contains("20.000000"));
+            // Budget threshold 0.15 → exported as 15.000000
+            assert!(csv.contains("15.000000"));
+        }
+
+        // --- Compare regression_pct is percentage ---
+
+        #[test]
+        fn compare_regression_pct_is_percentage() {
+            let receipt = create_test_compare_receipt();
+            let jsonl = ExportUseCase::export_compare(&receipt, ExportFormat::Jsonl).unwrap();
+
+            for line in jsonl.trim().lines() {
+                let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+                let metric = parsed["metric"].as_str().unwrap();
+                let regression_pct = parsed["regression_pct"].as_f64().unwrap();
+                match metric {
+                    "wall_ms" => {
+                        // pct=0.1 → regression_pct=10.0
+                        assert!((regression_pct - 10.0).abs() < 0.01);
+                    }
+                    "max_rss_kb" => {
+                        // pct=0.25 → regression_pct=25.0
+                        assert!((regression_pct - 25.0).abs() < 0.01);
+                    }
+                    _ => panic!("unexpected metric: {}", metric),
+                }
+            }
         }
     }
 }

@@ -16,6 +16,22 @@ pub use perfgate_error::StatsError;
 use perfgate_types::{F64Summary, U64Summary};
 use std::cmp::Ordering;
 
+/// Compute min, max, and median for a `u64` slice.
+///
+/// # Errors
+///
+/// Returns [`StatsError::NoSamples`] if the slice is empty.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_stats::summarize_u64;
+///
+/// let s = summarize_u64(&[10, 30, 20]).unwrap();
+/// assert_eq!(s.median, 20);
+/// assert_eq!(s.min, 10);
+/// assert_eq!(s.max, 30);
+/// ```
 pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
     if values.is_empty() {
         return Err(StatsError::NoSamples);
@@ -28,6 +44,22 @@ pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
     Ok(U64Summary { median, min, max })
 }
 
+/// Compute min, max, and median for an `f64` slice.
+///
+/// # Errors
+///
+/// Returns [`StatsError::NoSamples`] if the slice is empty.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_stats::summarize_f64;
+///
+/// let s = summarize_f64(&[1.0, 3.0, 2.0]).unwrap();
+/// assert_eq!(s.median, 2.0);
+/// assert_eq!(s.min, 1.0);
+/// assert_eq!(s.max, 3.0);
+/// ```
 pub fn summarize_f64(values: &[f64]) -> Result<F64Summary, StatsError> {
     if values.is_empty() {
         return Err(StatsError::NoSamples);
@@ -62,6 +94,21 @@ pub fn median_f64_sorted(sorted: &[f64]) -> f64 {
     }
 }
 
+/// Compute the `q`-th percentile (0.0–1.0) using linear interpolation.
+///
+/// Returns `None` if `values` is empty.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_stats::percentile;
+///
+/// let p50 = percentile(vec![1.0, 2.0, 3.0, 4.0, 5.0], 0.5).unwrap();
+/// assert_eq!(p50, 3.0);
+///
+/// let p0 = percentile(vec![10.0, 20.0, 30.0], 0.0).unwrap();
+/// assert_eq!(p0, 10.0);
+/// ```
 pub fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
     if values.is_empty() {
         return None;
@@ -85,6 +132,25 @@ pub fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
     Some(values[lower] + (values[upper] - values[lower]) * weight)
 }
 
+/// Compute sample mean and unbiased variance (Welford's algorithm).
+///
+/// Returns `None` if `values` is empty or the result is non-finite.
+/// Variance uses Bessel's correction (n−1 denominator).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_stats::mean_and_variance;
+///
+/// let (mean, var) = mean_and_variance(&[1.0, 2.0, 3.0, 4.0, 5.0]).unwrap();
+/// assert!((mean - 3.0).abs() < 1e-10);
+/// assert!((var - 2.5).abs() < 1e-10);
+///
+/// // Single element: variance is 0
+/// let (mean, var) = mean_and_variance(&[42.0]).unwrap();
+/// assert_eq!(mean, 42.0);
+/// assert_eq!(var, 0.0);
+/// ```
 pub fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
     if values.is_empty() {
         return None;
