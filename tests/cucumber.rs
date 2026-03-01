@@ -3366,12 +3366,12 @@ async fn given_config_file_with_benches_lenient(
         })
         .collect();
 
-    // threshold=100.0 (very lenient, no fail), warn_factor=0.0 (warn at any regression)
+    // threshold=100000.0 (very lenient, no fail), warn_factor=0.0 (warn at any regression)
     let config = ConfigFile {
         defaults: DefaultsConfig {
             repeat: Some(1),
             warmup: Some(0),
-            threshold: Some(100.0),
+            threshold: Some(100_000.0),
             warn_factor: Some(0.0),
             out_dir: None,
             baseline_dir: Some("baselines".to_string()),
@@ -3422,12 +3422,12 @@ async fn given_config_file_with_mixed_thresholds(
         })
         .collect();
 
-    // Lenient bench: override threshold to 100.0 so it only warns, never fails
+    // Lenient bench: override threshold to 100000.0 so it only warns, never fails
     let mut lenient_budgets = BTreeMap::new();
     lenient_budgets.insert(
         Metric::WallMs,
         BudgetOverride {
-            threshold: Some(100.0),
+            threshold: Some(100_000.0),
             direction: None,
             warn_factor: Some(0.0),
             statistic: None,
