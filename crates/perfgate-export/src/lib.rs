@@ -1449,7 +1449,9 @@ mod tests {
             assert!(prom.contains("perfgate_run_ctx_switches_median{bench=\"full\"} 5"));
             assert!(prom.contains("perfgate_run_max_rss_kb_median{bench=\"full\"} 2048"));
             assert!(prom.contains("perfgate_run_binary_bytes_median{bench=\"full\"} 100000"));
-            assert!(prom.contains("perfgate_run_throughput_per_s_median{bench=\"full\"} 1234.567890"));
+            assert!(
+                prom.contains("perfgate_run_throughput_per_s_median{bench=\"full\"} 1234.567890")
+            );
         }
 
         // --- Prometheus compare status code mapping ---
