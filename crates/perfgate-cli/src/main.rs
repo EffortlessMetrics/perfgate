@@ -2728,6 +2728,7 @@ mod tests {
     ) -> std::path::PathBuf {
         let config_path = temp_dir.join("perfgate.json");
         let cmd = slow_command();
+        let baselines_abs = temp_dir.join("baselines");
         let benches: Vec<serde_json::Value> = bench_names
             .iter()
             .map(|name| {
@@ -2743,7 +2744,7 @@ mod tests {
                 "warmup": 0,
                 "threshold": threshold,
                 "warn_factor": warn_factor,
-                "baseline_dir": "baselines"
+                "baseline_dir": baselines_abs.to_string_lossy()
             },
             "bench": benches
         });
@@ -2834,12 +2835,16 @@ mod tests {
     #[test]
     fn run_check_standard_all_one_warn_exits_three() {
         let dir = tempdir().unwrap();
-        // Use a large threshold so no fail, but warn_factor < 1.0 so warn is triggered.
-        // Baseline wall_ms=1 vs ~50ms command → ratio ≈ 50x.
-        // threshold=100.0 → fail threshold = 101.0x → no fail.
+        // Use a very large threshold so no fail, but warn_factor=0.0 so warn at any regression.
+        // Baseline wall_ms=1 vs actual command (could be ~500ms+ on Windows PowerShell).
+        // threshold=100000.0 → fail threshold = 100001x → never fails.
         // warn_factor=0.0 → warn threshold = 0.0 → any regression warns.
-        let config_path =
-            create_multi_bench_config_json(dir.path(), &["pass-bench", "warn-bench"], 100.0, 0.0);
+        let config_path = create_multi_bench_config_json(
+            dir.path(),
+            &["pass-bench", "warn-bench"],
+            100_000.0,
+            0.0,
+        );
         let out_dir = dir.path().join("out");
 
         let baselines_dir = dir.path().join("baselines");
@@ -2861,7 +2866,7 @@ mod tests {
         let dir = tempdir().unwrap();
         // Three benches: pass (no baseline), warn, fail
         // fail-bench: threshold=0.0 → any regression fails
-        // warn-bench: threshold=100.0, warn_factor=0.0 → warn only
+        // warn-bench: threshold=100000.0, warn_factor=0.0 → warn only
         // To achieve different thresholds per bench we use per-bench budgets.
         // But the simple approach: create two configs... Actually the config
         // `defaults` applies uniformly, so we use threshold=0.0 which makes
@@ -2870,13 +2875,14 @@ mod tests {
         // Instead we build a JSON config with per-bench budget overrides.
         let config_path = dir.path().join("perfgate.json");
         let cmd = slow_command();
+        let baselines_abs = dir.path().join("baselines");
         let config = json!({
             "defaults": {
                 "repeat": 1,
                 "warmup": 0,
-                "threshold": 100.0,
+                "threshold": 100_000.0,
                 "warn_factor": 0.0,
-                "baseline_dir": "baselines"
+                "baseline_dir": baselines_abs.to_string_lossy()
             },
             "bench": [
                 { "name": "pass-bench", "command": cmd },
@@ -2892,7 +2898,7 @@ mod tests {
 
         let baselines_dir = dir.path().join("baselines");
         fs::create_dir_all(&baselines_dir).unwrap();
-        // warn-bench baseline → regression in warn zone (threshold=100.0, warn at 0.0)
+        // warn-bench baseline → regression in warn zone (threshold=100000.0, warn at 0.0)
         write_json(
             &baselines_dir.join("warn-bench.json"),
             &make_receipt(make_stats_with_wall(1)),
