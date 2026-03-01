@@ -4,7 +4,7 @@ expression: "help_output(&[\"run\", \"--help\"])"
 ---
 Run a command repeatedly and emit a run receipt (JSON)
 
-Usage: perfgate.exe run [OPTIONS] --name <NAME> -- <COMMAND>...
+Usage: perfgate run [OPTIONS] --name <NAME> -- <COMMAND>...
 
 Arguments:
   <COMMAND>...  Command to run (argv) after `--`

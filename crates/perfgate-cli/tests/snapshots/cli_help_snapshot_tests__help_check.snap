@@ -10,7 +10,7 @@ This is the main adoption lever for perfgate in CI pipelines.
 
 Exit codes: - 0: pass (or warn without --fail-on-warn, or no baseline without --require-baseline) - 1: tool error (I/O, parse, spawn failures) - 2: fail (budget violated) - 3: warn treated as failure (with --fail-on-warn)
 
-Usage: perfgate.exe check [OPTIONS]
+Usage: perfgate check [OPTIONS]
 
 Options:
       --config <CONFIG>

@@ -4,7 +4,7 @@ expression: "help_output(&[\"compare\", \"--help\"])"
 ---
 Compare a current receipt against a baseline and emit a compare receipt (JSON)
 
-Usage: perfgate.exe compare [OPTIONS] --baseline <BASELINE> --current <CURRENT>
+Usage: perfgate compare [OPTIONS] --baseline <BASELINE> --current <CURRENT>
 
 Options:
       --baseline <BASELINE>

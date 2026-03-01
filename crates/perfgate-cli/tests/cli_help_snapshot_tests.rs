@@ -141,11 +141,14 @@ fn cli_help_github_annotations() {
 
 fn help_output(args: &[&str]) -> String {
     let output = perfgate_cmd()
+        .env("COLUMNS", "80")
         .args(args)
         .output()
         .expect("failed to run perfgate");
     assert!(output.status.success());
-    String::from_utf8(output.stdout).expect("non-UTF-8 help output")
+    let text = String::from_utf8(output.stdout).expect("non-UTF-8 help output");
+    // Normalize binary name so snapshots are identical on Windows and Linux.
+    text.replace("perfgate.exe", "perfgate")
 }
 
 #[test]

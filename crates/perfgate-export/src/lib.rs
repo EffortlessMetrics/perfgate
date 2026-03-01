@@ -12,19 +12,56 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```
 //! use perfgate_export::{ExportFormat, ExportUseCase};
+//! use perfgate_types::*;
+//! use std::collections::BTreeMap;
+//!
+//! let receipt = RunReceipt {
+//!     schema: RUN_SCHEMA_V1.to_string(),
+//!     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+//!     run: RunMeta {
+//!         id: "r1".into(),
+//!         started_at: "2024-01-01T00:00:00Z".into(),
+//!         ended_at: "2024-01-01T00:00:01Z".into(),
+//!         host: HostInfo { os: "linux".into(), arch: "x86_64".into(),
+//!             cpu_count: None, memory_bytes: None, hostname_hash: None },
+//!     },
+//!     bench: BenchMeta {
+//!         name: "bench".into(), cwd: None,
+//!         command: vec!["echo".into()], repeat: 1, warmup: 0,
+//!         work_units: None, timeout_ms: None,
+//!     },
+//!     samples: vec![Sample {
+//!         wall_ms: 42, exit_code: 0, warmup: false, timed_out: false,
+//!         cpu_ms: None, page_faults: None, ctx_switches: None,
+//!         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+//!     }],
+//!     stats: Stats {
+//!         wall_ms: U64Summary { median: 42, min: 42, max: 42 },
+//!         cpu_ms: None, page_faults: None, ctx_switches: None,
+//!         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+//!     },
+//! };
 //!
 //! // Export a run receipt to CSV
-//! let csv = ExportUseCase::export_run(&run_receipt, ExportFormat::Csv)?;
-//!
-//! // Export a compare receipt to Prometheus format
-//! let prom = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Prometheus)?;
+//! let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
+//! assert!(csv.contains("bench"));
 //! ```
 
 use perfgate_types::{CompareReceipt, Metric, MetricStatus, RunReceipt};
 
 /// Supported export formats.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_export::ExportFormat;
+///
+/// let fmt = ExportFormat::Csv;
+/// assert_eq!(ExportFormat::parse("csv"), Some(fmt));
+/// assert_eq!(ExportFormat::parse("unknown"), None);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportFormat {
     /// RFC 4180 compliant CSV with header row.
@@ -56,6 +93,19 @@ impl ExportFormat {
 impl std::str::FromStr for ExportFormat {
     type Err = ();
 
+    /// Parse an [`ExportFormat`] from a string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_export::ExportFormat;
+    ///
+    /// let fmt: ExportFormat = "jsonl".parse().unwrap();
+    /// assert_eq!(fmt, ExportFormat::Jsonl);
+    ///
+    /// let bad: Result<ExportFormat, _> = "nope".parse();
+    /// assert!(bad.is_err());
+    /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "csv" => Ok(ExportFormat::Csv),
@@ -68,6 +118,29 @@ impl std::str::FromStr for ExportFormat {
 }
 
 /// Row structure for RunReceipt export.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_export::RunExportRow;
+///
+/// let row = RunExportRow {
+///     bench_name: "my-bench".into(),
+///     wall_ms_median: 42,
+///     wall_ms_min: 40,
+///     wall_ms_max: 44,
+///     binary_bytes_median: None,
+///     cpu_ms_median: Some(20),
+///     ctx_switches_median: None,
+///     max_rss_kb_median: None,
+///     page_faults_median: None,
+///     throughput_median: None,
+///     sample_count: 5,
+///     timestamp: "2024-01-01T00:00:00Z".into(),
+/// };
+/// assert_eq!(row.bench_name, "my-bench");
+/// assert_eq!(row.sample_count, 5);
+/// ```
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RunExportRow {
     pub bench_name: String,
@@ -85,6 +158,24 @@ pub struct RunExportRow {
 }
 
 /// Row structure for CompareReceipt export.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_export::CompareExportRow;
+///
+/// let row = CompareExportRow {
+///     bench_name: "my-bench".into(),
+///     metric: "wall_ms".into(),
+///     baseline_value: 100.0,
+///     current_value: 110.0,
+///     regression_pct: 10.0,
+///     status: "pass".into(),
+///     threshold: 20.0,
+/// };
+/// assert_eq!(row.metric, "wall_ms");
+/// assert_eq!(row.status, "pass");
+/// ```
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CompareExportRow {
     pub bench_name: String,
@@ -507,6 +598,16 @@ fn status_to_string(status: MetricStatus) -> String {
 
 /// Escape a string for CSV per RFC 4180.
 /// If the string contains comma, double quote, or newline, wrap in quotes and escape quotes.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_export::csv_escape;
+///
+/// assert_eq!(csv_escape("hello"), "hello");
+/// assert_eq!(csv_escape("has,comma"), "\"has,comma\"");
+/// assert_eq!(csv_escape("has\"quote"), "\"has\"\"quote\"");
+/// ```
 pub fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
         format!("\"{}\"", s.replace('"', "\"\""))

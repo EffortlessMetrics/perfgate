@@ -4,7 +4,7 @@ expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
 
-Usage: perfgate.exe <COMMAND>
+Usage: perfgate <COMMAND>
 
 Commands:
   run                 Run a command repeatedly and emit a run receipt (JSON)

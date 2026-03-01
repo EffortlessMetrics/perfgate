@@ -8,7 +8,7 @@ This command copies a run receipt to a baseline location, optionally normalizing
 
 Exit codes: 0 for success, 1 for errors.
 
-Usage: perfgate.exe promote [OPTIONS] --current <CURRENT> --to <TO>
+Usage: perfgate promote [OPTIONS] --current <CURRENT> --to <TO>
 
 Options:
       --current <CURRENT>
