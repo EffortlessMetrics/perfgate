@@ -193,6 +193,20 @@ pub enum BenchOutcome {
 
 impl BenchOutcome {
     /// Get the bench name regardless of variant.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::BenchOutcome;
+    ///
+    /// let outcome = BenchOutcome::Error {
+    ///     bench_name: "my-bench".to_string(),
+    ///     error_message: "oops".to_string(),
+    ///     stage: "run",
+    ///     error_kind: "exec_error",
+    /// };
+    /// assert_eq!(outcome.bench_name(), "my-bench");
+    /// ```
     pub fn bench_name(&self) -> &str {
         match self {
             BenchOutcome::Success { bench_name, .. } => bench_name,
@@ -257,6 +271,16 @@ pub struct SensorReportBuilder {
 
 impl SensorReportBuilder {
     /// Create a new SensorReportBuilder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::ToolInfo;
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string());
+    /// ```
     pub fn new(tool: ToolInfo, started_at: String) -> Self {
         Self {
             tool,
@@ -272,6 +296,17 @@ impl SensorReportBuilder {
     }
 
     /// Set the end time and duration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::ToolInfo;
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .ended_at("2024-01-01T00:01:00Z".to_string(), 60000);
+    /// ```
     pub fn ended_at(mut self, ended_at: String, duration_ms: u64) -> Self {
         self.ended_at = Some(ended_at);
         self.duration_ms = Some(duration_ms);
@@ -279,6 +314,18 @@ impl SensorReportBuilder {
     }
 
     /// Set baseline availability.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::ToolInfo;
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// // Baseline available
+    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .baseline(true, None);
+    /// ```
     pub fn baseline(mut self, available: bool, reason: Option<String>) -> Self {
         self.baseline_available = available;
         self.baseline_reason = reason;
@@ -286,12 +333,37 @@ impl SensorReportBuilder {
     }
 
     /// Set engine capability explicitly.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::{ToolInfo, Capability, CapabilityStatus};
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .engine(Capability {
+    ///         status: CapabilityStatus::Available,
+    ///         reason: None,
+    ///     });
+    /// ```
     pub fn engine(mut self, capability: Capability) -> Self {
         self.engine_capability = Some(capability);
         self
     }
 
     /// Add an artifact.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::ToolInfo;
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .artifact("report.json".to_string(), "sensor_report".to_string());
+    /// ```
     pub fn artifact(mut self, path: String, artifact_type: String) -> Self {
         self.artifacts.push(SensorArtifact {
             path,
@@ -303,17 +375,75 @@ impl SensorReportBuilder {
     /// Set the maximum number of findings to include.
     /// When exceeded, findings are truncated and a meta-finding is appended.
     /// `findings_emitted` in the output counts real findings only (excluding the truncation meta-finding).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::ToolInfo;
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .max_findings(50);
+    /// ```
     pub fn max_findings(mut self, limit: usize) -> Self {
         self.max_findings = Some(limit);
         self
     }
 
     /// Take ownership of accumulated artifacts (for manual report building).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::ToolInfo;
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let mut builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .artifact("report.json".to_string(), "sensor_report".to_string());
+    /// let artifacts = builder.take_artifacts();
+    /// assert_eq!(artifacts.len(), 1);
+    /// assert_eq!(artifacts[0].path, "report.json");
+    /// ```
     pub fn take_artifacts(&mut self) -> Vec<SensorArtifact> {
         std::mem::take(&mut self.artifacts)
     }
 
     /// Build the SensorReport from a PerfgateReport.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::{
+    ///     ToolInfo, PerfgateReport, VerdictStatus, Verdict, VerdictCounts,
+    ///     ReportSummary, SensorVerdictStatus, REPORT_SCHEMA_V1,
+    /// };
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let report = PerfgateReport {
+    ///     report_type: REPORT_SCHEMA_V1.to_string(),
+    ///     verdict: Verdict {
+    ///         status: VerdictStatus::Pass,
+    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+    ///         reasons: vec![],
+    ///     },
+    ///     compare: None,
+    ///     findings: vec![],
+    ///     summary: ReportSummary {
+    ///         pass_count: 1, warn_count: 0, fail_count: 0, total_count: 1,
+    ///     },
+    /// };
+    ///
+    /// let sensor = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .ended_at("2024-01-01T00:01:00Z".to_string(), 60000)
+    ///     .baseline(true, None)
+    ///     .build(&report);
+    ///
+    /// assert_eq!(sensor.verdict.status, SensorVerdictStatus::Pass);
+    /// assert_eq!(sensor.verdict.counts.info, 1);
+    /// ```
     pub fn build(mut self, report: &PerfgateReport) -> SensorReport {
         let status = match report.verdict.status {
             VerdictStatus::Pass => SensorVerdictStatus::Pass,
@@ -422,6 +552,21 @@ impl SensorReportBuilder {
     /// This creates a report when the sensor itself failed to run properly.
     /// `stage` indicates which phase failed (e.g. "config_parse", "run_command").
     /// `error_kind` classifies the error (e.g. "io_error", "parse_error", "exec_error").
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::SensorReportBuilder;
+    /// use perfgate_types::{ToolInfo, SensorVerdictStatus};
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let sensor = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .build_error("config not found", "config_parse", "parse_error");
+    ///
+    /// assert_eq!(sensor.verdict.status, SensorVerdictStatus::Fail);
+    /// assert_eq!(sensor.verdict.counts.error, 1);
+    /// assert_eq!(sensor.findings.len(), 1);
+    /// ```
     pub fn build_error(
         mut self,
         error_message: &str,
@@ -510,6 +655,46 @@ impl SensorReportBuilder {
     /// - Combines markdown with `\n---\n\n` separator in multi-bench
     /// - Applies truncation via `truncate_findings()` using `self.max_findings`
     /// - Returns `(SensorReport, combined_markdown)`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_sensor::{SensorReportBuilder, BenchOutcome};
+    /// use perfgate_types::{
+    ///     ToolInfo, PerfgateReport, VerdictStatus, Verdict, VerdictCounts,
+    ///     ReportSummary, SensorVerdictStatus, REPORT_SCHEMA_V1,
+    /// };
+    ///
+    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
+    /// let report = PerfgateReport {
+    ///     report_type: REPORT_SCHEMA_V1.to_string(),
+    ///     verdict: Verdict {
+    ///         status: VerdictStatus::Pass,
+    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+    ///         reasons: vec![],
+    ///     },
+    ///     compare: None,
+    ///     findings: vec![],
+    ///     summary: ReportSummary {
+    ///         pass_count: 1, warn_count: 0, fail_count: 0, total_count: 1,
+    ///     },
+    /// };
+    ///
+    /// let outcome = BenchOutcome::Success {
+    ///     bench_name: "my-bench".to_string(),
+    ///     report,
+    ///     has_compare: false,
+    ///     baseline_available: false,
+    ///     markdown: "## Results\n".to_string(),
+    ///     extras_prefix: "extras".to_string(),
+    /// };
+    ///
+    /// let (sensor, markdown) = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string())
+    ///     .build_aggregated(&[outcome]);
+    ///
+    /// assert_eq!(sensor.verdict.status, SensorVerdictStatus::Pass);
+    /// assert!(markdown.contains("Results"));
+    /// ```
     pub fn build_aggregated(mut self, outcomes: &[BenchOutcome]) -> (SensorReport, String) {
         let multi_bench = outcomes.len() > 1;
 
