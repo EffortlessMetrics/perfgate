@@ -3,6 +3,19 @@
 //! Design goal: versioned, explicit, boring.
 //! These structs are used for receipts, PR comments, and (eventually) long-term baselines.
 //!
+//! # Examples
+//!
+//! Round-trip a [`ToolInfo`] through JSON:
+//!
+//! ```
+//! use perfgate_types::ToolInfo;
+//!
+//! let tool = ToolInfo { name: "perfgate".into(), version: "1.0.0".into() };
+//! let json = serde_json::to_string(&tool).unwrap();
+//! let back: ToolInfo = serde_json::from_str(&json).unwrap();
+//! assert_eq!(tool, back);
+//! ```
+//!
 //! # Feature Flags
 //!
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
@@ -242,6 +255,16 @@ pub enum HostMismatchPolicy {
 }
 
 impl HostMismatchPolicy {
+    /// Returns the string representation of this policy.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::HostMismatchPolicy;
+    ///
+    /// assert_eq!(HostMismatchPolicy::Warn.as_str(), "warn");
+    /// assert_eq!(HostMismatchPolicy::default().as_str(), "warn");
+    /// ```
     pub fn as_str(self) -> &'static str {
         match self {
             HostMismatchPolicy::Warn => "warn",
@@ -455,6 +478,16 @@ pub enum Metric {
 }
 
 impl Metric {
+    /// Returns the snake_case string key for this metric.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::Metric;
+    ///
+    /// assert_eq!(Metric::WallMs.as_str(), "wall_ms");
+    /// assert_eq!(Metric::ThroughputPerS.as_str(), "throughput_per_s");
+    /// ```
     pub fn as_str(self) -> &'static str {
         match self {
             Metric::BinaryBytes => "binary_bytes",
@@ -467,6 +500,17 @@ impl Metric {
         }
     }
 
+    /// Parses a snake_case string key into a [`Metric`], returning `None` for unknown keys.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::Metric;
+    ///
+    /// assert_eq!(Metric::parse_key("wall_ms"), Some(Metric::WallMs));
+    /// assert_eq!(Metric::parse_key("max_rss_kb"), Some(Metric::MaxRssKb));
+    /// assert_eq!(Metric::parse_key("unknown"), None);
+    /// ```
     pub fn parse_key(key: &str) -> Option<Self> {
         match key {
             "binary_bytes" => Some(Metric::BinaryBytes),
@@ -480,6 +524,19 @@ impl Metric {
         }
     }
 
+    /// Returns the default comparison direction for this metric.
+    ///
+    /// Most metrics use [`Direction::Lower`] (lower is better), except
+    /// throughput which uses [`Direction::Higher`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::{Metric, Direction};
+    ///
+    /// assert_eq!(Metric::WallMs.default_direction(), Direction::Lower);
+    /// assert_eq!(Metric::ThroughputPerS.default_direction(), Direction::Higher);
+    /// ```
     pub fn default_direction(self) -> Direction {
         match self {
             Metric::BinaryBytes => Direction::Lower,
@@ -497,6 +554,17 @@ impl Metric {
         0.9
     }
 
+    /// Returns the human-readable display unit for this metric.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::Metric;
+    ///
+    /// assert_eq!(Metric::WallMs.display_unit(), "ms");
+    /// assert_eq!(Metric::MaxRssKb.display_unit(), "KB");
+    /// assert_eq!(Metric::ThroughputPerS.display_unit(), "/s");
+    /// ```
     pub fn display_unit(self) -> &'static str {
         match self {
             Metric::BinaryBytes => "bytes",
@@ -520,6 +588,16 @@ pub enum MetricStatistic {
 }
 
 impl MetricStatistic {
+    /// Returns the string representation of this statistic.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::MetricStatistic;
+    ///
+    /// assert_eq!(MetricStatistic::Median.as_str(), "median");
+    /// assert_eq!(MetricStatistic::P95.as_str(), "p95");
+    /// ```
     pub fn as_str(self) -> &'static str {
         match self {
             MetricStatistic::Median => "median",
@@ -580,6 +658,17 @@ pub enum MetricStatus {
 }
 
 impl MetricStatus {
+    /// Returns the string representation of this status.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::MetricStatus;
+    ///
+    /// assert_eq!(MetricStatus::Pass.as_str(), "pass");
+    /// assert_eq!(MetricStatus::Warn.as_str(), "warn");
+    /// assert_eq!(MetricStatus::Fail.as_str(), "fail");
+    /// ```
     pub fn as_str(self) -> &'static str {
         match self {
             MetricStatus::Pass => "pass",
@@ -856,6 +945,26 @@ pub struct ConfigFile {
 
 impl ConfigFile {
     /// Validate all bench names in this config. Returns an error if any name is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use perfgate_types::ConfigFile;
+    ///
+    /// let good: ConfigFile = toml::from_str(r#"
+    /// [[bench]]
+    /// name = "valid-bench"
+    /// command = ["echo"]
+    /// "#).unwrap();
+    /// assert!(good.validate().is_ok());
+    ///
+    /// let bad: ConfigFile = toml::from_str(r#"
+    /// [[bench]]
+    /// name = "INVALID|name"
+    /// command = ["echo"]
+    /// "#).unwrap();
+    /// assert!(bad.validate().is_err());
+    /// ```
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
             validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
