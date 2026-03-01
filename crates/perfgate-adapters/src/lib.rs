@@ -1286,4 +1286,360 @@ mod tests {
         assert_eq!(result.exit_code, 42);
         assert!(!result.timed_out);
     }
+
+    // =========================================================================
+    // Edge-case tests: process runner error paths
+    // =========================================================================
+
+    /// Non-existent command returns AdapterError::Other (not EmptyArgv).
+    #[test]
+    fn nonexistent_command_returns_other_error() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec!["__perfgate_nonexistent_cmd_xyz__".into()],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let err = runner.run(&spec).unwrap_err();
+        assert!(
+            matches!(err, AdapterError::Other(_)),
+            "Expected AdapterError::Other for missing binary, got: {err:?}",
+        );
+    }
+
+    /// Non-zero exit with empty stdout and stderr.
+    #[test]
+    fn nonzero_exit_empty_output() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "exit".into(), "1".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "exit 1".into()]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("should succeed with nonzero exit");
+        assert_eq!(result.exit_code, 1);
+        assert!(result.stdout.is_empty(), "stdout should be empty");
+        // stderr may or may not be empty depending on platform
+    }
+
+    /// Command that produces no stdout at all.
+    #[test]
+    fn command_with_no_stdout() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                // `cmd /c rem` produces no output
+                vec!["cmd".into(), "/c".into(), "rem".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "true".into()]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("silent command should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert!(
+            result.stdout.is_empty(),
+            "stdout should be empty for silent command"
+        );
+    }
+
+    /// Invalid working directory returns an error.
+    #[test]
+    fn invalid_cwd_returns_error() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "echo".into(), "hi".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "echo hi".into()]
+            },
+            cwd: Some(PathBuf::from(
+                "__perfgate_nonexistent_dir_xyz__/deeply/nested",
+            )),
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec);
+        assert!(result.is_err(), "invalid cwd should cause an error");
+    }
+
+    /// Output that exceeds the cap is truncated.
+    #[test]
+    fn output_cap_truncates_large_stdout() {
+        let runner = StdProcessRunner;
+        // Generate output larger than the cap
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                // Use a loop to generate lots of output
+                vec![
+                    "cmd".into(),
+                    "/c".into(),
+                    "for /L %i in (1,1,500) do @echo AAAAAAAAAA".into(),
+                ]
+            } else {
+                vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "yes AAAAAAAAAA | head -n 500".into(),
+                ]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 64,
+        };
+
+        let result = runner.run(&spec).expect("command should succeed");
+        assert!(
+            result.stdout.len() <= 64,
+            "stdout should be capped at 64 bytes, got {}",
+            result.stdout.len()
+        );
+    }
+
+    /// Zero output cap means no output is captured.
+    #[test]
+    fn zero_output_cap_captures_nothing() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "echo".into(), "hello".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "echo hello".into()]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 0,
+        };
+
+        let result = runner.run(&spec).expect("command should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert!(
+            result.stdout.is_empty(),
+            "stdout should be empty with zero cap"
+        );
+        assert!(
+            result.stderr.is_empty(),
+            "stderr should be empty with zero cap"
+        );
+    }
+
+    // =========================================================================
+    // Edge-case tests: system metrics for zero-length processes
+    // =========================================================================
+
+    /// An instant-exit process should still produce valid metrics.
+    #[test]
+    fn instant_exit_process_has_valid_metrics() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "exit".into(), "0".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "true".into()]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("instant exit should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert!(!result.timed_out);
+        // wall_ms should be small (under 5 seconds at most)
+        assert!(
+            result.wall_ms < 5000,
+            "wall_ms should be small for instant process, got {}",
+            result.wall_ms,
+        );
+    }
+
+    /// CPU metrics for an instant-exit process should be zero or very small.
+    #[test]
+    fn instant_exit_cpu_ms_is_small() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "exit".into(), "0".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "true".into()]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("instant exit should succeed");
+        if let Some(cpu) = result.cpu_ms {
+            assert!(
+                cpu < 1000,
+                "cpu_ms should be under 1s for instant process, got {}",
+                cpu,
+            );
+        }
+    }
+
+    /// binary_bytes is populated for well-known commands.
+    #[test]
+    fn binary_bytes_populated_for_known_command() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: if cfg!(windows) {
+                vec!["cmd".into(), "/c".into(), "echo".into(), "x".into()]
+            } else {
+                vec!["/bin/sh".into(), "-c".into(), "true".into()]
+            },
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("should succeed");
+        // The binary should be resolvable on most systems
+        if let Some(bytes) = result.binary_bytes {
+            assert!(bytes > 0, "binary_bytes should be > 0 when present");
+        }
+    }
+
+    // =========================================================================
+    // Edge-case tests: platform capability detection
+    // =========================================================================
+
+    /// On Windows, page_faults and ctx_switches are not collected.
+    #[cfg(windows)]
+    #[test]
+    fn windows_does_not_collect_unix_only_metrics() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec!["cmd".into(), "/c".into(), "echo".into(), "hi".into()],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("should succeed on Windows");
+        assert!(
+            result.page_faults.is_none(),
+            "page_faults should be None on Windows"
+        );
+        assert!(
+            result.ctx_switches.is_none(),
+            "ctx_switches should be None on Windows"
+        );
+    }
+
+    /// On Windows, timeouts are unsupported.
+    #[cfg(windows)]
+    #[test]
+    fn windows_timeout_returns_unsupported() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec!["cmd".into(), "/c".into(), "echo".into(), "hi".into()],
+            cwd: None,
+            env: vec![],
+            timeout: Some(Duration::from_secs(5)),
+            output_cap_bytes: 4096,
+        };
+
+        let err = runner.run(&spec).unwrap_err();
+        assert!(
+            matches!(err, AdapterError::TimeoutUnsupported),
+            "Expected TimeoutUnsupported on Windows, got: {err:?}",
+        );
+    }
+
+    /// On Unix, all resource-usage metrics are collected.
+    #[cfg(unix)]
+    #[test]
+    fn unix_collects_all_rusage_metrics() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            argv: vec!["/bin/sh".into(), "-c".into(), "echo hi".into()],
+            cwd: None,
+            env: vec![],
+            timeout: None,
+            output_cap_bytes: 4096,
+        };
+
+        let result = runner.run(&spec).expect("should succeed on Unix");
+        assert!(result.cpu_ms.is_some(), "cpu_ms should be Some on Unix");
+        assert!(
+            result.page_faults.is_some(),
+            "page_faults should be Some on Unix"
+        );
+        assert!(
+            result.ctx_switches.is_some(),
+            "ctx_switches should be Some on Unix"
+        );
+        assert!(
+            result.max_rss_kb.is_some(),
+            "max_rss_kb should be Some on Unix"
+        );
+    }
+
+    /// HostProbe always reports the current platform OS/arch.
+    #[test]
+    fn host_probe_os_matches_platform() {
+        let probe = StdHostProbe;
+        let info = probe.probe(&HostProbeOptions::default());
+
+        if cfg!(windows) {
+            assert_eq!(info.os, "windows");
+        } else if cfg!(target_os = "linux") {
+            assert_eq!(info.os, "linux");
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(info.os, "macos");
+        }
+
+        if cfg!(target_arch = "x86_64") {
+            assert_eq!(info.arch, "x86_64");
+        } else if cfg!(target_arch = "aarch64") {
+            assert_eq!(info.arch, "aarch64");
+        }
+    }
+
+    /// read_with_cap returns empty vec for an empty reader.
+    #[test]
+    fn read_with_cap_empty_reader() {
+        let mut reader: &[u8] = &[];
+        let result = read_with_cap(&mut reader, 1024);
+        assert!(result.is_empty());
+    }
+
+    /// read_with_cap with zero cap returns empty vec even with data.
+    #[test]
+    fn read_with_cap_zero_cap() {
+        let mut reader: &[u8] = b"hello world";
+        let result = read_with_cap(&mut reader, 0);
+        assert!(result.is_empty());
+    }
+
+    /// read_with_cap truncates to cap.
+    #[test]
+    fn read_with_cap_truncates() {
+        let mut reader: &[u8] = b"hello world";
+        let result = read_with_cap(&mut reader, 5);
+        assert_eq!(result, b"hello");
+    }
 }
