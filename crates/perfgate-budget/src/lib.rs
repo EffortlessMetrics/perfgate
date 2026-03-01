@@ -41,6 +41,24 @@ use perfgate_types::{
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+/// Errors that can occur during budget evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_budget::{evaluate_budget, BudgetError};
+/// use perfgate_types::{Budget, Direction};
+///
+/// let budget = Budget {
+///     threshold: 0.20,
+///     warn_threshold: 0.10,
+///     direction: Direction::Lower,
+/// };
+///
+/// // A zero baseline produces an error
+/// let err = evaluate_budget(0.0, 100.0, &budget).unwrap_err();
+/// assert_eq!(err.to_string(), "baseline value must be > 0");
+/// ```
 #[derive(Debug, Error)]
 pub enum BudgetError {
     #[error("no samples to summarize")]
@@ -51,6 +69,27 @@ pub enum BudgetError {
 }
 
 /// Result of evaluating a single metric against a budget.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_budget::evaluate_budget;
+/// use perfgate_types::{Budget, Direction, MetricStatus};
+///
+/// let budget = Budget {
+///     threshold: 0.20,
+///     warn_threshold: 0.10,
+///     direction: Direction::Lower,
+/// };
+///
+/// let result = evaluate_budget(100.0, 110.0, &budget).unwrap();
+/// assert_eq!(result.baseline, 100.0);
+/// assert_eq!(result.current, 110.0);
+/// assert!((result.ratio - 1.10).abs() < 1e-10);
+/// assert!((result.pct - 0.10).abs() < 1e-10);
+/// assert!((result.regression - 0.10).abs() < 1e-10);
+/// assert_eq!(result.status, MetricStatus::Warn);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct BudgetResult {
     /// The baseline value.
@@ -285,6 +324,17 @@ pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
 /// Generates a reason token for a metric status.
 ///
 /// Format: `{metric}_{status}` (e.g., "wall_ms_warn", "max_rss_kb_fail")
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_budget::reason_token;
+/// use perfgate_types::{Metric, MetricStatus};
+///
+/// assert_eq!(reason_token(Metric::WallMs, MetricStatus::Warn), "wall_ms_warn");
+/// assert_eq!(reason_token(Metric::MaxRssKb, MetricStatus::Fail), "max_rss_kb_fail");
+/// assert_eq!(reason_token(Metric::ThroughputPerS, MetricStatus::Pass), "throughput_per_s_pass");
+/// ```
 pub fn reason_token(metric: Metric, status: MetricStatus) -> String {
     format!("{}_{}", metric.as_str(), status.as_str())
 }
@@ -302,6 +352,37 @@ pub fn reason_token(metric: Metric, status: MetricStatus) -> String {
 /// # Returns
 ///
 /// A tuple of (deltas map, verdict) where deltas contains per-metric results.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_budget::evaluate_budgets;
+/// use perfgate_types::{Budget, Direction, Metric, MetricStatus, VerdictStatus};
+/// use std::collections::BTreeMap;
+///
+/// let mut budgets = BTreeMap::new();
+/// budgets.insert(Metric::WallMs, Budget {
+///     threshold: 0.20,
+///     warn_threshold: 0.10,
+///     direction: Direction::Lower,
+/// });
+/// budgets.insert(Metric::MaxRssKb, Budget {
+///     threshold: 0.30,
+///     warn_threshold: 0.15,
+///     direction: Direction::Lower,
+/// });
+///
+/// let metrics = vec![
+///     (Metric::WallMs, 100.0, 115.0),    // 15% regression -> Warn
+///     (Metric::MaxRssKb, 1000.0, 900.0), // improvement -> Pass
+/// ];
+///
+/// let (deltas, verdict) = evaluate_budgets(metrics.into_iter(), &budgets).unwrap();
+/// assert_eq!(deltas.len(), 2);
+/// assert_eq!(verdict.status, VerdictStatus::Warn);
+/// assert_eq!(verdict.counts.warn, 1);
+/// assert_eq!(verdict.counts.pass, 1);
+/// ```
 pub fn evaluate_budgets<'a, I>(
     metrics: I,
     budgets: &BTreeMap<Metric, Budget>,
