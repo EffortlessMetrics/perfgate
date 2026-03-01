@@ -3765,6 +3765,59 @@ async fn when_check_for_bench_in_cockpit_mode(world: &mut PerfgateWorld, bench_n
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
+/// Run perfgate check for all benches in cockpit mode
+#[when("I run perfgate check for all benches in cockpit mode")]
+async fn when_check_all_in_cockpit_mode(world: &mut PerfgateWorld) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .arg("--mode")
+        .arg("cockpit")
+        .current_dir(world.temp_path());
+
+    let output = cmd
+        .output()
+        .expect("Failed to execute perfgate check --all --mode cockpit");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+/// Run perfgate check in cockpit mode with --require-baseline
+#[when(expr = "I run perfgate check for bench {string} in cockpit mode with --require-baseline")]
+async fn when_check_for_bench_in_cockpit_mode_require_baseline(
+    world: &mut PerfgateWorld,
+    bench_name: String,
+) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg(&bench_name)
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .arg("--mode")
+        .arg("cockpit")
+        .arg("--require-baseline")
+        .current_dir(world.temp_path());
+
+    let output = cmd.output().expect("Failed to execute perfgate check");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
 /// Run perfgate check for all benches with --bench-regex
 #[when(expr = "I run perfgate check for all benches with --bench-regex {string}")]
 async fn when_check_all_with_bench_regex(world: &mut PerfgateWorld, regex: String) {
