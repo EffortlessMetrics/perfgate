@@ -18,8 +18,7 @@ expression: sensor_report
         "status": "unavailable"
       },
       "engine": {
-        "status": "unavailable",
-        "reason": "platform_limited"
+        "status": "available"
       }
     }
   },

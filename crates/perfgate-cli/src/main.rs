@@ -2716,6 +2716,203 @@ mod tests {
         assert_exit_code(result, 2);
     }
 
+    /// Create a multi-bench config JSON with given bench names.
+    /// `threshold` and `warn_factor` are set per the caller so that
+    /// baselines with wall_ms=1 trigger fail (threshold=0.0) while
+    /// benches without a baseline just pass.
+    fn create_multi_bench_config_json(
+        temp_dir: &std::path::Path,
+        bench_names: &[&str],
+        threshold: f64,
+        warn_factor: f64,
+    ) -> std::path::PathBuf {
+        let config_path = temp_dir.join("perfgate.json");
+        let cmd = slow_command();
+        let benches: Vec<serde_json::Value> = bench_names
+            .iter()
+            .map(|name| {
+                json!({
+                    "name": *name,
+                    "command": cmd
+                })
+            })
+            .collect();
+        let config = json!({
+            "defaults": {
+                "repeat": 1,
+                "warmup": 0,
+                "threshold": threshold,
+                "warn_factor": warn_factor,
+                "baseline_dir": "baselines"
+            },
+            "bench": benches
+        });
+        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+            .expect("Failed to write multi-bench config");
+        config_path
+    }
+
+    /// Helper: run `run_check_standard` in --all mode and return the exit code
+    /// (0 if no panic, otherwise the exit code extracted from the panic message).
+    fn run_check_standard_all(config_path: PathBuf, out_dir: PathBuf, fail_on_warn: bool) -> i32 {
+        let result = std::panic::catch_unwind(|| {
+            run_check_standard(
+                config_path,
+                None, // bench
+                true, // all
+                None, // bench_regex
+                out_dir,
+                None,  // baseline (not valid with --all)
+                false, // require_baseline
+                fail_on_warn,
+                Vec::new(),
+                8192,
+                false,
+                HostMismatchPolicy::Warn,
+                None,
+                8,
+                false,
+                false,
+                None,
+                false,
+            )
+            .unwrap();
+        });
+        match result {
+            Ok(()) => 0,
+            Err(err) => {
+                let msg = if let Some(s) = err.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = err.downcast_ref::<&str>() {
+                    s.to_string()
+                } else {
+                    panic!("unexpected non-string panic");
+                };
+                if msg.contains("exit 2") {
+                    2
+                } else if msg.contains("exit 3") {
+                    3
+                } else {
+                    panic!("unexpected panic: {}", msg);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn run_check_standard_all_pass_exits_zero() {
+        let dir = tempdir().unwrap();
+        let config_path =
+            create_multi_bench_config_json(dir.path(), &["bench-a", "bench-b"], 0.0, 0.0);
+        let out_dir = dir.path().join("out");
+        // No baselines → both benches pass
+        let code = run_check_standard_all(config_path, out_dir, false);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn run_check_standard_all_one_fail_exits_two() {
+        let dir = tempdir().unwrap();
+        let config_path =
+            create_multi_bench_config_json(dir.path(), &["pass-bench", "fail-bench"], 0.0, 0.0);
+        let out_dir = dir.path().join("out");
+
+        // Create baseline only for fail-bench (wall_ms=1 guarantees regression)
+        let baselines_dir = dir.path().join("baselines");
+        fs::create_dir_all(&baselines_dir).unwrap();
+        write_json(
+            &baselines_dir.join("fail-bench.json"),
+            &make_receipt(make_stats_with_wall(1)),
+            false,
+        )
+        .unwrap();
+
+        let code = run_check_standard_all(config_path, out_dir, false);
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn run_check_standard_all_one_warn_exits_three() {
+        let dir = tempdir().unwrap();
+        // Use a large threshold so no fail, but warn_factor < 1.0 so warn is triggered.
+        // Baseline wall_ms=1 vs ~50ms command → ratio ≈ 50x.
+        // threshold=100.0 → fail threshold = 101.0x → no fail.
+        // warn_factor=0.0 → warn threshold = 0.0 → any regression warns.
+        let config_path =
+            create_multi_bench_config_json(dir.path(), &["pass-bench", "warn-bench"], 100.0, 0.0);
+        let out_dir = dir.path().join("out");
+
+        let baselines_dir = dir.path().join("baselines");
+        fs::create_dir_all(&baselines_dir).unwrap();
+        write_json(
+            &baselines_dir.join("warn-bench.json"),
+            &make_receipt(make_stats_with_wall(1)),
+            false,
+        )
+        .unwrap();
+
+        // --fail-on-warn turns the warn into exit 3
+        let code = run_check_standard_all(config_path, out_dir, true);
+        assert_eq!(code, 3);
+    }
+
+    #[test]
+    fn run_check_standard_all_fail_plus_warn_exits_two() {
+        let dir = tempdir().unwrap();
+        // Three benches: pass (no baseline), warn, fail
+        // fail-bench: threshold=0.0 → any regression fails
+        // warn-bench: threshold=100.0, warn_factor=0.0 → warn only
+        // To achieve different thresholds per bench we use per-bench budgets.
+        // But the simple approach: create two configs... Actually the config
+        // `defaults` applies uniformly, so we use threshold=0.0 which makes
+        // ANY regression a fail. That means both baseline benches fail (exit 2).
+        //
+        // Instead we build a JSON config with per-bench budget overrides.
+        let config_path = dir.path().join("perfgate.json");
+        let cmd = slow_command();
+        let config = json!({
+            "defaults": {
+                "repeat": 1,
+                "warmup": 0,
+                "threshold": 100.0,
+                "warn_factor": 0.0,
+                "baseline_dir": "baselines"
+            },
+            "bench": [
+                { "name": "pass-bench", "command": cmd },
+                { "name": "warn-bench", "command": cmd },
+                {
+                    "name": "fail-bench",
+                    "command": cmd,
+                    "budgets": { "wall_ms": { "threshold": 0.0 } }
+                }
+            ]
+        });
+        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+
+        let baselines_dir = dir.path().join("baselines");
+        fs::create_dir_all(&baselines_dir).unwrap();
+        // warn-bench baseline → regression in warn zone (threshold=100.0, warn at 0.0)
+        write_json(
+            &baselines_dir.join("warn-bench.json"),
+            &make_receipt(make_stats_with_wall(1)),
+            false,
+        )
+        .unwrap();
+        // fail-bench baseline → regression fails (threshold=0.0)
+        write_json(
+            &baselines_dir.join("fail-bench.json"),
+            &make_receipt(make_stats_with_wall(1)),
+            false,
+        )
+        .unwrap();
+
+        let out_dir = dir.path().join("out");
+        // --fail-on-warn so warn-bench exits 3, fail-bench exits 2
+        let code = run_check_standard_all(config_path, out_dir, true);
+        assert_eq!(code, 2);
+    }
+
     #[test]
     fn run_check_cockpit_returns_error_when_report_write_fails() {
         let dir = tempdir().unwrap();
@@ -2769,6 +2966,56 @@ mod tests {
         assert_eq!(max_exit_code, 2);
         update_max_exit_code(&mut max_exit_code, 3);
         assert_eq!(max_exit_code, 2);
+    }
+
+    #[test]
+    fn update_max_exit_code_all_pass_stays_zero() {
+        let mut code = 0;
+        update_max_exit_code(&mut code, 0);
+        assert_eq!(code, 0);
+        update_max_exit_code(&mut code, 0);
+        assert_eq!(code, 0);
+        update_max_exit_code(&mut code, 0);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn update_max_exit_code_single_warn_among_passes() {
+        let mut code = 0;
+        update_max_exit_code(&mut code, 0);
+        update_max_exit_code(&mut code, 3);
+        update_max_exit_code(&mut code, 0);
+        assert_eq!(code, 3);
+    }
+
+    #[test]
+    fn update_max_exit_code_single_fail_among_passes() {
+        let mut code = 0;
+        update_max_exit_code(&mut code, 0);
+        update_max_exit_code(&mut code, 2);
+        update_max_exit_code(&mut code, 0);
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn update_max_exit_code_fail_plus_warn_yields_fail() {
+        let mut code = 0;
+        update_max_exit_code(&mut code, 3);
+        update_max_exit_code(&mut code, 2);
+        assert_eq!(code, 2);
+
+        // Also verify the reverse order
+        let mut code2 = 0;
+        update_max_exit_code(&mut code2, 2);
+        update_max_exit_code(&mut code2, 3);
+        assert_eq!(code2, 2);
+    }
+
+    #[test]
+    fn update_max_exit_code_single_fail() {
+        let mut code = 0;
+        update_max_exit_code(&mut code, 2);
+        assert_eq!(code, 2);
     }
 
     #[test]

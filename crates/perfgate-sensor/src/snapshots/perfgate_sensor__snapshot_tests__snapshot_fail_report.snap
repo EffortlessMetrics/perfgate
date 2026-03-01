@@ -19,8 +19,7 @@ expression: sensor_report
         "reason": "no_baseline"
       },
       "engine": {
-        "status": "unavailable",
-        "reason": "platform_limited"
+        "status": "available"
       }
     }
   },

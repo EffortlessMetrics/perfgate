@@ -3123,4 +3123,321 @@ mod property_tests {
             );
         }
     }
+
+    // --- Leaf-type round-trip tests ---
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn host_info_serialization_round_trip(info in host_info_strategy()) {
+            let json = serde_json::to_string(&info).expect("HostInfo should serialize");
+            let back: HostInfo = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert_eq!(info, back);
+        }
+
+        #[test]
+        fn sample_serialization_round_trip(sample in sample_strategy()) {
+            let json = serde_json::to_string(&sample).expect("Sample should serialize");
+            let back: Sample = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert_eq!(sample, back);
+        }
+
+        #[test]
+        fn u64_summary_serialization_round_trip(summary in u64_summary_strategy()) {
+            let json = serde_json::to_string(&summary).expect("U64Summary should serialize");
+            let back: U64Summary = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert_eq!(summary, back);
+        }
+
+        #[test]
+        fn f64_summary_serialization_round_trip(summary in f64_summary_strategy()) {
+            let json = serde_json::to_string(&summary).expect("F64Summary should serialize");
+            let back: F64Summary = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert!(f64_approx_eq(summary.min, back.min));
+            prop_assert!(f64_approx_eq(summary.median, back.median));
+            prop_assert!(f64_approx_eq(summary.max, back.max));
+        }
+
+        #[test]
+        fn stats_serialization_round_trip(stats in stats_strategy()) {
+            let json = serde_json::to_string(&stats).expect("Stats should serialize");
+            let back: Stats = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert_eq!(&stats.wall_ms, &back.wall_ms);
+            prop_assert_eq!(&stats.cpu_ms, &back.cpu_ms);
+            prop_assert_eq!(&stats.page_faults, &back.page_faults);
+            prop_assert_eq!(&stats.ctx_switches, &back.ctx_switches);
+            prop_assert_eq!(&stats.max_rss_kb, &back.max_rss_kb);
+            prop_assert_eq!(&stats.binary_bytes, &back.binary_bytes);
+            match (&stats.throughput_per_s, &back.throughput_per_s) {
+                (Some(orig), Some(deser)) => {
+                    prop_assert!(f64_approx_eq(orig.min, deser.min));
+                    prop_assert!(f64_approx_eq(orig.median, deser.median));
+                    prop_assert!(f64_approx_eq(orig.max, deser.max));
+                }
+                (None, None) => {}
+                _ => prop_assert!(false, "throughput_per_s presence mismatch"),
+            }
+        }
+
+        #[test]
+        fn delta_serialization_round_trip(delta in delta_strategy()) {
+            let json = serde_json::to_string(&delta).expect("Delta should serialize");
+            let back: Delta = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert!(f64_approx_eq(delta.baseline, back.baseline));
+            prop_assert!(f64_approx_eq(delta.current, back.current));
+            prop_assert!(f64_approx_eq(delta.ratio, back.ratio));
+            prop_assert!(f64_approx_eq(delta.pct, back.pct));
+            prop_assert!(f64_approx_eq(delta.regression, back.regression));
+            prop_assert_eq!(delta.statistic, back.statistic);
+            prop_assert_eq!(delta.significance, back.significance);
+            prop_assert_eq!(delta.status, back.status);
+        }
+
+        #[test]
+        fn verdict_serialization_round_trip(verdict in verdict_strategy()) {
+            let json = serde_json::to_string(&verdict).expect("Verdict should serialize");
+            let back: Verdict = serde_json::from_str(&json).expect("should deserialize");
+            prop_assert_eq!(verdict, back);
+        }
+    }
+
+    // --- PerfgateReport round-trip ---
+
+    fn severity_strategy() -> impl Strategy<Value = Severity> {
+        prop_oneof![Just(Severity::Warn), Just(Severity::Fail),]
+    }
+
+    fn finding_data_strategy() -> impl Strategy<Value = FindingData> {
+        (
+            non_empty_string(),
+            0.1f64..10000.0,
+            0.1f64..10000.0,
+            0.0f64..100.0,
+            0.01f64..1.0,
+            direction_strategy(),
+        )
+            .prop_map(
+                |(metric_name, baseline, current, regression_pct, threshold, direction)| {
+                    FindingData {
+                        metric_name,
+                        baseline,
+                        current,
+                        regression_pct,
+                        threshold,
+                        direction,
+                    }
+                },
+            )
+    }
+
+    fn report_finding_strategy() -> impl Strategy<Value = ReportFinding> {
+        (
+            non_empty_string(),
+            non_empty_string(),
+            severity_strategy(),
+            non_empty_string(),
+            proptest::option::of(finding_data_strategy()),
+        )
+            .prop_map(|(check_id, code, severity, message, data)| ReportFinding {
+                check_id,
+                code,
+                severity,
+                message,
+                data,
+            })
+    }
+
+    fn report_summary_strategy() -> impl Strategy<Value = ReportSummary> {
+        (0u32..100, 0u32..100, 0u32..100).prop_map(|(pass_count, warn_count, fail_count)| {
+            ReportSummary {
+                pass_count,
+                warn_count,
+                fail_count,
+                total_count: pass_count + warn_count + fail_count,
+            }
+        })
+    }
+
+    fn perfgate_report_strategy() -> impl Strategy<Value = PerfgateReport> {
+        (
+            verdict_strategy(),
+            proptest::option::of(compare_receipt_strategy()),
+            proptest::collection::vec(report_finding_strategy(), 0..5),
+            report_summary_strategy(),
+        )
+            .prop_map(|(verdict, compare, findings, summary)| PerfgateReport {
+                report_type: REPORT_SCHEMA_V1.to_string(),
+                verdict,
+                compare,
+                findings,
+                summary,
+            })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
+
+        #[test]
+        fn perfgate_report_serialization_round_trip(report in perfgate_report_strategy()) {
+            let json = serde_json::to_string(&report)
+                .expect("PerfgateReport should serialize to JSON");
+            let back: PerfgateReport = serde_json::from_str(&json)
+                .expect("JSON should deserialize back to PerfgateReport");
+
+            prop_assert_eq!(&report.report_type, &back.report_type);
+            prop_assert_eq!(&report.verdict, &back.verdict);
+            prop_assert_eq!(&report.summary, &back.summary);
+            prop_assert_eq!(report.findings.len(), back.findings.len());
+            for (orig, deser) in report.findings.iter().zip(back.findings.iter()) {
+                prop_assert_eq!(&orig.check_id, &deser.check_id);
+                prop_assert_eq!(&orig.code, &deser.code);
+                prop_assert_eq!(orig.severity, deser.severity);
+                prop_assert_eq!(&orig.message, &deser.message);
+                match (&orig.data, &deser.data) {
+                    (Some(o), Some(d)) => {
+                        prop_assert_eq!(&o.metric_name, &d.metric_name);
+                        prop_assert!(f64_approx_eq(o.baseline, d.baseline));
+                        prop_assert!(f64_approx_eq(o.current, d.current));
+                        prop_assert!(f64_approx_eq(o.regression_pct, d.regression_pct));
+                        prop_assert!(f64_approx_eq(o.threshold, d.threshold));
+                        prop_assert_eq!(o.direction, d.direction);
+                    }
+                    (None, None) => {}
+                    _ => prop_assert!(false, "finding data presence mismatch"),
+                }
+            }
+            // CompareReceipt equality is covered by compare_receipt round-trip;
+            // just verify presence matches.
+            prop_assert_eq!(report.compare.is_some(), back.compare.is_some());
+        }
+    }
+}
+
+// --- Golden fixture tests for sensor.report.v1 ---
+
+#[cfg(test)]
+mod golden_tests {
+    use super::*;
+
+    const FIXTURE_PASS: &str = include_str!("../../../contracts/fixtures/sensor_report_pass.json");
+    const FIXTURE_FAIL: &str = include_str!("../../../contracts/fixtures/sensor_report_fail.json");
+    const FIXTURE_WARN: &str = include_str!("../../../contracts/fixtures/sensor_report_warn.json");
+    const FIXTURE_NO_BASELINE: &str =
+        include_str!("../../../contracts/fixtures/sensor_report_no_baseline.json");
+    const FIXTURE_ERROR: &str =
+        include_str!("../../../contracts/fixtures/sensor_report_error.json");
+    const FIXTURE_MULTI_BENCH: &str =
+        include_str!("../../../contracts/fixtures/sensor_report_multi_bench.json");
+
+    #[test]
+    fn golden_sensor_report_pass() {
+        let report: SensorReport =
+            serde_json::from_str(FIXTURE_PASS).expect("fixture should parse");
+        assert_eq!(report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(report.tool.name, "perfgate");
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Pass);
+        assert_eq!(report.verdict.counts.warn, 0);
+        assert_eq!(report.verdict.counts.error, 0);
+        assert!(report.findings.is_empty());
+        assert_eq!(report.artifacts.len(), 4);
+
+        // Round-trip the parsed fixture
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SensorReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
+
+    #[test]
+    fn golden_sensor_report_fail() {
+        let report: SensorReport =
+            serde_json::from_str(FIXTURE_FAIL).expect("fixture should parse");
+        assert_eq!(report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Fail);
+        assert_eq!(report.verdict.counts.error, 1);
+        assert_eq!(report.verdict.reasons, vec!["wall_ms_fail"]);
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].check_id, CHECK_ID_BUDGET);
+        assert_eq!(report.findings[0].code, FINDING_CODE_METRIC_FAIL);
+        assert_eq!(report.findings[0].severity, SensorSeverity::Error);
+
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SensorReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
+
+    #[test]
+    fn golden_sensor_report_warn() {
+        let report: SensorReport =
+            serde_json::from_str(FIXTURE_WARN).expect("fixture should parse");
+        assert_eq!(report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Warn);
+        assert_eq!(report.verdict.counts.warn, 1);
+        assert_eq!(report.verdict.reasons, vec!["wall_ms_warn"]);
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].severity, SensorSeverity::Warn);
+
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SensorReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
+
+    #[test]
+    fn golden_sensor_report_no_baseline() {
+        let report: SensorReport =
+            serde_json::from_str(FIXTURE_NO_BASELINE).expect("fixture should parse");
+        assert_eq!(report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Warn);
+        assert_eq!(report.verdict.reasons, vec!["no_baseline"]);
+        assert_eq!(
+            report.run.capabilities.baseline.status,
+            CapabilityStatus::Unavailable
+        );
+        assert_eq!(
+            report.run.capabilities.baseline.reason.as_deref(),
+            Some("no_baseline")
+        );
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].code, FINDING_CODE_BASELINE_MISSING);
+
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SensorReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
+
+    #[test]
+    fn golden_sensor_report_error() {
+        let report: SensorReport =
+            serde_json::from_str(FIXTURE_ERROR).expect("fixture should parse");
+        assert_eq!(report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Fail);
+        assert_eq!(report.verdict.reasons, vec!["tool_error"]);
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].check_id, CHECK_ID_TOOL_RUNTIME);
+        assert_eq!(report.findings[0].code, FINDING_CODE_RUNTIME_ERROR);
+        assert!(report.artifacts.is_empty());
+
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SensorReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
+
+    #[test]
+    fn golden_sensor_report_multi_bench() {
+        let report: SensorReport =
+            serde_json::from_str(FIXTURE_MULTI_BENCH).expect("fixture should parse");
+        assert_eq!(report.schema, SENSOR_REPORT_SCHEMA_V1);
+        assert_eq!(report.verdict.status, SensorVerdictStatus::Warn);
+        assert_eq!(report.verdict.counts.warn, 2);
+        assert_eq!(report.findings.len(), 2);
+        // Both findings are baseline-missing for different benches
+        for finding in &report.findings {
+            assert_eq!(finding.code, FINDING_CODE_BASELINE_MISSING);
+        }
+        assert_eq!(report.artifacts.len(), 5);
+
+        let json = serde_json::to_string(&report).unwrap();
+        let back: SensorReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report, back);
+    }
 }

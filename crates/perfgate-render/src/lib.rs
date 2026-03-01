@@ -717,6 +717,292 @@ mod tests {
         ]
         "###);
     }
+
+    // ── Template rendering error paths ──────────────────────────────────
+
+    #[test]
+    fn template_invalid_syntax_returns_error() {
+        let compare = make_compare_receipt(MetricStatus::Pass);
+        let result = render_markdown_template(&compare, "{{#if}}unclosed");
+        assert!(result.is_err(), "malformed template should fail to parse");
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("parse markdown template"),
+        );
+    }
+
+    #[test]
+    fn template_nested_missing_variable_returns_error() {
+        let compare = make_compare_receipt(MetricStatus::Pass);
+        let result = render_markdown_template(&compare, "{{bench.nonexistent_field}}");
+        assert!(
+            result.is_err(),
+            "strict mode should reject missing nested variable"
+        );
+    }
+
+    #[test]
+    fn snapshot_markdown_empty_deltas() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.deltas.clear();
+        compare.budgets.clear();
+        compare.verdict.reasons.clear();
+        compare.verdict.status = perfgate_types::VerdictStatus::Pass;
+        compare.verdict.counts = VerdictCounts {
+            pass: 0,
+            warn: 0,
+            fail: 0,
+        };
+        let md = render_markdown(&compare);
+        insta::assert_snapshot!(md, @r###"
+        ✅ perfgate: pass
+
+        **Bench:** `bench`
+
+        | metric | baseline (median) | current (median) | delta | budget | status |
+        |---|---:|---:|---:|---:|---|
+        "###);
+    }
+
+    #[test]
+    fn github_annotations_empty_deltas() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.deltas.clear();
+        let annotations = github_annotations(&compare);
+        assert!(annotations.is_empty());
+    }
+
+    #[test]
+    fn snapshot_markdown_all_passing_multi_metric() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.verdict.status = perfgate_types::VerdictStatus::Pass;
+        compare.verdict.reasons.clear();
+        compare.verdict.counts = VerdictCounts {
+            pass: 3,
+            warn: 0,
+            fail: 0,
+        };
+        compare.budgets.insert(
+            Metric::MaxRssKb,
+            Budget {
+                threshold: 0.3,
+                warn_threshold: 0.2,
+                direction: Direction::Lower,
+            },
+        );
+        compare.budgets.insert(
+            Metric::ThroughputPerS,
+            Budget {
+                threshold: 0.15,
+                warn_threshold: 0.1,
+                direction: Direction::Higher,
+            },
+        );
+        compare.deltas.insert(
+            Metric::MaxRssKb,
+            Delta {
+                baseline: 500.0,
+                current: 490.0,
+                ratio: 0.98,
+                pct: -0.02,
+                regression: 0.0,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Pass,
+            },
+        );
+        compare.deltas.insert(
+            Metric::ThroughputPerS,
+            Delta {
+                baseline: 50.0,
+                current: 52.0,
+                ratio: 1.04,
+                pct: 0.04,
+                regression: 0.0,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Pass,
+            },
+        );
+        let md = render_markdown(&compare);
+        // All passing → no Notes section
+        assert!(!md.contains("**Notes:**"));
+        insta::assert_snapshot!(md, @r###"
+        ✅ perfgate: pass
+
+        **Bench:** `bench`
+
+        | metric | baseline (median) | current (median) | delta | budget | status |
+        |---|---:|---:|---:|---:|---|
+        | `max_rss_kb` | 500 KB | 490 KB | -2.00% | 30.0% (lower) | ✅ |
+        | `throughput_per_s` | 50.000 /s | 52.000 /s | +4.00% | 15.0% (higher) | ✅ |
+        | `wall_ms` | 100 ms | 115 ms | +15.00% | 20.0% (lower) | ✅ |
+        "###);
+    }
+
+    #[test]
+    fn github_annotations_all_passing_yields_none() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.deltas.insert(
+            Metric::MaxRssKb,
+            Delta {
+                baseline: 100.0,
+                current: 95.0,
+                ratio: 0.95,
+                pct: -0.05,
+                regression: 0.0,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Pass,
+            },
+        );
+        let annotations = github_annotations(&compare);
+        assert!(
+            annotations.is_empty(),
+            "all-pass should produce no annotations"
+        );
+    }
+
+    // ── render_reason_line edge cases ───────────────────────────────────
+
+    #[test]
+    fn render_reason_line_empty_string() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let line = render_reason_line(&compare, "");
+        assert_eq!(line, "- \n");
+    }
+
+    #[test]
+    fn render_reason_line_no_underscore() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let line = render_reason_line(&compare, "nounderscore");
+        assert_eq!(line, "- nounderscore\n");
+    }
+
+    #[test]
+    fn render_reason_line_single_underscore() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let line = render_reason_line(&compare, "_warn");
+        // metric_part="" which won't parse → fallback
+        assert_eq!(line, "- _warn\n");
+    }
+
+    #[test]
+    fn render_reason_line_very_long_token() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let long_token = format!("{}_warn", "a".repeat(500));
+        let line = render_reason_line(&compare, &long_token);
+        // Unknown metric → fallback
+        assert!(line.starts_with("- "));
+        assert!(line.contains(&"a".repeat(500)));
+        assert!(line.ends_with('\n'));
+    }
+
+    #[test]
+    fn render_reason_line_fail_status() {
+        let compare = make_compare_receipt(MetricStatus::Fail);
+        let line = render_reason_line(&compare, "wall_ms_fail");
+        assert!(line.contains("fail >"));
+        assert!(line.contains("+15.00%"));
+    }
+
+    // ── parse_reason_token edge cases ───────────────────────────────────
+
+    #[test]
+    fn parse_reason_token_empty_string() {
+        assert!(parse_reason_token("").is_none());
+    }
+
+    #[test]
+    fn parse_reason_token_only_underscores() {
+        assert!(parse_reason_token("___").is_none());
+    }
+
+    #[test]
+    fn parse_reason_token_valid_fail() {
+        let result = parse_reason_token("max_rss_kb_fail");
+        assert!(result.is_some());
+        let (metric, status) = result.unwrap();
+        assert_eq!(metric, Metric::MaxRssKb);
+        assert_eq!(status, MetricStatus::Fail);
+    }
+
+    #[test]
+    fn parse_reason_token_trailing_underscore() {
+        // "wall_ms_" → status_part="" → None
+        assert!(parse_reason_token("wall_ms_").is_none());
+    }
+
+    // ── Template rendering with special metric values ───────────────────
+
+    #[test]
+    fn template_renders_extreme_pct_values() {
+        let mut compare = make_compare_receipt(MetricStatus::Fail);
+        compare.deltas.get_mut(&Metric::WallMs).unwrap().pct = 99.99;
+        let template = "{{#each rows}}{{delta_pct}}{{/each}}";
+        let rendered = render_markdown_template(&compare, template).expect("extreme pct");
+        assert!(rendered.contains("+9999.00%"));
+    }
+
+    #[test]
+    fn template_renders_negative_pct() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.deltas.get_mut(&Metric::WallMs).unwrap().pct = -0.5;
+        let template = "{{#each rows}}{{delta_pct}}{{/each}}";
+        let rendered = render_markdown_template(&compare, template).expect("negative pct");
+        assert!(rendered.contains("-50.00%"));
+    }
+
+    #[test]
+    fn template_renders_zero_baseline_values() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        let d = compare.deltas.get_mut(&Metric::WallMs).unwrap();
+        d.baseline = 0.0;
+        d.current = 0.0;
+        d.pct = 0.0;
+        let template = "{{#each rows}}b={{baseline}} c={{current}} d={{delta_pct}}{{/each}}";
+        let rendered = render_markdown_template(&compare, template).expect("zero values");
+        assert!(rendered.contains("b=0"));
+        assert!(rendered.contains("c=0"));
+        assert!(rendered.contains("d=0.00%"));
+    }
+
+    #[test]
+    fn template_renders_raw_fields() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        let template = "{{#each rows}}raw_pct={{raw.pct}} sig={{raw.significance}}{{/each}}";
+        let rendered = render_markdown_template(&compare, template).expect("raw fields");
+        assert!(rendered.contains("raw_pct=0.15"));
+        assert!(rendered.contains("sig="));
+    }
+
+    #[test]
+    fn template_empty_string_renders_empty() {
+        let compare = make_compare_receipt(MetricStatus::Pass);
+        let rendered = render_markdown_template(&compare, "").expect("empty template");
+        assert_eq!(rendered, "");
+    }
+
+    #[test]
+    fn template_literal_text_only() {
+        let compare = make_compare_receipt(MetricStatus::Pass);
+        let rendered =
+            render_markdown_template(&compare, "just literal text").expect("literal template");
+        assert_eq!(rendered, "just literal text");
+    }
+
+    #[test]
+    fn snapshot_markdown_template_context_empty_deltas() {
+        let mut compare = make_compare_receipt(MetricStatus::Pass);
+        compare.deltas.clear();
+        compare.budgets.clear();
+        compare.verdict.reasons.clear();
+        let ctx = markdown_template_context(&compare);
+        let rows = ctx["rows"].as_array().unwrap();
+        assert!(rows.is_empty());
+    }
 }
 
 #[cfg(test)]

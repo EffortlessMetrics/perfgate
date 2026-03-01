@@ -107,3 +107,70 @@ Feature: Check Command
     And the artifact file "alpha-bench/run.json" should exist
     And the artifact file "beta-bench/run.json" should exist
     And the artifact file "gamma-bench/run.json" should not exist
+
+  # Config validation error scenarios
+  Scenario: Check with malformed TOML config fails
+    Given a malformed TOML config file
+    When I run perfgate check for bench "any-bench"
+    Then the exit code should be 1
+    And the stderr should contain "parse TOML config"
+
+  Scenario: Check with missing required command field fails
+    Given a config file with bench "no-cmd" missing the command field
+    When I run perfgate check for bench "no-cmd"
+    Then the exit code should be 1
+    And the stderr should contain "command"
+
+  Scenario: Check with invalid threshold type fails
+    Given a config file with an invalid threshold type
+    When I run perfgate check for bench "bad-thresh"
+    Then the exit code should be 1
+    And the stderr should contain "parse TOML config"
+
+  Scenario: Check with empty benchmarks list and --all fails
+    Given a config file with no benchmarks defined
+    When I run perfgate check for all benches
+    Then the exit code should be 1
+    And the stderr should contain "no benchmarks defined"
+
+  Scenario: Check with non-existent bench name fails
+    Given a config file with bench "existing-bench"
+    When I run perfgate check for bench "nonexistent-bench"
+    Then the exit code should be 1
+    And the stderr should contain "not found in config"
+
+  Scenario: Check with invalid metric name in budget fails
+    Given a config file with bench "bad-metric" and invalid metric in budgets
+    When I run perfgate check for bench "bad-metric"
+    Then the exit code should be 1
+    And the stderr should contain "parse TOML config"
+
+  # Multi-bench --all exit code aggregation scenarios
+  Scenario: Check --all with all benches passing exits 0
+    Given a config file with benches "bench-a,bench-b,bench-c"
+    When I run perfgate check for all benches
+    Then the exit code should be 0
+    And the artifact file "bench-a/run.json" should exist
+    And the artifact file "bench-b/run.json" should exist
+    And the artifact file "bench-c/run.json" should exist
+
+  Scenario: Check --all with one failing bench exits 2
+    Given a config file with benches "pass-bench,fail-bench" and tight threshold
+    And a baseline receipt for bench "fail-bench" with wall_ms median of 1
+    When I run perfgate check for all benches
+    Then the exit code should be 2
+    And the artifact file "pass-bench/run.json" should exist
+    And the artifact file "fail-bench/run.json" should exist
+
+  Scenario: Check --all with one warn bench and --fail-on-warn exits 3
+    Given a config file with benches "pass-bench,warn-bench" and lenient threshold
+    And a baseline receipt for bench "warn-bench" with wall_ms median of 1
+    When I run perfgate check for all benches with --fail-on-warn
+    Then the exit code should be 3
+
+  Scenario: Check --all with fail and warn exits 2
+    Given a config file with benches "fail-bench" and tight threshold and bench "warn-bench" with lenient threshold
+    And a baseline receipt for bench "fail-bench" with wall_ms median of 1
+    And a baseline receipt for bench "warn-bench" with wall_ms median of 1
+    When I run perfgate check for all benches with --fail-on-warn
+    Then the exit code should be 2

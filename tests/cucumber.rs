@@ -17,11 +17,11 @@ use tempfile::TempDir;
 
 // Re-export types we need for fixture creation
 use perfgate_types::{
-    BenchConfigFile, BenchMeta, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile,
-    DefaultsConfig, Delta, HostInfo, Metric, MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1,
-    PairedRunReceipt, PerfgateReport, REPORT_SCHEMA_V1, RUN_SCHEMA_V1, ReportSummary, RunMeta,
-    RunReceipt, Sample, SensorReport, Stats, ToolInfo, U64Summary, Verdict, VerdictCounts,
-    VerdictStatus,
+    BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef,
+    ConfigFile, DefaultsConfig, Delta, HostInfo, Metric, MetricStatistic, MetricStatus,
+    PAIRED_SCHEMA_V1, PairedRunReceipt, PerfgateReport, REPORT_SCHEMA_V1, RUN_SCHEMA_V1,
+    ReportSummary, RunMeta, RunReceipt, Sample, SensorReport, Stats, ToolInfo, U64Summary, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 
 // Microcrate imports for direct testing
@@ -1203,6 +1203,113 @@ async fn when_paired_with_allow_nonzero_and_failing_baseline(world: &mut Perfgat
     world.output_path = Some(output_path);
 }
 
+/// Run perfgate paired with --pretty flag.
+#[when("I run perfgate paired with pretty output")]
+async fn when_paired_with_pretty(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-pretty-bench")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--pretty")
+        .arg("--baseline-cmd")
+        .arg(success_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired with a failing current command.
+#[when("I run perfgate paired with a failing current command")]
+async fn when_paired_with_failing_current(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-fail-current-bench")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--baseline-cmd")
+        .arg(success_shell_command())
+        .arg("--current-cmd")
+        .arg(fail_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired with a custom bench name.
+#[when(expr = "I run perfgate paired with bench name {string}")]
+async fn when_paired_with_custom_name(world: &mut PerfgateWorld, name: String) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg(&name)
+        .arg("--repeat")
+        .arg("1")
+        .arg("--baseline-cmd")
+        .arg(success_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
+/// Run perfgate paired with --work units.
+#[when(expr = "I run perfgate paired with work units {int}")]
+async fn when_paired_with_work_units(world: &mut PerfgateWorld, work: u64) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("paired-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("paired")
+        .arg("--name")
+        .arg("paired-work-bench")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--work")
+        .arg(work.to_string())
+        .arg("--baseline-cmd")
+        .arg(success_shell_command())
+        .arg("--current-cmd")
+        .arg(success_shell_command())
+        .arg("--out")
+        .arg(&output_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate paired");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
+}
+
 // ============================================================================
 // THEN STEPS - Assertions
 // ============================================================================
@@ -1605,6 +1712,96 @@ async fn then_paired_receipt_warmup_count(world: &mut PerfgateWorld, expected: u
         warmup_count, expected,
         "Expected {} warmup samples, got {}",
         expected, warmup_count
+    );
+}
+
+/// Assert the paired receipt stats diff count matches measured (non-warmup) samples
+#[then(expr = "the paired receipt stats diff count should be {int}")]
+async fn then_paired_receipt_stats_diff_count(world: &mut PerfgateWorld, expected: u32) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert_eq!(
+        receipt.stats.wall_diff_ms.count, expected,
+        "Expected stats diff count {}, got {}",
+        expected, receipt.stats.wall_diff_ms.count
+    );
+}
+
+/// Assert the output file is pretty-printed (multi-line JSON)
+#[then("the output file should be pretty-printed")]
+async fn then_output_file_pretty_printed(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let line_count = content.lines().count();
+    assert!(
+        line_count > 1,
+        "Expected pretty-printed JSON (multiple lines), got {} line(s)",
+        line_count
+    );
+}
+
+/// Assert the paired receipt contains stats with baseline and current wall_ms summaries
+#[then("the paired receipt should contain stats with baseline and current wall_ms")]
+async fn then_paired_receipt_has_wall_ms_stats(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert!(
+        receipt.stats.baseline_wall_ms.median > 0 || receipt.stats.baseline_wall_ms.min == 0,
+        "Expected baseline_wall_ms stats to be present"
+    );
+    assert!(
+        receipt.stats.current_wall_ms.median > 0 || receipt.stats.current_wall_ms.min == 0,
+        "Expected current_wall_ms stats to be present"
+    );
+    assert!(
+        receipt.stats.wall_diff_ms.count > 0,
+        "Expected wall_diff_ms count > 0"
+    );
+}
+
+/// Assert the paired receipt contains run metadata (id, started_at, ended_at)
+#[then("the paired receipt should contain run metadata")]
+async fn then_paired_receipt_has_run_metadata(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert!(
+        !receipt.run.id.is_empty(),
+        "Expected run.id to be non-empty"
+    );
+    assert!(
+        !receipt.run.started_at.is_empty(),
+        "Expected run.started_at to be non-empty"
+    );
+    assert!(
+        !receipt.run.ended_at.is_empty(),
+        "Expected run.ended_at to be non-empty"
+    );
+}
+
+/// Assert the paired receipt has throughput stats populated
+#[then("the paired receipt should have throughput stats")]
+async fn then_paired_receipt_has_throughput_stats(world: &mut PerfgateWorld) {
+    let output_path = world.output_path.as_ref().expect("No output path set");
+    let content = fs::read_to_string(output_path).expect("Failed to read output file");
+    let receipt: PairedRunReceipt =
+        serde_json::from_str(&content).expect("Failed to parse paired receipt");
+
+    assert!(
+        receipt.stats.baseline_throughput_per_s.is_some(),
+        "Expected baseline_throughput_per_s to be present when --work is specified"
+    );
+    assert!(
+        receipt.stats.current_throughput_per_s.is_some(),
+        "Expected current_throughput_per_s to be present when --work is specified"
     );
 }
 
@@ -2910,6 +3107,94 @@ async fn given_config_file_with_bench_baseline_pattern(
     world.artifacts_dir = Some(artifacts_dir);
 }
 
+/// Create a malformed TOML config file (syntax error)
+#[given("a malformed TOML config file")]
+async fn given_malformed_toml_config(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    fs::write(&config_path, "[[bench\n  name = broken").expect("Failed to write config file");
+    world.config_path = Some(config_path);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+}
+
+/// Create a config file with a bench missing the required command field
+#[given(expr = "a config file with bench {string} missing the command field")]
+async fn given_config_missing_command(world: &mut PerfgateWorld, bench_name: String) {
+    world.ensure_temp_dir();
+
+    let raw = format!("[[bench]]\nname = \"{}\"\n", bench_name);
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    fs::write(&config_path, raw).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+}
+
+/// Create a config file with an invalid threshold type (string instead of float)
+#[given("a config file with an invalid threshold type")]
+async fn given_config_invalid_threshold(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+
+    let raw = concat!(
+        "[defaults]\n",
+        "threshold = \"not_a_number\"\n",
+        "\n",
+        "[[bench]]\n",
+        "name = \"bad-thresh\"\n",
+        "command = [\"echo\", \"hello\"]\n",
+    );
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    fs::write(&config_path, raw).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+}
+
+/// Create a config file with no benchmarks defined
+#[given("a config file with no benchmarks defined")]
+async fn given_config_no_benchmarks(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+
+    let raw = "[defaults]\nrepeat = 1\n";
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    fs::write(&config_path, raw).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+}
+
+/// Create a config file with an invalid metric name in budgets
+#[given(expr = "a config file with bench {string} and invalid metric in budgets")]
+async fn given_config_invalid_metric(world: &mut PerfgateWorld, bench_name: String) {
+    world.ensure_temp_dir();
+
+    let raw = format!(
+        "[[bench]]\nname = \"{}\"\ncommand = [\"echo\", \"hello\"]\n\n[bench.budgets.invalid_metric]\nthreshold = 0.1\n",
+        bench_name
+    );
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    fs::write(&config_path, raw).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+}
+
 /// Create a baseline receipt for a specific bench
 #[given(expr = "a baseline receipt for bench {string} with wall_ms median of {int}")]
 async fn given_baseline_receipt_for_bench(
@@ -3006,6 +3291,234 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
 
     let baselines_dir = world.temp_path().join("baselines");
     fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
+}
+
+/// Create a config with multiple benches and tight threshold (0.0) so any regression fails
+#[given(expr = "a config file with benches {string} and tight threshold")]
+async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_names_str: String) {
+    world.ensure_temp_dir();
+
+    let bench_names: Vec<&str> = bench_names_str.split(',').map(|s| s.trim()).collect();
+    let benches = bench_names
+        .iter()
+        .map(|name| BenchConfigFile {
+            name: name.to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: success_command().iter().map(|s| s.to_string()).collect(),
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        })
+        .collect();
+
+    let config = ConfigFile {
+        defaults: DefaultsConfig {
+            repeat: Some(1),
+            warmup: Some(0),
+            threshold: Some(0.0),
+            warn_factor: Some(0.0),
+            out_dir: None,
+            baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
+        },
+        benches,
+    };
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    let toml = toml::to_string_pretty(&config).expect("Failed to serialize config");
+    fs::write(&config_path, toml).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+    world.config = Some(config);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+
+    let baselines_dir = world.temp_path().join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
+}
+
+/// Create a config with multiple benches and lenient threshold so regressions only warn
+#[given(expr = "a config file with benches {string} and lenient threshold")]
+async fn given_config_file_with_benches_lenient(
+    world: &mut PerfgateWorld,
+    bench_names_str: String,
+) {
+    world.ensure_temp_dir();
+
+    let bench_names: Vec<&str> = bench_names_str.split(',').map(|s| s.trim()).collect();
+    let benches = bench_names
+        .iter()
+        .map(|name| BenchConfigFile {
+            name: name.to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: success_command().iter().map(|s| s.to_string()).collect(),
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        })
+        .collect();
+
+    // threshold=100.0 (very lenient, no fail), warn_factor=0.0 (warn at any regression)
+    let config = ConfigFile {
+        defaults: DefaultsConfig {
+            repeat: Some(1),
+            warmup: Some(0),
+            threshold: Some(100.0),
+            warn_factor: Some(0.0),
+            out_dir: None,
+            baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
+        },
+        benches,
+    };
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    let toml = toml::to_string_pretty(&config).expect("Failed to serialize config");
+    fs::write(&config_path, toml).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+    world.config = Some(config);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+
+    let baselines_dir = world.temp_path().join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
+}
+
+/// Create a config with a tight-threshold bench and a lenient-threshold bench (mixed)
+#[given(
+    expr = "a config file with benches {string} and tight threshold and bench {string} with lenient threshold"
+)]
+async fn given_config_file_with_mixed_thresholds(
+    world: &mut PerfgateWorld,
+    tight_names_str: String,
+    lenient_name: String,
+) {
+    world.ensure_temp_dir();
+
+    let tight_names: Vec<&str> = tight_names_str.split(',').map(|s| s.trim()).collect();
+    let mut benches: Vec<BenchConfigFile> = tight_names
+        .iter()
+        .map(|name| BenchConfigFile {
+            name: name.to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: success_command().iter().map(|s| s.to_string()).collect(),
+            repeat: None,
+            warmup: None,
+            metrics: None,
+            budgets: None,
+        })
+        .collect();
+
+    // Lenient bench: override threshold to 100.0 so it only warns, never fails
+    let mut lenient_budgets = BTreeMap::new();
+    lenient_budgets.insert(
+        Metric::WallMs,
+        BudgetOverride {
+            threshold: Some(100.0),
+            direction: None,
+            warn_factor: Some(0.0),
+            statistic: None,
+        },
+    );
+    benches.push(BenchConfigFile {
+        name: lenient_name,
+        cwd: None,
+        work: None,
+        timeout: None,
+        command: success_command().iter().map(|s| s.to_string()).collect(),
+        repeat: None,
+        warmup: None,
+        metrics: None,
+        budgets: Some(lenient_budgets),
+    });
+
+    // Default threshold=0.0 makes regressions fail unless overridden
+    let config = ConfigFile {
+        defaults: DefaultsConfig {
+            repeat: Some(1),
+            warmup: Some(0),
+            threshold: Some(0.0),
+            warn_factor: Some(0.0),
+            out_dir: None,
+            baseline_dir: Some("baselines".to_string()),
+            baseline_pattern: None,
+            markdown_template: None,
+        },
+        benches,
+    };
+
+    let config_path = world.temp_path().join("perfgate.toml");
+    let toml = toml::to_string_pretty(&config).expect("Failed to serialize config");
+    fs::write(&config_path, toml).expect("Failed to write config file");
+    world.config_path = Some(config_path);
+    world.config = Some(config);
+
+    let artifacts_dir = world.temp_path().join("artifacts");
+    fs::create_dir_all(&artifacts_dir).expect("Failed to create artifacts dir");
+    world.artifacts_dir = Some(artifacts_dir);
+
+    let baselines_dir = world.temp_path().join("baselines");
+    fs::create_dir_all(&baselines_dir).expect("Failed to create baselines dir");
+}
+
+/// Run perfgate check for all benches (--all)
+#[when("I run perfgate check for all benches")]
+async fn when_check_all_benches(world: &mut PerfgateWorld) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .current_dir(world.temp_path());
+
+    let output = cmd
+        .output()
+        .expect("Failed to execute perfgate check --all");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+/// Run perfgate check for all benches with --fail-on-warn
+#[when("I run perfgate check for all benches with --fail-on-warn")]
+async fn when_check_all_benches_with_fail_on_warn(world: &mut PerfgateWorld) {
+    let config_path = world.config_path.clone().expect("Config path not set");
+    let artifacts_dir = world.artifacts_dir.clone().expect("Artifacts dir not set");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--all")
+        .arg("--out-dir")
+        .arg(&artifacts_dir)
+        .arg("--fail-on-warn")
+        .current_dir(world.temp_path());
+
+    let output = cmd
+        .output()
+        .expect("Failed to execute perfgate check --all --fail-on-warn");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
 /// Run perfgate check for a specific bench

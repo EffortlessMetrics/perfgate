@@ -1993,6 +1993,14 @@ mod snapshot_tests {
         }
     }
 
+    /// Fixed engine capability for platform-independent snapshots.
+    fn fixed_engine() -> Capability {
+        Capability {
+            status: CapabilityStatus::Available,
+            reason: None,
+        }
+    }
+
     #[test]
     fn snapshot_pass_report() {
         let report = PerfgateReport {
@@ -2020,6 +2028,7 @@ mod snapshot_tests {
             SensorReportBuilder::new(make_tool_info(), "2024-01-15T10:30:00Z".to_string())
                 .ended_at("2024-01-15T10:31:00Z".to_string(), 60000)
                 .baseline(true, None)
+                .engine(fixed_engine())
                 .build(&report);
 
         assert_json_snapshot!(sensor_report);
@@ -2058,6 +2067,7 @@ mod snapshot_tests {
             SensorReportBuilder::new(make_tool_info(), "2024-01-15T10:30:00Z".to_string())
                 .ended_at("2024-01-15T10:31:00Z".to_string(), 60000)
                 .baseline(false, Some("no_baseline".to_string()))
+                .engine(fixed_engine())
                 .build(&report);
 
         assert_json_snapshot!(sensor_report);
@@ -2069,6 +2079,7 @@ mod snapshot_tests {
             SensorReportBuilder::new(make_tool_info(), "2024-01-15T10:30:00Z".to_string())
                 .ended_at("2024-01-15T10:30:01Z".to_string(), 1000)
                 .baseline(false, None)
+                .engine(fixed_engine())
                 .build_error(
                     "failed to parse config: invalid TOML at line 5",
                     perfgate_types::STAGE_CONFIG_PARSE,
@@ -2149,6 +2160,7 @@ mod snapshot_tests {
         let (sensor_report, _md) =
             SensorReportBuilder::new(make_tool_info(), "2024-01-15T10:30:00Z".to_string())
                 .ended_at("2024-01-15T10:32:00Z".to_string(), 120000)
+                .engine(fixed_engine())
                 .build_aggregated(&[outcome_a, outcome_b]);
 
         assert_json_snapshot!(sensor_report);
@@ -2200,6 +2212,7 @@ mod snapshot_tests {
             SensorReportBuilder::new(make_tool_info(), "2024-01-15T10:30:00Z".to_string())
                 .ended_at("2024-01-15T10:31:00Z".to_string(), 60000)
                 .baseline(true, None)
+                .engine(fixed_engine())
                 .max_findings(3)
                 .build(&report);
 
