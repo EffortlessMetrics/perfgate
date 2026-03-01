@@ -57,7 +57,9 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// - Significant difference in `memory_bytes` (> 2x)
 /// - Different `hostname_hash` (if both present)
 ///
-/// # Example
+/// # Examples
+///
+/// Detect an OS mismatch (e.g., running benchmarks on a different platform):
 ///
 /// ```
 /// use perfgate_host_detect::detect_host_mismatch;
@@ -82,6 +84,150 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// let mismatch = detect_host_mismatch(&baseline, &current);
 /// assert!(mismatch.is_some());
 /// assert!(mismatch.unwrap().reasons[0].contains("OS mismatch"));
+/// ```
+///
+/// Detect an architecture mismatch (e.g., `x86_64` vs `aarch64`):
+///
+/// ```
+/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_types::HostInfo;
+/// let baseline = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: None,
+///     memory_bytes: None,
+///     hostname_hash: None,
+/// };
+/// let current = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "aarch64".to_string(),
+///     cpu_count: None,
+///     memory_bytes: None,
+///     hostname_hash: None,
+/// };
+///
+/// let mismatch = detect_host_mismatch(&baseline, &current).unwrap();
+/// assert!(mismatch.reasons[0].contains("architecture mismatch"));
+/// ```
+///
+/// Detect significant CPU count differences (> 2x ratio indicates a
+/// different cloud instance type or machine class):
+///
+/// ```
+/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_types::HostInfo;
+/// let baseline = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: Some(4),
+///     memory_bytes: None,
+///     hostname_hash: None,
+/// };
+/// let current = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: Some(32),
+///     memory_bytes: None,
+///     hostname_hash: None,
+/// };
+///
+/// let mismatch = detect_host_mismatch(&baseline, &current).unwrap();
+/// assert!(mismatch.reasons[0].contains("CPU count differs"));
+/// ```
+///
+/// Minor CPU differences (≤ 2x) are ignored to reduce false positives:
+///
+/// ```
+/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_types::HostInfo;
+/// let baseline = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: Some(8),
+///     memory_bytes: None,
+///     hostname_hash: None,
+/// };
+/// let current = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: Some(16),
+///     memory_bytes: None,
+///     hostname_hash: None,
+/// };
+///
+/// // Exactly 2x is still within tolerance
+/// assert!(detect_host_mismatch(&baseline, &current).is_none());
+/// ```
+///
+/// Detect significant memory differences (different cloud instance sizes):
+///
+/// ```
+/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_types::HostInfo;
+/// let baseline = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: None,
+///     memory_bytes: Some(8 * 1024 * 1024 * 1024),   // 8 GB
+///     hostname_hash: None,
+/// };
+/// let current = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: None,
+///     memory_bytes: Some(64 * 1024 * 1024 * 1024),  // 64 GB
+///     hostname_hash: None,
+/// };
+///
+/// let mismatch = detect_host_mismatch(&baseline, &current).unwrap();
+/// assert!(mismatch.reasons[0].contains("memory differs"));
+/// ```
+///
+/// Detect hostname hash mismatch (benchmarks ran on different machines):
+///
+/// ```
+/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_types::HostInfo;
+/// let baseline = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: None,
+///     memory_bytes: None,
+///     hostname_hash: Some("abc123".to_string()),
+/// };
+/// let current = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: None,
+///     memory_bytes: None,
+///     hostname_hash: Some("def456".to_string()),
+/// };
+///
+/// let mismatch = detect_host_mismatch(&baseline, &current).unwrap();
+/// assert!(mismatch.reasons[0].contains("hostname mismatch"));
+/// ```
+///
+/// Optional fields that are `None` on either side are silently skipped:
+///
+/// ```
+/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_types::HostInfo;
+/// let baseline = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: Some(4),
+///     memory_bytes: Some(16 * 1024 * 1024 * 1024),
+///     hostname_hash: Some("abc".to_string()),
+/// };
+/// let current = HostInfo {
+///     os: "linux".to_string(),
+///     arch: "x86_64".to_string(),
+///     cpu_count: None,   // unknown — skipped
+///     memory_bytes: None, // unknown — skipped
+///     hostname_hash: None, // unknown — skipped
+/// };
+///
+/// assert!(detect_host_mismatch(&baseline, &current).is_none());
 /// ```
 pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<HostMismatchInfo> {
     let mut reasons = Vec::new();
