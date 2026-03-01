@@ -45,10 +45,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Doc-tests for types, domain, render, export crates
 - Cross-crate integration tests
 - Config validation edge case tests
+- Property-based tests for perfgate-render (determinism, annotation levels, HTML structure)
+- Property-based tests for perfgate-paired (determinism, sample count, diff symmetry, bounds)
+- Property-based tests for perfgate-export (CSV format, JSONL validity, metrics sorting)
+- Edge case tests for perfgate-adapters (process errors, system metrics, platform detection)
+- Boundary tests for perfgate-validation (Unicode, empty inputs, large values)
+- Doc-tests for perfgate-stats core functions
+- BDD scenarios for error recovery and edge cases
+- 25+ export format-specific tests (CSV escaping, HTML, Prometheus)
+- perfgate-fake README.md
 
 ### Changed
 
 - Enhanced CONTRIBUTING.md with PR checklist, code style guide, testing requirements
+- BDD multi-bench steps use `slow_command()` for reliable regression detection on CI
+- Improved error messages in xtask schema-check (file vs directory distinction)
+- Added explanatory comments for cloud provider error string matching
+
+### Removed
+
+- Obsolete `placeholder.feature` (replaced by 10+ real feature files)
 
 ### Fixed
 
