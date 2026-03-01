@@ -423,6 +423,24 @@ async fn given_current_receipt_with_host_os(
     world.current_path = Some(current_path);
 }
 
+/// Create a current receipt with specified wall_ms median and custom bench name
+#[given(expr = "a current receipt with wall_ms median of {int} and bench name {string}")]
+async fn given_current_receipt_with_bench_name(
+    world: &mut PerfgateWorld,
+    wall_ms: u64,
+    bench_name: String,
+) {
+    world.ensure_temp_dir();
+    world.current_wall_ms = Some(wall_ms);
+    let mut receipt = world.create_run_receipt(wall_ms);
+    receipt.bench.name = bench_name;
+    let current_path = world.temp_path().join("current.json");
+
+    let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
+    fs::write(&current_path, json).expect("Failed to write current receipt");
+    world.current_path = Some(current_path);
+}
+
 /// Create a compare receipt with pass verdict
 #[given("a compare receipt with pass verdict")]
 async fn given_compare_receipt_pass(world: &mut PerfgateWorld) {
@@ -1084,6 +1102,44 @@ fn echo_command() -> Vec<&'static str> {
 #[cfg(windows)]
 fn echo_command() -> Vec<&'static str> {
     vec!["cmd", "/c", "echo", "hello world from perfgate"]
+}
+
+/// Returns a cross-platform command that produces large stdout output.
+#[cfg(unix)]
+fn large_stdout_command() -> Vec<&'static str> {
+    vec!["seq", "1", "10000"]
+}
+
+#[cfg(windows)]
+fn large_stdout_command() -> Vec<&'static str> {
+    vec!["powershell", "-NoProfile", "-Command", "1..10000"]
+}
+
+/// Run perfgate run with a command that produces very large stdout
+#[when("I run perfgate run with a large stdout command")]
+async fn when_run_with_large_stdout_command(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let output_path = world.temp_path().join("run-output.json");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("test-bench")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--repeat")
+        .arg("1")
+        .arg("--");
+
+    for arg in large_stdout_command() {
+        cmd.arg(arg);
+    }
+
+    let output = cmd.output().expect("Failed to execute perfgate run");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.output_path = Some(output_path);
 }
 
 /// Run perfgate run with a command that does not exist
@@ -1928,6 +1984,29 @@ async fn when_export_compare_to_jsonl(world: &mut PerfgateWorld) {
         .arg(&compare)
         .arg("--format")
         .arg("jsonl")
+        .arg("--out")
+        .arg(&export_path);
+
+    let output = cmd.output().expect("Failed to execute perfgate export");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.export_path = Some(export_path);
+}
+
+/// Run perfgate export compare to html
+#[when("I run perfgate export compare to html")]
+async fn when_export_compare_to_html(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let compare = world.compare_path.clone().expect("Compare path not set");
+    let export_path = world.temp_path().join("export.html");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("export")
+        .arg("--compare")
+        .arg(&compare)
+        .arg("--format")
+        .arg("html")
         .arg("--out")
         .arg(&export_path);
 

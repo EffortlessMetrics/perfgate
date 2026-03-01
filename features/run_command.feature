@@ -115,6 +115,22 @@ Feature: Run Command
     And the output file should exist
     And the output file should contain valid JSON
 
+  # Edge case: large stdout
+  Scenario: Run with a command that produces very large stdout
+    When I run perfgate run with a large stdout command
+    Then the exit code should be 0
+    And the output file should exist
+    And the output file should contain valid JSON
+
+  # Edge case: warmup higher than repeat
+  Scenario: Run with warmup count higher than repeat count
+    When I run perfgate run with repeat 1 and warmup 3
+    Then the exit code should be 0
+    And the output file should exist
+    And the output file should contain valid JSON
+    And the run receipt should have 4 samples
+    And the run receipt should have 3 warmup samples
+
   # Error path scenarios
   Scenario: Run with non-existent command
     When I run perfgate run with a non-existent command

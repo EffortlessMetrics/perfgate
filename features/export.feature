@@ -74,6 +74,13 @@ Feature: Export Command
     And the export file should exist
     And the export file should contain "<table"
 
+  Scenario: Export compare receipt to HTML
+    Given a compare receipt with pass verdict
+    When I run perfgate export compare to html
+    Then the exit code should be 0
+    And the export file should exist
+    And the export file should contain "<table"
+
   Scenario: Export compare receipt to Prometheus
     Given a compare receipt with pass verdict
     When I run perfgate export compare to prometheus

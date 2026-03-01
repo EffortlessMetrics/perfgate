@@ -197,6 +197,23 @@ Feature: Compare Command
     Then the exit code should be 2
     And the verdict should be fail
 
+  # Edge case: mismatched bench names
+  Scenario: Compare with mismatched bench names between baseline and current
+    Given a baseline receipt with wall_ms median of 1000
+    And a current receipt with wall_ms median of 900 and bench name "different-bench"
+    When I run perfgate compare with threshold 0.20
+    Then the exit code should be 0
+    And the verdict should be pass
+
+  # Improvement detection
+  Scenario: Pass verdict when current is significantly faster than baseline
+    Given a baseline receipt with wall_ms median of 1000
+    And a current receipt with wall_ms median of 200
+    When I run perfgate compare with threshold 0.20
+    Then the exit code should be 0
+    And the verdict should be pass
+    And the compare receipt should contain wall_ms delta
+
   # Error path scenarios
   Scenario: Compare with non-existent baseline file
     Given a non-existent baseline file
