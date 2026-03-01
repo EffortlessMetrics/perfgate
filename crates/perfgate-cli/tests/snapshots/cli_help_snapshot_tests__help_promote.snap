@@ -11,17 +11,12 @@ Exit codes: 0 for success, 1 for errors.
 Usage: perfgate promote [OPTIONS] --current <CURRENT> --to <TO>
 
 Options:
-      --current <CURRENT>
-          Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote
+      --current <CURRENT> Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote
 
-      --to <TO>
-          Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written
+      --to <TO> Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written
 
-      --normalize
-          Strip run-specific fields (run_id, timestamps) for stable baselines
+      --normalize Strip run-specific fields (run_id, timestamps) for stable baselines
 
-      --pretty
-          Pretty-print JSON
+      --pretty Pretty-print JSON
 
-  -h, --help
-          Print help (see a summary with '-h')
+  -h, --help Print help (see a summary with '-h')

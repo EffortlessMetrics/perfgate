@@ -7,17 +7,17 @@ Perf budgets and baseline diffs for CI / PR bots
 Usage: perfgate <COMMAND>
 
 Commands:
-  run                 Run a command repeatedly and emit a run receipt (JSON)
-  compare             Compare a current receipt against a baseline and emit a compare receipt (JSON)
-  md                  Render a Markdown summary from a compare receipt
-  github-annotations  Emit GitHub Actions annotations from a compare receipt
-  export              Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format
-  promote             Promote a run receipt to become the new baseline
-  report              Generate a cockpit-compatible report from a compare receipt
-  check               Config-driven one-command workflow
-  paired              Run paired benchmark: interleave baseline and current commands for reduced noise
-  help                Print this message or the help of the given subcommand(s)
+  run Run a command repeatedly and emit a run receipt (JSON)
+  compare Compare a current receipt against a baseline and emit a compare receipt (JSON)
+  md Render a Markdown summary from a compare receipt
+  github-annotations Emit GitHub Actions annotations from a compare receipt
+  export Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format
+  promote Promote a run receipt to become the new baseline
+  report Generate a cockpit-compatible report from a compare receipt
+  check Config-driven one-command workflow
+  paired Run paired benchmark: interleave baseline and current commands for reduced noise
+  help Print this message or the help of the given subcommand(s)
 
 Options:
-  -h, --help     Print help
-  -V, --version  Print version
+  -h, --help Print help
+  -V, --version Print version

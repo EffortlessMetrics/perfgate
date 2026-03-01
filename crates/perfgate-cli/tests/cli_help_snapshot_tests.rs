@@ -141,14 +141,87 @@ fn cli_help_github_annotations() {
 
 fn help_output(args: &[&str]) -> String {
     let output = perfgate_cmd()
-        .env("COLUMNS", "200")
         .args(args)
         .output()
         .expect("failed to run perfgate");
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).expect("non-UTF-8 help output");
-    // Normalize binary name so snapshots are identical on Windows and Linux.
-    text.replace("perfgate.exe", "perfgate")
+    normalize_help(&text)
+}
+
+/// Normalize clap help text for platform-independent snapshots.
+///
+/// Clap formats help differently depending on terminal width, which varies
+/// between Windows and Linux even with piped output. This function collapses
+/// formatting differences into a canonical single-line representation.
+fn normalize_help(raw: &str) -> String {
+    let trailing_newline = raw.ends_with('\n');
+
+    // 1. Normalize binary name
+    let text = raw.replace("perfgate.exe", "perfgate");
+
+    // 2. Collapse multi-line option descriptions and wrapped continuations.
+    //    On narrow terminals, clap puts descriptions on the next line indented
+    //    by 10 spaces; on wide terminals they stay on the same line.
+    let text = text.replace("\n          ", " ");
+
+    // 3. Join non-indented wrapped continuation lines (about-text wrapping).
+    //    When terminal width is finite, long about-text paragraphs wrap and
+    //    the continuation starts at column 0.
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let is_continuation = !line.is_empty()
+            && !line.starts_with(' ')
+            && !lines.is_empty()
+            && !lines.last().unwrap().is_empty()
+            && !line.starts_with("Usage:")
+            && !line.starts_with("Options:")
+            && !line.starts_with("Commands:")
+            && !line.starts_with("Arguments:");
+        if is_continuation {
+            let last = lines.last_mut().unwrap();
+            last.push(' ');
+            last.push_str(line);
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+
+    // 4. Normalize each line: preserve leading indent, collapse runs of
+    //    multiple spaces in the content to a single space.
+    let normalized: Vec<String> = lines
+        .iter()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.is_empty() {
+                return String::new();
+            }
+            let indent = &line[..line.len() - trimmed.len()];
+            let mut content = String::new();
+            let mut in_spaces = false;
+            for ch in trimmed.chars() {
+                if ch == ' ' {
+                    if !in_spaces {
+                        content.push(' ');
+                        in_spaces = true;
+                    }
+                } else {
+                    content.push(ch);
+                    in_spaces = false;
+                }
+            }
+            if content.ends_with(' ') {
+                content.pop();
+            }
+            format!("{indent}{content}")
+        })
+        .collect();
+
+    let mut result = normalized.join("\n");
+    if trailing_newline {
+        result.push('\n');
+    }
+    result
 }
 
 #[test]

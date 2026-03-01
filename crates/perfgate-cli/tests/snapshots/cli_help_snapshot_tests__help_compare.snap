@@ -8,32 +8,17 @@ Usage: perfgate compare [OPTIONS] --baseline <BASELINE> --current <CURRENT>
 
 Options:
       --baseline <BASELINE>
-          
       --current <CURRENT>
-          
-      --threshold <THRESHOLD>
-          Global regression threshold (0.20 = 20%) [default: 0.2]
-      --warn-factor <WARN_FACTOR>
-          Global warn factor (warn_threshold = threshold * warn_factor) [default: 0.9]
-      --metric-threshold <METRIC_THRESHOLD>
-          Override per-metric threshold, e.g. wall_ms=0.10
-      --direction <DIRECTION>
-          Override per-metric direction, e.g. throughput_per_s=higher
-      --metric-stat <METRIC_STAT>
-          Override per-metric statistic, e.g. wall_ms=p95
-      --significance-alpha <SIGNIFICANCE_ALPHA>
-          Compute per-metric significance metadata using Welch's t-test (p <= alpha)
-      --significance-min-samples <SIGNIFICANCE_MIN_SAMPLES>
-          Minimum samples required in each run before significance is computed [default: 8]
-      --require-significance
-          When set with --significance-alpha, warn/fail statuses require significance
-      --fail-on-warn
-          Treat WARN verdict as a failing exit code
-      --host-mismatch <HOST_MISMATCH>
-          Policy for handling host mismatches between baseline and current runs. - warn (default): Warn but continue with comparison - error: Exit 1 on mismatch - ignore: Suppress warnings [default: warn]
-      --out <OUT>
-          Output compare receipt [default: perfgate-compare.json]
-      --pretty
-          Pretty-print JSON
-  -h, --help
-          Print help
+      --threshold <THRESHOLD> Global regression threshold (0.20 = 20%) [default: 0.2]
+      --warn-factor <WARN_FACTOR> Global warn factor (warn_threshold = threshold * warn_factor) [default: 0.9]
+      --metric-threshold <METRIC_THRESHOLD> Override per-metric threshold, e.g. wall_ms=0.10
+      --direction <DIRECTION> Override per-metric direction, e.g. throughput_per_s=higher
+      --metric-stat <METRIC_STAT> Override per-metric statistic, e.g. wall_ms=p95
+      --significance-alpha <SIGNIFICANCE_ALPHA> Compute per-metric significance metadata using Welch's t-test (p <= alpha)
+      --significance-min-samples <SIGNIFICANCE_MIN_SAMPLES> Minimum samples required in each run before significance is computed [default: 8]
+      --require-significance When set with --significance-alpha, warn/fail statuses require significance
+      --fail-on-warn Treat WARN verdict as a failing exit code
+      --host-mismatch <HOST_MISMATCH> Policy for handling host mismatches between baseline and current runs. - warn (default): Warn but continue with comparison - error: Exit 1 on mismatch - ignore: Suppress warnings [default: warn]
+      --out <OUT> Output compare receipt [default: perfgate-compare.json]
+      --pretty Pretty-print JSON
+  -h, --help Print help
