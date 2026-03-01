@@ -894,6 +894,20 @@ fn success_command() -> Vec<&'static str> {
     vec!["cmd", "/c", "exit", "0"]
 }
 
+/// Returns a cross-platform command that takes at least ~10ms.
+/// Used for benchmarks that need to produce measurable wall_ms
+/// (e.g., when regression detection against a 1ms baseline is needed).
+#[cfg(unix)]
+fn slow_command() -> Vec<&'static str> {
+    vec!["sleep", "0.01"]
+}
+
+#[cfg(windows)]
+fn slow_command() -> Vec<&'static str> {
+    // Windows cmd.exe startup takes ~50ms, which is sufficient
+    vec!["cmd", "/c", "exit", "0"]
+}
+
 /// Returns a cross-platform shell command string that exits successfully.
 #[cfg(unix)]
 fn success_shell_command() -> &'static str {
@@ -3306,7 +3320,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
             cwd: None,
             work: None,
             timeout: None,
-            command: success_command().iter().map(|s| s.to_string()).collect(),
+            command: slow_command().iter().map(|s| s.to_string()).collect(),
             repeat: None,
             warmup: None,
             metrics: None,
@@ -3358,7 +3372,7 @@ async fn given_config_file_with_benches_lenient(
             cwd: None,
             work: None,
             timeout: None,
-            command: success_command().iter().map(|s| s.to_string()).collect(),
+            command: slow_command().iter().map(|s| s.to_string()).collect(),
             repeat: None,
             warmup: None,
             metrics: None,
@@ -3414,7 +3428,7 @@ async fn given_config_file_with_mixed_thresholds(
             cwd: None,
             work: None,
             timeout: None,
-            command: success_command().iter().map(|s| s.to_string()).collect(),
+            command: slow_command().iter().map(|s| s.to_string()).collect(),
             repeat: None,
             warmup: None,
             metrics: None,
@@ -3438,7 +3452,7 @@ async fn given_config_file_with_mixed_thresholds(
         cwd: None,
         work: None,
         timeout: None,
-        command: success_command().iter().map(|s| s.to_string()).collect(),
+        command: slow_command().iter().map(|s| s.to_string()).collect(),
         repeat: None,
         warmup: None,
         metrics: None,
