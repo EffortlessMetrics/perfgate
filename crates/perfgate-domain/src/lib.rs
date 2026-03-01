@@ -2794,6 +2794,144 @@ mod tests {
                 prop_assert_eq!(stats.wall_ms, expected, "stats.wall_ms must match direct summarize");
             }
         }
+
+        // =====================================================================
+        // Property: mean is within [min, max] and variance >= 0
+        // =====================================================================
+
+        proptest! {
+            #[test]
+            fn prop_mean_within_min_max_and_variance_non_negative(
+                values in prop::collection::vec(1.0f64..10000.0, 1..100)
+            ) {
+                let (mean, var) = mean_and_variance(&values).expect("finite values");
+                let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+                prop_assert!(
+                    mean >= min && mean <= max,
+                    "mean ({mean}) must be within [{min}, {max}]"
+                );
+                prop_assert!(var >= 0.0, "variance ({var}) must be >= 0");
+            }
+        }
+
+        // =====================================================================
+        // Property: comparison symmetry – regression flips to improvement
+        // =====================================================================
+
+        proptest! {
+            /// If baseline=A, current=B shows a regression (regression > 0),
+            /// then swapping (baseline=B, current=A) must show no regression
+            /// (regression == 0) for the same direction.
+            #[test]
+            fn prop_comparison_symmetry(
+                a in 1u64..10000,
+                b in 1u64..10000,
+            ) {
+                let budget = Budget {
+                    threshold: 1.0,
+                    warn_threshold: 0.5,
+                    direction: Direction::Lower,
+                };
+
+                let mk = |median: u64| Stats {
+                    wall_ms: U64Summary { median, min: median, max: median },
+                    cpu_ms: None, page_faults: None, ctx_switches: None,
+                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                };
+
+                let mut budgets = BTreeMap::new();
+                budgets.insert(Metric::WallMs, budget);
+
+                let fwd = compare_stats(&mk(a), &mk(b), &budgets).unwrap();
+                let rev = compare_stats(&mk(b), &mk(a), &budgets).unwrap();
+
+                let fwd_reg = fwd.deltas[&Metric::WallMs].regression;
+                let rev_reg = rev.deltas[&Metric::WallMs].regression;
+
+                // If one direction regresses, the other must not
+                if fwd_reg > 0.0 {
+                    prop_assert!(
+                        rev_reg == 0.0,
+                        "fwd regression={fwd_reg} but rev regression={rev_reg} (expected 0)"
+                    );
+                }
+                if rev_reg > 0.0 {
+                    prop_assert!(
+                        fwd_reg == 0.0,
+                        "rev regression={rev_reg} but fwd regression={fwd_reg} (expected 0)"
+                    );
+                }
+            }
+        }
+
+        // =====================================================================
+        // Property: budget threshold consistency
+        // =====================================================================
+
+        proptest! {
+            /// threshold=0.0 means any positive regression must fail.
+            #[test]
+            fn prop_budget_zero_threshold_fails_any_regression(
+                baseline in 1u64..10000,
+                delta in 1u64..5000,
+            ) {
+                let current = baseline + delta; // strictly worse (Direction::Lower)
+                let budget = Budget {
+                    threshold: 0.0,
+                    warn_threshold: 0.0,
+                    direction: Direction::Lower,
+                };
+                let mk = |v: u64| Stats {
+                    wall_ms: U64Summary { median: v, min: v, max: v },
+                    cpu_ms: None, page_faults: None, ctx_switches: None,
+                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                };
+                let mut budgets = BTreeMap::new();
+                budgets.insert(Metric::WallMs, budget);
+
+                let cmp = compare_stats(&mk(baseline), &mk(current), &budgets).unwrap();
+                let status = cmp.deltas[&Metric::WallMs].status;
+                prop_assert_eq!(
+                    status,
+                    MetricStatus::Fail,
+                    "threshold=0 must fail any regression (baseline={}, current={})",
+                    baseline, current
+                );
+            }
+
+            /// threshold=1.0 allows up to 100% regression;
+            /// a regression <= 100% must not fail.
+            #[test]
+            fn prop_budget_full_threshold_allows_up_to_100pct(
+                baseline in 1u64..10000,
+                factor in 0u64..=100, // 0..100% regression
+            ) {
+                // current = baseline * (1 + factor/100)
+                let current = baseline + (baseline * factor) / 100;
+                let budget = Budget {
+                    threshold: 1.0,
+                    warn_threshold: 0.5,
+                    direction: Direction::Lower,
+                };
+                let mk = |v: u64| Stats {
+                    wall_ms: U64Summary { median: v, min: v, max: v },
+                    cpu_ms: None, page_faults: None, ctx_switches: None,
+                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                };
+                let mut budgets = BTreeMap::new();
+                budgets.insert(Metric::WallMs, budget);
+
+                let cmp = compare_stats(&mk(baseline), &mk(current), &budgets).unwrap();
+                let status = cmp.deltas[&Metric::WallMs].status;
+                prop_assert!(
+                    status != MetricStatus::Fail,
+                    "threshold=1.0 must not fail <=100% regression \
+                     (baseline={baseline}, current={current}, factor={factor}%)"
+                );
+            }
+        }
     }
 
     #[test]
