@@ -1712,10 +1712,12 @@ where
 }
 
 fn is_object_not_found(err: &object_store::Error) -> bool {
-    // Fallback: some cloud provider drivers wrap the NotFound error
-    // in a generic error, so we check the message text as a heuristic.
-    // This is fragile but necessary for providers that don't expose
-    // a structured NotFound variant.
+    // Different cloud providers (S3, GCS, Azure) wrap their NotFound errors
+    // differently and don't always expose a structured `NotFound` variant.
+    // For example, some drivers surface a generic/opaque error whose message
+    // contains "not found" rather than the typed enum variant.  We match the
+    // structured variant first, then fall back to case-insensitive string
+    // matching as a last resort.
     matches!(err, object_store::Error::NotFound { .. })
         || err.to_string().to_ascii_lowercase().contains("not found")
 }
