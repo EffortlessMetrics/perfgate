@@ -1366,4 +1366,81 @@ mod property_tests {
             }
         }
     }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        /// Same CompareReceipt always produces identical markdown output.
+        #[test]
+        fn markdown_rendering_determinism(receipt in compare_receipt_strategy()) {
+            let md1 = render_markdown(&receipt);
+            let md2 = render_markdown(&receipt);
+            prop_assert_eq!(
+                md1, md2,
+                "render_markdown must be deterministic"
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        /// Every annotation string starts with a valid GitHub Actions level prefix.
+        #[test]
+        fn annotation_valid_levels(receipt in compare_receipt_strategy()) {
+            let annotations = github_annotations(&receipt);
+            for annotation in &annotations {
+                prop_assert!(
+                    annotation.starts_with("::error::")
+                        || annotation.starts_with("::warning::")
+                        || annotation.starts_with("::notice::"),
+                    "Annotation should start with a valid level (::error::, ::warning::, ::notice::). Got: {}",
+                    annotation
+                );
+            }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(50))]
+
+        /// Rendering an HTML-like template produces output with valid structure tags.
+        #[test]
+        fn template_html_structure(receipt in compare_receipt_strategy()) {
+            let template = concat!(
+                "<html><body>",
+                "<h1>{{header}}</h1>",
+                "<p>Bench: {{bench.name}}</p>",
+                "<table>",
+                "{{#each rows}}<tr><td>{{metric}}</td><td>{{status}}</td></tr>{{/each}}",
+                "</table>",
+                "</body></html>",
+            );
+            let rendered = render_markdown_template(&receipt, template)
+                .expect("HTML template should render");
+
+            prop_assert!(rendered.contains("<html>"), "Missing <html> tag. Got:\n{}", rendered);
+            prop_assert!(rendered.contains("</html>"), "Missing </html> tag. Got:\n{}", rendered);
+            prop_assert!(rendered.contains("<body>"), "Missing <body> tag. Got:\n{}", rendered);
+            prop_assert!(rendered.contains("</body>"), "Missing </body> tag. Got:\n{}", rendered);
+            prop_assert!(rendered.contains("<table>"), "Missing <table> tag. Got:\n{}", rendered);
+            prop_assert!(rendered.contains("</table>"), "Missing </table> tag. Got:\n{}", rendered);
+            prop_assert!(
+                rendered.contains(&receipt.bench.name),
+                "HTML should contain bench name '{}'. Got:\n{}",
+                receipt.bench.name,
+                rendered
+            );
+
+            for metric in receipt.deltas.keys() {
+                let metric_name = metric.as_str();
+                prop_assert!(
+                    rendered.contains(metric_name),
+                    "HTML should contain metric '{}'. Got:\n{}",
+                    metric_name,
+                    rendered
+                );
+            }
+        }
+    }
 }
