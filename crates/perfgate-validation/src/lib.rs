@@ -21,9 +21,117 @@
 //! assert!(validate_bench_name("bench/").is_err());   // trailing slash
 //! ```
 
-pub use perfgate_error::{
-    BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError, validate_bench_name,
-};
+/// Maximum allowed length (in bytes) for a benchmark name.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_validation::{BENCH_NAME_MAX_LEN, validate_bench_name};
+///
+/// // Exactly at the limit – accepted
+/// let name = "a".repeat(BENCH_NAME_MAX_LEN);
+/// assert!(validate_bench_name(&name).is_ok());
+///
+/// // One byte over – rejected
+/// let too_long = "a".repeat(BENCH_NAME_MAX_LEN + 1);
+/// assert!(validate_bench_name(&too_long).is_err());
+/// ```
+pub use perfgate_error::BENCH_NAME_MAX_LEN;
+
+/// Regex pattern describing the set of valid benchmark-name characters.
+///
+/// The pattern allows lowercase ASCII letters, digits, underscores,
+/// dots, hyphens, and forward slashes.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_validation::BENCH_NAME_PATTERN;
+///
+/// assert_eq!(BENCH_NAME_PATTERN, r"^[a-z0-9_.\-/]+$");
+/// assert!(BENCH_NAME_PATTERN.starts_with('^'));
+/// assert!(BENCH_NAME_PATTERN.ends_with('$'));
+/// ```
+pub use perfgate_error::BENCH_NAME_PATTERN;
+
+/// Error type returned when a benchmark name fails validation.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_validation::{validate_bench_name, ValidationError};
+///
+/// // Empty name yields `ValidationError::Empty`
+/// let err = validate_bench_name("").unwrap_err();
+/// assert!(matches!(err, ValidationError::Empty));
+/// assert_eq!(err.name(), "");
+///
+/// // Uppercase letters yield `ValidationError::InvalidCharacters`
+/// let err = validate_bench_name("MyBench").unwrap_err();
+/// assert!(matches!(err, ValidationError::InvalidCharacters { .. }));
+/// assert_eq!(err.name(), "MyBench");
+///
+/// // Path traversal yields `ValidationError::PathTraversal`
+/// let err = validate_bench_name("../escape").unwrap_err();
+/// assert!(matches!(err, ValidationError::PathTraversal { .. }));
+///
+/// // Trailing slash yields `ValidationError::EmptySegment`
+/// let err = validate_bench_name("bench/").unwrap_err();
+/// assert!(matches!(err, ValidationError::EmptySegment { .. }));
+/// ```
+pub use perfgate_error::ValidationError;
+
+/// Validate a benchmark name against the naming rules.
+///
+/// Returns `Ok(())` when the name is valid, or a [`ValidationError`]
+/// describing why the name was rejected.
+///
+/// # Rules
+///
+/// 1. Must not be empty.
+/// 2. Must not exceed [`BENCH_NAME_MAX_LEN`] bytes.
+/// 3. Only lowercase ASCII, digits, `_`, `.`, `-`, and `/` are allowed.
+/// 4. No empty path segments (leading, trailing, or consecutive `/`).
+/// 5. No `.` or `..` path segments (path traversal).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_validation::{validate_bench_name, ValidationError};
+///
+/// // ── Valid names ──────────────────────────────────────
+/// assert!(validate_bench_name("my-bench").is_ok());
+/// assert!(validate_bench_name("bench_v2").is_ok());
+/// assert!(validate_bench_name("path/to/bench").is_ok());
+/// assert!(validate_bench_name("bench.v1").is_ok());
+/// assert!(validate_bench_name("123").is_ok());
+///
+/// // ── Invalid names ───────────────────────────────────
+/// // Empty
+/// assert!(matches!(
+///     validate_bench_name(""),
+///     Err(ValidationError::Empty),
+/// ));
+///
+/// // Uppercase
+/// assert!(matches!(
+///     validate_bench_name("MyBench"),
+///     Err(ValidationError::InvalidCharacters { .. }),
+/// ));
+///
+/// // Path traversal
+/// assert!(matches!(
+///     validate_bench_name("../bench"),
+///     Err(ValidationError::PathTraversal { .. }),
+/// ));
+///
+/// // Trailing slash (empty segment)
+/// assert!(matches!(
+///     validate_bench_name("bench/"),
+///     Err(ValidationError::EmptySegment { .. }),
+/// ));
+/// ```
+pub use perfgate_error::validate_bench_name;
 
 #[cfg(test)]
 mod tests {
