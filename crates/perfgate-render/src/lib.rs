@@ -108,6 +108,42 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
     out
 }
 
+/// Render a [`CompareReceipt`] using a custom [Handlebars](https://docs.rs/handlebars) template.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::BTreeMap;
+/// # use perfgate_types::*;
+/// let compare = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 3, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: None, run_id: None },
+///     current_ref: CompareRef { path: None, run_id: None },
+///     budgets: BTreeMap::new(),
+///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
+///         baseline: 100.0, current: 110.0, ratio: 1.1, pct: 0.1,
+///         regression: 0.1, statistic: MetricStatistic::Median,
+///         significance: None, status: MetricStatus::Pass,
+///     })]),
+///     verdict: Verdict {
+///         status: VerdictStatus::Pass,
+///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+///         reasons: vec![],
+///     },
+/// };
+/// let rendered = perfgate_render::render_markdown_template(
+///     &compare,
+///     "Bench: {{bench.name}}, Verdict: {{verdict.status}}",
+/// ).unwrap();
+/// assert!(rendered.contains("Bench: my-bench"));
+/// assert!(rendered.contains("Verdict: pass"));
+/// ```
 pub fn render_markdown_template(
     compare: &CompareReceipt,
     template: &str,
@@ -183,10 +219,34 @@ pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
     lines
 }
 
+/// Return the canonical string key for a [`Metric`].
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::Metric;
+/// assert_eq!(perfgate_render::format_metric(Metric::WallMs), "wall_ms");
+/// assert_eq!(perfgate_render::format_metric(Metric::MaxRssKb), "max_rss_kb");
+/// ```
 pub fn format_metric(metric: Metric) -> &'static str {
     metric.as_str()
 }
 
+/// Format a metric key, appending the statistic name when it is not the default (median).
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::{Metric, MetricStatistic};
+/// assert_eq!(
+///     perfgate_render::format_metric_with_statistic(Metric::WallMs, MetricStatistic::Median),
+///     "wall_ms",
+/// );
+/// assert_eq!(
+///     perfgate_render::format_metric_with_statistic(Metric::WallMs, MetricStatistic::P95),
+///     "wall_ms (p95)",
+/// );
+/// ```
 pub fn format_metric_with_statistic(metric: Metric, statistic: MetricStatistic) -> String {
     if statistic == MetricStatistic::Median {
         format_metric(metric).to_string()
@@ -195,6 +255,35 @@ pub fn format_metric_with_statistic(metric: Metric, statistic: MetricStatistic) 
     }
 }
 
+/// Build the JSON context object used by [`render_markdown_template`].
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::BTreeMap;
+/// # use perfgate_types::*;
+/// let compare = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "my-bench".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 1, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: None, run_id: None },
+///     current_ref: CompareRef { path: None, run_id: None },
+///     budgets: BTreeMap::new(),
+///     deltas: BTreeMap::new(),
+///     verdict: Verdict {
+///         status: VerdictStatus::Pass,
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         reasons: vec![],
+///     },
+/// };
+/// let ctx = perfgate_render::markdown_template_context(&compare);
+/// assert_eq!(ctx["header"], "✅ perfgate: pass");
+/// assert!(ctx["rows"].as_array().unwrap().is_empty());
+/// ```
 pub fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value {
     let header = match compare.verdict.status {
         perfgate_types::VerdictStatus::Pass => "✅ perfgate: pass",
@@ -245,6 +334,20 @@ pub fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value 
     })
 }
 
+/// Parse a verdict reason token like `"wall_ms_warn"` into its metric and status.
+///
+/// Returns `None` for unrecognised metrics or non-warn/fail statuses.
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::{Metric, MetricStatus};
+/// let (metric, status) = perfgate_render::parse_reason_token("wall_ms_warn").unwrap();
+/// assert_eq!(metric, Metric::WallMs);
+/// assert_eq!(status, MetricStatus::Warn);
+///
+/// assert!(perfgate_render::parse_reason_token("unknown_warn").is_none());
+/// ```
 pub fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
     let (metric_part, status_part) = token.rsplit_once('_')?;
 
@@ -259,6 +362,41 @@ pub fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
     Some((metric, status))
 }
 
+/// Render a single verdict reason token as a human-readable bullet line.
+///
+/// # Examples
+///
+/// ```
+/// # use std::collections::BTreeMap;
+/// # use perfgate_types::*;
+/// let compare = CompareReceipt {
+///     schema: COMPARE_SCHEMA_V1.to_string(),
+///     tool: ToolInfo { name: "perfgate".into(), version: "0.1.0".into() },
+///     bench: BenchMeta {
+///         name: "b".into(), cwd: None,
+///         command: vec!["echo".into()], repeat: 1, warmup: 0,
+///         work_units: None, timeout_ms: None,
+///     },
+///     baseline_ref: CompareRef { path: None, run_id: None },
+///     current_ref: CompareRef { path: None, run_id: None },
+///     budgets: BTreeMap::from([(Metric::WallMs, Budget {
+///         threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower,
+///     })]),
+///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
+///         baseline: 100.0, current: 115.0, ratio: 1.15, pct: 0.15,
+///         regression: 0.15, statistic: MetricStatistic::Median,
+///         significance: None, status: MetricStatus::Warn,
+///     })]),
+///     verdict: Verdict {
+///         status: VerdictStatus::Warn,
+///         counts: VerdictCounts { pass: 0, warn: 1, fail: 0 },
+///         reasons: vec!["wall_ms_warn".into()],
+///     },
+/// };
+/// let line = perfgate_render::render_reason_line(&compare, "wall_ms_warn");
+/// assert!(line.starts_with("- wall_ms_warn:"));
+/// assert!(line.contains("+15.00%"));
+/// ```
 pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
     if let Some((metric, status)) = parse_reason_token(token)
         && let (Some(delta), Some(budget)) =
@@ -316,6 +454,15 @@ pub fn format_pct(pct: f64) -> String {
     format!("{}{:.2}%", sign, pct * 100.0)
 }
 
+/// Return a human-readable label for a budget [`Direction`].
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::Direction;
+/// assert_eq!(perfgate_render::direction_str(Direction::Lower), "lower");
+/// assert_eq!(perfgate_render::direction_str(Direction::Higher), "higher");
+/// ```
 pub fn direction_str(direction: Direction) -> &'static str {
     match direction {
         Direction::Lower => "lower",
@@ -323,6 +470,16 @@ pub fn direction_str(direction: Direction) -> &'static str {
     }
 }
 
+/// Return an emoji icon for a [`MetricStatus`].
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::MetricStatus;
+/// assert_eq!(perfgate_render::metric_status_icon(MetricStatus::Pass), "✅");
+/// assert_eq!(perfgate_render::metric_status_icon(MetricStatus::Warn), "⚠️");
+/// assert_eq!(perfgate_render::metric_status_icon(MetricStatus::Fail), "❌");
+/// ```
 pub fn metric_status_icon(status: MetricStatus) -> &'static str {
     match status {
         MetricStatus::Pass => "✅",
@@ -331,6 +488,16 @@ pub fn metric_status_icon(status: MetricStatus) -> &'static str {
     }
 }
 
+/// Return a lowercase string label for a [`MetricStatus`].
+///
+/// # Examples
+///
+/// ```
+/// use perfgate_types::MetricStatus;
+/// assert_eq!(perfgate_render::metric_status_str(MetricStatus::Pass), "pass");
+/// assert_eq!(perfgate_render::metric_status_str(MetricStatus::Warn), "warn");
+/// assert_eq!(perfgate_render::metric_status_str(MetricStatus::Fail), "fail");
+/// ```
 pub fn metric_status_str(status: MetricStatus) -> &'static str {
     match status {
         MetricStatus::Pass => "pass",
