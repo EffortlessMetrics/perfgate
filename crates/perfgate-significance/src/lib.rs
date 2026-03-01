@@ -616,5 +616,108 @@ mod tests {
             assert_eq!(result.p_value, 1.0);
             assert!(!result.significant);
         }
+
+        #[test]
+        fn identical_samples_with_variance_p_value_one() {
+            let samples = vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
+            let result = compute_significance(&samples, &samples, 0.05, 8).unwrap();
+
+            assert_relative_eq!(result.p_value, 1.0, epsilon = 1e-10);
+            assert!(!result.significant);
+        }
+
+        #[test]
+        fn single_sample_returns_none_even_with_min_one() {
+            let result = compute_significance(&[42.0], &[99.0], 0.05, 1);
+
+            assert!(result.is_none(), "n<2 means variance is undefined");
+        }
+
+        #[test]
+        fn zero_variance_both_groups_same_value() {
+            let baseline = vec![7.0; 10];
+            let current = vec![7.0; 10];
+
+            let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
+
+            assert_relative_eq!(sig.p_value, 1.0);
+            assert!(!sig.significant);
+        }
+
+        #[test]
+        fn zero_variance_different_constant_values() {
+            let baseline = vec![5.0; 10];
+            let current = vec![50.0; 10];
+
+            let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
+
+            assert_relative_eq!(sig.p_value, 0.0);
+            assert!(sig.significant);
+        }
+
+        #[test]
+        fn large_sample_size_identical() {
+            let samples: Vec<f64> = (0..2000).map(|i| (i as f64).sin() * 100.0).collect();
+            let result = compute_significance(&samples, &samples, 0.05, 8).unwrap();
+
+            assert_relative_eq!(result.p_value, 1.0, epsilon = 1e-10);
+            assert!(!result.significant);
+            assert_eq!(result.baseline_samples, 2000);
+            assert_eq!(result.current_samples, 2000);
+        }
+
+        #[test]
+        fn large_sample_size_with_small_shift() {
+            let baseline: Vec<f64> = (0..1500).map(|i| 100.0 + (i as f64 % 7.0)).collect();
+            let current: Vec<f64> = baseline.iter().map(|v| v + 0.5).collect();
+
+            let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
+
+            assert!(result.significant, "large n should detect even tiny shifts");
+        }
+
+        #[test]
+        fn extreme_difference_large_vs_small() {
+            let baseline = vec![1e-10; 10];
+            let current = vec![1e10; 10];
+
+            let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
+
+            assert!(sig.significant);
+            assert_relative_eq!(sig.p_value, 0.0);
+        }
+
+        #[test]
+        fn extreme_difference_large_vs_tiny_with_variance() {
+            let baseline = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+            let current = vec![1e8, 1e8 + 1.0, 1e8 + 2.0, 1e8 + 3.0, 1e8, 1e8, 1e8, 1e8];
+
+            let sig = compute_significance(&baseline, &current, 0.05, 8).unwrap();
+
+            assert!(sig.significant);
+            assert!(sig.p_value < 0.001);
+        }
+
+        #[test]
+        fn all_zeros_both_groups() {
+            let baseline = vec![0.0; 10];
+            let current = vec![0.0; 10];
+
+            let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
+
+            assert_relative_eq!(sig.p_value, 1.0);
+            assert!(!sig.significant);
+        }
+
+        #[test]
+        fn all_zeros_vs_nonzero() {
+            let baseline = vec![0.0; 10];
+            let current = vec![5.0; 10];
+
+            let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
+
+            assert_relative_eq!(sig.p_value, 0.0);
+            assert!(sig.significant);
+        }
     }
 }
