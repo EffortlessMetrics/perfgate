@@ -5,12 +5,12 @@ use rusqlite::params;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use super::{BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     BaselineRecord, BaselineSource, BaselineSummary, BaselineVersion, ListBaselinesQuery,
     ListBaselinesResponse, PaginationInfo,
 };
-use super::{BaselineStore, StorageHealth};
 
 /// SQLite storage backend for baselines.
 ///
@@ -64,7 +64,10 @@ impl SqliteStore {
 
     /// Initializes the database schema.
     fn initialize(&self) -> Result<(), StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         conn.execute_batch(
             r#"
@@ -180,7 +183,10 @@ impl SqliteStore {
 #[async_trait]
 impl BaselineStore for SqliteStore {
     async fn create(&self, record: &BaselineRecord) -> Result<(), StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let receipt_json = serde_json::to_string(&record.receipt)?;
         let metadata_json = Self::serialize_metadata(&record.metadata);
@@ -242,7 +248,10 @@ impl BaselineStore for SqliteStore {
         benchmark: &str,
         version: &str,
     ) -> Result<Option<BaselineRecord>, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
             r#"
@@ -268,7 +277,10 @@ impl BaselineStore for SqliteStore {
         project: &str,
         benchmark: &str,
     ) -> Result<Option<BaselineRecord>, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
             r#"
@@ -296,7 +308,10 @@ impl BaselineStore for SqliteStore {
         project: &str,
         query: &ListBaselinesQuery,
     ) -> Result<ListBaselinesResponse, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         // Build WHERE clause conditions dynamically with numbered params
         let mut conditions = Vec::new();
@@ -339,9 +354,7 @@ impl BaselineStore for SqliteStore {
 
         // Get total count
         let count_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        let total: u64 = conn.query_row(&count_sql, count_params.as_slice(), |row| {
-            row.get(0)
-        })?;
+        let total: u64 = conn.query_row(&count_sql, count_params.as_slice(), |row| row.get(0))?;
 
         // Main query with pagination
         let limit_idx = param_idx;
@@ -394,7 +407,10 @@ impl BaselineStore for SqliteStore {
     }
 
     async fn update(&self, record: &BaselineRecord) -> Result<(), StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let receipt_json = serde_json::to_string(&record.receipt)?;
         let metadata_json = Self::serialize_metadata(&record.metadata);
@@ -446,19 +462,17 @@ impl BaselineStore for SqliteStore {
         benchmark: &str,
         version: &str,
     ) -> Result<bool, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let rows_affected = conn.execute(
             r#"
             UPDATE baselines SET deleted = 1, updated_at = ?1
             WHERE project = ?2 AND benchmark = ?3 AND version = ?4 AND deleted = 0
             "#,
-            params![
-                chrono::Utc::now().to_rfc3339(),
-                project,
-                benchmark,
-                version,
-            ],
+            params![chrono::Utc::now().to_rfc3339(), project, benchmark, version,],
         )?;
 
         Ok(rows_affected > 0)
@@ -470,7 +484,10 @@ impl BaselineStore for SqliteStore {
         benchmark: &str,
         version: &str,
     ) -> Result<bool, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let rows_affected = conn.execute(
             "DELETE FROM baselines WHERE project = ?1 AND benchmark = ?2 AND version = ?3",
@@ -485,7 +502,10 @@ impl BaselineStore for SqliteStore {
         project: &str,
         benchmark: &str,
     ) -> Result<Vec<BaselineVersion>, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
             r#"
@@ -534,7 +554,10 @@ impl BaselineStore for SqliteStore {
     }
 
     async fn health_check(&self) -> Result<StorageHealth, StoreError> {
-        let conn = self.conn.lock().map_err(|e| StoreError::LockError(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
 
         match conn.query_row("SELECT 1", [], |_| Ok(())) {
             Ok(_) => Ok(StorageHealth::Healthy),
@@ -621,10 +644,7 @@ mod tests {
         let record = create_test_record("my-project", "my-bench", "v1.0.0");
         store.create(&record).await.unwrap();
 
-        let retrieved = store
-            .get("my-project", "my-bench", "v1.0.0")
-            .await
-            .unwrap();
+        let retrieved = store.get("my-project", "my-bench", "v1.0.0").await.unwrap();
 
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
@@ -648,10 +668,7 @@ mod tests {
         // Reopen and verify
         {
             let store = SqliteStore::new(&db_path).unwrap();
-            let retrieved = store
-                .get("my-project", "my-bench", "v1.0.0")
-                .await
-                .unwrap();
+            let retrieved = store.get("my-project", "my-bench", "v1.0.0").await.unwrap();
 
             assert!(retrieved.is_some());
         }
@@ -746,10 +763,7 @@ mod tests {
         assert!(deleted);
 
         // Should not be retrievable
-        let retrieved = store
-            .get("my-project", "my-bench", "v1.0.0")
-            .await
-            .unwrap();
+        let retrieved = store.get("my-project", "my-bench", "v1.0.0").await.unwrap();
         assert!(retrieved.is_none());
     }
 
@@ -767,10 +781,7 @@ mod tests {
             .await
             .unwrap();
 
-        let versions = store
-            .list_versions("my-project", "my-bench")
-            .await
-            .unwrap();
+        let versions = store.list_versions("my-project", "my-bench").await.unwrap();
 
         assert_eq!(versions.len(), 2);
         assert!(versions[0].is_current);

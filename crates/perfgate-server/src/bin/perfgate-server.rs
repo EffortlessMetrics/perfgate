@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use perfgate_server::{run_server, Role, ServerConfig, StorageBackend};
+use perfgate_server::{Role, ServerConfig, StorageBackend, run_server};
 
 /// perfgate baseline service server.
 #[derive(Parser, Debug)]
@@ -82,7 +82,12 @@ fn parse_api_key(s: &str) -> Result<(Role, String), String> {
         "promoter" => Role::Promoter,
         "contributor" => Role::Contributor,
         "viewer" => Role::Viewer,
-        _ => return Err(format!("Unknown role '{}'. Expected: admin, promoter, contributor, viewer", parts[0])),
+        _ => {
+            return Err(format!(
+                "Unknown role '{}'. Expected: admin, promoter, contributor, viewer",
+                parts[0]
+            ));
+        }
     };
 
     Ok((role, parts[1].to_string()))
@@ -129,13 +134,17 @@ async fn main() {
 
     // Build configuration
     let mut config = ServerConfig::new()
-        .bind(bind_addr.to_string()).unwrap_or_else(|_| panic!("Invalid bind address"))
+        .bind(bind_addr.to_string())
+        .unwrap_or_else(|_| panic!("Invalid bind address"))
         .storage_backend(storage_backend)
         .cors(!args.no_cors);
 
     // Set database path for SQLite
     if storage_backend == StorageBackend::Sqlite {
-        let path = args.database_url.clone().unwrap_or_else(|| "perfgate.db".to_string());
+        let path = args
+            .database_url
+            .clone()
+            .unwrap_or_else(|| "perfgate.db".to_string());
         config = config.sqlite_path(path);
     }
 
@@ -210,13 +219,19 @@ mod tests {
     fn test_cli_args_custom() {
         let args = Args::try_parse_from([
             "perfgate-server",
-            "--bind", "127.0.0.1",
-            "--port", "3000",
-            "--storage-type", "sqlite",
-            "--database-url", "/tmp/test.db",
+            "--bind",
+            "127.0.0.1",
+            "--port",
+            "3000",
+            "--storage-type",
+            "sqlite",
+            "--database-url",
+            "/tmp/test.db",
             "--no-cors",
-            "--api-keys", "admin:pg_live_abc123",
-        ]).unwrap();
+            "--api-keys",
+            "admin:pg_live_abc123",
+        ])
+        .unwrap();
 
         assert_eq!(args.bind, "127.0.0.1");
         assert_eq!(args.port, 3000);

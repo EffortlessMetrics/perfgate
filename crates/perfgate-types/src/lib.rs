@@ -1336,6 +1336,7 @@ mod tests {
     fn config_file_validate_catches_bad_bench_name() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1413,6 +1414,7 @@ mod tests {
     fn config_file_validate_passes_good_bench_names() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -1827,6 +1829,7 @@ mod tests {
                 baseline_pattern: Some("baselines/{bench}.json".into()),
                 markdown_template: None,
             },
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -1860,6 +1863,7 @@ mod tests {
     fn config_file_serde_roundtrip_edge_empty() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -2805,13 +2809,36 @@ mod property_tests {
             )
     }
 
+    // Strategy for BaselineServerConfig
+    fn baseline_server_config_strategy() -> impl Strategy<Value = BaselineServerConfig> {
+        (
+            proptest::option::of(non_empty_string()),
+            proptest::option::of(non_empty_string()),
+            proptest::option::of(non_empty_string()),
+            proptest::bool::ANY,
+        )
+            .prop_map(
+                |(url, api_key, project, fallback_to_local)| BaselineServerConfig {
+                    url,
+                    api_key,
+                    project,
+                    fallback_to_local,
+                },
+            )
+    }
+
     // Strategy for ConfigFile
     fn config_file_strategy() -> impl Strategy<Value = ConfigFile> {
         (
             defaults_config_strategy(),
+            baseline_server_config_strategy(),
             proptest::collection::vec(bench_config_file_strategy(), 0..5),
         )
-            .prop_map(|(defaults, benches)| ConfigFile { defaults, benches })
+            .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
+                defaults,
+                baseline_server,
+                benches,
+            })
     }
 
     // **Feature: comprehensive-test-coverage, Property 1: JSON Serialization Round-Trip**

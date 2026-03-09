@@ -28,6 +28,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use url::Url;
 
+const BASELINE_SERVER_NOT_CONFIGURED: &str = "baseline server is not configured; set `--baseline-server`, `PERFGATE_SERVER_URL`, or `[baseline_server].url` in `perfgate.toml`";
+const DEFAULT_FALLBACK_BASELINE_DIR: &str = "baselines";
+
 /// Output mode for the check command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
 pub enum OutputMode {
@@ -39,7 +42,7 @@ pub enum OutputMode {
 }
 
 /// Global flags for baseline server connection.
-#[derive(Debug, Clone, Args)]
+#[derive(Debug, Clone, Args, Default)]
 #[command(next_help_heading = "Global Options")]
 pub struct ServerFlags {
     /// URL of the baseline server (e.g., http://localhost:3000/api/v1)
@@ -130,14 +133,93 @@ impl ResolvedServerConfig {
         };
 
         let fallback = if self.fallback_to_local {
-            fallback_dir
-                .map(|dir| FallbackStorage::local(dir.to_path_buf()))
+            fallback_dir.map(|dir| FallbackStorage::local(dir.to_path_buf()))
         } else {
             None
         };
 
         Ok(Some(FallbackClient::new(client, fallback)))
     }
+
+    /// Returns a baseline client for server operations, or an error if not configured.
+    pub fn require_fallback_client(
+        &self,
+        fallback_dir: Option<&Path>,
+    ) -> anyhow::Result<FallbackClient> {
+        self.create_fallback_client(fallback_dir)?
+            .ok_or_else(|| anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED))
+    }
+
+    /// Resolve a project for server operations.
+    pub fn resolve_project(&self, project: Option<String>) -> anyhow::Result<String> {
+        project.or_else(|| self.project.clone()).ok_or_else(|| {
+            anyhow::anyhow!(
+                "--project is required (or set --project flag, PERFGATE_PROJECT, or [baseline_server].project in perfgate.toml)"
+            )
+        })
+    }
+}
+
+enum BaselineSelector {
+    Local(PathBuf),
+    Server { benchmark: String },
+}
+
+fn resolve_baseline_server_config() -> anyhow::Result<BaselineServerConfig> {
+    let path = Path::new("perfgate.toml");
+    if !path.exists() {
+        return Ok(BaselineServerConfig::default());
+    }
+
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+
+    let config_file = if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext == "json")
+    {
+        serde_json::from_str::<ConfigFile>(&content)
+            .with_context(|| format!("parse {}", path.display()))?
+    } else {
+        toml::from_str::<ConfigFile>(&content)
+            .with_context(|| format!("parse {}", path.display()))?
+    };
+
+    Ok(config_file.baseline_server)
+}
+
+fn parse_baseline_selector(
+    baseline: &str,
+    server_config: &ResolvedServerConfig,
+) -> anyhow::Result<BaselineSelector> {
+    if let Some(server_ref) = baseline.strip_prefix("@server:") {
+        if server_ref.is_empty() {
+            anyhow::bail!("--baseline requires a benchmark name after @server:");
+        }
+
+        if !server_config.is_configured() {
+            return Err(anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED));
+        }
+
+        return Ok(BaselineSelector::Server {
+            benchmark: server_ref.to_string(),
+        });
+    }
+
+    let path = Path::new(baseline);
+    if !server_config.is_configured()
+        || path.exists()
+        || baseline.contains(std::path::MAIN_SEPARATOR)
+        || baseline.contains('/')
+        || baseline.contains('\\')
+        || baseline.ends_with(".json")
+    {
+        return Ok(BaselineSelector::Local(path.to_path_buf()));
+    }
+
+    Ok(BaselineSelector::Server {
+        benchmark: baseline.to_string(),
+    })
 }
 
 #[derive(Debug, Parser)]
@@ -227,7 +309,7 @@ enum Command {
         /// When using "@server:benchmark_name", the baseline is fetched from the
         /// configured baseline server using the project from --project flag.
         #[arg(long)]
-        baseline: PathBuf,
+        baseline: String,
 
         #[arg(long)]
         current: PathBuf,
@@ -692,7 +774,8 @@ fn main() -> ExitCode {
 
 fn real_main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let server_config = cli.server.resolve(&BaselineServerConfig::default());
+    let baseline_server_config = resolve_baseline_server_config()?;
+    let server_config = cli.server.resolve(&baseline_server_config);
     run_command(cli.cmd, server_config)
 }
 
@@ -742,12 +825,8 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             // Upload to server if requested
             if upload {
                 let client = server_config
-                    .create_client()?
-                    .ok_or_else(|| anyhow::anyhow!("--upload requires --baseline-server to be configured"))?;
-
-                let project = upload_project
-                    .or_else(|| server_config.project.clone())
-                    .ok_or_else(|| anyhow::anyhow!("--upload requires --project to be specified"))?;
+                    .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                let project = server_config.resolve_project(upload_project)?;
 
                 let request = UploadBaselineRequest {
                     benchmark: name,
@@ -760,11 +839,17 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                     normalize: false,
                 };
 
-                let rt = tokio::runtime::Runtime::new()?;
-                rt.block_on(async {
-                    let response = client.upload_baseline(&project, &request).await
-                        .with_context(|| format!("Failed to upload baseline to server (project: {})", project))?;
-                    eprintln!("Uploaded baseline {} version {} to server", response.benchmark, response.version);
+                with_tokio_runtime(async {
+                    let response = client
+                        .upload_baseline(&project, &request)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to upload baseline to server (project: {})", project)
+                        })?;
+                    eprintln!(
+                        "Uploaded baseline {} version {} to server",
+                        response.benchmark, response.version
+                    );
                     Ok::<_, anyhow::Error>(())
                 })?;
             }
@@ -794,41 +879,36 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             out,
             pretty,
         } => {
-            // Check if baseline is a server reference (@server:benchmark_name)
-            let (baseline_receipt, baseline_ref) = if let Some(server_ref) = baseline
-                .to_str()
-                .and_then(|s| s.strip_prefix("@server:"))
-            {
-                // Fetch from server
-                let client = server_config
-                    .create_client()?
-                    .ok_or_else(|| anyhow::anyhow!("@server: baseline requires --baseline-server to be configured"))?;
+            let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
+            let (baseline_receipt, baseline_ref) = match baseline_selector {
+                BaselineSelector::Server { benchmark } => {
+                    let client = server_config
+                        .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                    let project = server_config.resolve_project(None)?;
+                    let record = with_tokio_runtime(async {
+                        client
+                            .get_latest_baseline(&project, &benchmark)
+                            .await
+                            .with_context(|| {
+                                format!("Failed to fetch baseline '{benchmark}' from server")
+                            })
+                    })?;
 
-                let project = server_config
-                    .project
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("@server: baseline requires --project to be specified"))?;
-
-                let rt = tokio::runtime::Runtime::new()?;
-                let record = rt.block_on(async {
-                    client.get_latest_baseline(project, server_ref).await
-                        .with_context(|| format!("Failed to fetch baseline '{}' from server", server_ref))
-                })?;
-
-                let receipt = record.receipt;
-                let ref_info = CompareRef {
-                    path: Some(format!("@server:{}", server_ref)),
-                    run_id: Some(receipt.run.id.clone()),
-                };
-                (receipt, ref_info)
-            } else {
-                // Read from local file
-                let receipt: RunReceipt = read_json(&baseline)?;
-                let ref_info = CompareRef {
-                    path: Some(baseline.display().to_string()),
-                    run_id: Some(receipt.run.id.clone()),
-                };
-                (receipt, ref_info)
+                    let receipt = record.receipt;
+                    let ref_info = CompareRef {
+                        path: Some(format!("@server:{benchmark}")),
+                        run_id: Some(receipt.run.id.clone()),
+                    };
+                    (receipt, ref_info)
+                }
+                BaselineSelector::Local(path) => {
+                    let receipt: RunReceipt = read_json(&path)?;
+                    let ref_info = CompareRef {
+                        path: Some(path.display().to_string()),
+                        run_id: Some(receipt.run.id.clone()),
+                    };
+                    (receipt, ref_info)
+                }
             };
 
             let current_receipt: RunReceipt = read_json(&current)?;
@@ -948,15 +1028,12 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             if to_server {
                 // Promote to server
                 let client = server_config
-                    .create_client()?
-                    .ok_or_else(|| anyhow::anyhow!("--to-server requires --baseline-server to be configured"))?;
+                    .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                let project = server_config.resolve_project(promote_project)?;
 
-                let project = promote_project
-                    .or_else(|| server_config.project.clone())
-                    .ok_or_else(|| anyhow::anyhow!("--to-server requires --project to be specified"))?;
-
-                let benchmark_name = benchmark
-                    .ok_or_else(|| anyhow::anyhow!("--to-server requires --benchmark to be specified"))?;
+                let benchmark_name = benchmark.ok_or_else(|| {
+                    anyhow::anyhow!("--to-server requires --benchmark to be specified")
+                })?;
 
                 let request = UploadBaselineRequest {
                     benchmark: benchmark_name.clone(),
@@ -969,16 +1046,26 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                     normalize,
                 };
 
-                let rt = tokio::runtime::Runtime::new()?;
-                rt.block_on(async {
-                    let response = client.upload_baseline(&project, &request).await
-                        .with_context(|| format!("Failed to promote baseline to server (project: {}, benchmark: {})", project, benchmark_name))?;
-                    eprintln!("Promoted baseline {} version {} to server", response.benchmark, response.version);
+                with_tokio_runtime(async {
+                    let response = client
+                        .upload_baseline(&project, &request)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Failed to promote baseline to server (project: {project}, benchmark: {benchmark_name})"
+                            )
+                        })?;
+                    eprintln!(
+                        "Promoted baseline {} version {} to server",
+                        response.benchmark, response.version
+                    );
                     Ok::<_, anyhow::Error>(())
                 })?;
             } else {
                 // Promote to local file
-                let to_path = to.ok_or_else(|| anyhow::anyhow!("--to is required when not using --to-server"))?;
+                let to_path = to.ok_or_else(|| {
+                    anyhow::anyhow!("--to is required when not using --to-server")
+                })?;
 
                 let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
                 write_json_to_location(&to_path, &result.receipt, pretty)?;
@@ -1151,17 +1238,16 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             Ok(())
         }
 
-        Command::Baseline { action } => {
-            execute_baseline_action(action, &server_config)
-        }
+        Command::Baseline { action } => execute_baseline_action(action, &server_config),
     }
 }
 
 /// Execute baseline management actions.
-fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServerConfig) -> anyhow::Result<()> {
-    let client = server_config
-        .create_client()?
-        .ok_or_else(|| anyhow::anyhow!("baseline commands require --baseline-server to be configured"))?;
+fn execute_baseline_action(
+    action: BaselineAction,
+    server_config: &ResolvedServerConfig,
+) -> anyhow::Result<()> {
+    let client = server_config.require_fallback_client(None)?;
 
     let rt = tokio::runtime::Runtime::new()?;
 
@@ -1172,9 +1258,7 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             limit,
             include_receipts,
         } => {
-            let project = project
-                .or_else(|| server_config.project.clone())
-                .ok_or_else(|| anyhow::anyhow!("--project is required (or set PERFGATE_PROJECT))"))?;
+            let project = server_config.resolve_project(project)?;
 
             let mut query = ListBaselinesQuery::new().with_limit(limit);
             if let Some(prefix) = prefix {
@@ -1185,15 +1269,27 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             }
 
             rt.block_on(async {
-                let response = client.list_baselines(&project, &query).await
-                    .with_context(|| format!("Failed to list baselines for project '{}'", project))?;
+                let response =
+                    client
+                        .list_baselines(&project, &query)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to list baselines for project '{}'", project)
+                        })?;
 
                 if response.baselines.is_empty() {
                     println!("No baselines found.");
                 } else {
-                    println!("Baselines ({} of {}):", response.baselines.len(), response.pagination.total);
+                    println!(
+                        "Baselines ({} of {}):",
+                        response.baselines.len(),
+                        response.pagination.total
+                    );
                     for baseline in &response.baselines {
-                        println!("  {} - version {} ({})", baseline.benchmark, baseline.version, baseline.created_at);
+                        println!(
+                            "  {} - version {} ({})",
+                            baseline.benchmark, baseline.version, baseline.created_at
+                        );
                     }
                 }
 
@@ -1207,24 +1303,35 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             project,
             version,
         } => {
-            let project = project
-                .or_else(|| server_config.project.clone())
-                .ok_or_else(|| anyhow::anyhow!("--project is required (or set PERFGATE_PROJECT))"))?;
+            let project = server_config.resolve_project(project)?;
 
             rt.block_on(async {
                 let record = if let Some(version) = version {
-                    client.get_baseline_version(&project, &benchmark, &version).await
-                        .with_context(|| format!("Failed to get baseline {} version {}", benchmark, version))?
+                    client
+                        .get_baseline_version(&project, &benchmark, &version)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to get baseline {} version {}", benchmark, version)
+                        })?
                 } else {
-                    client.get_latest_baseline(&project, &benchmark).await
-                        .with_context(|| format!("Failed to get latest baseline for {}", benchmark))?
+                    client
+                        .get_latest_baseline(&project, &benchmark)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to get latest baseline for {}", benchmark)
+                        })?
                 };
 
                 let receipt = record.receipt;
                 write_json(&output, &receipt, true)
                     .with_context(|| format!("Failed to write baseline to {}", output.display()))?;
 
-                eprintln!("Downloaded baseline {} version {} to {}", benchmark, record.version, output.display());
+                eprintln!(
+                    "Downloaded baseline {} version {} to {}",
+                    benchmark,
+                    record.version,
+                    output.display()
+                );
 
                 Ok::<_, anyhow::Error>(())
             })?;
@@ -1237,9 +1344,7 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             version,
             normalize,
         } => {
-            let project = project
-                .or_else(|| server_config.project.clone())
-                .ok_or_else(|| anyhow::anyhow!("--project is required (or set PERFGATE_PROJECT))"))?;
+            let project = server_config.resolve_project(project)?;
 
             let receipt: RunReceipt = read_json(&file)
                 .with_context(|| format!("Failed to read run receipt from {}", file.display()))?;
@@ -1258,10 +1363,17 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             };
 
             rt.block_on(async {
-                let response = client.upload_baseline(&project, &request).await
-                    .with_context(|| format!("Failed to upload baseline to server (project: {})", project))?;
+                let response = client
+                    .upload_baseline(&project, &request)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to upload baseline to server (project: {})", project)
+                    })?;
 
-                eprintln!("Uploaded baseline {} version {} to server", response.benchmark, response.version);
+                eprintln!(
+                    "Uploaded baseline {} version {} to server",
+                    response.benchmark, response.version
+                );
 
                 Ok::<_, anyhow::Error>(())
             })?;
@@ -1273,12 +1385,13 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             version,
             force,
         } => {
-            let project = project
-                .or_else(|| server_config.project.clone())
-                .ok_or_else(|| anyhow::anyhow!("--project is required (or set PERFGATE_PROJECT))"))?;
+            let project = server_config.resolve_project(project)?;
 
             if !force {
-                eprintln!("Warning: This will delete baseline '{}' from project '{}'.", benchmark, project);
+                eprintln!(
+                    "Warning: This will delete baseline '{}' from project '{}'.",
+                    benchmark, project
+                );
                 eprintln!("Use --force to confirm deletion.");
                 anyhow::bail!("Deletion not confirmed. Use --force to proceed.");
             }
@@ -1286,10 +1399,20 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             let version_str = version.as_deref().unwrap_or("latest");
 
             rt.block_on(async {
-                client.delete_baseline(&project, &benchmark, version_str).await
-                    .with_context(|| format!("Failed to delete baseline {} version {}", benchmark, version_str))?;
+                client
+                    .delete_baseline(&project, &benchmark, version_str)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to delete baseline {} version {}",
+                            benchmark, version_str
+                        )
+                    })?;
 
-                eprintln!("Deleted baseline {} version {} from server", benchmark, version_str);
+                eprintln!(
+                    "Deleted baseline {} version {} from server",
+                    benchmark, version_str
+                );
 
                 Ok::<_, anyhow::Error>(())
             })?;
@@ -1300,25 +1423,32 @@ fn execute_baseline_action(action: BaselineAction, server_config: &ResolvedServe
             project,
             limit,
         } => {
-            let project = project
-                .or_else(|| server_config.project.clone())
-                .ok_or_else(|| anyhow::anyhow!("--project is required (or set PERFGATE_PROJECT))"))?;
+            let project = server_config.resolve_project(project)?;
 
             let query = ListBaselinesQuery::new()
                 .with_benchmark(benchmark.clone())
                 .with_limit(limit);
 
             rt.block_on(async {
-                let response = client.list_baselines(&project, &query).await
+                let response = client
+                    .list_baselines(&project, &query)
+                    .await
                     .with_context(|| format!("Failed to get history for baseline {}", benchmark))?;
 
                 if response.baselines.is_empty() {
                     println!("No versions found for baseline '{}'.", benchmark);
                 } else {
-                    println!("Version history for {} ({} versions):", benchmark, response.baselines.len());
+                    println!(
+                        "Version history for {} ({} versions):",
+                        benchmark,
+                        response.baselines.len()
+                    );
                     for baseline in &response.baselines {
                         let git_ref = baseline.git_ref.as_deref().unwrap_or("unknown");
-                        println!("  {} - {} ({})", baseline.version, baseline.created_at, git_ref);
+                        println!(
+                            "  {} - {} ({})",
+                            baseline.version, baseline.created_at, git_ref
+                        );
                     }
                 }
 
@@ -2993,22 +3123,25 @@ mod tests {
         )
         .unwrap();
 
-        let err = run_command(Command::Compare {
-            baseline: baseline_path,
-            current: current_path,
-            threshold: 0.20,
-            warn_factor: 0.90,
-            metric_threshold: Vec::new(),
-            direction: vec![("wall_ms".to_string(), "sideways".to_string())],
-            metric_stat: Vec::new(),
-            significance_alpha: None,
-            significance_min_samples: 8,
-            require_significance: false,
-            fail_on_warn: false,
-            host_mismatch: HostMismatchPolicy::Warn,
-            out: out_path,
-            pretty: false,
-        }, ResolvedServerConfig::default())
+        let err = run_command(
+            Command::Compare {
+                baseline: baseline_path.to_string_lossy().to_string(),
+                current: current_path,
+                threshold: 0.20,
+                warn_factor: 0.90,
+                metric_threshold: Vec::new(),
+                direction: vec![("wall_ms".to_string(), "sideways".to_string())],
+                metric_stat: Vec::new(),
+                significance_alpha: None,
+                significance_min_samples: 8,
+                require_significance: false,
+                fail_on_warn: false,
+                host_mismatch: HostMismatchPolicy::Warn,
+                out: out_path,
+                pretty: false,
+            },
+            ResolvedServerConfig::default(),
+        )
         .unwrap_err();
 
         assert!(
@@ -3038,22 +3171,25 @@ mod tests {
         )
         .unwrap();
 
-        let err = run_command(Command::Compare {
-            baseline: baseline_path,
-            current: current_path,
-            threshold: 0.20,
-            warn_factor: 0.90,
-            metric_threshold: Vec::new(),
-            direction: Vec::new(),
-            metric_stat: vec![("wall_ms".to_string(), "p99".to_string())],
-            significance_alpha: None,
-            significance_min_samples: 8,
-            require_significance: false,
-            fail_on_warn: false,
-            host_mismatch: HostMismatchPolicy::Warn,
-            out: out_path,
-            pretty: false,
-        }, ResolvedServerConfig::default())
+        let err = run_command(
+            Command::Compare {
+                baseline: baseline_path.to_string_lossy().to_string(),
+                current: current_path,
+                threshold: 0.20,
+                warn_factor: 0.90,
+                metric_threshold: Vec::new(),
+                direction: Vec::new(),
+                metric_stat: vec![("wall_ms".to_string(), "p99".to_string())],
+                significance_alpha: None,
+                significance_min_samples: 8,
+                require_significance: false,
+                fail_on_warn: false,
+                host_mismatch: HostMismatchPolicy::Warn,
+                out: out_path,
+                pretty: false,
+            },
+            ResolvedServerConfig::default(),
+        )
         .unwrap_err();
 
         assert!(
@@ -3085,22 +3221,25 @@ mod tests {
 
         let out_clone = out_path.clone();
         let result = std::panic::catch_unwind(|| {
-            run_command(Command::Compare {
-                baseline: baseline_path,
-                current: current_path,
-                threshold: 0.20,
-                warn_factor: 0.90,
-                metric_threshold: Vec::new(),
-                direction: Vec::new(),
-                metric_stat: Vec::new(),
-                significance_alpha: None,
-                significance_min_samples: 8,
-                require_significance: false,
-                fail_on_warn: false,
-                host_mismatch: HostMismatchPolicy::Warn,
-                out: out_clone,
-                pretty: false,
-            }, ResolvedServerConfig::default())
+            run_command(
+                Command::Compare {
+                    baseline: baseline_path.to_string_lossy().to_string(),
+                    current: current_path,
+                    threshold: 0.20,
+                    warn_factor: 0.90,
+                    metric_threshold: Vec::new(),
+                    direction: Vec::new(),
+                    metric_stat: Vec::new(),
+                    significance_alpha: None,
+                    significance_min_samples: 8,
+                    require_significance: false,
+                    fail_on_warn: false,
+                    host_mismatch: HostMismatchPolicy::Warn,
+                    out: out_clone,
+                    pretty: false,
+                },
+                ResolvedServerConfig::default(),
+            )
             .unwrap();
         });
 
@@ -3130,22 +3269,25 @@ mod tests {
 
         let out_clone = out_path.clone();
         let result = std::panic::catch_unwind(|| {
-            run_command(Command::Compare {
-                baseline: baseline_path,
-                current: current_path,
-                threshold: 0.20,
-                warn_factor: 0.90,
-                metric_threshold: Vec::new(),
-                direction: Vec::new(),
-                metric_stat: Vec::new(),
-                significance_alpha: None,
-                significance_min_samples: 8,
-                require_significance: false,
-                fail_on_warn: true,
-                host_mismatch: HostMismatchPolicy::Warn,
-                out: out_clone,
-                pretty: false,
-            }, ResolvedServerConfig::default())
+            run_command(
+                Command::Compare {
+                    baseline: baseline_path.to_string_lossy().to_string(),
+                    current: current_path,
+                    threshold: 0.20,
+                    warn_factor: 0.90,
+                    metric_threshold: Vec::new(),
+                    direction: Vec::new(),
+                    metric_stat: Vec::new(),
+                    significance_alpha: None,
+                    significance_min_samples: 8,
+                    require_significance: false,
+                    fail_on_warn: true,
+                    host_mismatch: HostMismatchPolicy::Warn,
+                    out: out_clone,
+                    pretty: false,
+                },
+                ResolvedServerConfig::default(),
+            )
             .unwrap();
         });
 
@@ -3162,13 +3304,16 @@ mod tests {
 
         fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
 
-        run_command(Command::Report {
-            compare: compare_path,
-            out: report_path,
-            md: Some(md_path.clone()),
-            md_template: None,
-            pretty: false,
-        }, ResolvedServerConfig::default())
+        run_command(
+            Command::Report {
+                compare: compare_path,
+                out: report_path,
+                md: Some(md_path.clone()),
+                md_template: None,
+                pretty: false,
+            },
+            ResolvedServerConfig::default(),
+        )
         .unwrap();
 
         assert!(md_path.exists());
@@ -3184,13 +3329,16 @@ mod tests {
 
         fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
 
-        run_command(Command::Report {
-            compare: compare_path,
-            out: report_path,
-            md: Some(md_path.clone()),
-            md_template: None,
-            pretty: false,
-        }, ResolvedServerConfig::default())
+        run_command(
+            Command::Report {
+                compare: compare_path,
+                out: report_path,
+                md: Some(md_path.clone()),
+                md_template: None,
+                pretty: false,
+            },
+            ResolvedServerConfig::default(),
+        )
         .unwrap();
 
         assert!(md_path.exists());
@@ -3205,13 +3353,16 @@ mod tests {
 
         fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
 
-        let err = run_command(Command::Report {
-            compare: compare_path,
-            out: report_path,
-            md: Some(PathBuf::from("")),
-            md_template: None,
-            pretty: false,
-        }, ResolvedServerConfig::default())
+        let err = run_command(
+            Command::Report {
+                compare: compare_path,
+                out: report_path,
+                md: Some(PathBuf::from("")),
+                md_template: None,
+                pretty: false,
+            },
+            ResolvedServerConfig::default(),
+        )
         .unwrap_err();
 
         assert!(err.to_string().contains("write"));

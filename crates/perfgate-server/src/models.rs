@@ -617,8 +617,8 @@ impl ApiError {
 
 /// Generates a ULID-style identifier.
 fn generate_ulid() -> String {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let now = chrono::Utc::now();
     let timestamp = now.timestamp_millis() as u64;
@@ -626,11 +626,7 @@ fn generate_ulid() -> String {
     // Simple ULID-like format: timestamp (10 chars) + random (16 chars)
     let random_bytes: [u8; 10] = uuid::Uuid::new_v4().as_bytes()[..10].try_into().unwrap();
 
-    format!(
-        "{:010X}{}",
-        timestamp,
-        URL_SAFE_NO_PAD.encode(random_bytes)
-    )
+    format!("{:010X}{}", timestamp, URL_SAFE_NO_PAD.encode(random_bytes))
 }
 
 /// Computes a content hash for a run receipt.
@@ -646,10 +642,7 @@ fn compute_content_hash(receipt: &RunReceipt) -> String {
     let hash = hasher.finalize();
 
     // Return hex-encoded hash (first 32 chars)
-    format!("{:x}", hash)
-        .chars()
-        .take(32)
-        .collect()
+    format!("{:x}", hash).chars().take(32).collect()
 }
 
 #[cfg(test)]

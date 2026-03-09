@@ -20,16 +20,11 @@ pub struct BaselineClient {
 impl BaselineClient {
     /// Creates a new baseline client with the given configuration.
     pub fn new(config: ClientConfig) -> Result<Self, ClientError> {
-        config
-            .validate()
-            .map_err(ClientError::ValidationError)?;
+        config.validate().map_err(ClientError::ValidationError)?;
 
         let http = Client::builder()
             .timeout(config.timeout)
-            .user_agent(format!(
-                "perfgate-client/{}",
-                env!("CARGO_PKG_VERSION")
-            ))
+            .user_agent(format!("perfgate-client/{}", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(ClientError::RequestError)?;
 
@@ -325,9 +320,7 @@ impl BaselineClient {
                     let status = response.status();
 
                     // Check if we should retry based on status code
-                    if retry_config
-                        .retry_status_codes
-                        .contains(&status.as_u16())
+                    if retry_config.retry_status_codes.contains(&status.as_u16())
                         && attempt < retry_config.max_retries
                     {
                         warn!(
@@ -345,8 +338,7 @@ impl BaselineClient {
                     return Ok(response);
                 }
                 Err(e) => {
-                    let is_connect_error =
-                        e.is_connect() || e.is_timeout() || e.is_request();
+                    let is_connect_error = e.is_connect() || e.is_timeout() || e.is_request();
 
                     if is_connect_error {
                         if attempt < retry_config.max_retries {
@@ -451,9 +443,7 @@ mod tests {
             .await;
 
         let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
-        let result = client
-            .get_latest_baseline("my-project", "my-bench")
-            .await;
+        let result = client.get_latest_baseline("my-project", "my-bench").await;
 
         assert!(matches!(result, Err(ClientError::NotFoundError(_))));
     }
@@ -541,8 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_error() {
-        let client =
-            BaselineClient::new(test_config("http://localhost:59999")).unwrap();
+        let client = BaselineClient::new(test_config("http://localhost:59999")).unwrap();
 
         let result = client.health_check().await;
         assert!(matches!(result, Err(ClientError::ConnectionError(_))));

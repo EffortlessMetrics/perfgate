@@ -9,9 +9,9 @@ mod sqlite;
 pub use memory::InMemoryStore;
 pub use sqlite::SqliteStore;
 
-use async_trait::async_trait;
-use crate::models::{BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse};
 use crate::error::StoreError;
+use crate::models::{BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse};
+use async_trait::async_trait;
 
 /// Trait for baseline storage operations.
 ///

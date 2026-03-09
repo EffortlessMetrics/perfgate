@@ -47,10 +47,10 @@ pub mod models;
 pub mod server;
 pub mod storage;
 
-pub use auth::{ApiKey, ApiKeyStore, Role, Scope, AuthContext};
+pub use auth::{ApiKey, ApiKeyStore, AuthContext, Role, Scope};
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
-pub use server::{run_server, ServerConfig, StorageBackend};
+pub use server::{ServerConfig, StorageBackend, run_server};
 pub use storage::{BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
 
 /// Server version string.

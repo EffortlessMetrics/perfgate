@@ -8,9 +8,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
-    middleware,
+    Router, middleware,
     routing::{delete, get, post},
-    Router,
 };
 use tower::ServiceBuilder;
 use tower_http::{
@@ -20,7 +19,7 @@ use tower_http::{
 };
 use tracing::info;
 
-use crate::auth::{auth_middleware, ApiKey, ApiKeyStore, Role};
+use crate::auth::{ApiKey, ApiKeyStore, Role, auth_middleware};
 use crate::error::ConfigError;
 use crate::handlers::{
     delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
@@ -151,9 +150,10 @@ async fn create_storage(config: &ServerConfig) -> Result<Arc<dyn BaselineStore>,
             Ok(Arc::new(InMemoryStore::new()))
         }
         StorageBackend::Sqlite => {
-            let path = config.sqlite_path.clone().unwrap_or_else(|| {
-                PathBuf::from("perfgate.db")
-            });
+            let path = config
+                .sqlite_path
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("perfgate.db"));
             info!(path = %path.display(), "Using SQLite storage");
             let store = SqliteStore::new(&path)
                 .map_err(|e| ConfigError::InvalidValue(format!("Failed to open SQLite: {}", e)))?;
@@ -194,16 +194,12 @@ fn create_router(
     config: &ServerConfig,
 ) -> Router {
     // Health check (no auth required)
-    let health_routes = Router::new()
-        .route("/health", get(health_check));
+    let health_routes = Router::new().route("/health", get(health_check));
 
     // API routes that require authentication
     let api_routes = Router::new()
         // Baseline CRUD
-        .route(
-            "/projects/{project}/baselines",
-            post(upload_baseline),
-        )
+        .route("/projects/{project}/baselines", post(upload_baseline))
         .route(
             "/projects/{project}/baselines/{benchmark}/latest",
             get(get_latest_baseline),
@@ -216,20 +212,18 @@ fn create_router(
             "/projects/{project}/baselines/{benchmark}/versions/{version}",
             delete(delete_baseline),
         )
-        .route(
-            "/projects/{project}/baselines",
-            get(list_baselines),
-        )
+        .route("/projects/{project}/baselines", get(list_baselines))
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),
         )
-        .layer(middleware::from_fn_with_state(key_store.clone(), auth_middleware));
+        .layer(middleware::from_fn_with_state(
+            key_store.clone(),
+            auth_middleware,
+        ));
 
     // Combine routes
-    let mut app = Router::new()
-        .merge(health_routes)
-        .merge(api_routes);
+    let mut app = Router::new().merge(health_routes).merge(api_routes);
 
     // Add CORS if enabled
     if config.cors {
@@ -267,7 +261,9 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     let app = app.layer(
         ServiceBuilder::new()
             .layer(TraceLayer::new_for_http())
-            .layer(tower_http::request_id::SetRequestIdLayer::x_request_id(MakeRequestUuid)),
+            .layer(tower_http::request_id::SetRequestIdLayer::x_request_id(
+                MakeRequestUuid,
+            )),
     );
 
     // Create listener
@@ -326,7 +322,8 @@ mod tests {
     #[test]
     fn test_server_config_builder() {
         let config = ServerConfig::new()
-            .bind("127.0.0.1:3000").unwrap()
+            .bind("127.0.0.1:3000")
+            .unwrap()
             .storage_backend(StorageBackend::Sqlite)
             .sqlite_path("/tmp/test.db")
             .api_key("test-key", Role::Admin)
@@ -341,9 +338,18 @@ mod tests {
 
     #[test]
     fn test_storage_backend_from_str() {
-        assert_eq!("memory".parse::<StorageBackend>().unwrap(), StorageBackend::Memory);
-        assert_eq!("sqlite".parse::<StorageBackend>().unwrap(), StorageBackend::Sqlite);
-        assert_eq!("postgres".parse::<StorageBackend>().unwrap(), StorageBackend::Postgres);
+        assert_eq!(
+            "memory".parse::<StorageBackend>().unwrap(),
+            StorageBackend::Memory
+        );
+        assert_eq!(
+            "sqlite".parse::<StorageBackend>().unwrap(),
+            StorageBackend::Sqlite
+        );
+        assert_eq!(
+            "postgres".parse::<StorageBackend>().unwrap(),
+            StorageBackend::Postgres
+        );
         assert!("invalid".parse::<StorageBackend>().is_err());
     }
 

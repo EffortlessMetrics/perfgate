@@ -361,10 +361,18 @@ mod tests {
             .with_receipts();
 
         let params = query.to_query_params();
-        assert!(params.iter().any(|(k, v)| k == "benchmark" && v == "my-bench"));
+        assert!(
+            params
+                .iter()
+                .any(|(k, v)| k == "benchmark" && v == "my-bench")
+        );
         assert!(params.iter().any(|(k, v)| k == "limit" && v == "100"));
         assert!(params.iter().any(|(k, v)| k == "offset" && v == "50"));
-        assert!(params.iter().any(|(k, v)| k == "include_receipt" && v == "true"));
+        assert!(
+            params
+                .iter()
+                .any(|(k, v)| k == "include_receipt" && v == "true")
+        );
     }
 
     #[test]

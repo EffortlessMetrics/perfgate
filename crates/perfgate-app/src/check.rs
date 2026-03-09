@@ -568,9 +568,9 @@ mod tests {
     use super::*;
     use perfgate_adapters::{AdapterError, CommandSpec, HostProbeOptions, RunResult};
     use perfgate_types::{
-        BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1, CompareReceipt,
-        DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample, Stats, U64Summary,
-        Verdict, VerdictCounts,
+        BaselineServerConfig, BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1,
+        CompareReceipt, DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample, Stats,
+        U64Summary, Verdict, VerdictCounts,
     };
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -930,6 +930,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench.clone()],
         };
 
@@ -1049,6 +1050,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench.clone()],
         };
 
@@ -1123,6 +1125,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
 
@@ -1174,6 +1177,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
 
@@ -1240,6 +1244,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
 
@@ -1294,6 +1299,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
 
@@ -1323,6 +1329,7 @@ mod tests {
     fn execute_bench_not_found_returns_error() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![],
         };
 
@@ -1370,6 +1377,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
 

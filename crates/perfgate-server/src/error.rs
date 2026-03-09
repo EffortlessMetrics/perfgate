@@ -89,10 +89,7 @@ pub enum AuthError {
 
     /// Insufficient permissions
     #[error("Insufficient permissions: required {required}, has {actual}")]
-    InsufficientPermissions {
-        required: String,
-        actual: String,
-    },
+    InsufficientPermissions { required: String, actual: String },
 }
 
 /// Server configuration errors.

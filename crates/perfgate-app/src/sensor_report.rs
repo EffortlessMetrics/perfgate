@@ -543,6 +543,7 @@ mod tests {
 
         let config = ConfigFile {
             defaults: perfgate_types::DefaultsConfig::default(),
+            baseline_server: perfgate_types::BaselineServerConfig::default(),
             benches: vec![perfgate_types::BenchConfigFile {
                 name: "test-bench".to_string(),
                 cwd: None,

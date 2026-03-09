@@ -2,11 +2,11 @@
 //!
 //! These tests spin up a test server and verify the client can interact with it.
 
-use perfgate_client::{
-    BaselineClient, ClientConfig, ClientError, FallbackClient, FallbackStorage,
-};
 use perfgate_client::types::{ListBaselinesQuery, PromoteBaselineRequest, UploadBaselineRequest};
-use perfgate_types::{BenchMeta, HostInfo, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary};
+use perfgate_client::{BaselineClient, ClientConfig, ClientError, FallbackClient, FallbackStorage};
+use perfgate_types::{
+    BenchMeta, HostInfo, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary,
+};
 use tempfile::TempDir;
 use wiremock::MockServer;
 use wiremock::matchers::{header, method, path};
@@ -41,21 +41,19 @@ fn create_test_receipt(benchmark: &str) -> RunReceipt {
             cwd: None,
             work_units: None,
         },
-        samples: vec![
-            Sample {
-                wall_ms: 100,
-                exit_code: 0,
-                warmup: false,
-                timed_out: false,
-                max_rss_kb: Some(1024),
-                cpu_ms: None,
-                page_faults: None,
-                ctx_switches: None,
-                binary_bytes: None,
-                stdout: None,
-                stderr: None,
-            },
-        ],
+        samples: vec![Sample {
+            wall_ms: 100,
+            exit_code: 0,
+            warmup: false,
+            timed_out: false,
+            max_rss_kb: Some(1024),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            binary_bytes: None,
+            stdout: None,
+            stderr: None,
+        }],
         stats: Stats {
             wall_ms: U64Summary {
                 median: 100,
@@ -96,8 +94,7 @@ fn create_test_upload_request(benchmark: &str) -> UploadBaselineRequest {
 /// Test that the client can be created with a valid configuration.
 #[test]
 fn test_client_creation() {
-    let config = ClientConfig::new("http://localhost:8080")
-        .with_api_key("test-key");
+    let config = ClientConfig::new("http://localhost:8080").with_api_key("test-key");
 
     let result = BaselineClient::new(config);
     assert!(result.is_ok());
@@ -177,10 +174,12 @@ async fn test_get_latest_baseline_mock() {
     let mock_server = MockServer::start().await;
 
     let receipt = create_test_receipt("my-benchmark");
-    
+
     // Mock the get latest endpoint
     Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/projects/my-project/baselines/my-benchmark/latest"))
+        .and(wiremock::matchers::path(
+            "/projects/my-project/baselines/my-benchmark/latest",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "schema": "perfgate.baseline.v1",
             "id": "perfgate_xyz789",
@@ -204,7 +203,9 @@ async fn test_get_latest_baseline_mock() {
     let config = ClientConfig::new(mock_server.uri());
     let client = BaselineClient::new(config).expect("Failed to create client");
 
-    let result = client.get_latest_baseline("my-project", "my-benchmark").await;
+    let result = client
+        .get_latest_baseline("my-project", "my-benchmark")
+        .await;
 
     assert!(result.is_ok());
     let baseline = result.unwrap();
@@ -259,7 +260,7 @@ async fn test_delete_baseline_mock() {
     // Mock the delete endpoint
     Mock::given(wiremock::matchers::method("DELETE"))
         .and(wiremock::matchers::path(
-            "/projects/del-project/baselines/del-bench/versions/v1"
+            "/projects/del-project/baselines/del-bench/versions/v1",
         ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "deleted": true,
@@ -288,7 +289,7 @@ async fn test_promote_baseline_mock() {
     // Mock the promote endpoint
     Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::path(
-            "/projects/prom-project/baselines/prom-bench/promote"
+            "/projects/prom-project/baselines/prom-bench/promote",
         ))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "id": "perfgate_promoted",
@@ -327,22 +328,24 @@ async fn test_not_found_error() {
 
     // Mock a404 response
     Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/projects/my-project/baselines/nonexistent/latest"))
-        .respond_with(
-            ResponseTemplate::new(404).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "NOT_FOUND",
-                    "message": "Baseline not found"
-                }
-            }))
-        )
+        .and(wiremock::matchers::path(
+            "/projects/my-project/baselines/nonexistent/latest",
+        ))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": {
+                "code": "NOT_FOUND",
+                "message": "Baseline not found"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
     let config = ClientConfig::new(mock_server.uri());
     let client = BaselineClient::new(config).expect("Failed to create client");
 
-    let result = client.get_latest_baseline("my-project", "nonexistent").await;
+    let result = client
+        .get_latest_baseline("my-project", "nonexistent")
+        .await;
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -356,15 +359,15 @@ async fn test_auth_error() {
 
     // Mock a401 response
     Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/projects/my-project/baselines/bench/latest"))
-        .respond_with(
-            ResponseTemplate::new(401).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Invalid API key"
-                }
-            }))
-        )
+        .and(wiremock::matchers::path(
+            "/projects/my-project/baselines/bench/latest",
+        ))
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "error": {
+                "code": "UNAUTHORIZED",
+                "message": "Invalid API key"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
@@ -386,16 +389,14 @@ async fn test_forbidden_error() {
     // Mock a403 response
     Mock::given(wiremock::matchers::method("DELETE"))
         .and(wiremock::matchers::path(
-            "/projects/my-project/baselines/bench/versions/v1"
+            "/projects/my-project/baselines/bench/versions/v1",
         ))
-        .respond_with(
-            ResponseTemplate::new(403).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "Insufficient permissions"
-                }
-            }))
-        )
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": {
+                "code": "FORBIDDEN",
+                "message": "Insufficient permissions"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
@@ -418,14 +419,12 @@ async fn test_conflict_error() {
     // Mock a409 response
     Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::path("/projects/my-project/baselines"))
-        .respond_with(
-            ResponseTemplate::new(409).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "ALREADY_EXISTS",
-                    "message": "Baseline already exists"
-                }
-            }))
-        )
+        .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+            "error": {
+                "code": "ALREADY_EXISTS",
+                "message": "Baseline already exists"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
@@ -444,8 +443,7 @@ async fn test_conflict_error() {
 #[tokio::test]
 async fn test_connection_error() {
     // Use a non-routable IP to trigger a connection error
-    let config = ClientConfig::new("http://10.255.255.1:9999")
-        .with_api_key("test-key");
+    let config = ClientConfig::new("http://10.255.255.1:9999").with_api_key("test-key");
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client.health_check().await;
@@ -459,20 +457,20 @@ async fn test_connection_error() {
 #[tokio::test]
 async fn test_fallback_client_saves_locally() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    
+
     // Use a non-routable address to trigger connection error
     let config = ClientConfig::new("http://10.255.255.1:9999")
         .with_api_key("test-key")
         .with_fallback(FallbackStorage::local(temp_dir.path()));
-    
+
     let client = BaselineClient::new(config).expect("Failed to create client");
-    let fallback_client = FallbackClient::new(
-        client,
-        Some(FallbackStorage::local(temp_dir.path())),
-    );
+    let fallback_client =
+        FallbackClient::new(client, Some(FallbackStorage::local(temp_dir.path())));
 
     let request = create_test_upload_request("fallback-bench");
-    let result = fallback_client.upload_baseline("fallback-project", &request).await;
+    let result = fallback_client
+        .upload_baseline("fallback-project", &request)
+        .await;
 
     // Should succeed by falling back to local storage
     assert!(result.is_ok());
@@ -482,17 +480,15 @@ async fn test_fallback_client_saves_locally() {
 #[tokio::test]
 async fn test_fallback_client_retrieves_locally() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    
+
     // First, save a baseline to local storage
     let config = ClientConfig::new("http://10.255.255.1:9999")
         .with_api_key("test-key")
         .with_fallback(FallbackStorage::local(temp_dir.path()));
-    
+
     let client = BaselineClient::new(config.clone()).expect("Failed to create client");
-    let fallback_client = FallbackClient::new(
-        client,
-        Some(FallbackStorage::local(temp_dir.path())),
-    );
+    let fallback_client =
+        FallbackClient::new(client, Some(FallbackStorage::local(temp_dir.path())));
 
     // Upload to fallback storage
     let upload_request = create_test_upload_request("retrieve-bench");
@@ -503,10 +499,8 @@ async fn test_fallback_client_retrieves_locally() {
 
     // Create a new client to retrieve
     let client2 = BaselineClient::new(config).expect("Failed to create client");
-    let fallback_client2 = FallbackClient::new(
-        client2,
-        Some(FallbackStorage::local(temp_dir.path())),
-    );
+    let fallback_client2 =
+        FallbackClient::new(client2, Some(FallbackStorage::local(temp_dir.path())));
 
     // Retrieve from fallback storage
     let result = fallback_client2
@@ -526,25 +520,23 @@ async fn test_fallback_client_passes_through_errors() {
 
     // Mock a404 response (not a connection error)
     Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/projects/my-project/baselines/bench/latest"))
-        .respond_with(
-            ResponseTemplate::new(404).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "NOT_FOUND",
-                    "message": "Baseline not found"
-                }
-            }))
-        )
+        .and(wiremock::matchers::path(
+            "/projects/my-project/baselines/bench/latest",
+        ))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": {
+                "code": "NOT_FOUND",
+                "message": "Baseline not found"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri())
-        .with_fallback(FallbackStorage::local(temp_dir.path()));
+    let config =
+        ClientConfig::new(mock_server.uri()).with_fallback(FallbackStorage::local(temp_dir.path()));
     let client = BaselineClient::new(config).expect("Failed to create client");
-    let fallback_client = FallbackClient::new(
-        client,
-        Some(FallbackStorage::local(temp_dir.path())),
-    );
+    let fallback_client =
+        FallbackClient::new(client, Some(FallbackStorage::local(temp_dir.path())));
 
     let result = fallback_client
         .get_latest_baseline("my-project", "bench")
@@ -577,10 +569,10 @@ fn test_list_baselines_query_builder() {
 #[test]
 fn test_upload_request_construction() {
     let receipt = create_test_receipt("builder-bench");
-    
+
     let mut metadata = std::collections::BTreeMap::new();
     metadata.insert("env".to_string(), "test".to_string());
-    
+
     let request = UploadBaselineRequest {
         benchmark: "builder-bench".to_string(),
         version: Some("v1".to_string()),

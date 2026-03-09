@@ -1,18 +1,13 @@
 //! Health check handlers.
 
-use axum::{
-    extract::State,
-    Json,
-};
+use axum::{Json, extract::State};
 use std::sync::Arc;
 
 use crate::models::{HealthResponse, StorageHealth as ModelStorageHealth};
 use crate::storage::{BaselineStore, StorageHealth};
 
 /// Health check endpoint.
-pub async fn health_check(
-    State(store): State<Arc<dyn BaselineStore>>,
-) -> Json<HealthResponse> {
+pub async fn health_check(State(store): State<Arc<dyn BaselineStore>>) -> Json<HealthResponse> {
     let storage_health = match store.health_check().await {
         Ok(health) => health,
         Err(_) => StorageHealth::Unhealthy,

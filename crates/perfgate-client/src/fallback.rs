@@ -139,7 +139,9 @@ impl FallbackClient {
         benchmark: &str,
         version: &str,
     ) -> Result<(), ClientError> {
-        self.client.delete_baseline(project, benchmark, version).await
+        self.client
+            .delete_baseline(project, benchmark, version)
+            .await
     }
 
     /// Promotes a baseline (server only, no fallback).
@@ -203,7 +205,7 @@ impl LocalFallbackStorage {
                 return Err(ClientError::FallbackError(format!(
                     "Failed to read directory: {}",
                     e
-                )))
+                )));
             }
         };
 
@@ -220,12 +222,12 @@ impl LocalFallbackStorage {
             // Check if file matches pattern
             if name.starts_with(&format!("{}-", benchmark)) && name.ends_with(".json") {
                 let path = entry.path();
-                let content = fs::read_to_string(&path)
-                    .await
-                    .map_err(|e| ClientError::FallbackError(format!("Failed to read file: {}", e)))?;
+                let content = fs::read_to_string(&path).await.map_err(|e| {
+                    ClientError::FallbackError(format!("Failed to read file: {}", e))
+                })?;
 
-                let record: BaselineRecord = serde_json::from_str(&content)
-                    .map_err(ClientError::ParseError)?;
+                let record: BaselineRecord =
+                    serde_json::from_str(&content).map_err(ClientError::ParseError)?;
 
                 // Compare by created_at timestamp
                 match &latest {
@@ -239,12 +241,9 @@ impl LocalFallbackStorage {
             }
         }
 
-        latest
-            .map(|(_, record)| record)
-            .ok_or_else(|| ClientError::NotFoundError(format!(
-                "No baseline found for {}/{}",
-                project, benchmark
-            )))
+        latest.map(|(_, record)| record).ok_or_else(|| {
+            ClientError::NotFoundError(format!("No baseline found for {}/{}", project, benchmark))
+        })
     }
 
     /// Gets a specific baseline version from local storage.
@@ -257,18 +256,16 @@ impl LocalFallbackStorage {
         let file_name = format!("{}-{}.json", benchmark, version);
         let path = self.dir.join(project).join(&file_name);
 
-        let content = fs::read_to_string(&path)
-            .await
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    ClientError::NotFoundError(format!(
-                        "Baseline {}/{} not found in fallback storage",
-                        benchmark, version
-                    ))
-                } else {
-                    ClientError::FallbackError(format!("Failed to read file: {}", e))
-                }
-            })?;
+        let content = fs::read_to_string(&path).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ClientError::NotFoundError(format!(
+                    "Baseline {}/{} not found in fallback storage",
+                    benchmark, version
+                ))
+            } else {
+                ClientError::FallbackError(format!("Failed to read file: {}", e))
+            }
+        })?;
 
         serde_json::from_str(&content).map_err(ClientError::ParseError)
     }
@@ -281,14 +278,15 @@ impl LocalFallbackStorage {
     ) -> Result<UploadBaselineResponse, ClientError> {
         // Ensure directory exists
         let project_dir = self.dir.join(project);
-        fs::create_dir_all(&project_dir)
-            .await
-            .map_err(|e| ClientError::FallbackError(format!("Failed to create directory: {}", e)))?;
+        fs::create_dir_all(&project_dir).await.map_err(|e| {
+            ClientError::FallbackError(format!("Failed to create directory: {}", e))
+        })?;
 
         // Generate version if not provided
-        let version = request.version.clone().unwrap_or_else(|| {
-            chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string()
-        });
+        let version = request
+            .version
+            .clone()
+            .unwrap_or_else(|| chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string());
 
         // Create a baseline record
         let now = chrono::Utc::now();
@@ -313,8 +311,7 @@ impl LocalFallbackStorage {
         // Write to file
         let file_name = format!("{}-{}.json", request.benchmark, version);
         let path = project_dir.join(&file_name);
-        let content = serde_json::to_string_pretty(&record)
-            .map_err(ClientError::ParseError)?;
+        let content = serde_json::to_string_pretty(&record).map_err(ClientError::ParseError)?;
 
         fs::write(&path, content)
             .await
@@ -490,10 +487,8 @@ mod tests {
             .with_fallback(FallbackStorage::local(temp_dir.path()));
 
         let client = BaselineClient::new(config).unwrap();
-        let fallback_client = FallbackClient::new(
-            client,
-            Some(FallbackStorage::local(temp_dir.path())),
-        );
+        let fallback_client =
+            FallbackClient::new(client, Some(FallbackStorage::local(temp_dir.path())));
 
         let result = fallback_client
             .get_latest_baseline("test-project", "my-bench")
@@ -516,10 +511,8 @@ mod tests {
             .with_fallback(FallbackStorage::local(temp_dir.path()));
 
         let client = BaselineClient::new(config).unwrap();
-        let fallback_client = FallbackClient::new(
-            client,
-            Some(FallbackStorage::local(temp_dir.path())),
-        );
+        let fallback_client =
+            FallbackClient::new(client, Some(FallbackStorage::local(temp_dir.path())));
 
         let request = create_test_upload_request("my-bench");
         let response = fallback_client
@@ -549,10 +542,8 @@ mod tests {
             .with_fallback(FallbackStorage::local(temp_dir.path()));
 
         let client = BaselineClient::new(config).unwrap();
-        let fallback_client = FallbackClient::new(
-            client,
-            Some(FallbackStorage::local(temp_dir.path())),
-        );
+        let fallback_client =
+            FallbackClient::new(client, Some(FallbackStorage::local(temp_dir.path())));
 
         let result = fallback_client
             .get_latest_baseline("test-project", "nonexistent")

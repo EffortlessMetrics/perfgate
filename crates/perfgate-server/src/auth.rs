@@ -3,11 +3,11 @@
 //! This module provides API key and JWT token validation for the baseline service.
 
 use axum::{
+    Extension, Json,
     extract::Request,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::IntoResponse,
-    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -74,7 +74,13 @@ impl Role {
             Role::Viewer => vec![Scope::Read],
             Role::Contributor => vec![Scope::Read, Scope::Write],
             Role::Promoter => vec![Scope::Read, Scope::Write, Scope::Promote],
-            Role::Admin => vec![Scope::Read, Scope::Write, Scope::Promote, Scope::Delete, Scope::Admin],
+            Role::Admin => vec![
+                Scope::Read,
+                Scope::Write,
+                Scope::Promote,
+                Scope::Delete,
+                Scope::Admin,
+            ],
         }
     }
 
@@ -272,7 +278,10 @@ pub async fn auth_middleware(
 
     // Validate format
     validate_key_format(&api_key_str).map_err(|_| {
-        warn!(key_prefix = &api_key_str[..10.min(api_key_str.len())], "Invalid API key format");
+        warn!(
+            key_prefix = &api_key_str[..10.min(api_key_str.len())],
+            "Invalid API key format"
+        );
         (
             StatusCode::UNAUTHORIZED,
             Json(ApiError::unauthorized("Invalid API key format")),
@@ -281,7 +290,10 @@ pub async fn auth_middleware(
 
     // Look up key
     let api_key = key_store.get_key(&api_key_str).await.ok_or_else(|| {
-        warn!(key_prefix = &api_key_str[..10.min(api_key_str.len())], "Invalid API key");
+        warn!(
+            key_prefix = &api_key_str[..10.min(api_key_str.len())],
+            "Invalid API key"
+        );
         (
             StatusCode::UNAUTHORIZED,
             Json(ApiError::unauthorized("Invalid API key")),
@@ -345,7 +357,11 @@ pub fn check_scope(
 
 /// Creates a new API key string.
 pub fn generate_api_key(test: bool) -> String {
-    let prefix = if test { API_KEY_PREFIX_TEST } else { API_KEY_PREFIX_LIVE };
+    let prefix = if test {
+        API_KEY_PREFIX_TEST
+    } else {
+        API_KEY_PREFIX_LIVE
+    };
     let random: String = uuid::Uuid::new_v4()
         .simple()
         .to_string()

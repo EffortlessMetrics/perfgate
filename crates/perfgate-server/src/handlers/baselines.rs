@@ -13,10 +13,10 @@
 //! - `POST /projects/{project}/baselines/{benchmark}/promote` - Promote
 
 use axum::{
-    extract::{Path, Query, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
     Json,
+    extract::{Path, Query, State},
+    http::{StatusCode, header},
+    response::IntoResponse,
 };
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -24,8 +24,7 @@ use tracing::{error, info, warn};
 use crate::error::StoreError;
 use crate::models::{
     ApiError, BaselineRecord, BaselineSource, DeleteBaselineResponse, ListBaselinesQuery,
-    PromoteBaselineRequest, PromoteBaselineResponse, UploadBaselineRequest,
-    UploadBaselineResponse,
+    PromoteBaselineRequest, PromoteBaselineResponse, UploadBaselineRequest, UploadBaselineResponse,
 };
 use crate::storage::BaselineStore;
 
@@ -41,14 +40,18 @@ pub async fn upload_baseline(
     if let Err(e) = perfgate_validation::validate_bench_name(&request.benchmark) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ApiError::validation(&format!("Invalid benchmark name: {}", e))),
+            Json(ApiError::validation(&format!(
+                "Invalid benchmark name: {}",
+                e
+            ))),
         ));
     }
 
     // Generate version if not provided
-    let version = request.version.clone().unwrap_or_else(|| {
-        chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string()
-    });
+    let version = request
+        .version
+        .clone()
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string());
 
     // Create the record
     let record = BaselineRecord::new(
@@ -126,13 +129,11 @@ pub async fn get_latest_baseline(
     State(store): State<Arc<dyn BaselineStore>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     match store.get_latest(&project, &benchmark).await {
-        Ok(Some(record)) => {
-            Ok((
-                StatusCode::OK,
-                [(header::ETAG, record.etag())],
-                Json(record),
-            ))
-        }
+        Ok(Some(record)) => Ok((
+            StatusCode::OK,
+            [(header::ETAG, record.etag())],
+            Json(record),
+        )),
         Ok(None) => {
             warn!(
                 project = %project,
@@ -170,13 +171,11 @@ pub async fn get_baseline(
     State(store): State<Arc<dyn BaselineStore>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     match store.get(&project, &benchmark, &version).await {
-        Ok(Some(record)) => {
-            Ok((
-                StatusCode::OK,
-                [(header::ETAG, record.etag())],
-                Json(record),
-            ))
-        }
+        Ok(Some(record)) => Ok((
+            StatusCode::OK,
+            [(header::ETAG, record.etag())],
+            Json(record),
+        )),
         Ok(None) => {
             warn!(
                 project = %project,
@@ -250,7 +249,8 @@ pub async fn delete_baseline(
             Ok(Json(DeleteBaselineResponse {
                 deleted: true,
                 id: format!("{}/{}/{}", project, benchmark, version),
-            }).into_response())
+            })
+            .into_response())
         }
         Ok(false) => {
             warn!(
@@ -468,7 +468,7 @@ mod tests {
                     .uri("/projects/my-project/baselines")
                     .header("Content-Type", "application/json")
                     .body(Body::from(
-                        serde_json::to_string(&create_test_request()).unwrap()
+                        serde_json::to_string(&create_test_request()).unwrap(),
                     ))
                     .unwrap(),
             )
@@ -491,19 +491,16 @@ mod tests {
             )
             .with_state(store.clone());
 
-        app
-            .oneshot(
-                Request::builder()
-                    .method(Method::POST)
-                    .uri("/projects/my-project/baselines")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_string(&request).unwrap()
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        app.oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/projects/my-project/baselines")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         // Now get latest
         let app = axum::Router::new()
@@ -539,19 +536,16 @@ mod tests {
             )
             .with_state(store.clone());
 
-        app
-            .oneshot(
-                Request::builder()
-                    .method(Method::POST)
-                    .uri("/projects/my-project/baselines")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_string(&request).unwrap()
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        app.oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/projects/my-project/baselines")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         // Now delete
         let app = axum::Router::new()

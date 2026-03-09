@@ -9,7 +9,9 @@ pub const CONTRIBUTOR_KEY: &str = "pg_test_contributor_key_000000000000000000000
 pub const VIEWER_KEY: &str = "pg_test_viewer_key_0000000000000000000000004";
 
 /// Creates a test upload request with default values.
-pub fn create_test_upload_request(benchmark: &str) -> perfgate_client::types::UploadBaselineRequest {
+pub fn create_test_upload_request(
+    benchmark: &str,
+) -> perfgate_client::types::UploadBaselineRequest {
     perfgate_client::types::UploadBaselineRequest {
         benchmark: benchmark.to_string(),
         version: Some("20240115-100000".to_string()),

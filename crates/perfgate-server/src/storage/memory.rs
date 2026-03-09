@@ -5,9 +5,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::error::StoreError;
-use crate::models::{BaselineRecord, BaselineSummary, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse, PaginationInfo};
 use super::{BaselineStore, StorageHealth};
+use crate::error::StoreError;
+use crate::models::{
+    BaselineRecord, BaselineSummary, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
+    PaginationInfo,
+};
 
 /// In-memory storage backend for baselines.
 #[derive(Debug, Default)]
@@ -24,7 +27,11 @@ impl InMemoryStore {
     }
 
     fn key(project: &str, benchmark: &str, version: &str) -> (String, String, String) {
-        (project.to_string(), benchmark.to_string(), version.to_string())
+        (
+            project.to_string(),
+            benchmark.to_string(),
+            version.to_string(),
+        )
     }
 }
 

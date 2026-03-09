@@ -3,7 +3,9 @@
 //! These tests verify that perfgate-validation integrates correctly
 //! with perfgate-types, including config validation with bench names.
 
-use perfgate_types::{BenchConfigFile, BaselineServerConfig, ConfigFile, DefaultsConfig, validate_bench_name};
+use perfgate_types::{
+    BaselineServerConfig, BenchConfigFile, ConfigFile, DefaultsConfig, validate_bench_name,
+};
 use perfgate_validation::ValidationError;
 
 #[test]

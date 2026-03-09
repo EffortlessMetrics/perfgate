@@ -9,7 +9,7 @@
 
 mod common;
 
-use common::{create_test_upload_request, ADMIN_KEY, CONTRIBUTOR_KEY, PROMOTER_KEY, VIEWER_KEY};
+use common::{ADMIN_KEY, CONTRIBUTOR_KEY, PROMOTER_KEY, VIEWER_KEY, create_test_upload_request};
 use perfgate_client::types::ListBaselinesQuery;
 use perfgate_client::{BaselineClient, ClientConfig, ClientError};
 use wiremock::matchers::{header, method, path};
@@ -77,7 +77,10 @@ async fn test_upload_baseline_mock() {
 
     Mock::given(method("POST"))
         .and(path("/projects/test-project/baselines"))
-        .and(header("Authorization", format!("Bearer {}", CONTRIBUTOR_KEY)))
+        .and(header(
+            "Authorization",
+            format!("Bearer {}", CONTRIBUTOR_KEY),
+        ))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "id": "perfgate_abc123",
             "benchmark": "test-bench",
@@ -131,7 +134,9 @@ async fn test_get_latest_baseline_mock() {
     let config = ClientConfig::new(mock_server.uri());
     let client = BaselineClient::new(config).expect("Failed to create client");
 
-    let result = client.get_latest_baseline("my-project", "my-benchmark").await;
+    let result = client
+        .get_latest_baseline("my-project", "my-benchmark")
+        .await;
 
     assert!(result.is_ok());
     let baseline = result.unwrap();
@@ -182,7 +187,9 @@ async fn test_delete_baseline_mock() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("DELETE"))
-        .and(path("/projects/del-project/baselines/del-bench/versions/v1"))
+        .and(path(
+            "/projects/del-project/baselines/del-bench/versions/v1",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "deleted": true,
             "id": "perfgate_del",
@@ -195,7 +202,9 @@ async fn test_delete_baseline_mock() {
     let config = ClientConfig::new(mock_server.uri()).with_api_key(ADMIN_KEY);
     let client = BaselineClient::new(config).expect("Failed to create client");
 
-    let result = client.delete_baseline("del-project", "del-bench", "v1").await;
+    let result = client
+        .delete_baseline("del-project", "del-bench", "v1")
+        .await;
 
     assert!(result.is_ok());
 }
@@ -244,21 +253,21 @@ async fn test_not_found_error() {
 
     Mock::given(method("GET"))
         .and(path("/projects/my-project/baselines/nonexistent/latest"))
-        .respond_with(
-            ResponseTemplate::new(404).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "NOT_FOUND",
-                    "message": "Baseline not found"
-                }
-            }))
-        )
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": {
+                "code": "NOT_FOUND",
+                "message": "Baseline not found"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
     let config = ClientConfig::new(mock_server.uri());
     let client = BaselineClient::new(config).expect("Failed to create client");
 
-    let result = client.get_latest_baseline("my-project", "nonexistent").await;
+    let result = client
+        .get_latest_baseline("my-project", "nonexistent")
+        .await;
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -272,18 +281,17 @@ async fn test_auth_error() {
 
     Mock::given(method("GET"))
         .and(path("/projects/my-project/baselines/bench/latest"))
-        .respond_with(
-            ResponseTemplate::new(401).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Invalid API key"
-                }
-            }))
-        )
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "error": {
+                "code": "UNAUTHORIZED",
+                "message": "Invalid API key"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri()).with_api_key("pg_test_invalid_0000000000000000000000");
+    let config =
+        ClientConfig::new(mock_server.uri()).with_api_key("pg_test_invalid_0000000000000000000000");
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client.get_latest_baseline("my-project", "bench").await;
@@ -300,14 +308,12 @@ async fn test_forbidden_error() {
 
     Mock::given(method("DELETE"))
         .and(path("/projects/my-project/baselines/bench/versions/v1"))
-        .respond_with(
-            ResponseTemplate::new(403).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "Insufficient permissions"
-                }
-            }))
-        )
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": {
+                "code": "FORBIDDEN",
+                "message": "Insufficient permissions"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
@@ -329,14 +335,12 @@ async fn test_conflict_error() {
 
     Mock::given(method("POST"))
         .and(path("/projects/my-project/baselines"))
-        .respond_with(
-            ResponseTemplate::new(409).set_body_json(serde_json::json!({
-                "error": {
-                    "code": "ALREADY_EXISTS",
-                    "message": "Baseline already exists"
-                }
-            }))
-        )
+        .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+            "error": {
+                "code": "ALREADY_EXISTS",
+                "message": "Baseline already exists"
+            }
+        })))
         .mount(&mock_server)
         .await;
 
@@ -370,19 +374,28 @@ async fn test_full_upload_workflow_with_server() {
         .await
         .expect("Failed to connect to server");
 
-    assert!(health_response.status().is_success(), "Server must be healthy");
+    assert!(
+        health_response.status().is_success(),
+        "Server must be healthy"
+    );
 
     // Upload a baseline
     let request = create_test_upload_request("integration-test-bench");
     let upload_response = client
-        .post(&format!("{}/projects/integration-tests/baselines", server_url))
+        .post(&format!(
+            "{}/projects/integration-tests/baselines",
+            server_url
+        ))
         .header("Authorization", format!("Bearer {}", CONTRIBUTOR_KEY))
         .json(&request)
         .send()
         .await
         .expect("Failed to upload");
 
-    assert!(upload_response.status().is_success(), "Upload should succeed");
+    assert!(
+        upload_response.status().is_success(),
+        "Upload should succeed"
+    );
 }
 
 /// Test baseline list with a running server.
@@ -393,7 +406,10 @@ async fn test_baseline_list_with_server() {
     let client = reqwest::Client::new();
 
     let response = client
-        .get(&format!("{}/projects/integration-tests/baselines", server_url))
+        .get(&format!(
+            "{}/projects/integration-tests/baselines",
+            server_url
+        ))
         .header("Authorization", format!("Bearer {}", VIEWER_KEY))
         .query(&[("limit", "10")])
         .send()
@@ -403,5 +419,8 @@ async fn test_baseline_list_with_server() {
     assert!(response.status().is_success(), "List should succeed");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
-    assert!(body["baselines"].is_array(), "Response should contain baselines array");
+    assert!(
+        body["baselines"].is_array(),
+        "Response should contain baselines array"
+    );
 }

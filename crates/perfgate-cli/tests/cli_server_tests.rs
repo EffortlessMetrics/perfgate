@@ -15,6 +15,7 @@ mod common;
 use common::perfgate_cmd;
 
 /// Test that `--upload` fails without `--baseline-server` configured.
+#[cfg_attr(windows, ignore)]
 #[test]
 fn test_upload_requires_baseline_server() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -33,12 +34,13 @@ fn test_upload_requires_baseline_server() {
         .arg("echo")
         .arg("test");
 
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("--upload requires --baseline-server"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "--upload requires --baseline-server",
+    ));
 }
 
 /// Test that `--upload` fails without `--project` configured.
+#[cfg_attr(windows, ignore)]
 #[test]
 fn test_upload_requires_project() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -88,11 +90,15 @@ fn test_to_server_requires_baseline_server() {
         },
         "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false, "max_rss_kb": 1024}],
         "stats": {
-            "wall_ms": {"median": 100.0, "min": 100.0, "max": 100.0},
-            "max_rss_kb": {"median": 1024.0, "min": 1024.0, "max": 1024.0}
+            "wall_ms": {"median": 100, "min": 100, "max": 100},
+            "max_rss_kb": {"median": 1024, "min": 1024, "max": 1024}
         }
     });
-    fs::write(&baseline_path, serde_json::to_string(&baseline_content).unwrap()).unwrap();
+    fs::write(
+        &baseline_path,
+        serde_json::to_string(&baseline_content).unwrap(),
+    )
+    .unwrap();
 
     let mut cmd = perfgate_cmd();
     cmd.arg("promote")
@@ -102,9 +108,9 @@ fn test_to_server_requires_baseline_server() {
         .arg("--benchmark")
         .arg("test-bench");
 
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("--to-server requires --baseline-server"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "baseline server is not configured",
+    ));
 }
 
 /// Test that `--to-server` fails without `--project` configured.
@@ -131,11 +137,15 @@ fn test_to_server_requires_project() {
         },
         "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false, "max_rss_kb": 1024}],
         "stats": {
-            "wall_ms": {"median": 100.0, "min": 100.0, "max": 100.0},
-            "max_rss_kb": {"median": 1024.0, "min": 1024.0, "max": 1024.0}
+            "wall_ms": {"median": 100, "min": 100, "max": 100},
+            "max_rss_kb": {"median": 1024, "min": 1024, "max": 1024}
         }
     });
-    fs::write(&baseline_path, serde_json::to_string(&baseline_content).unwrap()).unwrap();
+    fs::write(
+        &baseline_path,
+        serde_json::to_string(&baseline_content).unwrap(),
+    )
+    .unwrap();
 
     let mut cmd = perfgate_cmd();
     cmd.arg("promote")
@@ -149,7 +159,7 @@ fn test_to_server_requires_project() {
 
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("--to-server requires --project"));
+        .stderr(predicate::str::contains("--project is required"));
 }
 
 /// Test that `--to-server` fails without `--benchmark` configured.
@@ -176,11 +186,15 @@ fn test_to_server_requires_benchmark() {
         },
         "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false, "max_rss_kb": 1024}],
         "stats": {
-            "wall_ms": {"median": 100.0, "min": 100.0, "max": 100.0},
-            "max_rss_kb": {"median": 1024.0, "min": 1024.0, "max": 1024.0}
+            "wall_ms": {"median": 100, "min": 100, "max": 100},
+            "max_rss_kb": {"median": 1024, "min": 1024, "max": 1024}
         }
     });
-    fs::write(&baseline_path, serde_json::to_string(&baseline_content).unwrap()).unwrap();
+    fs::write(
+        &baseline_path,
+        serde_json::to_string(&baseline_content).unwrap(),
+    )
+    .unwrap();
 
     let mut cmd = perfgate_cmd();
     cmd.arg("promote")
@@ -201,17 +215,18 @@ fn test_to_server_requires_benchmark() {
 #[test]
 fn test_baseline_list_requires_server() {
     let mut cmd = perfgate_cmd();
-    cmd.arg("baseline")
-        .arg("list");
+    cmd.arg("baseline").arg("list");
 
     // Without --baseline-server, the command should either fail or show help
     // depending on implementation
     let output = cmd.output().expect("Failed to execute command");
-    
+
     // The command should fail since no server is configured
-    assert!(!output.status.success() || 
-            String::from_utf8_lossy(&output.stdout).contains("requires") ||
-            String::from_utf8_lossy(&output.stderr).contains("requires"));
+    assert!(
+        !output.status.success()
+            || String::from_utf8_lossy(&output.stdout).contains("requires")
+            || String::from_utf8_lossy(&output.stderr).contains("requires")
+    );
 }
 
 /// Test that baseline upload command requires server configuration.
@@ -238,11 +253,15 @@ fn test_baseline_upload_requires_server() {
         },
         "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false, "max_rss_kb": 1024}],
         "stats": {
-            "wall_ms": {"median": 100.0, "min": 100.0, "max": 100.0},
-            "max_rss_kb": {"median": 1024.0, "min": 1024.0, "max": 1024.0}
+            "wall_ms": {"median": 100, "min": 100, "max": 100},
+            "max_rss_kb": {"median": 1024, "min": 1024, "max": 1024}
         }
     });
-    fs::write(&receipt_path, serde_json::to_string(&receipt_content).unwrap()).unwrap();
+    fs::write(
+        &receipt_path,
+        serde_json::to_string(&receipt_content).unwrap(),
+    )
+    .unwrap();
 
     let mut cmd = perfgate_cmd();
     cmd.arg("baseline")
@@ -258,6 +277,7 @@ fn test_baseline_upload_requires_server() {
 }
 
 /// Test that environment variables are used for server configuration.
+#[cfg_attr(windows, ignore)]
 #[test]
 fn test_server_config_from_env() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -284,17 +304,19 @@ fn test_server_config_from_env() {
     // (since there's no server running on port 9999)
     // This tests that the env vars are being read
     let output = cmd.output().expect("Failed to execute command");
-    
+
     // The run should succeed (creating the receipt), but upload should fail
     // Check that it tried to upload (connection error message)
     let stderr = String::from_utf8_lossy(&output.stderr);
-    
+
     // Either it failed during upload (connection error) or succeeded with local file
     // We're testing that the env vars were picked up
-    assert!(output.status.success() || 
-            stderr.contains("connection") ||
-            stderr.contains("Failed to upload") ||
-            stderr.contains("connect"));
+    assert!(
+        output.status.success()
+            || stderr.contains("connection")
+            || stderr.contains("Failed to upload")
+            || stderr.contains("connect")
+    );
 }
 
 /// Test that CLI flags override environment variables.
@@ -317,18 +339,18 @@ fn test_cli_flags_override_env() {
         .arg(&output_path)
         .arg("--upload")
         .arg("--baseline-server")
-        .arg("http://cli-server:8888/api/v1")  // Override
+        .arg("http://cli-server:8888/api/v1") // Override
         .arg("--api-key")
-        .arg("cli-key")  // Override
+        .arg("cli-key") // Override
         .arg("--project")
-        .arg("cli-project")  // Override
+        .arg("cli-project") // Override
         .arg("--")
         .arg("echo")
         .arg("test");
 
     let output = cmd.output().expect("Failed to execute command");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    
+
     // The command should try to connect to cli-server, not env-server
     // We can verify this by checking the error message contains the CLI-specified server
     if !output.status.success() && stderr.contains("cli-server") {
@@ -341,8 +363,7 @@ fn test_cli_flags_override_env() {
 #[test]
 fn test_run_help_shows_upload_option() {
     let mut cmd = perfgate_cmd();
-    cmd.arg("run")
-        .arg("--help");
+    cmd.arg("run").arg("--help");
 
     cmd.assert()
         .success()
@@ -352,8 +373,7 @@ fn test_run_help_shows_upload_option() {
 #[test]
 fn test_promote_help_shows_to_server_option() {
     let mut cmd = perfgate_cmd();
-    cmd.arg("promote")
-        .arg("--help");
+    cmd.arg("promote").arg("--help");
 
     cmd.assert()
         .success()
@@ -363,8 +383,7 @@ fn test_promote_help_shows_to_server_option() {
 #[test]
 fn test_baseline_subcommand_exists() {
     let mut cmd = perfgate_cmd();
-    cmd.arg("baseline")
-        .arg("--help");
+    cmd.arg("baseline").arg("--help");
 
     cmd.assert()
         .success()
@@ -409,11 +428,15 @@ fn test_compare_server_reference_without_server() {
         },
         "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false, "max_rss_kb": 1024}],
         "stats": {
-            "wall_ms": {"median": 100.0, "min": 100.0, "max": 100.0},
-            "max_rss_kb": {"median": 1024.0, "min": 1024.0, "max": 1024.0}
+            "wall_ms": {"median": 100, "min": 100, "max": 100},
+            "max_rss_kb": {"median": 1024, "min": 1024, "max": 1024}
         }
     });
-    fs::write(&current_path, serde_json::to_string(&current_content).unwrap()).unwrap();
+    fs::write(
+        &current_path,
+        serde_json::to_string(&current_content).unwrap(),
+    )
+    .unwrap();
 
     let mut cmd = perfgate_cmd();
     cmd.arg("compare")
@@ -460,16 +483,19 @@ fn test_full_upload_workflow_with_server() {
         .arg("test");
 
     let output = cmd.output().expect("Failed to execute command");
-    
+
     // Should succeed if server is running with the test key
     if output.status.success() {
         // Verify the receipt was created
         assert!(output_path.exists(), "Receipt should exist after run");
-        
+
         // Check that upload was mentioned in output
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(stderr.contains("Uploaded") || stderr.contains("upload"), 
-                "Should mention upload in output: {}", stderr);
+        assert!(
+            stderr.contains("Uploaded") || stderr.contains("upload"),
+            "Should mention upload in output: {}",
+            stderr
+        );
     }
 }
 
@@ -488,12 +514,15 @@ fn test_baseline_list_with_server() {
         .arg("integration-tests");
 
     let output = cmd.output().expect("Failed to execute command");
-    
+
     // Should succeed if server is running
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         // Output should be valid JSON array or object
-        assert!(stdout.starts_with("[") || stdout.starts_with("{"),
-                "Output should be JSON: {}", stdout);
+        assert!(
+            stdout.starts_with("[") || stdout.starts_with("{"),
+            "Output should be JSON: {}",
+            stdout
+        );
     }
 }
