@@ -34,9 +34,10 @@ fn test_upload_requires_baseline_server() {
         .arg("echo")
         .arg("test");
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "--upload requires --baseline-server",
-    ));
+    cmd.assert().failure().stderr(
+        predicate::str::contains("baseline server is not configured")
+            .and(predicate::str::contains("--baseline-server")),
+    );
 }
 
 /// Test that `--upload` fails without `--project` configured.
@@ -61,9 +62,10 @@ fn test_upload_requires_project() {
         .arg("echo")
         .arg("test");
 
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("--upload requires --project"));
+    cmd.assert().failure().stderr(
+        predicate::str::contains("--project is required")
+            .and(predicate::str::contains("PERFGATE_PROJECT")),
+    );
 }
 
 /// Test that `--to-server` fails without `--baseline-server` configured.
