@@ -3,7 +3,7 @@
 //! These tests verify that perfgate-validation integrates correctly
 //! with perfgate-types, including config validation with bench names.
 
-use perfgate_types::{BenchConfigFile, ConfigFile, DefaultsConfig, validate_bench_name};
+use perfgate_types::{BenchConfigFile, BaselineServerConfig, ConfigFile, DefaultsConfig, validate_bench_name};
 use perfgate_validation::ValidationError;
 
 #[test]
@@ -33,6 +33,7 @@ fn invalid_bench_names_fail_validation() {
 fn config_file_validates_bench_names() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: "valid-bench".to_string(),
             cwd: None,
@@ -53,6 +54,7 @@ fn config_file_validates_bench_names() {
 fn config_file_rejects_invalid_bench_names() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: "../evil".to_string(),
             cwd: None,
@@ -73,6 +75,7 @@ fn config_file_rejects_invalid_bench_names() {
 fn multiple_benches_all_validated() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![
             BenchConfigFile {
                 name: "valid-bench".to_string(),
@@ -106,6 +109,7 @@ fn multiple_benches_all_validated() {
 fn validation_fails_on_first_invalid_bench() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![
             BenchConfigFile {
                 name: "valid-bench".to_string(),
@@ -221,6 +225,7 @@ fn validation_error_display() {
 fn config_empty_benches_is_valid() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![],
     };
 
@@ -235,6 +240,7 @@ fn config_duplicate_bench_names_passes_validation() {
     // so duplicates are accepted at the type level.
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![
             BenchConfigFile {
                 name: "same-name".to_string(),
@@ -377,6 +383,7 @@ metrics = ["wall_ms", "max_rss_kb", "cpu_ms"]
 fn config_empty_bench_name_rejected() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: String::new(),
             cwd: None,
@@ -399,6 +406,7 @@ fn config_path_traversal_variants_rejected() {
     for name in &["../evil", "bench/../etc/passwd", "./sneaky", "a/../../b"] {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: name.to_string(),
                 cwd: None,

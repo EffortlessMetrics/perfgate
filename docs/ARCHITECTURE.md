@@ -41,7 +41,7 @@ perfgate operates as a **build truth** component: it measures and reports perfor
 
 perfgate intentionally avoids these responsibilities:
 
-1. **Baseline service**: perfgate does NOT manage baseline storage. Users MUST handle baseline persistence (git, artifact storage, databases)
+1. **Mandatory baseline service**: perfgate core does NOT require a centralized server. Users MAY use the optional baseline server for centralized management, but file-based and cloud storage baselines remain fully supported
 
 2. **Profiler**: perfgate does NOT profile code or identify hot paths. It measures whole-command execution only
 
@@ -54,6 +54,8 @@ perfgate intentionally avoids these responsibilities:
 ## Crate Boundaries
 
 perfgate follows clean architecture principles with strictly layered dependencies:
+
+### Core CLI Stack
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -74,10 +76,26 @@ perfgate follows clean architecture principles with strictly layered dependencie
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Client/Server Stack (v2.0)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      perfgate-server                             │
+│            (REST API, SQLite/in-memory storage)                 │
+├─────────────────────────────────────────────────────────────────┤
+│                      perfgate-client                             │
+│       (API client, fallback storage, retry logic)               │
+├─────────────────────────────────────────────────────────────────┤
+│                       perfgate-types                             │
+│              (receipt/config structs, JSON schema)              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### Dependency Flow
 
 Dependencies flow inward only:
 
+**Core CLI Stack:**
 ```
 perfgate-types (innermost)
        ↓
@@ -88,6 +106,17 @@ perfgate-adapters
 perfgate-app
        ↓
 perfgate-cli (outermost)
+```
+
+**Client/Server Stack:**
+```
+perfgate-types (shared)
+       ↓
+perfgate-client
+       ↓
+perfgate-server (standalone)
+       ↓
+perfgate-cli (integrates client)
 ```
 
 ### Crate Responsibilities
@@ -132,6 +161,24 @@ perfgate-cli (outermost)
 - MUST perform JSON/TOML I/O for receipts and config files
 - MUST map domain errors to appropriate exit codes
 - SHOULD use atomic writes for output files
+- MAY integrate perfgate-client for server-backed baseline operations
+
+#### perfgate-client (v2.0)
+
+- MUST provide async API client for baseline service communication
+- MUST implement automatic retry logic with exponential backoff
+- MUST support fallback to local storage when server is unavailable
+- MUST handle authentication via API keys
+- SHALL NOT depend on perfgate-server implementation details
+
+#### perfgate-server (v2.0)
+
+- MUST provide REST API for baseline CRUD operations
+- MUST support multiple storage backends (in-memory, SQLite)
+- MUST implement role-based access control (viewer, contributor, promoter, admin)
+- MUST support multi-tenancy via project namespacing
+- MUST track baseline version history
+- SHALL NOT depend on perfgate-cli or perfgate-app
 
 ## Ports and Adapters
 

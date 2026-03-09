@@ -1,0 +1,66 @@
+[package]
+name = "perfgate-server"
+description = "REST API server for centralized baseline management"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.49.0", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8.1", features = ["macros"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = ["cors", "trace", "request-id"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+
+# Logging
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
+
+# Time and IDs
+chrono = { version = "0.4.39", features = ["serde"] }
+uuid = { workspace = true }
+
+# Database
+rusqlite = { version = "0.33.0", features = ["bundled"] }
+
+# Validation
+perfgate-types = { path = "../perfgate-types", version = "0.3.0" }
+perfgate-validation = { path = "../perfgate-validation", version = "0.3.0" }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+
+# Additional dependencies
+sha2 = "0.10.8"
+base64 = "0.22.1"
+async-trait = "0.1.86"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = "0.4.4"
+http-body-util = "0.1.2"
+tower = { version = "0.5.2", features = ["util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+perfgate-client = { path = "../perfgate-client" }
+wiremock = "0.6"
+uuid = { workspace = true }
+
+[[bin]]
+name = "perfgate-server"
+path = "src/bin/perfgate-server.rs"

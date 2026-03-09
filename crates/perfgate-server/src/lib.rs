@@ -1,0 +1,67 @@
+//! perfgate-server - REST API server for centralized baseline management.
+//!
+//! This crate provides a REST API server for storing and managing performance
+//! baselines. It supports multiple storage backends (in-memory, SQLite, PostgreSQL)
+//! and includes authentication via API keys.
+//!
+//! # Features
+//!
+//! - **Multi-tenancy**: Projects/namespaces for isolation
+//! - **Version history**: Track baseline versions over time
+//! - **Rich metadata**: Git refs, tags, custom metadata
+//! - **Access control**: Role-based permissions (Viewer, Contributor, Promoter, Admin)
+//! - **Multiple backends**: In-memory, SQLite, PostgreSQL (planned)
+//!
+//! # Quick Start
+//!
+//! ```rust,no_run
+//! use perfgate_server::{ServerConfig, StorageBackend, run_server};
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let config = ServerConfig::new()
+//!         .bind("0.0.0.0:8080").unwrap()
+//!         .storage_backend(StorageBackend::Sqlite)
+//!         .sqlite_path("perfgate.db");
+//!
+//!     run_server(config).await.unwrap();
+//! }
+//! ```
+//!
+//! # API Endpoints
+//!
+//! | Method | Path | Description |
+//! |--------|------|-------------|
+//! | POST | `/projects/{project}/baselines` | Upload a baseline |
+//! | GET | `/projects/{project}/baselines/{benchmark}/latest` | Get latest baseline |
+//! | GET | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Get specific version |
+//! | GET | `/projects/{project}/baselines` | List baselines |
+//! | DELETE | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
+//! | POST | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
+//! | GET | `/health` | Health check |
+
+pub mod auth;
+pub mod error;
+pub mod handlers;
+pub mod models;
+pub mod server;
+pub mod storage;
+
+pub use auth::{ApiKey, ApiKeyStore, Role, Scope, AuthContext};
+pub use error::{AuthError, ConfigError, StoreError};
+pub use models::*;
+pub use server::{run_server, ServerConfig, StorageBackend};
+pub use storage::{BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
+
+/// Server version string.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version() {
+        assert!(!VERSION.is_empty());
+    }
+}

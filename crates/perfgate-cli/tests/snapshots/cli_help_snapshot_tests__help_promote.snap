@@ -1,5 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 249
 expression: "help_output(&[\"promote\", \"--help\"])"
 ---
 Promote a run receipt to become the new baseline.
@@ -8,15 +9,30 @@ This command copies a run receipt to a baseline location, optionally normalizing
 
 Exit codes: 0 for success, 1 for errors.
 
-Usage: perfgate promote [OPTIONS] --current <CURRENT> --to <TO>
+Usage: perfgate promote [OPTIONS] --current <CURRENT>
 
 Options:
       --current <CURRENT> Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote
 
-      --to <TO> Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written
+      --to <TO> Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written. Use --to-server to promote to the baseline server instead
+
+      --to-server Promote to the baseline server instead of a local file. Requires --baseline-server to be configured
+
+      --benchmark <BENCHMARK> Benchmark name for server promotion (required with --to-server)
+
+      --promote-project <PROMOTE_PROJECT> Project name for server promotion (overrides global --project flag)
+
+      --version <VERSION> Version identifier for the promoted baseline (server only)
 
       --normalize Strip run-specific fields (run_id, timestamps) for stable baselines
 
       --pretty Pretty-print JSON
 
   -h, --help Print help (see a summary with '-h')
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

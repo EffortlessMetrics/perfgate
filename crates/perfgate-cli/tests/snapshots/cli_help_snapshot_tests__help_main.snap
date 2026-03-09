@@ -1,10 +1,11 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 229
 expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
 
-Usage: perfgate <COMMAND>
+Usage: perfgate [OPTIONS] <COMMAND>
 
 Commands:
   run Run a command repeatedly and emit a run receipt (JSON)
@@ -16,8 +17,14 @@ Commands:
   report Generate a cockpit-compatible report from a compare receipt
   check Config-driven one-command workflow
   paired Run paired benchmark: interleave baseline and current commands for reduced noise
+  baseline Manage baselines on the baseline server
   help Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help Print help
   -V, --version Print version
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

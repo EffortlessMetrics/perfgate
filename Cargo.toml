@@ -18,6 +18,8 @@ members = [
   "crates/perfgate-adapters",
   "crates/perfgate-app",
   "crates/perfgate-cli",
+  "crates/perfgate-server",
+  "crates/perfgate-client",
   "xtask",
 ]
 exclude = [
@@ -121,3 +123,5 @@ perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.3.0" }
 perfgate-fake = { path = "crates/perfgate-fake", version = "0.3.0" }
 perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.3.0" }
 perfgate-app = { path = "crates/perfgate-app", version = "0.3.0" }
+perfgate-server = { path = "crates/perfgate-server", version = "0.3.0" }
+perfgate-client = { path = "crates/perfgate-client", version = "0.3.0" }

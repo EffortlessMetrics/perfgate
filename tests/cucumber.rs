@@ -17,11 +17,11 @@ use tempfile::TempDir;
 
 // Re-export types we need for fixture creation
 use perfgate_types::{
-    BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef,
-    ConfigFile, DefaultsConfig, Delta, HostInfo, Metric, MetricStatistic, MetricStatus,
-    PAIRED_SCHEMA_V1, PairedRunReceipt, PerfgateReport, REPORT_SCHEMA_V1, RUN_SCHEMA_V1,
-    ReportSummary, RunMeta, RunReceipt, Sample, SensorReport, Stats, ToolInfo, U64Summary, Verdict,
-    VerdictCounts, VerdictStatus,
+    BaselineServerConfig, BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1,
+    CompareReceipt, CompareRef, ConfigFile, DefaultsConfig, Delta, HostInfo, Metric,
+    MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1, PairedRunReceipt, PerfgateReport,
+    REPORT_SCHEMA_V1, RUN_SCHEMA_V1, ReportSummary, RunMeta, RunReceipt, Sample, SensorReport,
+    Stats, ToolInfo, U64Summary, Verdict, VerdictCounts, VerdictStatus,
 };
 
 // Microcrate imports for direct testing
@@ -2866,6 +2866,7 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -2915,6 +2916,7 @@ async fn given_config_file_with_bench_threshold(
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -2965,6 +2967,7 @@ async fn given_config_file_with_bench_threshold_warn(
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3012,6 +3015,7 @@ async fn given_config_file_with_defaults_repeat_warmup(
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![],
     };
 
@@ -3045,6 +3049,7 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![],
     };
 
@@ -3128,6 +3133,7 @@ async fn given_config_file_with_bench_baseline_dir(
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3176,6 +3182,7 @@ async fn given_config_file_with_bench_baseline_pattern(
             baseline_pattern: Some(baseline_pattern),
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3369,6 +3376,7 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches,
     };
 
@@ -3418,6 +3426,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches,
     };
 
@@ -3471,6 +3480,7 @@ async fn given_config_file_with_benches_lenient(
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches,
     };
 
@@ -3550,6 +3560,7 @@ async fn given_config_file_with_mixed_thresholds(
             baseline_pattern: None,
             markdown_template: None,
         },
+        baseline_server: BaselineServerConfig::default(),
         benches,
     };
 

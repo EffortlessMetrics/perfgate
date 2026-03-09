@@ -1,0 +1,6 @@
+fix: normalize CLI help snapshots for cross-platform CI
+
+Replace .exe suffix and normalize line wrapping for consistent
+snapshots across Windows and Linux.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

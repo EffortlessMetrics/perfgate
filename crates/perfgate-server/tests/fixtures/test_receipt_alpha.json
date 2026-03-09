@@ -1,0 +1,86 @@
+{
+    "schema": "perfgate.run.v1",
+    "tool": {
+        "name": "perfgate",
+        "version": "0.3.0"
+    },
+    "run": {
+        "id": "server-test-run-001",
+        "started_at": "2024-01-15T10:00:00Z",
+        "ended_at": "2024-01-15T10:00:05Z",
+        "host": {
+            "os": "linux",
+            "arch": "x86_64",
+            "hostname": "test-server-host",
+            "cpu_count": 8,
+            "memory_gb": 16
+        }
+    },
+    "bench": {
+        "name": "server-test-benchmark",
+        "command": ["./run_benchmark.sh", "--test"],
+        "repeat": 5,
+        "warmup": 1
+    },
+    "samples": [
+        {
+            "wall_ms": 150,
+            "exit_code": 0,
+            "warmup": true,
+            "timed_out": false,
+            "max_rss_kb": 2048
+        },
+        {
+            "wall_ms": 100,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 2048
+        },
+        {
+            "wall_ms": 105,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 2052
+        },
+        {
+            "wall_ms": 98,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 2044
+        },
+        {
+            "wall_ms": 102,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 2050
+        },
+        {
+            "wall_ms": 101,
+            "exit_code": 0,
+            "warmup": false,
+            "timed_out": false,
+            "max_rss_kb": 2046
+        }
+    ],
+    "stats": {
+        "wall_ms": {
+            "median": 101.0,
+            "mean": 101.2,
+            "min": 98.0,
+            "max": 105.0,
+            "std_dev": 2.5,
+            "ci95": [97.5, 104.9]
+        },
+        "max_rss_kb": {
+            "median": 2048.0,
+            "mean": 2048.0,
+            "min": 2044.0,
+            "max": 2052.0,
+            "std_dev": 3.2
+        }
+    }
+}

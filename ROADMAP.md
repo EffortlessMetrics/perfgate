@@ -73,10 +73,14 @@ To become the standard, low-friction "build truth" sensor for performance gating
 **Target: 2027+**
 *Focus: Advanced analytics and long-term trend management.*
 
-- [ ] **Baseline Service API**
-  - [ ] Optional client/server mode to fetch baselines from a central service.
-  - [ ] Centralized authentication and permission model for promoting baselines.
-- [ ] **Advanced Analytics**
+- [x] **Baseline Service API**
+  - [x] Optional client/server mode to fetch baselines from a central service.
+  - [x] Centralized authentication and permission model for promoting baselines.
+  - [x] REST API with SQLite/in-memory storage backends.
+  - [x] CLI integration with `--baseline-server`, `--upload`, `--to-server` flags.
+  - [x] `perfgate baseline` subcommand for baseline management.
+  - [x] Role-based access control (viewer, contributor, promoter, admin).
+- [x] **Advanced Analytics**
   - [x] Statistical significance testing (p-values) for large sample sizes.
   - [x] Multi-dimensional gating (e.g., gate on `P95` wall time + `median` RSS).
 - [ ] **Schema Evolution**

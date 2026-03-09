@@ -939,6 +939,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub defaults: DefaultsConfig,
 
+    /// Optional baseline server configuration for centralized baseline management.
+    #[serde(default)]
+    pub baseline_server: BaselineServerConfig,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 }
@@ -1002,6 +1006,72 @@ pub struct DefaultsConfig {
     /// Optional Handlebars template path for markdown comments.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown_template: Option<String>,
+}
+
+/// Configuration for the baseline server connection.
+///
+/// When configured, the CLI can use a centralized baseline server
+/// for storing and retrieving baselines instead of local files.
+///
+/// # Examples
+///
+/// ```toml
+/// [baseline_server]
+/// url = "http://localhost:3000/api/v1"
+/// api_key = "pg_live_xxx"
+/// project = "my-project"
+/// fallback_to_local = true
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct BaselineServerConfig {
+    /// URL of the baseline server (e.g., "http://localhost:3000/api/v1").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
+    /// API key for authentication.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+
+    /// Project name for multi-tenancy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+
+    /// Fall back to local storage when server is unavailable.
+    #[serde(default = "default_fallback_to_local")]
+    pub fallback_to_local: bool,
+}
+
+fn default_fallback_to_local() -> bool {
+    true
+}
+
+impl BaselineServerConfig {
+    /// Returns true if server is configured (has a URL).
+    pub fn is_configured(&self) -> bool {
+        self.url.is_some() && !self.url.as_ref().unwrap().is_empty()
+    }
+
+    /// Resolves the server URL from config or environment variable.
+    pub fn resolved_url(&self) -> Option<String> {
+        std::env::var("PERFGATE_SERVER_URL")
+            .ok()
+            .or_else(|| self.url.clone())
+    }
+
+    /// Resolves the API key from config or environment variable.
+    pub fn resolved_api_key(&self) -> Option<String> {
+        std::env::var("PERFGATE_API_KEY")
+            .ok()
+            .or_else(|| self.api_key.clone())
+    }
+
+    /// Resolves the project name from config or environment variable.
+    pub fn resolved_project(&self) -> Option<String> {
+        std::env::var("PERFGATE_PROJECT")
+            .ok()
+            .or_else(|| self.project.clone())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]

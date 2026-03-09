@@ -1,5 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 234
 expression: "help_output(&[\"run\", \"--help\"])"
 ---
 Run a command repeatedly and emit a run receipt (JSON)
@@ -22,4 +23,11 @@ Options:
       --include-hostname-hash Include a hashed hostname in the host fingerprint for noise mitigation. The hostname is SHA-256 hashed for privacy
       --out <OUT> Output file path [default: perfgate.json]
       --pretty Pretty-print JSON
+      --upload Upload the run result to the baseline server. Requires --baseline-server to be configured
+      --upload-project <UPLOAD_PROJECT> Project name for upload (overrides global --project flag)
   -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

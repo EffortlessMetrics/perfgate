@@ -1,5 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 244
 expression: "help_output(&[\"check\", \"--help\"])"
 ---
 Config-driven one-command workflow.
@@ -53,3 +54,10 @@ Options:
       --output-github Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT
 
   -h, --help Print help (see a summary with '-h')
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

@@ -311,7 +311,95 @@ git commit -m "Update performance baseline"
 
 - **In-repo**: Commit baselines to `baselines/` directory (simple, versioned)
 - **Cloud object storage**: Use `s3://...` or `gs://...` directly with `check --baseline` / `defaults.baseline_pattern` and `promote --to`
+- **Baseline Server**: Use the perfgate baseline server for centralized management (see [v2.0 Baseline Server](#v20-baseline-server))
 - **Database**: Store in a metrics database for advanced trend analysis
+
+## v2.0 Baseline Server
+
+perfgate v2.0 introduces an optional client/server mode for centralized baseline management. This is useful for teams that want to:
+
+- Share baselines across multiple repositories
+- Manage baseline promotion with role-based access control
+- Track baseline version history
+- Enable CI runners to fetch/upload baselines without git access
+
+### Quick Start
+
+**1. Start the server:**
+
+```bash
+# Development (in-memory storage)
+perfgate-server
+
+# Production (SQLite storage)
+perfgate-server --storage-type sqlite --database-url ./perfgate.db
+```
+
+**2. Configure the CLI:**
+
+```bash
+# Set the server URL
+export PERFGATE_BASELINE_SERVER=http://localhost:8080
+export PERFGATE_API_KEY=pg_live_your_api_key
+```
+
+**3. Use server-backed baselines:**
+
+```bash
+# Upload a baseline to the server
+perfgate promote --current run.json --to-server --project my-project --benchmark my-bench
+
+# Compare against server baseline
+perfgate check --config perfgate.toml --bench my-bench --baseline-server http://localhost:8080
+```
+
+### CLI Integration
+
+The `check` and `promote` commands support server integration:
+
+```bash
+# Fetch baseline from server
+perfgate check --config perfgate.toml --bench my-bench \
+  --baseline-server http://localhost:8080 \
+  --project my-project
+
+# Upload baseline to server
+perfgate promote --current run.json \
+  --to-server \
+  --project my-project \
+  --benchmark my-bench
+```
+
+### Baseline Management CLI
+
+The `perfgate baseline` subcommand provides direct baseline management:
+
+```bash
+# List baselines
+perfgate baseline list --project my-project
+
+# Upload a baseline
+perfgate baseline upload --project my-project --benchmark my-bench --file run.json
+
+# Download a baseline
+perfgate baseline download --project my-project --benchmark my-bench --out baseline.json
+
+# Delete a baseline version
+perfgate baseline delete --project my-project --benchmark my-bench --version v1.0.0
+```
+
+### Authentication
+
+The server uses API keys with role-based access control:
+
+| Role | Permissions |
+|------|-------------|
+| `viewer` | Read-only access |
+| `contributor` | Upload and read baselines |
+| `promoter` | Upload, read, and promote baselines |
+| `admin` | Full access including delete |
+
+For detailed setup and configuration, see [Getting Started with Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md).
 
 ## GitHub Action
 
@@ -365,6 +453,8 @@ Workspace crates:
 - [`crates/perfgate-adapters`](crates/perfgate-adapters/README.md): process execution and host probing adapters
 - [`crates/perfgate-app`](crates/perfgate-app/README.md): use-case orchestration, rendering, and report/export flows
 - [`crates/perfgate-cli`](crates/perfgate-cli/README.md): user-facing `perfgate` CLI, JSON I/O, and exit policy
+- [`crates/perfgate-server`](crates/perfgate-server/README.md): REST API server for centralized baseline management
+- [`crates/perfgate-client`](crates/perfgate-client/README.md): API client library with fallback support
 - [`xtask`](xtask/README.md): workspace automation (schema, CI bundle, fixture conformance, mutants)
 
 ### Measurement model
