@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use perfgate_server::{Role, ServerConfig, StorageBackend, run_server};
+use perfgate_server::{JwtConfig, Role, ServerConfig, StorageBackend, run_server};
 
 /// perfgate baseline service server.
 #[derive(Parser, Debug)]
@@ -49,6 +49,18 @@ struct Args {
     /// Example: --api-keys admin:pg_live_abc123...,viewer:pg_live_def456...
     #[arg(long = "api-keys", value_parser = parse_api_key)]
     api_keys: Vec<(Role, String)>,
+
+    /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
+    #[arg(long)]
+    jwt_secret: Option<String>,
+
+    /// Expected JWT issuer.
+    #[arg(long)]
+    jwt_issuer: Option<String>,
+
+    /// Expected JWT audience.
+    #[arg(long)]
+    jwt_audience: Option<String>,
 
     /// Disable CORS
     #[arg(long)]
@@ -160,6 +172,17 @@ async fn main() {
         config = config.api_key(key, role);
     }
 
+    if let Some(secret) = args.jwt_secret {
+        let mut jwt = JwtConfig::hs256(secret.into_bytes());
+        if let Some(issuer) = args.jwt_issuer {
+            jwt = jwt.issuer(issuer);
+        }
+        if let Some(audience) = args.jwt_audience {
+            jwt = jwt.audience(audience);
+        }
+        config = config.jwt(jwt);
+    }
+
     info!(
         bind = %bind_addr,
         storage = ?storage_backend,
@@ -230,6 +253,12 @@ mod tests {
             "--no-cors",
             "--api-keys",
             "admin:pg_live_abc123",
+            "--jwt-secret",
+            "super-secret",
+            "--jwt-issuer",
+            "perfgate",
+            "--jwt-audience",
+            "perfgate-api",
         ])
         .unwrap();
 
@@ -239,5 +268,8 @@ mod tests {
         assert_eq!(args.database_url, Some("/tmp/test.db".to_string()));
         assert!(args.no_cors);
         assert_eq!(args.api_keys.len(), 1);
+        assert_eq!(args.jwt_secret, Some("super-secret".to_string()));
+        assert_eq!(args.jwt_issuer, Some("perfgate".to_string()));
+        assert_eq!(args.jwt_audience, Some("perfgate-api".to_string()));
     }
 }

@@ -19,7 +19,7 @@ use tower_http::{
 };
 use tracing::info;
 
-use crate::auth::{ApiKey, ApiKeyStore, Role, auth_middleware};
+use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware};
 use crate::error::ConfigError;
 use crate::handlers::{
     delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
@@ -75,6 +75,9 @@ pub struct ServerConfig {
     /// API keys for authentication (key -> role mapping)
     pub api_keys: Vec<(String, Role)>,
 
+    /// Optional JWT validation settings.
+    pub jwt: Option<JwtConfig>,
+
     /// Enable CORS for all origins
     pub cors: bool,
 
@@ -90,6 +93,7 @@ impl Default for ServerConfig {
             sqlite_path: None,
             postgres_url: None,
             api_keys: vec![],
+            jwt: None,
             cors: true,
             timeout_seconds: 30,
         }
@@ -132,6 +136,12 @@ impl ServerConfig {
     /// Adds an API key with a specific role.
     pub fn api_key(mut self, key: impl Into<String>, role: Role) -> Self {
         self.api_keys.push((key.into(), role));
+        self
+    }
+
+    /// Enables JWT token authentication.
+    pub fn jwt(mut self, jwt: JwtConfig) -> Self {
+        self.jwt = Some(jwt);
         self
     }
 
@@ -190,7 +200,7 @@ async fn create_key_store(config: &ServerConfig) -> Result<Arc<ApiKeyStore>, Con
 /// Creates the router with all routes configured.
 fn create_router(
     store: Arc<dyn BaselineStore>,
-    key_store: Arc<ApiKeyStore>,
+    auth_state: AuthState,
     config: &ServerConfig,
 ) -> Router {
     // Health check (no auth required)
@@ -217,10 +227,7 @@ fn create_router(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),
         )
-        .layer(middleware::from_fn_with_state(
-            key_store.clone(),
-            auth_middleware,
-        ));
+        .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
 
     // Combine routes
     let mut app = Router::new().merge(health_routes).merge(api_routes);
@@ -253,9 +260,10 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     // Create key store
     let key_store = create_key_store(&config).await?;
+    let auth_state = AuthState::new(key_store, config.jwt.clone());
 
     // Create router
-    let app = create_router(store.clone(), key_store, &config);
+    let app = create_router(store.clone(), auth_state, &config);
 
     // Add tracing and request ID layers
     let app = app.layer(
@@ -327,12 +335,14 @@ mod tests {
             .storage_backend(StorageBackend::Sqlite)
             .sqlite_path("/tmp/test.db")
             .api_key("test-key", Role::Admin)
+            .jwt(JwtConfig::hs256(b"test-secret".to_vec()).issuer("perfgate"))
             .cors(false);
 
         assert_eq!(config.bind.to_string(), "127.0.0.1:3000");
         assert_eq!(config.storage_backend, StorageBackend::Sqlite);
         assert_eq!(config.sqlite_path, Some(PathBuf::from("/tmp/test.db")));
         assert_eq!(config.api_keys.len(), 1);
+        assert!(config.jwt.is_some());
         assert!(!config.cors);
     }
 
@@ -393,10 +403,10 @@ mod tests {
     #[tokio::test]
     async fn test_router_creation() {
         let store = Arc::new(InMemoryStore::new());
-        let key_store = Arc::new(ApiKeyStore::new());
+        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None);
         let config = ServerConfig::new();
 
-        let _router = create_router(store, key_store, &config);
+        let _router = create_router(store, auth_state, &config);
         // Router created successfully
     }
 }

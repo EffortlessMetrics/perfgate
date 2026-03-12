@@ -47,7 +47,7 @@ pub mod models;
 pub mod server;
 pub mod storage;
 
-pub use auth::{ApiKey, ApiKeyStore, AuthContext, Role, Scope};
+pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig, Role, Scope};
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
 pub use server::{ServerConfig, StorageBackend, run_server};

@@ -50,6 +50,7 @@ clap = { workspace = true }
 sha2 = "0.10.8"
 base64 = "0.22.1"
 async-trait = "0.1.86"
+jsonwebtoken = { version = "10", features = ["rust_crypto", "hmac", "sha2"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -60,6 +61,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 perfgate-client = { path = "../perfgate-client" }
 wiremock = "0.6"
 uuid = { workspace = true }
+uselesskey = { version = "0.2.0", features = ["hmac"] }
+uselesskey-jsonwebtoken = { version = "0.2.0", features = ["hmac"] }
 
 [[bin]]
 name = "perfgate-server"

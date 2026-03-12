@@ -13,7 +13,7 @@
 //! - `POST /projects/{project}/baselines/{benchmark}/promote` - Promote
 
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, Query, State},
     http::{StatusCode, header},
     response::IntoResponse,
@@ -21,6 +21,7 @@ use axum::{
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
+use crate::auth::{AuthContext, Scope, check_scope};
 use crate::error::StoreError;
 use crate::models::{
     ApiError, BaselineRecord, BaselineSource, DeleteBaselineResponse, ListBaselinesQuery,
@@ -33,9 +34,12 @@ use crate::storage::BaselineStore;
 /// POST /projects/{project}/baselines
 pub async fn upload_baseline(
     Path(project): Path<String>,
+    Extension(auth_ctx): Extension<AuthContext>,
     State(store): State<Arc<dyn BaselineStore>>,
     Json(request): Json<UploadBaselineRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    check_scope(Some(&auth_ctx), Scope::Write)?;
+
     // Validate benchmark name
     if let Err(e) = perfgate_validation::validate_bench_name(&request.benchmark) {
         return Err((
@@ -126,8 +130,11 @@ pub async fn upload_baseline(
 /// GET /projects/{project}/baselines/{benchmark}/latest
 pub async fn get_latest_baseline(
     Path((project, benchmark)): Path<(String, String)>,
+    Extension(auth_ctx): Extension<AuthContext>,
     State(store): State<Arc<dyn BaselineStore>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    check_scope(Some(&auth_ctx), Scope::Read)?;
+
     match store.get_latest(&project, &benchmark).await {
         Ok(Some(record)) => Ok((
             StatusCode::OK,
@@ -168,8 +175,11 @@ pub async fn get_latest_baseline(
 /// GET /projects/{project}/baselines/{benchmark}/versions/{version}
 pub async fn get_baseline(
     Path((project, benchmark, version)): Path<(String, String, String)>,
+    Extension(auth_ctx): Extension<AuthContext>,
     State(store): State<Arc<dyn BaselineStore>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    check_scope(Some(&auth_ctx), Scope::Read)?;
+
     match store.get(&project, &benchmark, &version).await {
         Ok(Some(record)) => Ok((
             StatusCode::OK,
@@ -212,9 +222,12 @@ pub async fn get_baseline(
 /// GET /projects/{project}/baselines
 pub async fn list_baselines(
     Path(project): Path<String>,
+    Extension(auth_ctx): Extension<AuthContext>,
     State(store): State<Arc<dyn BaselineStore>>,
     Query(query): Query<ListBaselinesQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    check_scope(Some(&auth_ctx), Scope::Read)?;
+
     match store.list(&project, &query).await {
         Ok(response) => Ok(Json(response).into_response()),
         Err(e) => {
@@ -236,8 +249,11 @@ pub async fn list_baselines(
 /// DELETE /projects/{project}/baselines/{benchmark}/versions/{version}
 pub async fn delete_baseline(
     Path((project, benchmark, version)): Path<(String, String, String)>,
+    Extension(auth_ctx): Extension<AuthContext>,
     State(store): State<Arc<dyn BaselineStore>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    check_scope(Some(&auth_ctx), Scope::Delete)?;
+
     match store.delete(&project, &benchmark, &version).await {
         Ok(true) => {
             info!(
@@ -288,9 +304,12 @@ pub async fn delete_baseline(
 /// POST /projects/{project}/baselines/{benchmark}/promote
 pub async fn promote_baseline(
     Path((project, benchmark)): Path<(String, String)>,
+    Extension(auth_ctx): Extension<AuthContext>,
     State(store): State<Arc<dyn BaselineStore>>,
     Json(request): Json<PromoteBaselineRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    check_scope(Some(&auth_ctx), Scope::Promote)?;
+
     // Get the source version
     let source = match store.get(&project, &benchmark, &request.from_version).await {
         Ok(Some(record)) => record,
@@ -385,12 +404,25 @@ pub async fn promote_baseline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::{ApiKey, Role};
     use crate::storage::InMemoryStore;
     use axum::body::Body;
     use axum::http::{Method, Request};
     use perfgate_types::{BenchMeta, HostInfo, RunMeta, RunReceipt, Stats, ToolInfo, U64Summary};
     use std::collections::BTreeMap;
     use tower::ServiceExt;
+
+    fn test_auth_context(role: Role) -> AuthContext {
+        AuthContext {
+            api_key: ApiKey::new(
+                "test-auth".to_string(),
+                "Test Auth".to_string(),
+                "project".to_string(),
+                role,
+            ),
+            source_ip: None,
+        }
+    }
 
     fn create_test_receipt(name: &str) -> RunReceipt {
         RunReceipt {
@@ -459,6 +491,7 @@ mod tests {
                 "/projects/{project}/baselines",
                 axum::routing::post(upload_baseline),
             )
+            .layer(axum::Extension(test_auth_context(Role::Contributor)))
             .with_state(store);
 
         let response = app
@@ -489,6 +522,7 @@ mod tests {
                 "/projects/{project}/baselines",
                 axum::routing::post(upload_baseline),
             )
+            .layer(axum::Extension(test_auth_context(Role::Contributor)))
             .with_state(store.clone());
 
         app.oneshot(
@@ -508,6 +542,7 @@ mod tests {
                 "/projects/{project}/baselines/{benchmark}/latest",
                 axum::routing::get(get_latest_baseline),
             )
+            .layer(axum::Extension(test_auth_context(Role::Viewer)))
             .with_state(store);
 
         let response = app
@@ -534,6 +569,7 @@ mod tests {
                 "/projects/{project}/baselines",
                 axum::routing::post(upload_baseline),
             )
+            .layer(axum::Extension(test_auth_context(Role::Contributor)))
             .with_state(store.clone());
 
         app.oneshot(
@@ -553,6 +589,7 @@ mod tests {
                 "/projects/{project}/baselines/{benchmark}/versions/{version}",
                 axum::routing::delete(delete_baseline),
             )
+            .layer(axum::Extension(test_auth_context(Role::Admin)))
             .with_state(store);
 
         let response = app
@@ -567,5 +604,52 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_delete_baseline_requires_delete_scope() {
+        let store = Arc::new(InMemoryStore::new()) as Arc<dyn BaselineStore>;
+
+        let request = create_test_request();
+        let upload_app = axum::Router::new()
+            .route(
+                "/projects/{project}/baselines",
+                axum::routing::post(upload_baseline),
+            )
+            .layer(axum::Extension(test_auth_context(Role::Contributor)))
+            .with_state(store.clone());
+
+        upload_app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/projects/my-project/baselines")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let delete_app = axum::Router::new()
+            .route(
+                "/projects/{project}/baselines/{benchmark}/versions/{version}",
+                axum::routing::delete(delete_baseline),
+            )
+            .layer(axum::Extension(test_auth_context(Role::Viewer)))
+            .with_state(store);
+
+        let response = delete_app
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/projects/my-project/baselines/my-bench/versions/v1.0.0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }
