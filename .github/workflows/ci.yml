@@ -2,11 +2,17 @@ name: ci
 
 on:
   push:
+    branches: [ main, cloud-stats-github-action ]
   pull_request:
+    branches: [ main, cloud-stats-github-action ]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -14,29 +20,21 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: fmt
-        run: cargo fmt --all -- --check
-
-      - name: clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: test
-        run: cargo test --all
-
-      - name: BDD tests
-        run: cargo test --test cucumber
+      - name: Run CI Suite (xtask)
+        run: cargo run -p xtask -- ci
 
       - name: Install cargo-llvm-cov
+        if: matrix.os == 'ubuntu-latest'
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage report
+        if: matrix.os == 'ubuntu-latest'
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --fail-under-lines 80
 
       - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v4
         with:
           files: lcov.info
-          fail_ci_if_error: true
-
-      - name: schemas
-        run: cargo run -p xtask -- schema
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false # Don't block CI if Codecov is down

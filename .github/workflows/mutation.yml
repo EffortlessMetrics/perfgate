@@ -19,6 +19,20 @@ on:
           - perfgate-app
           - perfgate-adapters
           - perfgate-cli
+          - perfgate-server
+          - perfgate-client
+          - perfgate-budget
+          - perfgate-stats
+          - perfgate-significance
+          - perfgate-export
+          - perfgate-render
+          - perfgate-sensor
+          - perfgate-paired
+          - perfgate-host-detect
+          - perfgate-validation
+          - perfgate-sha256
+          - perfgate-error
+          - perfgate-fake
 
 jobs:
   mutation-test:
