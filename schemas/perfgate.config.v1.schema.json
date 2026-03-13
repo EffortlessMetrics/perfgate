@@ -4,6 +4,13 @@
   "description": "Top-level configuration file (`perfgate.toml`).\n\n# Examples\n\n```\nuse perfgate_types::ConfigFile;\n\nlet toml_str = r#\"\n[defaults]\nrepeat = 5\nthreshold = 0.20\n\n[[bench]]\nname = \"my-bench\"\ncommand = [\"echo\", \"hello\"]\n\"#;\n\nlet config: ConfigFile = toml::from_str(toml_str).unwrap();\nassert_eq!(config.benches.len(), 1);\nassert_eq!(config.benches[0].name, \"my-bench\");\nassert_eq!(config.defaults.repeat, Some(5));\n```",
   "type": "object",
   "properties": {
+    "baseline_server": {
+      "description": "Optional baseline server configuration for centralized baseline management.",
+      "$ref": "#/$defs/BaselineServerConfig",
+      "default": {
+        "fallback_to_local": false
+      }
+    },
     "bench": {
       "type": "array",
       "default": [],
@@ -17,6 +24,38 @@
     }
   },
   "$defs": {
+    "BaselineServerConfig": {
+      "description": "Configuration for the baseline server connection.\n\nWhen configured, the CLI can use a centralized baseline server\nfor storing and retrieving baselines instead of local files.\n\n# Examples\n\n```toml\n[baseline_server]\nurl = \"http://localhost:3000/api/v1\"\napi_key = \"pg_live_xxx\"\nproject = \"my-project\"\nfallback_to_local = true\n```",
+      "type": "object",
+      "properties": {
+        "api_key": {
+          "description": "API key for authentication.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fallback_to_local": {
+          "description": "Fall back to local storage when server is unavailable.",
+          "type": "boolean",
+          "default": true
+        },
+        "project": {
+          "description": "Project name for multi-tenancy.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "URL of the baseline server (e.g., \"http://localhost:3000/api/v1\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "BenchConfigFile": {
       "type": "object",
       "properties": {

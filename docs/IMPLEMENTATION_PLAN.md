@@ -1,6 +1,6 @@
 # perfgate Implementation Plan
 
-This document serves as a maintenance plan for the perfgate codebase, describing evolution guidelines, schema versioning strategy, and future work.
+This document serves as a maintenance plan for the perfgate codebase, describing evolution guidelines, schema versioning strategy, and current architectural status.
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
 
@@ -33,7 +33,7 @@ When creating a new schema version:
 5. Generate new JSON Schema file to `schemas/`
 6. Update documentation to reflect changes
 
-### Current Schema Versions
+### Current Schema Versions (v2.x)
 
 | Schema | Version | Status |
 |--------|---------|--------|
@@ -41,6 +41,8 @@ When creating a new schema version:
 | `perfgate.compare.v1` | 1 | Current |
 | `perfgate.report.v1` | 1 | Current |
 | `perfgate.config.v1` | 1 | Current |
+| `sensor.report.v1` | 1 | Current (Cockpit Mode) |
+| `perfgate.baseline.v1`| 1 | Current (Baseline Server) |
 
 ## Deterministic Ordering
 
@@ -65,145 +67,91 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Future Work
+## Architectural Components (19-Crate Workspace)
 
-### Ecosystem Alignment Checklist
+The perfgate v2.x architecture is modularized into 19 specialized crates:
 
-P0 contract hardening expectations to keep in sync with docs and artifacts:
-- Stable `verdict.reasons` tokens in receipts
-- Baseline-missing is `warn` with a structured finding
-- `compare.json` is absent when baseline is missing, and stale compare artifacts are removed
-- Deterministic ordering for metrics, findings, and exports is preserved
-- Schema files are lock-checked byte-for-byte via `cargo run -p xtask -- schema-check`
+| Crate | Responsibility |
+|-------|----------------|
+| `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-domain` | Core business logic and statistical computations |
+| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
+| `perfgate-client` | Client library for Baseline Service interaction |
+| `perfgate-budget` | Budget evaluation and verdict logic |
+| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus) |
+| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-sensor` | Cockpit mode and sensor report generation |
+| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
+| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
+| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
+| `perfgate-paired` | Paired benchmarking implementation |
+| `perfgate-error` | Shared error types and categorization |
+| `perfgate-validation` | Schema validation and contract testing |
+| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-fake` | Test fixtures and mock data generators |
 
-### Envelope Alignment
+## Implementation Status
 
-**Status:** Implemented (v0.2.0, ABI-hardened in Unreleased)
+### Baseline Server API (v2.0)
 
-Cockpit mode (`--mode cockpit`) wraps perfgate output in a `sensor.report.v1` envelope:
-- `report.json` conforms to `sensor.report.v1` schema
-- Extras artifacts use versioned names (`perfgate.run.v1.json`, etc.)
-- Schema vendored at `contracts/schemas/sensor.report.v1.schema.json` (hand-written, not auto-generated)
-- ABI hardening: `SensorReport.data` and `SensorFinding.data` use opaque `serde_json::Value`
+**Status:** Implemented (v2.0)
+
+Centralized storage for fleet-scale performance monitoring:
+- REST API with Axum and multi-backend support (SQLite, PostgreSQL)
+- Multi-tenancy (projects) and versioned baselines
+- Client-side fallback to local/cloud storage for resilience
+- `baseline` command group for management
+
+### Cockpit Mode
+
+**Status:** Implemented (v2.0)
+
+Standardized integration for monitoring dashboards:
+- `--mode cockpit` wraps output in `sensor.report.v1` envelope
+- Stable exit code 0 for budget violations
+- Versioned artifacts in `extras/` subdirectory
+- Deterministic finding fingerprints
 
 ### Paired Mode
 
-**Status:** Implemented (v0.2.0)
+**Status:** Implemented (v2.0)
 
-The `perfgate paired` command interleaves baseline and current executions to reduce environmental noise:
-
-```bash
-perfgate paired --baseline-cmd "sleep 0.01" --current-cmd "sleep 0.02" --repeat 10 --out cmp.json
-```
-
-- Commands are specified as shell strings via `--baseline-cmd` and `--current-cmd`
-- Samples are collected in alternating pairs (B, C, B, C, ...)
-- Output conforms to `perfgate.compare.v1` schema
-- Domain logic in `perfgate-domain/src/paired.rs`, app orchestration in `perfgate-app/src/paired.rs`
+Interleaved baseline/current runs to reduce environmental noise:
+- `perfgate paired --baseline-cmd "..." --current-cmd "..."`
+- Domain logic in `perfgate-domain`, app orchestration in `perfgate-app`
 
 ### Host Mismatch Policy
 
-**Status:** Implemented (v0.2.0)
+**Status:** Implemented (v2.0)
 
-Host mismatch detection warns or fails when comparing receipts from different machines.
-
-The `--host-mismatch` flag on `compare` (and `check`) supports three policies:
-- `warn` (default): Emit a warning but continue
-- `error`: Exit 1 on mismatch
-- `ignore`: Silently allow cross-host comparisons
-
-Detection criteria: different `os`, `arch`, `cpu_count`, or `hostname_hash`.
+Detection of OS, arch, CPU, and hostname differences:
+- `--host-mismatch` policy support (`warn`, `error`, `ignore`)
+- Implemented in `perfgate-host-detect`
 
 ### Additional Metrics
 
-**Status:** Implemented (v0.3.0)
+**Status:** Implemented (v2.0)
 
-1. **CPU time** (`cpu_ms`): Combined user and system CPU time from `rusage`
-   - **Status:** Implemented (v0.2.0)
-   - Platform: Unix + best-effort Windows (optional fields in run receipt)
-   - Collected via `rusage` on Unix and process APIs on Windows
-
-2. **Page faults** (`page_faults`): Major page faults from `rusage`
-   - **Status:** Implemented (v0.2.0)
+1. **CPU time** (`cpu_ms`): Combined user and system CPU time
+2. **Page faults** (`page_faults`): Major page faults
+   - **Status:** Implemented (v2.0)
    - Direction: Lower
-   - Platform: Unix only
+   - Platform: Unix + best-effort Windows (via `GetProcessMemoryInfo`)
+3. **Context switches** (`ctx_switches`): Voluntary + involuntary (Unix only)
+4. **Binary size** (`binary_bytes`): Executable size tracking
 
-3. **Context switches** (`ctx_switches`): Voluntary + involuntary from `rusage`
-   - **Status:** Implemented (v0.2.0)
-   - Direction: Lower
-   - Platform: Unix only
+### Multi-Format Export
 
-4. **Binary size** (`binary_bytes`): Size of executable
-   - **Status:** Implemented (v0.2.0)
-   - Direction: Lower
-   - Requires path to binary
+**Status:** Implemented (v2.0)
 
-**Adding a metric requires:**
-- New `Metric` enum variant
-- Type updates (Stats, Delta)
-- Domain logic updates
-- Adapter collection (if platform-specific)
-- Schema version bump (if changes are breaking)
-
-### Configuration Enhancements
-
-**Status:** Implemented (v0.3.0)
-
-1. **Metric-specific budgets in config:**
-   (Implemented in v0.2.0)
-   ```toml
-   [[bench]]
-   name = "my-bench"
-   [bench.budgets.wall_ms]
-   threshold = 0.10
-   direction = "lower"
-   ```
-
-2. **Baseline auto-discovery:** (Implemented)
-   ```toml
-   [defaults]
-   baseline_pattern = "baselines/{bench}.json"
-   ```
-
-3. **Multi-bench check:** (Implemented in v0.2.0)
-   ```bash
-   perfgate check --config perfgate.toml --all
-   ```
-
-4. **Cloud baseline backends:** (Implemented in v0.3.0)
-   `check` and `promote` accept `s3://...` and `gs://...` locations for baseline read/write.
-
-### CI Integration Improvements
-
-**Status:** Implemented (v0.3.0)
-
-0. **Official GitHub Action:** (Implemented in v0.3.0)
-   Composite action shipped at repository root (`action.yml`) for zero-config setup.
-
-1. **GitHub Actions output:**
-   ```yaml
-   - run: perfgate check --output-github
-   ```
-   Sets outputs like `${{ steps.perfgate.outputs.verdict }}` in `$GITHUB_OUTPUT`.
-
-2. **Comment templates:** (Implemented)
-   Customize markdown output via Handlebars templates:
-   - `perfgate md --template`
-   - `perfgate report --md-template`
-   - `perfgate check --md-template`
-
-3. **Artifact upload helpers:** (Implemented in v0.3.0)
-   Integration with GitHub Actions artifacts via the official composite action.
-
-### Contract Tooling
-
-**Status:** Implemented (v0.3.0)
-
-1. **Schema lock checks:** (Implemented)
-   `xtask schema-check` verifies `schemas/` matches generated schema output and rejects missing/modified/extra stale schema files.
-
-2. **Conformance validation:** (Implemented, stabilized)
-   `xtask conform --fixtures` validates all `*.json` files in a provided directory for third-party sensor validation, while default mode continues to validate canonical `sensor_report_*.json` fixture mirrors.
+The `export` command supports multiple output formats:
+- **CSV**: RFC 4180 compliant for spreadsheet analysis
+- **JSONL**: Newline-delimited JSON for log processing
+- **HTML**: Self-contained tabular reports
+- **Prometheus**: Text exposition format for monitoring systems
 
 ## Testing Requirements
 
@@ -217,26 +165,17 @@ When making changes, ensure property tests cover:
 4. **Report determinism**: Same input MUST produce same output
 5. **Export ordering**: Metrics MUST be sorted alphabetically
 
-### Mutation Testing Targets
+### Mutation Testing Targets (19-Crate)
 
 Minimum kill rates by crate:
 
-| Crate | Target Kill Rate |
-|-------|-----------------|
-| perfgate-domain | 100% |
-| perfgate-types | 95% |
-| perfgate-app | 90% |
-| perfgate-adapters | 80% |
-| perfgate-cli | 70% |
-
-### BDD Test Coverage
-
-Feature files in `features/` MUST cover:
-
-1. All happy-path command flows
-2. Error conditions and exit codes
-3. Baseline-missing scenarios
-4. Platform-specific behavior (tagged `@unix`)
+| Crate Category | Target Kill Rate |
+|----------------|-----------------|
+| Core Domain (`domain`, `types`, `budget`, `stats`) | 95-100% |
+| Application (`app`, `client`, `server`) | 90% |
+| Adapters & Infrastructure (`adapters`, `host-detect`, `paired`) | 80-85% |
+| Presentation (`export`, `render`, `sensor`) | 80% |
+| CLI (`cli`) | 70% |
 
 ## Deprecation Policy
 
@@ -246,11 +185,6 @@ When deprecating functionality:
 2. **Warn**: Emit runtime warning for one minor version
 3. **Remove**: Remove in next major version
 
-For schema deprecation:
-1. Continue reading deprecated version for two major versions
-2. Stop writing deprecated version after one major version
-3. Add migration guidance to documentation
-
 ## Code Style
 
 ### Error Handling
@@ -259,16 +193,3 @@ For schema deprecation:
 - Use `thiserror` for domain/adapter error types
 - Domain errors MUST NOT leak implementation details
 - Adapter errors SHOULD include platform context
-
-### Documentation
-
-- Public items MUST have doc comments
-- Module-level docs MUST explain purpose and invariants
-- Property tests MUST reference requirements they validate
-- `/// **Validates: Requirements X.Y**` format for traceability
-
-### Dependencies
-
-- Minimize dependencies in inner crates (types, domain)
-- Platform-specific code MUST use `#[cfg()]` attributes
-- Optional features (e.g., `arbitrary`) for development-only deps

@@ -2,18 +2,34 @@
 
 This document outlines the planned evolution of `perfgate`. It serves as a high-level guide for contributors and users to understand the project's direction.
 
+## Strategic Outlook (2026+)
+
+### Now
+- **Ecosystem Maintenance**: Hardening the 19-crate micro-architecture and ensuring stable CI/CD across all platforms. [DONE: Fixed server pagination and test coverage]
+- **Documentation Alignment**: Keeping ADRs and crate-level READMEs in sync with the rapidly evolving modular codebase. [DONE: ADRs 0001-0005 created]
+- **Windows Parity**: Improving best-effort system metrics (CPU/RSS/PageFaults) for Windows parity with Unix `rusage`. [DONE: page_faults added to Windows best-effort]
+
+### Next
+- **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
+- **Enhanced Baseline Server**: Adding support for pluggable storage backends (PostgreSQL, S3) and OIDC authentication.
+- **Observability**: Native OpenTelemetry export support for direct ingestion into observability platforms.
+
+### Later
+- **AI-Driven Analysis**: Exploring LLM-assisted performance regression diagnosis based on historical trends.
+- **Distributed Benchmarking**: Orchestrating multi-node performance tests with centralized gating.
+
 ## Vision
 To become the standard, low-friction "build truth" sensor for performance gating in modern CI/CD pipelines, providing stable, versioned, and actionable performance data.
 
 ---
 
-## Current Status (v0.2.x)
-- [x] Core CLI commands: `run`, `compare`, `report`, `check`, `paired`, `promote`, `export`.
-- [x] Modular workspace architecture.
-- [x] Stable v1 JSON receipt schemas.
-- [x] Cockpit integration mode (`--mode cockpit`).
-- [x] Multi-layered testing: BDD, Property, Fuzz, Mutation.
-- [x] Basic Windows support; Full Unix support (RSS, CPU time, page faults, context switches).
+## Current Status (v2.x)
+- [x] **v2.0 Baseline Server**: Centralized baseline management with RBAC and REST API.
+- [x] **Micro-crate Architecture**: Full decomposition into 19 specialized crates for better maintenance.
+- [x] **Statistical Significance**: Integrated Welch's t-test and p-value support.
+- [x] **Multi-format Export**: CSV, JSONL, HTML, and Prometheus support.
+- [x] **Paired Benchmarking**: Interleaved execution to minimize CI noise.
+- [x] **Stable Schemas**: Versioned JSON receipts with schema-locking tests.
 
 ---
 

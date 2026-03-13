@@ -14,13 +14,30 @@ This file provides comprehensive context for AI interactions within the `perfgat
 - **System Metrics**: Unix `rusage` (`wait4`), Windows `GlobalMemoryStatusEx`
 
 ### Architecture
-The project follows a modular workspace architecture with clear separation of concerns:
-- `perfgate-types`: Versioned receipt and configuration data structures.
-- `perfgate-domain`: Pure logic for statistics computation and budget comparison (I/O-free).
-- `perfgate-adapters`: Best-effort system metrics collection and process execution.
-- `perfgate-app`: High-level use cases and report rendering (Markdown, GitHub Annotations).
-- `perfgate-cli`: CLI interface using `clap`, handling file I/O and orchestration.
-- `xtask`: Repository automation for local workflows and CI.
+The perfgate v2.x architecture is modularized into 19 specialized crates:
+
+| Crate | Responsibility |
+|-------|----------------|
+| `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-domain` | Core business logic and statistical computations |
+| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
+| `perfgate-client` | Client library for Baseline Service interaction |
+| `perfgate-budget` | Budget evaluation and verdict logic |
+| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus) |
+| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-sensor` | Cockpit mode and sensor report generation |
+| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
+| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
+| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
+| `perfgate-paired` | Paired benchmarking implementation |
+| `perfgate-error` | Shared error types and categorization |
+| `perfgate-validation` | Schema validation and contract testing |
+| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-fake` | Test fixtures and mock data generators |
+| `xtask` | Repository automation for local workflows and CI |
 
 ## Building and Running
 
@@ -58,11 +75,12 @@ Automation tasks are managed via `xtask` for consistency:
 5. **Mutation Tests**: Using `cargo-mutants` to ensure test effectiveness.
 
 #### Mutation Testing Kill Rate Targets
-- `perfgate-domain`: **100%** (Pure logic)
-- `perfgate-types`: **95%**
-- `perfgate-app`: **90%**
-- `perfgate-adapters`: **80%**
-- `perfgate-cli`: **70%** (I/O heavy)
+Minimum kill rates by category:
+- **Core Domain** (`domain`, `types`, `budget`, `stats`): **95-100%**
+- **Application** (`app`, `client`, `server`): **90%**
+- **Adapters & Infrastructure** (`adapters`, `host-detect`, `paired`): **80-85%**
+- **Presentation** (`export`, `render`, `sensor`): **80%**
+- **CLI** (`cli`): **70%**
 
 ## Key Files & Artifacts
 - `perfgate.toml`: Default configuration file for `check` workflows.

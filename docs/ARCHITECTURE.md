@@ -51,30 +51,61 @@ perfgate intentionally avoids these responsibilities:
 
 5. **Host normalization**: perfgate does NOT normalize measurements across different hardware. Host fingerprinting is informational only
 
+## Architectural Decision Records
+
+Significant architectural changes are documented in [ADRs](../adrs/). See:
+- [ADR 0001: Workspace Modularization and Micro-crates](../adrs/0001-workspace-modularization-and-micro-crates.md)
+- [ADR 0002: Domain Logic Split (Budget, Stats, Significance)](../adrs/0002-domain-logic-split-budget-stats-significance.md)
+- [ADR 0003: Presentation Layer Split (Render, Export, CLI)](../adrs/0003-presentation-layer-split-render-export-cli.md)
+
 ## Crate Boundaries
 
-perfgate follows clean architecture principles with strictly layered dependencies:
+perfgate follows a highly modular micro-crate architecture with strictly layered dependencies. The workspace is split into 19 crates to enforce boundaries and improve build times.
 
-### Core CLI Stack
+### Component Layers
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        perfgate-cli                              │
-│                    (clap CLI, JSON I/O)                         │
+│                (User Interface, CLI parsing)                    │
 ├─────────────────────────────────────────────────────────────────┤
-│                        perfgate-app                              │
-│          (use-cases, markdown/annotation rendering)             │
+│       perfgate-render | perfgate-export | perfgate-sensor        │
+│                    (Presentation Layer)                         │
 ├─────────────────────────────────────────────────────────────────┤
-│                      perfgate-adapters                           │
-│             (process runner, system metrics)                    │
+│                perfgate-app | perfgate-paired                    │
+│                    (Use-Case Orchestration)                     │
 ├─────────────────────────────────────────────────────────────────┤
-│                       perfgate-domain                            │
-│                (pure math/policy, I/O-free)                     │
+│            perfgate-adapters | perfgate-host-detect             │
+│                    (Infrastructure/IO)                          │
 ├─────────────────────────────────────────────────────────────────┤
-│                       perfgate-types                             │
-│              (receipt/config structs, JSON schema)              │
+│      perfgate-domain | perfgate-budget | perfgate-significance  │
+│                    (Domain Business Logic)                      │
+├─────────────────────────────────────────────────────────────────┤
+│               perfgate-types | perfgate-stats                   │
+│                    (Core Types & Math)                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Dependency Flow
+
+Dependencies flow inward toward the core types and domain logic:
+
+1. **Core**: `perfgate-types` and `perfgate-stats` are the foundation.
+2. **Domain**: `perfgate-budget` and `perfgate-significance` implement policy on top of core math. `perfgate-domain` coordinates these entities.
+3. **Infrastructure**: `perfgate-adapters` and `perfgate-host-detect` provide the "outer" world access (process execution, system info).
+4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
+5. **Presentation**: `perfgate-render`, `perfgate-export`, and `perfgate-sensor` format the results for various consumers.
+6. **CLI**: `perfgate-cli` is the thin entry point.
+
+### Crate Responsibilities (Updated)
+
+- **perfgate-stats**: Pure statistical aggregators (U64Summary, F64Summary).
+- **perfgate-budget**: Logic for comparing metrics against thresholds.
+- **perfgate-significance**: P-value and statistical significance testing.
+- **perfgate-render**: Markdown and terminal rendering logic.
+- **perfgate-export**: Multi-format data exporters (CSV, Prometheus, etc.).
+- **perfgate-error**: Shared error taxonomy across all crates.
+- **perfgate-sha256**: High-performance fingerprinting for reports.
 
 ### Client/Server Stack (v2.0)
 

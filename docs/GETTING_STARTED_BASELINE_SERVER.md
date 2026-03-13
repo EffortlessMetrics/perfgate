@@ -14,7 +14,7 @@ The perfgate Baseline Server provides:
 
 ## Prerequisites
 
-- Rust 1.70+ (for building from source)
+- Rust 1.92+ (for building from source)
 - SQLite 3.x (for production storage)
 
 ## Installation
@@ -381,7 +381,11 @@ Response:
 ```json
 {
   "status": "healthy",
-  "storage": "sqlite"
+  "version": "2.0.0",
+  "storage": {
+    "backend": "sqlite",
+    "status": "healthy"
+  }
 }
 ```
 

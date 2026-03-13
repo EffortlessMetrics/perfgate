@@ -18,8 +18,22 @@ cargo test --test cucumber
 cargo test -p perfgate-domain
 cargo test -p perfgate-types
 cargo test -p perfgate-app
-cargo test -p perfgate-adapters
 cargo test -p perfgate-cli
+cargo test -p perfgate-server
+cargo test -p perfgate-client
+cargo test -p perfgate-budget
+cargo test -p perfgate-export
+cargo test -p perfgate-render
+cargo test -p perfgate-sensor
+cargo test -p perfgate-significance
+cargo test -p perfgate-stats
+cargo test -p perfgate-adapters
+cargo test -p perfgate-host-detect
+cargo test -p perfgate-paired
+cargo test -p perfgate-error
+cargo test -p perfgate-validation
+cargo test -p perfgate-sha256
+cargo test -p perfgate-fake
 
 # Run a single test by name
 cargo test test_name
@@ -67,21 +81,29 @@ cargo +nightly fuzz run parse_run_receipt
 
 ## Architecture
 
-This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI.
+This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI. The perfgate v2.x architecture is modularized into 19 specialized crates:
 
-**Crate dependency flow (inner to outer):**
-
-```
-perfgate-types (receipt/config structs, JSON schema)
-       ↓
-perfgate-domain (pure math/policy, I/O-free)
-       ↓
-perfgate-adapters (process runner, system metrics)
-       ↓
-perfgate-app (use-cases, markdown/annotation rendering)
-       ↓
-perfgate-cli (clap CLI, JSON I/O)
-```
+| Crate | Responsibility |
+|-------|----------------|
+| `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-domain` | Core business logic and statistical computations |
+| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
+| `perfgate-client` | Client library for Baseline Service interaction |
+| `perfgate-budget` | Budget evaluation and verdict logic |
+| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus) |
+| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-sensor` | Cockpit mode and sensor report generation |
+| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
+| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
+| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
+| `perfgate-paired` | Paired benchmarking implementation |
+| `perfgate-error` | Shared error types and categorization |
+| `perfgate-validation` | Schema validation and contract testing |
+| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-fake` | Test fixtures and mock data generators |
 
 **Key design principles:**
 - `perfgate-domain` is intentionally I/O-free: it does statistics and budget policy only
@@ -139,7 +161,12 @@ contracts/schemas/
 - **Property-based tests**: Use `proptest` in `perfgate-types` and `perfgate-app` for serialization round-trips and rendering completeness
 - **BDD tests**: Cucumber feature files in `features/` with step definitions in `tests/cucumber.rs`
 - **Integration tests**: CLI tests in `crates/perfgate-cli/tests/`
-- **Mutation testing**: Target kill rates by crate (domain: 100%, types: 95%, app: 90%, adapters: 80%, cli: 70%)
+- **Mutation testing**: Target kill rates by category:
+  - Core Domain (`domain`, `types`, `budget`, `stats`): **95-100%**
+  - Application (`app`, `client`, `server`): **90%**
+  - Adapters & Infrastructure (`adapters`, `host-detect`, `paired`): **80-85%**
+  - Presentation (`export`, `render`, `sensor`): **80%**
+  - CLI (`cli`): **70%**
 
 ## Platform Notes
 

@@ -2,16 +2,16 @@
 # Run with: cargo run -p xtask -- mutants
 # Or directly: cargo mutants
 #
-# Expected Kill Rates by Crate:
-# ┌─────────────────────┬──────────────────┬─────────────────────────────────────────────┐
-# │ Crate               │ Target Kill Rate │ Rationale                                   │
-# ├─────────────────────┼──────────────────┼─────────────────────────────────────────────┤
-# │ perfgate-domain     │ 100%             │ Pure logic, fully testable                  │
-# │ perfgate-types      │ 95%              │ Serialization logic, some derive macros     │
-# │ perfgate-app        │ 90%              │ Rendering logic, some formatting edge cases │
-# │ perfgate-adapters   │ 80%              │ Platform-specific code, harder to test      │
-# │ perfgate-cli        │ 70%              │ I/O heavy, integration tested instead       │
-# └─────────────────────┴──────────────────┴─────────────────────────────────────────────┘
+# Expected Kill Rates by Crate Category:
+# ┌─────────────────────────────────────────────────────────┬──────────────────┐
+# │ Crate Category                                          │ Target Kill Rate │
+# ├─────────────────────────────────────────────────────────┼──────────────────┤
+# │ Core Domain (domain, types, budget, stats)              │ 95-100%          │
+# │ Application (app, client, server)                       │ 90%              │
+# │ Adapters & Infrastructure (adapters, host-detect, paired)│ 80-85%          │
+# │ Presentation (export, render, sensor)                   │ 80%              │
+# │ CLI (cli)                                               │ 70%              │
+# └─────────────────────────────────────────────────────────┴──────────────────┘
 
 # Exclude test code and generated code from mutation
 exclude_globs = [
@@ -27,7 +27,23 @@ exclude_globs = [
 include_globs = [
     "crates/perfgate-domain/src/**",
     "crates/perfgate-types/src/**",
+    "crates/perfgate-budget/src/**",
+    "crates/perfgate-stats/src/**",
+    "crates/perfgate-significance/src/**",
     "crates/perfgate-app/src/**",
+    "crates/perfgate-cli/src/**",
+    "crates/perfgate-adapters/src/**",
+    "crates/perfgate-server/src/**",
+    "crates/perfgate-client/src/**",
+    "crates/perfgate-export/src/**",
+    "crates/perfgate-render/src/**",
+    "crates/perfgate-sensor/src/**",
+    "crates/perfgate-host-detect/src/**",
+    "crates/perfgate-paired/src/**",
+    "crates/perfgate-error/src/**",
+    "crates/perfgate-validation/src/**",
+    "crates/perfgate-sha256/src/**",
+    "crates/perfgate-fake/src/**"
 ]
 
 # Timeout per mutant in seconds

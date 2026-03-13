@@ -447,14 +447,28 @@ cargo run -p xtask -- conform --fixtures path/to/dir
 
 ## Design
 
+`perfgate` follows a highly modularized architecture composed of specialized micro-crates. For the rationale behind this design, see the [Architectural Decision Records (ADRs)](docs/adrs/).
+
 Workspace crates:
-- [`crates/perfgate-types`](crates/perfgate-types/README.md): versioned receipt/config contracts and JSON schema types
-- [`crates/perfgate-domain`](crates/perfgate-domain/README.md): pure stats + budget policy + host mismatch logic
 - [`crates/perfgate-adapters`](crates/perfgate-adapters/README.md): process execution and host probing adapters
-- [`crates/perfgate-app`](crates/perfgate-app/README.md): use-case orchestration, rendering, and report/export flows
+- [`crates/perfgate-app`](crates/perfgate-app/README.md): use-case orchestration and high-level application flows
+- [`crates/perfgate-budget`](crates/perfgate-budget/README.md): budget policy and threshold calculation logic
 - [`crates/perfgate-cli`](crates/perfgate-cli/README.md): user-facing `perfgate` CLI, JSON I/O, and exit policy
+- [`crates/perfgate-client`](crates/perfgate-client/README.md): API client library for centralized baseline management
+- [`crates/perfgate-domain`](crates/perfgate-domain/README.md): core domain entities and measurement models
+- [`crates/perfgate-error`](crates/perfgate-error/README.md): shared error types and stage/kind classifications
+- [`crates/perfgate-export`](crates/perfgate-export/README.md): multi-format data export (CSV, JSONL, HTML, Prometheus)
+- [`crates/perfgate-fake`](crates/perfgate-fake/README.md): test doubles and fake implementations for internal testing
+- [`crates/perfgate-host-detect`](crates/perfgate-host-detect/README.md): host fingerprinting and mismatch detection
+- [`crates/perfgate-paired`](crates/perfgate-paired/README.md): orchestration for paired (interleaved) benchmarking
+- [`crates/perfgate-render`](crates/perfgate-render/README.md): Markdown, terminal, and Handlebars rendering logic
+- [`crates/perfgate-sensor`](crates/perfgate-sensor/README.md): cockpit-compatible sensor report generation
 - [`crates/perfgate-server`](crates/perfgate-server/README.md): REST API server for centralized baseline management
-- [`crates/perfgate-client`](crates/perfgate-client/README.md): API client library with fallback support
+- [`crates/perfgate-sha256`](crates/perfgate-sha256/README.md): SIMD-accelerated SHA-256 for finding fingerprints
+- [`crates/perfgate-significance`](crates/perfgate-significance/README.md): statistical significance testing (Welch's t-test, p-values)
+- [`crates/perfgate-stats`](crates/perfgate-stats/README.md): pure statistical summaries and aggregations
+- [`crates/perfgate-types`](crates/perfgate-types/README.md): versioned receipt/config contracts and JSON schemas
+- [`crates/perfgate-validation`](crates/perfgate-validation/README.md): fixture and schema conformance validation logic
 - [`xtask`](xtask/README.md): workspace automation (schema, CI bundle, fixture conformance, mutants)
 
 ### Measurement model

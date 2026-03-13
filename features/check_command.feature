@@ -113,7 +113,7 @@ Feature: Check Command
     Given a malformed TOML config file
     When I run perfgate check for bench "any-bench"
     Then the exit code should be 1
-    And the stderr should contain "parse TOML config"
+    And the stderr should contain "TOML parse error"
 
   Scenario: Check with missing required command field fails
     Given a config file with bench "no-cmd" missing the command field
@@ -125,7 +125,7 @@ Feature: Check Command
     Given a config file with an invalid threshold type
     When I run perfgate check for bench "bad-thresh"
     Then the exit code should be 1
-    And the stderr should contain "parse TOML config"
+    And the stderr should contain "TOML parse error"
 
   Scenario: Check with empty benchmarks list and --all fails
     Given a config file with no benchmarks defined
@@ -143,7 +143,7 @@ Feature: Check Command
     Given a config file with bench "bad-metric" and invalid metric in budgets
     When I run perfgate check for bench "bad-metric"
     Then the exit code should be 1
-    And the stderr should contain "parse TOML config"
+    And the stderr should contain "TOML parse error"
 
   # Multi-bench --all exit code aggregation scenarios
   Scenario: Check --all with all benches passing exits 0
