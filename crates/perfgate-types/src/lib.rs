@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
+pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";

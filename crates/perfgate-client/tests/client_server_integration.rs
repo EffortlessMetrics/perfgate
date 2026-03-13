@@ -9,7 +9,7 @@ use perfgate_types::{
 };
 use tempfile::TempDir;
 use wiremock::MockServer;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::header;
 use wiremock::{Mock, ResponseTemplate};
 
 /// Helper to create a test receipt.

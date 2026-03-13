@@ -47,6 +47,9 @@ pub mod models;
 pub mod server;
 pub mod storage;
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod testing;
+
 pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig, Role, Scope};
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;

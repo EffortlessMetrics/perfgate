@@ -6,7 +6,6 @@
 //! - `perfgate baseline list --baseline-server`
 //! - `perfgate baseline upload`
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;

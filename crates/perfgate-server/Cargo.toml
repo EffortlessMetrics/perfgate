@@ -67,3 +67,12 @@ uselesskey-jsonwebtoken = { version = "0.2.0", features = ["hmac"] }
 [[bin]]
 name = "perfgate-server"
 path = "src/bin/perfgate-server.rs"
+
+[[test]]
+name = "real_server_integration"
+path = "tests/real_server_integration.rs"
+required-features = ["test-utils"]
+
+[features]
+default = []
+test-utils = []

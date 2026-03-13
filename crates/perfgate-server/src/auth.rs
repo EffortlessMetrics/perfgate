@@ -281,10 +281,12 @@ impl ApiKey {
 
     /// Checks if the key has expired.
     pub fn is_expired(&self) -> bool {
-        if let Some(ref expires_at) = self.expires_at {
-            if let Ok(exp) = chrono::DateTime::parse_from_rfc3339(expires_at) {
-                return exp.timestamp() < chrono::Utc::now().timestamp();
-            }
+        if let Some(exp) = self
+            .expires_at
+            .as_ref()
+            .and_then(|e| chrono::DateTime::parse_from_rfc3339(e).ok())
+        {
+            return exp.timestamp() < chrono::Utc::now().timestamp();
         }
         false
     }

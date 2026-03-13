@@ -2,11 +2,13 @@
 //!
 //! This module provides helpers for creating test fixtures.
 
-// API keys with proper format (pg_test_ prefix + 32+ chars)
-pub const ADMIN_KEY: &str = "pg_test_admin_key_00000000000000000000000001";
-pub const PROMOTER_KEY: &str = "pg_test_promoter_key_00000000000000000000002";
-pub const CONTRIBUTOR_KEY: &str = "pg_test_contributor_key_00000000000000000000003";
-pub const VIEWER_KEY: &str = "pg_test_viewer_key_0000000000000000000000004";
+// API keys with proper format (pg_test_ prefix + 32+ alphanumeric chars)
+pub const ADMIN_KEY: &str = "pg_test_admin0key00000000000000000000000001";
+#[allow(dead_code)]
+pub const PROMOTER_KEY: &str = "pg_test_promoter0key00000000000000000000002";
+pub const CONTRIBUTOR_KEY: &str = "pg_test_contributor0key00000000000000000000003";
+#[allow(dead_code)]
+pub const VIEWER_KEY: &str = "pg_test_viewer0key0000000000000000000000004";
 
 /// Creates a test upload request with default values.
 pub fn create_test_upload_request(

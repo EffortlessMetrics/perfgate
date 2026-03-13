@@ -78,6 +78,7 @@ pub struct BaselineRecord {
 
 impl BaselineRecord {
     /// Creates a new baseline record with generated ID and timestamps.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         project: String,
         benchmark: String,
@@ -306,7 +307,7 @@ pub struct PromoteBaselineRequest {
 }
 
 /// Query parameters for listing baselines.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ListBaselinesQuery {
     /// Exact benchmark name match
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -351,6 +352,23 @@ pub struct ListBaselinesQuery {
 
 fn default_limit() -> u32 {
     50
+}
+
+impl Default for ListBaselinesQuery {
+    fn default() -> Self {
+        Self {
+            benchmark: None,
+            benchmark_prefix: None,
+            git_ref: None,
+            git_sha: None,
+            tags: None,
+            since: None,
+            until: None,
+            limit: default_limit(),
+            offset: 0,
+            include_receipt: false,
+        }
+    }
 }
 
 impl ListBaselinesQuery {

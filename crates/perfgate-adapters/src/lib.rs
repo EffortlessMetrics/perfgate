@@ -182,7 +182,7 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         .with_context(|| format!("failed to wait for {:?}", spec.argv))
         .map_err(AdapterError::Other)?;
 
-    let (cpu_ms, max_rss_kb) = probe_process_usage_windows(child.as_raw_handle());
+    let (cpu_ms, max_rss_kb, page_faults) = probe_process_usage_windows(child.as_raw_handle());
 
     let stdout = out_handle.join().unwrap_or_default();
     let stderr = err_handle.join().unwrap_or_default();
@@ -195,7 +195,7 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         exit_code,
         timed_out: false,
         cpu_ms,
-        page_faults: None,
+        page_faults,
         ctx_switches: None,
         max_rss_kb,
         binary_bytes,
@@ -301,7 +301,7 @@ fn read_with_cap<R: std::io::Read>(reader: &mut R, cap: usize) -> Vec<u8> {
 #[cfg(windows)]
 fn probe_process_usage_windows(
     handle: std::os::windows::io::RawHandle,
-) -> (Option<u64>, Option<u64>) {
+) -> (Option<u64>, Option<u64>, Option<u64>) {
     use std::ffi::c_void;
     use std::mem;
 
@@ -368,13 +368,17 @@ fn probe_process_usage_windows(
 
     let mut counters: ProcessMemoryCounters = unsafe { mem::zeroed() };
     counters.cb = mem::size_of::<ProcessMemoryCounters>() as u32;
-    let max_rss_kb = if unsafe { GetProcessMemoryInfo(raw, &mut counters, counters.cb) } != 0 {
-        Some((counters.PeakWorkingSetSize as u64) / 1024)
-    } else {
-        None
-    };
+    let (max_rss_kb, page_faults) =
+        if unsafe { GetProcessMemoryInfo(raw, &mut counters, counters.cb) } != 0 {
+            (
+                Some((counters.PeakWorkingSetSize as u64) / 1024),
+                Some(counters.PageFaultCount as u64),
+            )
+        } else {
+            (None, None)
+        };
 
-    (cpu_ms, max_rss_kb)
+    (cpu_ms, max_rss_kb, page_faults)
 }
 
 #[cfg(unix)]
@@ -901,6 +905,10 @@ mod tests {
         assert!(
             result.max_rss_kb.is_some(),
             "max_rss_kb should be available on Windows (best-effort)"
+        );
+        assert!(
+            result.page_faults.is_some(),
+            "page_faults should be available on Windows (best-effort)"
         );
     }
 
@@ -1525,7 +1533,7 @@ mod tests {
     // Edge-case tests: platform capability detection
     // =========================================================================
 
-    /// On Windows, page_faults and ctx_switches are not collected.
+    /// On Windows, ctx_switches are not collected.
     #[cfg(windows)]
     #[test]
     fn windows_does_not_collect_unix_only_metrics() {
@@ -1539,10 +1547,6 @@ mod tests {
         };
 
         let result = runner.run(&spec).expect("should succeed on Windows");
-        assert!(
-            result.page_faults.is_none(),
-            "page_faults should be None on Windows"
-        );
         assert!(
             result.ctx_switches.is_none(),
             "ctx_switches should be None on Windows"

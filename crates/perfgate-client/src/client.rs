@@ -28,7 +28,12 @@ impl BaselineClient {
             .build()
             .map_err(ClientError::RequestError)?;
 
-        let base_url = Url::parse(&config.server_url)?;
+        let mut base_url = Url::parse(&config.server_url)?;
+        if !base_url.path().ends_with('/') {
+            let mut path = base_url.path().to_string();
+            path.push('/');
+            base_url.set_path(&path);
+        }
 
         Ok(Self {
             config,
@@ -273,11 +278,8 @@ impl BaselineClient {
         debug!(url = %url, "Checking health");
 
         let response = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| ClientError::ConnectionError(e.to_string()))?;
+            .execute_with_retry(|| self.http.get(url.clone()))
+            .await?;
 
         let status = response.status();
         let body = response.text().await.map_err(ClientError::RequestError)?;
@@ -538,30 +540,173 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_baselines() {
+    async fn test_get_baseline_version() {
         let mock_server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/projects/my-project/baselines"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(ListBaselinesResponse {
-                    baselines: vec![],
-                    pagination: PaginationInfo {
-                        total: 0,
-                        limit: 50,
-                        offset: 0,
-                        has_more: false,
+            .and(path(
+                "/projects/my-project/baselines/my-bench/versions/v1.2.3",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "schema": "perfgate.baseline.v1",
+                "id": "bl_123",
+                "project": "my-project",
+                "benchmark": "my-bench",
+                "version": "v1.2.3",
+                "receipt": {
+                    "schema": "perfgate.run.v1",
+                    "tool": { "name": "perfgate", "version": "0.1.0" },
+                    "run": {
+                        "id": "test",
+                        "started_at": "2026-01-01T00:00:00Z",
+                        "ended_at": "2026-01-01T00:01:00Z",
+                        "host": { "os": "linux", "arch": "x86_64" }
                     },
+                    "bench": { "name": "my-bench", "command": ["echo"], "repeat": 1, "warmup": 0 },
+                    "samples": [],
+                    "stats": { "wall_ms": { "median": 100, "min": 100, "max": 100 } }
+                },
+                "metadata": {},
+                "tags": [],
+                "source": "upload",
+                "content_hash": "abc",
+                "deleted": false,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
+        let result = client
+            .get_baseline_version("my-project", "my-bench", "v1.2.3")
+            .await
+            .unwrap();
+
+        assert_eq!(result.id, "bl_123");
+        assert_eq!(result.version, "v1.2.3");
+    }
+
+    #[tokio::test]
+    async fn test_delete_baseline() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path(
+                "/projects/my-project/baselines/my-bench/versions/v1.2.3",
+            ))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
+        client
+            .delete_baseline("my-project", "my-bench", "v1.2.3")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_promote_baseline() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/projects/my-project/baselines/my-bench/promote"))
+            .respond_with(
+                ResponseTemplate::new(201).set_body_json(PromoteBaselineResponse {
+                    id: "bl_new".to_string(),
+                    benchmark: "my-bench".to_string(),
+                    version: "v2.0.0".to_string(),
+                    promoted_from: "v1.0.0".to_string(),
+                    created_at: chrono::Utc::now(),
                 }),
             )
             .mount(&mock_server)
             .await;
 
         let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
-        let query = ListBaselinesQuery::new();
-        let response = client.list_baselines("my-project", &query).await.unwrap();
+        let request = PromoteBaselineRequest {
+            to_version: "v2.0.0".to_string(),
+            from_version: "v1.0.0".to_string(),
+            git_ref: None,
+            git_sha: None,
+            normalize: true,
+        };
+        let response = client
+            .promote_baseline("my-project", "my-bench", &request)
+            .await
+            .unwrap();
 
-        assert_eq!(response.baselines.len(), 0);
-        assert_eq!(response.pagination.total, 0);
+        assert_eq!(response.version, "v2.0.0");
+        assert_eq!(response.promoted_from, "v1.0.0");
+    }
+
+    #[tokio::test]
+    async fn test_retry_on_503() {
+        let mock_server = MockServer::start().await;
+
+        // Mock that returns 503 for the first 2 requests, then 200
+        struct RetryResponder {
+            count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        }
+
+        impl wiremock::Respond for RetryResponder {
+            fn respond(&self, _request: &wiremock::Request) -> ResponseTemplate {
+                let current = self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if current < 2 {
+                    ResponseTemplate::new(503)
+                } else {
+                    ResponseTemplate::new(200).set_body_json(HealthResponse {
+                        status: "healthy".to_string(),
+                        version: "2.0.0".to_string(),
+                        storage: StorageHealth {
+                            backend: "memory".to_string(),
+                            status: "connected".to_string(),
+                        },
+                    })
+                }
+            }
+        }
+
+        let responder = RetryResponder {
+            count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(responder)
+            .mount(&mock_server)
+            .await;
+
+        let config = ClientConfig::new(mock_server.uri()).with_retry(RetryConfig {
+            max_retries: 3,
+            retry_status_codes: vec![503],
+            base_delay: std::time::Duration::from_millis(1),
+            max_delay: std::time::Duration::from_millis(10),
+        });
+
+        let client = BaselineClient::new(config).unwrap();
+        let health = client.health_check().await.unwrap();
+        assert_eq!(health.status, "healthy");
+    }
+
+    #[tokio::test]
+    async fn test_auth_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "Invalid API key"
+                }
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
+        let result = client.health_check().await;
+
+        assert!(matches!(result, Err(ClientError::AuthError(_))));
     }
 }

@@ -32,10 +32,8 @@ impl SqliteStore {
         let path = path.as_ref().to_path_buf();
 
         // Create parent directories if needed
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = path.parent().filter(|p| !p.exists()) {
+            std::fs::create_dir_all(parent)?;
         }
 
         let conn = rusqlite::Connection::open(&path)?;
@@ -316,27 +314,22 @@ impl BaselineStore for SqliteStore {
         // Build WHERE clause conditions dynamically with numbered params
         let mut conditions = Vec::new();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(project.to_string())];
-        let mut param_idx = 2; // Start from2 since ?1 is project
 
         if let Some(ref b) = query.benchmark {
-            conditions.push(format!("benchmark = ?{}", param_idx));
+            conditions.push("benchmark = ?".to_string());
             params.push(Box::new(b.clone()));
-            param_idx += 1;
         }
         if let Some(ref p) = query.benchmark_prefix {
-            conditions.push(format!("benchmark LIKE ?{} || '%'", param_idx));
+            conditions.push("benchmark LIKE ? || '%'".to_string());
             params.push(Box::new(p.clone()));
-            param_idx += 1;
         }
         if let Some(ref r) = query.git_ref {
-            conditions.push(format!("git_ref = ?{}", param_idx));
+            conditions.push("git_ref = ?".to_string());
             params.push(Box::new(r.clone()));
-            param_idx += 1;
         }
         if let Some(ref s) = query.git_sha {
-            conditions.push(format!("git_sha = ?{}", param_idx));
+            conditions.push("git_sha = ?".to_string());
             params.push(Box::new(s.clone()));
-            param_idx += 1;
         }
 
         // Build the WHERE clause string
@@ -348,28 +341,29 @@ impl BaselineStore for SqliteStore {
 
         // Count query
         let count_sql = format!(
-            "SELECT COUNT(*) FROM baselines WHERE project = ?1 AND deleted = 0{}",
+            "SELECT COUNT(*) FROM baselines WHERE project = ? AND deleted = 0{}",
             where_clause
         );
 
         // Get total count
+        let count_param_count = params.len();
         let count_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        let total: u64 = conn.query_row(&count_sql, count_params.as_slice(), |row| row.get(0))?;
+        let total: u64 = conn.query_row(&count_sql, &count_params[..count_param_count], |row| {
+            row.get(0)
+        })?;
 
         // Main query with pagination
-        let limit_idx = param_idx;
-        let offset_idx = param_idx + 1;
         let sql = format!(
             r#"
             SELECT id, project, benchmark, version, git_ref, git_sha,
                    receipt, metadata, tags, source, content_hash, deleted,
                    created_at, updated_at
             FROM baselines
-            WHERE project = ?1 AND deleted = 0{}
+            WHERE project = ? AND deleted = 0{}
             ORDER BY created_at DESC
-            LIMIT ?{} OFFSET ?{}
+            LIMIT ? OFFSET ?
             "#,
-            where_clause, limit_idx, offset_idx
+            where_clause
         );
 
         // Add pagination params
@@ -707,7 +701,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "TODO: debug SQL parameter binding issue"]
     async fn test_list_with_filters() {
         let store = SqliteStore::in_memory().unwrap();
 

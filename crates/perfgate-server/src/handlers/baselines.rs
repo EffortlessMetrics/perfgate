@@ -607,9 +607,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_delete_baseline_requires_delete_scope() {
+    async fn test_list_baselines() {
         let store = Arc::new(InMemoryStore::new()) as Arc<dyn BaselineStore>;
 
+        let app = axum::Router::new()
+            .route(
+                "/projects/{project}/baselines",
+                axum::routing::get(list_baselines),
+            )
+            .layer(axum::Extension(test_auth_context(Role::Viewer)))
+            .with_state(store);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/projects/my-project/baselines?benchmark=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_promote_baseline() {
+        let store = Arc::new(InMemoryStore::new()) as Arc<dyn BaselineStore>;
+
+        // First upload source baseline
         let request = create_test_request();
         let upload_app = axum::Router::new()
             .route(
@@ -631,25 +657,65 @@ mod tests {
             .await
             .unwrap();
 
-        let delete_app = axum::Router::new()
+        // Now promote it
+        let promote_app = axum::Router::new()
             .route(
-                "/projects/{project}/baselines/{benchmark}/versions/{version}",
-                axum::routing::delete(delete_baseline),
+                "/projects/{project}/baselines/{benchmark}/promote",
+                axum::routing::post(promote_baseline),
             )
-            .layer(axum::Extension(test_auth_context(Role::Viewer)))
+            .layer(axum::Extension(test_auth_context(Role::Promoter)))
             .with_state(store);
 
-        let response = delete_app
+        let promote_request = PromoteBaselineRequest {
+            from_version: "v1.0.0".to_string(),
+            to_version: "v2.0.0".to_string(),
+            git_ref: None,
+            git_sha: None,
+            normalize: true,
+        };
+
+        let response = promote_app
             .oneshot(
                 Request::builder()
-                    .method(Method::DELETE)
-                    .uri("/projects/my-project/baselines/my-bench/versions/v1.0.0")
-                    .body(Body::empty())
+                    .method(Method::POST)
+                    .uri("/projects/my-project/baselines/my-bench/promote")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&promote_request).unwrap()))
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn test_upload_baseline_validation_error() {
+        let store = Arc::new(InMemoryStore::new()) as Arc<dyn BaselineStore>;
+
+        let app = axum::Router::new()
+            .route(
+                "/projects/{project}/baselines",
+                axum::routing::post(upload_baseline),
+            )
+            .layer(axum::Extension(test_auth_context(Role::Contributor)))
+            .with_state(store);
+
+        let mut request = create_test_request();
+        request.benchmark = "invalid bench name!".to_string();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/projects/my-project/baselines")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_string(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

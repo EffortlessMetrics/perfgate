@@ -116,7 +116,7 @@ pub struct PromoteBaselineRequest {
 }
 
 /// Query parameters for listing baselines.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListBaselinesQuery {
     /// Exact benchmark name match.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,6 +148,23 @@ pub struct ListBaselinesQuery {
     /// Include full receipt in response.
     #[serde(default)]
     pub include_receipt: bool,
+}
+
+impl Default for ListBaselinesQuery {
+    fn default() -> Self {
+        Self {
+            benchmark: None,
+            benchmark_prefix: None,
+            git_ref: None,
+            git_sha: None,
+            tags: None,
+            since: None,
+            until: None,
+            limit: default_limit(),
+            offset: 0,
+            include_receipt: false,
+        }
+    }
 }
 
 fn default_limit() -> u32 {

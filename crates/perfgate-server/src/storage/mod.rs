@@ -4,9 +4,11 @@
 //! operations and implementations for different backends.
 
 mod memory;
+mod postgres;
 mod sqlite;
 
 pub use memory::InMemoryStore;
+pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
 
 use crate::error::StoreError;

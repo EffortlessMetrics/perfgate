@@ -369,7 +369,7 @@ async fn test_full_upload_workflow_with_server() {
 
     // First, check server health
     let health_response = client
-        .get(&format!("{}/health", server_url))
+        .get(format!("{}/health", server_url))
         .send()
         .await
         .expect("Failed to connect to server");
@@ -382,7 +382,7 @@ async fn test_full_upload_workflow_with_server() {
     // Upload a baseline
     let request = create_test_upload_request("integration-test-bench");
     let upload_response = client
-        .post(&format!(
+        .post(format!(
             "{}/projects/integration-tests/baselines",
             server_url
         ))
@@ -406,7 +406,7 @@ async fn test_baseline_list_with_server() {
     let client = reqwest::Client::new();
 
     let response = client
-        .get(&format!(
+        .get(format!(
             "{}/projects/integration-tests/baselines",
             server_url
         ))

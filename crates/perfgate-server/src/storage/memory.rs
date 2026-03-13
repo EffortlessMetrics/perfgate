@@ -15,6 +15,7 @@ use crate::models::{
 /// In-memory storage backend for baselines.
 #[derive(Debug, Default)]
 pub struct InMemoryStore {
+    #[allow(clippy::type_complexity)]
     baselines: Arc<RwLock<BTreeMap<(String, String, String), BaselineRecord>>>,
 }
 
@@ -76,16 +77,76 @@ impl BaselineStore for InMemoryStore {
         Ok(latest.cloned())
     }
 
+    #[allow(clippy::collapsible_if)]
     async fn list(
         &self,
         project: &str,
         query: &ListBaselinesQuery,
     ) -> Result<ListBaselinesResponse, StoreError> {
         let baselines = self.baselines.read().await;
+        let parsed_tags = query.parsed_tags();
 
         let mut filtered: Vec<_> = baselines
             .values()
-            .filter(|r| r.project == project && !r.deleted)
+            .filter(|r| {
+                // Base filters: project match and not deleted
+                if r.project != project || r.deleted {
+                    return false;
+                }
+
+                // Exact benchmark match
+                if let Some(ref b) = query.benchmark {
+                    if &r.benchmark != b {
+                        return false;
+                    }
+                }
+
+                // Benchmark name prefix match
+                if let Some(ref p) = query.benchmark_prefix {
+                    if !r.benchmark.starts_with(p) {
+                        return false;
+                    }
+                }
+
+                // Exact git reference match
+                if let Some(ref gr) = query.git_ref {
+                    if r.git_ref.as_deref() != Some(gr) {
+                        return false;
+                    }
+                }
+
+                // Exact git SHA match
+                if let Some(ref gs) = query.git_sha {
+                    if r.git_sha.as_deref() != Some(gs) {
+                        return false;
+                    }
+                }
+
+                // Filter by creation time (since)
+                if let Some(since) = query.since {
+                    if r.created_at < since {
+                        return false;
+                    }
+                }
+
+                // Filter by creation time (until)
+                if let Some(until) = query.until {
+                    if r.created_at > until {
+                        return false;
+                    }
+                }
+
+                // Filter by tags (AND logic: all required tags must be present)
+                if let Some(ref required_tags) = parsed_tags {
+                    for tag in required_tags {
+                        if !r.tags.contains(tag) {
+                            return false;
+                        }
+                    }
+                }
+
+                true
+            })
             .collect();
 
         filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));

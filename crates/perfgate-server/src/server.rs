@@ -25,23 +25,18 @@ use crate::handlers::{
     delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
     promote_baseline, upload_baseline,
 };
-use crate::storage::{BaselineStore, InMemoryStore, SqliteStore};
+use crate::storage::{BaselineStore, InMemoryStore, PostgresStore, SqliteStore};
 
 /// Storage backend type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StorageBackend {
     /// In-memory storage (for testing/development)
+    #[default]
     Memory,
     /// SQLite persistent storage
     Sqlite,
     /// PostgreSQL storage (not yet implemented)
     Postgres,
-}
-
-impl Default for StorageBackend {
-    fn default() -> Self {
-        Self::Memory
-    }
 }
 
 impl std::str::FromStr for StorageBackend {
@@ -153,7 +148,9 @@ impl ServerConfig {
 }
 
 /// Creates the storage backend based on configuration.
-async fn create_storage(config: &ServerConfig) -> Result<Arc<dyn BaselineStore>, ConfigError> {
+pub(crate) async fn create_storage(
+    config: &ServerConfig,
+) -> Result<Arc<dyn BaselineStore>, ConfigError> {
     match config.storage_backend {
         StorageBackend::Memory => {
             info!("Using in-memory storage");
@@ -170,16 +167,20 @@ async fn create_storage(config: &ServerConfig) -> Result<Arc<dyn BaselineStore>,
             Ok(Arc::new(store))
         }
         StorageBackend::Postgres => {
-            // TODO: Implement PostgreSQL storage
-            Err(ConfigError::InvalidValue(
-                "PostgreSQL storage is not yet implemented".to_string(),
-            ))
+            let url = config
+                .postgres_url
+                .clone()
+                .unwrap_or_else(|| "postgres://localhost:5432/perfgate".to_string());
+            info!(url = %url, "Using PostgreSQL storage (stub)");
+            Ok(Arc::new(PostgresStore::new(&url)))
         }
     }
 }
 
 /// Creates the API key store from configuration.
-async fn create_key_store(config: &ServerConfig) -> Result<Arc<ApiKeyStore>, ConfigError> {
+pub(crate) async fn create_key_store(
+    config: &ServerConfig,
+) -> Result<Arc<ApiKeyStore>, ConfigError> {
     let store = ApiKeyStore::new();
 
     // Add configured API keys
@@ -198,7 +199,7 @@ async fn create_key_store(config: &ServerConfig) -> Result<Arc<ApiKeyStore>, Con
 }
 
 /// Creates the router with all routes configured.
-fn create_router(
+pub(crate) fn create_router(
     store: Arc<dyn BaselineStore>,
     auth_state: AuthState,
     config: &ServerConfig,
@@ -229,8 +230,10 @@ fn create_router(
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
 
-    // Combine routes
-    let mut app = Router::new().merge(health_routes).merge(api_routes);
+    // Combine routes under /api/v1, plus root /health
+    let mut app = Router::new()
+        .merge(health_routes.clone())
+        .nest("/api/v1", health_routes.merge(api_routes));
 
     // Add CORS if enabled
     if config.cors {
@@ -380,12 +383,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_storage_postgres_not_implemented() {
+    async fn test_create_storage_postgres() {
         let config = ServerConfig::new()
             .storage_backend(StorageBackend::Postgres)
             .postgres_url("postgresql://localhost/test");
         let result = create_storage(&config).await;
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        let store = result.unwrap();
+        assert_eq!(store.backend_type(), "postgres");
     }
 
     #[tokio::test]

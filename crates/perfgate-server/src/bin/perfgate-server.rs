@@ -161,10 +161,8 @@ async fn main() {
     }
 
     // Set PostgreSQL URL if provided
-    if storage_backend == StorageBackend::Postgres {
-        if let Some(url) = args.database_url {
-            config = config.postgres_url(url);
-        }
+    if let (StorageBackend::Postgres, Some(url)) = (storage_backend, args.database_url) {
+        config = config.postgres_url(url);
     }
 
     // Add API keys

@@ -4934,6 +4934,76 @@ async fn then_alpha_value_should_be(world: &mut PerfgateWorld, expected: f64) {
 }
 
 // ============================================================================
+// Baseline Command
+// ============================================================================
+
+#[when("I run perfgate baseline with no args")]
+async fn when_baseline_no_args(world: &mut PerfgateWorld) {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("baseline");
+    let output = cmd.output().expect("failed to run command");
+
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+#[when("I run perfgate baseline list without server")]
+async fn when_baseline_list_no_server(world: &mut PerfgateWorld) {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("baseline").arg("list");
+    let output = cmd.output().expect("failed to run command");
+
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+#[when("I run perfgate baseline upload without server")]
+async fn when_baseline_upload_no_server(world: &mut PerfgateWorld) {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("baseline")
+        .arg("upload")
+        .arg("--file")
+        .arg("dummy.json");
+    let output = cmd.output().expect("failed to run command");
+
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+#[when("I run perfgate baseline download without server")]
+async fn when_baseline_download_no_server(world: &mut PerfgateWorld) {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("baseline")
+        .arg("download")
+        .arg("--benchmark")
+        .arg("bench")
+        .arg("--output")
+        .arg("out.json");
+    let output = cmd.output().expect("failed to run command");
+
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+#[when("I run perfgate baseline delete without server")]
+async fn when_baseline_delete_no_server(world: &mut PerfgateWorld) {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("baseline")
+        .arg("delete")
+        .arg("--benchmark")
+        .arg("bench");
+    let output = cmd.output().expect("failed to run command");
+
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+// ============================================================================
 // MAIN FUNCTION
 // ============================================================================
 

@@ -40,3 +40,5 @@ jsonschema = "0.26"
 predicates.workspace = true
 tempfile = "3"
 serde_json.workspace = true
+wiremock = "0.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
