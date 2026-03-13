@@ -187,7 +187,13 @@ fn cmd_ci() -> anyhow::Result<()> {
     )?;
     run_with_env(
         "cargo",
-        ["test", "--workspace", "--exclude", "xtask"],
+        [
+            "test",
+            "--workspace",
+            "--exclude",
+            "xtask",
+            "--all-features",
+        ],
         &cargo_env,
     )?;
     run_with_env(
@@ -204,7 +210,11 @@ fn cmd_ci() -> anyhow::Result<()> {
         ],
         &xtask_env,
     )?;
-    run_with_env("cargo", ["test", "-p", "xtask"], &xtask_env)?;
+    run_with_env(
+        "cargo",
+        ["test", "-p", "xtask", "--all-features"],
+        &xtask_env,
+    )?;
     cmd_schema_check(Path::new("schemas"))?;
     cmd_conform(None, None)?;
     Ok(())
