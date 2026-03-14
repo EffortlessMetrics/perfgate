@@ -36,8 +36,8 @@ uuid = { workspace = true }
 rusqlite = { version = "0.33.0", features = ["bundled"] }
 
 # Validation
-perfgate-types = { path = "../perfgate-types", version = "0.3.0" }
-perfgate-validation = { path = "../perfgate-validation", version = "0.3.0" }
+perfgate-types = { path = "../perfgate-types", version = "2.0.0" }
+perfgate-validation = { path = "../perfgate-validation", version = "2.0.0" }
 
 # Error handling
 thiserror = { workspace = true }

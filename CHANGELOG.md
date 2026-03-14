@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Changed
+### Fixed
+
+## [2.0.0] - 2026-03-12
+
+### Added
 
 - **Standardized API Versioning** — Migrated the `perfgate-server` REST API to a versioned `/api/v1` namespace for long-term stability.
 - **REST API Endpoints** — Implemented comprehensive baseline management via REST:
