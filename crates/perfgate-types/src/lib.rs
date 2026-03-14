@@ -326,30 +326,30 @@ pub struct Sample {
     pub timed_out: bool,
 
     /// CPU time (user + system) in milliseconds (Unix only).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub cpu_ms: Option<u64>,
 
     /// Major page faults (Unix only).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub page_faults: Option<u64>,
 
     /// Voluntary + involuntary context switches (Unix only).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ctx_switches: Option<u64>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_rss_kb: Option<u64>,
 
     /// Size of executed binary in bytes (best-effort).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub binary_bytes: Option<u64>,
 
     /// Truncated stdout (bytes interpreted as UTF-8 lossily).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub stdout: Option<String>,
 
     /// Truncated stderr (bytes interpreted as UTF-8 lossily).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub stderr: Option<String>,
 }
 
@@ -394,25 +394,25 @@ pub struct Stats {
     pub wall_ms: U64Summary,
 
     /// CPU time (user + system) summary in milliseconds (Unix only).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub cpu_ms: Option<U64Summary>,
 
     /// Major page faults summary (Unix only).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub page_faults: Option<U64Summary>,
 
     /// Voluntary + involuntary context switches summary (Unix only).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ctx_switches: Option<U64Summary>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_rss_kb: Option<U64Summary>,
 
     /// Size of executed binary in bytes (best-effort).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub binary_bytes: Option<U64Summary>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub throughput_per_s: Option<F64Summary>,
 }
 
@@ -981,31 +981,31 @@ impl ConfigFile {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct DefaultsConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub repeat: Option<u32>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub warmup: Option<u32>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub threshold: Option<f64>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub warn_factor: Option<f64>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub out_dir: Option<String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub baseline_dir: Option<String>,
 
     /// Optional baseline discovery pattern. Supports `{bench}` placeholder.
     /// Example: `baselines/{bench}.json`.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub baseline_pattern: Option<String>,
 
     /// Optional Handlebars template path for markdown comments.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub markdown_template: Option<String>,
 }
 
@@ -1027,15 +1027,15 @@ pub struct DefaultsConfig {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct BaselineServerConfig {
     /// URL of the baseline server (e.g., "http://localhost:3000/api/v1").
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub url: Option<String>,
 
     /// API key for authentication.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub api_key: Option<String>,
 
     /// Project name for multi-tenancy.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub project: Option<String>,
 
     /// Fall back to local storage when server is unavailable.
