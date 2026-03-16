@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 ### Fixed
 
+## [0.4.1] - 2026-03-12
+
+### Changed
+- **Architectural Decoupling** — Successfully moved core business logic (baseline resolution, budget building, and verdict calculation) from the CLI into `perfgate-app` modules for better reusability.
+- **Dependency Standardization** — All internal crate dependencies now consistently use `workspace = true` for easier maintenance.
+- **Improved CLI Orchestration** — Refactored large CLI functions to use a clean `CheckConfig` struct, reducing complexity.
+
+### Fixed
+- **CI Stability** — Resolved schema drift issues caused by cross-platform line ending differences.
+- **Documentation** — Added missing `baseline` command details to the CLI crate README.
+
 ## [0.4.0] - 2026-03-12
 
 ### Added
