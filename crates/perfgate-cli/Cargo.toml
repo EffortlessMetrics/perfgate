@@ -1,5 +1,5 @@
 [package]
-name = "perfgate"
+name = "perfgate-cli"
 description = "CLI for perfgate performance budgets and baseline diffs"
 version.workspace = true
 edition.workspace = true
@@ -7,17 +7,18 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation = "https://docs.rs/perfgate"
+documentation = "https://docs.rs/perfgate-cli"
 authors.workspace = true
 readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
 
+[[bin]]
+name = "perfgate"
+path = "src/main.rs"
+
 [dependencies]
-perfgate-types.workspace = true
-perfgate-domain.workspace = true
-perfgate-adapters.workspace = true
-perfgate-app.workspace = true
+perfgate.workspace = true
 perfgate-client.workspace = true
 anyhow.workspace = true
 clap.workspace = true

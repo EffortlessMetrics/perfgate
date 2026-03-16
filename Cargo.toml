@@ -20,6 +20,7 @@ members = [
   "crates/perfgate-cli",
   "crates/perfgate-server",
   "crates/perfgate-client",
+  "crates/perfgate",
   "xtask",
 ]
 exclude = [
@@ -72,6 +73,7 @@ perfgate-domain.workspace = true
 perfgate-paired.workspace = true
 perfgate-app.workspace = true
 perfgate-significance.workspace = true
+perfgate.workspace = true
 
 [[test]]
 name = "cucumber"
@@ -125,3 +127,4 @@ perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.4.1" }
 perfgate-app = { path = "crates/perfgate-app", version = "0.4.1" }
 perfgate-server = { path = "crates/perfgate-server", version = "0.4.1" }
 perfgate-client = { path = "crates/perfgate-client", version = "0.4.1" }
+perfgate = { path = "crates/perfgate", version = "0.4.1" }

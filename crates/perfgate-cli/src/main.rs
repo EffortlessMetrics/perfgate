@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use object_store::{ObjectStore, path::Path as ObjectPath};
-use perfgate_adapters::{StdHostProbe, StdProcessRunner};
+use perfgate::adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::{
