@@ -1,0 +1,34 @@
+[package]
+name = "perfgate"
+description = "Core library for perfgate performance budgets and baseline diffs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/perfgate"
+authors.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+perfgate-types.workspace = true
+perfgate-domain.workspace = true
+perfgate-adapters.workspace = true
+perfgate-app.workspace = true
+perfgate-error.workspace = true
+perfgate-validation.workspace = true
+perfgate-stats.workspace = true
+perfgate-significance.workspace = true
+perfgate-budget.workspace = true
+perfgate-render.workspace = true
+perfgate-sensor.workspace = true
+perfgate-export.workspace = true
+perfgate-paired.workspace = true
+perfgate-host-detect.workspace = true
+perfgate-sha256.workspace = true
+
+[features]
+default = []
