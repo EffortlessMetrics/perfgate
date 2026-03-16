@@ -2,24 +2,26 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate::adapters::{StdHostProbe, StdProcessRunner};
-use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
-use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
-use perfgate_app::{
+use perfgate::app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
+use perfgate::app::comparison_logic::{
+    build_budgets, build_metric_statistics, verdict_from_counts,
+};
+use perfgate::app::{
     BenchOutcome, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase,
     ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest,
     PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
     SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
     render_markdown_template,
 };
-use perfgate_client::{
-    BaselineClient, ClientConfig, FallbackClient, FallbackStorage, ListBaselinesQuery,
-    UploadBaselineRequest,
-};
-use perfgate_domain::{DomainError, SignificancePolicy};
-use perfgate_types::{
+use perfgate::domain::{DomainError, SignificancePolicy};
+use perfgate::types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
     ConfigValidationError, HostMismatchPolicy, PerfgateError, RunReceipt, SensorVerdictStatus,
     ToolInfo,
+};
+use perfgate_client::{
+    BaselineClient, ClientConfig, FallbackClient, FallbackStorage, ListBaselinesQuery,
+    UploadBaselineRequest,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
