@@ -977,15 +977,15 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             write_json(&out, &compare_result.receipt, pretty)?;
 
             match compare_result.receipt.verdict.status {
-                perfgate_types::VerdictStatus::Pass => Ok(()),
-                perfgate_types::VerdictStatus::Warn => {
+                perfgate::types::VerdictStatus::Pass => Ok(()),
+                perfgate::types::VerdictStatus::Warn => {
                     if fail_on_warn {
                         exit_with_code(3)
                     } else {
                         Ok(())
                     }
                 }
-                perfgate_types::VerdictStatus::Fail => exit_with_code(2),
+                perfgate::types::VerdictStatus::Fail => exit_with_code(2),
             }
         }
 
@@ -994,7 +994,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             out,
             template,
         } => {
-            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
+            let compare_receipt: perfgate::types::CompareReceipt = read_json(&compare)?;
             let md = render_markdown_with_optional_template(&compare_receipt, template.as_deref())?;
 
             match out {
@@ -1010,7 +1010,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
         }
 
         Command::GithubAnnotations { compare } => {
-            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
+            let compare_receipt: perfgate::types::CompareReceipt = read_json(&compare)?;
             for line in github_annotations(&compare_receipt) {
                 println!("{line}");
             }
@@ -2150,7 +2150,7 @@ fn execute_export(
             ExportUseCase::export_run(&run_receipt, export_format)?
         }
         (None, Some(compare_path)) => {
-            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare_path)?;
+            let compare_receipt: perfgate::types::CompareReceipt = read_json(&compare_path)?;
             ExportUseCase::export_compare(&compare_receipt, export_format)?
         }
         (None, None) => {
@@ -2408,7 +2408,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{
+    use perfgate::types::{
         BenchMeta, HostInfo, Metric, PerfgateReport, RUN_SCHEMA_V1, ReportSummary, RunMeta,
         RunReceipt, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
     };
