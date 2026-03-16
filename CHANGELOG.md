@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 ### Fixed
 
+## [0.5.0] - 2026-03-16
+
+### Added
+- Self-dogfooding infrastructure for perfgate, including GitHub Actions workflows (`perfgate-self.yml`, `perfgate-nightly.yml`), fixed deterministic fixture corpus, and `.ci/perf/*.sh` evaluation scripts.
+
 ## [0.4.1] - 2026-03-12
 
 ### Changed

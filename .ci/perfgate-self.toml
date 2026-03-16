@@ -1,0 +1,34 @@
+[defaults]
+repeat = 7
+warmup = 1
+threshold = 0.15
+warn_factor = 0.90
+baseline_pattern = "baselines/gha-linux-x86_64/{bench}.json"
+
+[[bench]]
+name = "cli/compare-small"
+command = ["bash", ".ci/perf/compare-small.sh"]
+budgets = { wall_ms = { threshold = 0.12, warn_factor = 0.90, statistic = "median" } }
+
+[[bench]]
+name = "cli/compare-large"
+command = ["bash", ".ci/perf/compare-large.sh"]
+budgets = { wall_ms = { threshold = 0.15, warn_factor = 0.90, statistic = "median" } }
+
+[[bench]]
+name = "cli/check-single"
+command = ["bash", ".ci/perf/check-single.sh"]
+budgets = { wall_ms = { threshold = 0.20, warn_factor = 0.90, statistic = "p95" } }
+
+[[bench]]
+name = "cli/check-no-baseline"
+command = ["bash", ".ci/perf/check-no-baseline.sh"]
+budgets = { wall_ms = { threshold = 0.20, warn_factor = 0.90, statistic = "p95" } }
+
+[[bench]]
+name = "render/md"
+command = ["bash", ".ci/perf/render-md.sh"]
+
+[[bench]]
+name = "render/report"
+command = ["bash", ".ci/perf/render-report.sh"]
