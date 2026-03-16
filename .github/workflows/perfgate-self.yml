@@ -18,6 +18,7 @@ jobs:
           config: .ci/perfgate-self.toml
           all: "true"
           out_dir: artifacts/perfgate-smoke
+          artifact_name: perfgate-artifacts-smoke
 
   perf:
     name: "Core Perf Lane"
@@ -35,6 +36,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: perfgate-artifacts
+          name: perfgate-artifacts-core
           path: artifacts/perfgate
           if-no-files-found: warn
