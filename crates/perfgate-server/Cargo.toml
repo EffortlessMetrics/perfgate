@@ -36,8 +36,8 @@ uuid = { workspace = true }
 rusqlite = { version = "0.33.0", features = ["bundled"] }
 
 # Validation
-perfgate-types = { path = "../perfgate-types", version = "0.4.0" }
-perfgate-validation = { path = "../perfgate-validation", version = "0.4.0" }
+perfgate-types.workspace = true
+perfgate-validation.workspace = true
 
 # Error handling
 thiserror = { workspace = true }
@@ -58,7 +58,7 @@ tokio-test = "0.4.4"
 http-body-util = "0.1.2"
 tower = { version = "0.5.2", features = ["util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-perfgate-client = { path = "../perfgate-client" }
+perfgate-client.workspace = true
 wiremock = "0.6"
 uuid = { workspace = true }
 uselesskey = { version = "0.2.0", features = ["hmac"] }

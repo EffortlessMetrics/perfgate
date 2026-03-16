@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["performance", "benchmarking", "baseline", "client"]
 
 [dependencies]
-perfgate-types = { path = "../perfgate-types" }
+perfgate-types.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["time", "fs", "io-util"] }
 serde = { version = "1", features = ["derive"] }

@@ -15,6 +15,7 @@ This crate wires Clap commands to application use-cases in `perfgate-app`, handl
 - `export`: export run/compare data (`csv`, `jsonl`, `html`, `prometheus`).
 - `check`: config-driven workflow for artifacts and gating.
 - `paired`: interleaved baseline/current benchmarking for noise reduction.
+- `baseline`: manage baselines on a centralized baseline server.
 
 ## Quick Usage
 
