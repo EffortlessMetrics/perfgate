@@ -2,6 +2,8 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate_adapters::{StdHostProbe, StdProcessRunner};
+use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
+use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::{
     BenchOutcome, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase,
     ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest,
@@ -15,9 +17,9 @@ use perfgate_client::{
 };
 use perfgate_domain::{DomainError, SignificancePolicy};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, Budget, CompareReceipt, CompareRef,
-    ConfigFile, ConfigValidationError, HostMismatchPolicy, Metric, MetricStatistic, PerfgateError,
-    RunReceipt, SensorVerdictStatus, ToolInfo,
+    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
+    ConfigValidationError, HostMismatchPolicy, PerfgateError, RunReceipt, SensorVerdictStatus,
+    ToolInfo,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -764,6 +766,19 @@ enum BaselineAction {
     },
 }
 
+fn render_markdown_with_optional_template(
+    compare: &CompareReceipt,
+    template_path: Option<&Path>,
+) -> anyhow::Result<String> {
+    if let Some(path) = template_path {
+        let template = fs::read_to_string(path)
+            .with_context(|| format!("read template {}", path.display()))?;
+        render_markdown_template(compare, &template)
+    } else {
+        Ok(render_markdown(compare))
+    }
+}
+
 fn main() -> ExitCode {
     if let Err(err) = real_main() {
         eprintln!("{err:#}");
@@ -902,7 +917,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                     (receipt, ref_info)
                 }
                 BaselineSelector::Local(path) => {
-                    let receipt: RunReceipt = read_json(&path)?;
+                    let receipt: RunReceipt = read_json_from_location(&path)?;
                     let ref_info = CompareRef {
                         path: Some(path.display().to_string()),
                         run_id: Some(receipt.run.id.clone()),
@@ -911,7 +926,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 }
             };
 
-            let current_receipt: RunReceipt = read_json(&current)?;
+            let current_receipt: RunReceipt = read_json_from_location(&current)?;
 
             let budgets = build_budgets(
                 &baseline_receipt,
@@ -978,13 +993,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             template,
         } => {
             let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
-            let md = if let Some(template_path) = template {
-                let template = fs::read_to_string(&template_path)
-                    .with_context(|| format!("read {}", template_path.display()))?;
-                render_markdown_template(&compare_receipt, &template)?
-            } else {
-                render_markdown(&compare_receipt)
-            };
+            let md = render_markdown_with_optional_template(&compare_receipt, template.as_deref())?;
 
             match out {
                 Some(path) => {
@@ -1091,13 +1100,10 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
 
             // Optionally write markdown summary
             if let Some(md_path) = md {
-                let md_content = if let Some(template_path) = md_template {
-                    let template = fs::read_to_string(&template_path)
-                        .with_context(|| format!("read {}", template_path.display()))?;
-                    render_markdown_template(&compare_receipt, &template)?
-                } else {
-                    render_markdown(&compare_receipt)
-                };
+                let md_content = render_markdown_with_optional_template(
+                    &compare_receipt,
+                    md_template.as_deref(),
+                )?;
                 if let Some(parent) = md_path.parent()
                     && !parent.as_os_str().is_empty()
                 {
@@ -1131,9 +1137,9 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             mode,
             md_template,
             output_github,
-        } => match mode {
-            OutputMode::Standard => run_check_standard(
-                config,
+        } => {
+            let req = CheckConfig {
+                config_path: config,
                 bench,
                 all,
                 bench_regex,
@@ -1151,28 +1157,12 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 pretty,
                 md_template,
                 output_github,
-            ),
-            OutputMode::Cockpit => run_check_cockpit(
-                config,
-                bench,
-                all,
-                bench_regex,
-                out_dir,
-                baseline,
-                require_baseline,
-                fail_on_warn,
-                env,
-                output_cap_bytes,
-                allow_nonzero,
-                host_mismatch,
-                significance_alpha,
-                significance_min_samples,
-                require_significance,
-                pretty,
-                md_template,
-                output_github,
-            ),
-        },
+            };
+            match mode {
+                OutputMode::Standard => run_check_standard(req),
+                OutputMode::Cockpit => run_check_cockpit(req),
+            }
+        }
 
         Command::Paired {
             name,
@@ -1470,10 +1460,10 @@ fn exit_with_code(code: i32) -> ! {
     panic!("exit {code}");
 }
 
-/// Run check in standard mode (exit codes reflect verdict).
-#[allow(clippy::too_many_arguments)]
-fn run_check_standard(
-    config: PathBuf,
+/// Configuration for the check command.
+#[derive(Debug, Clone)]
+struct CheckConfig {
+    config_path: PathBuf,
     bench: Option<String>,
     all: bool,
     bench_regex: Option<String>,
@@ -1491,17 +1481,25 @@ fn run_check_standard(
     pretty: bool,
     md_template: Option<PathBuf>,
     output_github: bool,
-) -> anyhow::Result<()> {
-    // Load config file
-    let config_content =
-        fs::read_to_string(&config).with_context(|| format!("read {}", config.display()))?;
+}
 
-    let config_file: ConfigFile = if config.extension().map(|e| e == "json").unwrap_or(false) {
+/// Run check in standard mode (exit codes reflect verdict).
+fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
+    // Load config file
+    let config_content = fs::read_to_string(&req.config_path)
+        .with_context(|| format!("read {}", req.config_path.display()))?;
+
+    let config_file: ConfigFile = if req
+        .config_path
+        .extension()
+        .map(|e| e == "json")
+        .unwrap_or(false)
+    {
         serde_json::from_str(&config_content)
-            .with_context(|| format!("parse JSON config {}", config.display()))?
+            .with_context(|| format!("parse JSON config {}", req.config_path.display()))?
     } else {
         toml::from_str(&config_content)
-            .with_context(|| format!("parse TOML config {}", config.display()))?
+            .with_context(|| format!("parse TOML config {}", req.config_path.display()))?
     };
 
     config_file
@@ -1509,19 +1507,23 @@ fn run_check_standard(
         .map_err(ConfigValidationError::ConfigFile)?;
 
     // Determine which benches to run
-    let bench_names =
-        resolve_bench_names(&config_file, bench.as_deref(), all, bench_regex.as_deref())?;
+    let bench_names = resolve_bench_names(
+        &config_file,
+        req.bench.as_deref(),
+        req.all,
+        req.bench_regex.as_deref(),
+    )?;
     let bench_count = bench_names.len() as u32;
 
-    let markdown_template_path = md_template.or_else(|| {
+    let markdown_template_path = req.md_template.or_else(|| {
         config_file
             .defaults
             .markdown_template
             .as_ref()
             .map(PathBuf::from)
     });
-    let markdown_template = load_template(markdown_template_path.as_deref())?;
-    let github_output_path = resolve_github_output_path(output_github)?;
+    let _markdown_template = load_template(markdown_template_path.as_deref())?;
+    let github_output_path = resolve_github_output_path(req.output_github)?;
 
     // Track aggregate exit code: fail (2) > warn-as-fail (3) > pass (0)
     let mut max_exit_code: i32 = 0;
@@ -1532,14 +1534,14 @@ fn run_check_standard(
 
     for bench_name in &bench_names {
         // For --all mode, use per-bench subdirectories
-        let bench_out_dir = if all {
-            out_dir.join(bench_name)
+        let bench_out_dir = if req.all {
+            req.out_dir.join(bench_name)
         } else {
-            out_dir.clone()
+            req.out_dir.clone()
         };
 
         // Resolve baseline path (--baseline flag only valid for single bench mode)
-        let baseline_path = resolve_baseline_path(&baseline, bench_name, &config_file);
+        let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
         let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
             .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
 
@@ -1564,42 +1566,37 @@ fn run_check_standard(
             out_dir: bench_out_dir.clone(),
             baseline: baseline_receipt,
             baseline_path: Some(baseline_path.clone()),
-            require_baseline,
-            fail_on_warn,
+            require_baseline: req.require_baseline,
+            fail_on_warn: req.fail_on_warn,
             tool: tool_info(),
-            env: env.clone(),
-            output_cap_bytes,
-            allow_nonzero,
-            host_mismatch_policy: host_mismatch,
-            significance_alpha,
-            significance_min_samples,
-            require_significance,
+            env: req.env.clone(),
+            output_cap_bytes: req.output_cap_bytes,
+            allow_nonzero: req.allow_nonzero,
+            host_mismatch_policy: req.host_mismatch,
+            significance_alpha: req.significance_alpha,
+            significance_min_samples: req.significance_min_samples,
+            require_significance: req.require_significance,
         })?;
 
         // Write artifacts
-        write_check_artifacts(&outcome, pretty)
+        write_check_artifacts(&outcome, req.pretty)
             .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
-        if let Some(template) = markdown_template.as_deref() {
-            if let Some(compare) = &outcome.compare_receipt {
-                let markdown = render_markdown_template(compare, template).with_context(|| {
-                    format!("render markdown template for bench '{}'", bench_name)
-                })?;
-                atomic_write(&outcome.markdown_path, markdown.as_bytes())
-                    .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+        if let Some(compare) = &outcome.compare_receipt {
+            let markdown =
+                render_markdown_with_optional_template(compare, markdown_template_path.as_deref())?;
+            atomic_write(&outcome.markdown_path, markdown.as_bytes())
+                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+        } else {
+            let msg = "markdown template ignored for no-baseline bench".to_string();
+            if req.all {
+                all_warnings.push(format!("[{}] {}", bench_name, msg));
             } else {
-                let msg = "markdown template ignored for no-baseline bench".to_string();
-                if all {
-                    all_warnings.push(format!("[{}] {}", bench_name, msg));
-                } else {
-                    all_warnings.push(msg);
-                }
+                all_warnings.push(msg);
             }
         }
-
-        // Collect warnings (prefix with bench name in --all mode)
         for warning in &outcome.warnings {
-            if all {
+            if req.all {
                 all_warnings.push(format!("[{}] {}", bench_name, warning));
             } else {
                 all_warnings.push(warning.clone());
@@ -1683,65 +1680,22 @@ fn resolve_bench_names(
 }
 
 /// Run check in cockpit mode (always write receipt, exit 0 unless catastrophic).
-///
-/// In cockpit mode:
-/// - Captures start time at beginning
-/// - Wraps execution in error recovery
-/// - Always writes sensor.report.v1 envelope to report.json
-/// - Writes native artifacts to extras/ subdirectory
-/// - Exits 0 if receipt written, 1 only on catastrophic failure
-#[allow(clippy::too_many_arguments)]
-fn run_check_cockpit(
-    config: PathBuf,
-    bench: Option<String>,
-    all: bool,
-    bench_regex: Option<String>,
-    out_dir: PathBuf,
-    baseline: Option<PathBuf>,
-    require_baseline: bool,
-    fail_on_warn: bool,
-    env: Vec<(String, String)>,
-    output_cap_bytes: usize,
-    allow_nonzero: bool,
-    host_mismatch: HostMismatchPolicy,
-    significance_alpha: Option<f64>,
-    significance_min_samples: u32,
-    require_significance: bool,
-    pretty: bool,
-    md_template: Option<PathBuf>,
-    output_github: bool,
-) -> anyhow::Result<()> {
+fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
     let clock = SystemClock;
     let started_at = clock.now_rfc3339();
     let start_instant = Instant::now();
-    let github_output_path = resolve_github_output_path(output_github)?;
+    let github_output_path = resolve_github_output_path(req.output_github)?;
 
     // Ensure base output directory exists (catastrophic failure if we can't)
-    fs::create_dir_all(&out_dir)
-        .with_context(|| format!("create output dir {}", out_dir.display()))?;
+    fs::create_dir_all(&req.out_dir)
+        .with_context(|| format!("create output dir {}", req.out_dir.display()))?;
 
     // Try to run the check; capture errors
     let result = run_check_cockpit_inner(
-        &config,
-        &bench,
-        all,
-        &bench_regex,
-        &out_dir,
-        &baseline,
-        require_baseline,
-        fail_on_warn,
-        &env,
-        output_cap_bytes,
-        allow_nonzero,
-        host_mismatch,
-        significance_alpha,
-        significance_min_samples,
-        require_significance,
-        pretty,
-        &md_template,
-        github_output_path.as_deref(),
+        &req,
         &started_at,
         start_instant,
+        github_output_path.as_deref(),
     );
 
     match result {
@@ -1751,7 +1705,8 @@ fn run_check_cockpit(
             let ended_at = clock.now_rfc3339();
             let duration_ms = start_instant.elapsed().as_millis() as u64;
 
-            let baseline_available = baseline
+            let baseline_available = req
+                .baseline
                 .as_ref()
                 .and_then(|p| location_exists(p).ok())
                 .unwrap_or(false);
@@ -1765,8 +1720,8 @@ fn run_check_cockpit(
             let error_report = builder.build_error(&format!("{:#}", err), stage, error_kind);
 
             // Try to write the error report
-            let report_path = out_dir.join("report.json");
-            if write_json(&report_path, &error_report, pretty).is_ok() {
+            let report_path = req.out_dir.join("report.json");
+            if write_json(&report_path, &error_report, req.pretty).is_ok() {
                 if let Some(path) = github_output_path.as_deref() {
                     write_github_outputs(
                         path,
@@ -1794,41 +1749,29 @@ fn run_check_cockpit(
 }
 
 /// Inner implementation of cockpit mode that may return errors.
-#[allow(clippy::too_many_arguments)]
 fn run_check_cockpit_inner(
-    config: &PathBuf,
-    bench: &Option<String>,
-    all: bool,
-    bench_regex: &Option<String>,
-    out_dir: &Path,
-    baseline: &Option<PathBuf>,
-    require_baseline: bool,
-    fail_on_warn: bool,
-    env: &[(String, String)],
-    output_cap_bytes: usize,
-    allow_nonzero: bool,
-    host_mismatch: HostMismatchPolicy,
-    significance_alpha: Option<f64>,
-    significance_min_samples: u32,
-    require_significance: bool,
-    pretty: bool,
-    md_template: &Option<PathBuf>,
-    github_output_path: Option<&Path>,
+    req: &CheckConfig,
     started_at: &str,
     start_instant: Instant,
+    github_output_path: Option<&Path>,
 ) -> anyhow::Result<()> {
     let clock = SystemClock;
 
     // Load config file
-    let config_content =
-        fs::read_to_string(config).with_context(|| format!("read {}", config.display()))?;
+    let config_content = fs::read_to_string(&req.config_path)
+        .with_context(|| format!("read {}", req.config_path.display()))?;
 
-    let config_file: ConfigFile = if config.extension().map(|e| e == "json").unwrap_or(false) {
+    let config_file: ConfigFile = if req
+        .config_path
+        .extension()
+        .map(|e| e == "json")
+        .unwrap_or(false)
+    {
         serde_json::from_str(&config_content)
-            .with_context(|| format!("parse JSON config {}", config.display()))?
+            .with_context(|| format!("parse JSON config {}", req.config_path.display()))?
     } else {
         toml::from_str(&config_content)
-            .with_context(|| format!("parse TOML config {}", config.display()))?
+            .with_context(|| format!("parse TOML config {}", req.config_path.display()))?
     };
 
     config_file
@@ -1836,16 +1779,20 @@ fn run_check_cockpit_inner(
         .map_err(ConfigValidationError::ConfigFile)?;
 
     // Determine which benches to run
-    let bench_names =
-        resolve_bench_names(&config_file, bench.as_deref(), all, bench_regex.as_deref())?;
-    let markdown_template_path = md_template.clone().or_else(|| {
+    let bench_names = resolve_bench_names(
+        &config_file,
+        req.bench.as_deref(),
+        req.all,
+        req.bench_regex.as_deref(),
+    )?;
+    let markdown_template_path = req.md_template.clone().or_else(|| {
         config_file
             .defaults
             .markdown_template
             .as_ref()
             .map(PathBuf::from)
     });
-    let markdown_template = load_template(markdown_template_path.as_deref())?;
+    let _markdown_template = load_template(markdown_template_path.as_deref())?;
 
     let multi_bench = bench_names.len() > 1;
 
@@ -1856,9 +1803,9 @@ fn run_check_cockpit_inner(
         let outcome: BenchOutcome = (|| -> anyhow::Result<BenchOutcome> {
             // Create extras directory for native artifacts
             let extras_dir = if multi_bench {
-                out_dir.join("extras").join(bench_name)
+                req.out_dir.join("extras").join(bench_name)
             } else {
-                out_dir.join("extras")
+                req.out_dir.join("extras")
             };
             fs::create_dir_all(&extras_dir).map_err(|e| {
                 PerfgateError::ArtifactWrite(format!(
@@ -1869,7 +1816,7 @@ fn run_check_cockpit_inner(
             })?;
 
             // Resolve baseline path
-            let baseline_path = resolve_baseline_path(baseline, bench_name, &config_file);
+            let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
             let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
                 .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
             let baseline_available = baseline_receipt.is_some();
@@ -1885,39 +1832,35 @@ fn run_check_cockpit_inner(
                 out_dir: extras_dir.clone(),
                 baseline: baseline_receipt,
                 baseline_path: Some(baseline_path.clone()),
-                require_baseline,
-                fail_on_warn,
+                require_baseline: req.require_baseline,
+                fail_on_warn: req.fail_on_warn,
                 tool: tool_info(),
-                env: env.to_vec(),
-                output_cap_bytes,
-                allow_nonzero,
-                host_mismatch_policy: host_mismatch,
-                significance_alpha,
-                significance_min_samples,
-                require_significance,
+                env: req.env.clone(),
+                output_cap_bytes: req.output_cap_bytes,
+                allow_nonzero: req.allow_nonzero,
+                host_mismatch_policy: req.host_mismatch,
+                significance_alpha: req.significance_alpha,
+                significance_min_samples: req.significance_min_samples,
+                require_significance: req.require_significance,
             })?;
 
             // Write native artifacts to extras/
-            write_check_artifacts(&check_outcome, pretty)
+            write_check_artifacts(&check_outcome, req.pretty)
                 .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
 
-            let final_markdown = if let Some(template) = markdown_template.as_deref() {
-                if let Some(compare) = &check_outcome.compare_receipt {
-                    let rendered =
-                        render_markdown_template(compare, template).with_context(|| {
-                            format!("render markdown template for bench '{}'", bench_name)
-                        })?;
-                    atomic_write(&check_outcome.markdown_path, rendered.as_bytes())
-                        .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
-                    rendered
-                } else {
-                    eprintln!(
-                        "warning: [{}] markdown template ignored for no-baseline bench",
-                        bench_name
-                    );
-                    check_outcome.markdown.clone()
-                }
+            let final_markdown = if let Some(compare) = &check_outcome.compare_receipt {
+                let rendered = render_markdown_with_optional_template(
+                    compare,
+                    markdown_template_path.as_deref(),
+                )?;
+                atomic_write(&check_outcome.markdown_path, rendered.as_bytes())
+                    .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                rendered
             } else {
+                eprintln!(
+                    "warning: [{}] markdown template ignored for no-baseline bench",
+                    bench_name
+                );
                 check_outcome.markdown.clone()
             };
 
@@ -1995,26 +1938,27 @@ fn run_check_cockpit_inner(
     let (sensor_report, combined_markdown) = builder.build_aggregated(&bench_outcomes);
 
     // Write sensor report to out_dir/report.json
-    let report_path = out_dir.join("report.json");
-    write_json(&report_path, &sensor_report, pretty)?;
+    let report_path = req.out_dir.join("report.json");
+    write_json(&report_path, &sensor_report, req.pretty)?;
 
     // Write combined markdown to out_dir root
-    let md_dest = out_dir.join("comment.md");
+    let md_dest = req.out_dir.join("comment.md");
     fs::write(&md_dest, &combined_markdown)
         .with_context(|| format!("write {}", md_dest.display()))?;
 
     if let Some(path) = github_output_path {
-        write_github_outputs(
-            path,
-            &GitHubOutputSummary {
-                verdict: verdict_from_sensor(&sensor_report.verdict.status),
-                pass_count: sensor_report.verdict.counts.info,
-                warn_count: sensor_report.verdict.counts.warn,
-                fail_count: sensor_report.verdict.counts.error,
-                bench_count: bench_names.len() as u32,
-                exit_code: 0,
-            },
-        )?;
+        let summary = GitHubOutputSummary {
+            verdict: verdict_from_sensor(&sensor_report.verdict.status),
+            pass_count: sensor_report.verdict.counts.info,
+            warn_count: sensor_report.verdict.counts.warn,
+            fail_count: sensor_report.verdict.counts.error,
+            bench_count: bench_names.len() as u32,
+            exit_code: 0,
+        };
+        // Cockpit: if write fails, warn but don't fail tool
+        if let Err(e) = write_github_outputs(path, &summary) {
+            eprintln!("warning: failed to write GITHUB_OUTPUT: {}", e);
+        }
     }
 
     // Cockpit mode: always exit 0 if we got here
@@ -2022,6 +1966,11 @@ fn run_check_cockpit_inner(
 }
 
 fn update_max_exit_code(max_exit_code: &mut i32, outcome_exit_code: i32) {
+    debug_assert!(
+        (0..=3).contains(&outcome_exit_code),
+        "outcome_exit_code {} out of bounds",
+        outcome_exit_code
+    );
     // Priority: 2 (fail) > 3 (warn-as-fail) > 0 (pass)
     if outcome_exit_code == 2 {
         *max_exit_code = 2;
@@ -2038,18 +1987,6 @@ struct GitHubOutputSummary {
     fail_count: u32,
     bench_count: u32,
     exit_code: i32,
-}
-
-fn verdict_from_counts(pass_count: u32, warn_count: u32, fail_count: u32) -> &'static str {
-    if fail_count > 0 {
-        "fail"
-    } else if warn_count > 0 {
-        "warn"
-    } else if pass_count > 0 {
-        "pass"
-    } else {
-        "skip"
-    }
 }
 
 fn verdict_from_sensor(status: &SensorVerdictStatus) -> &'static str {
@@ -2165,46 +2102,6 @@ fn rename_extras_to_versioned(extras_dir: &Path) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Resolve the baseline path from CLI args or config defaults.
-fn resolve_baseline_path(
-    cli_baseline: &Option<PathBuf>,
-    bench_name: &str,
-    config: &ConfigFile,
-) -> PathBuf {
-    // 1. CLI takes precedence
-    if let Some(path) = cli_baseline {
-        return path.clone();
-    }
-
-    // 2. Fall back to baseline_pattern from config defaults.
-    if let Some(pattern) = &config.defaults.baseline_pattern {
-        return render_baseline_pattern(pattern, bench_name);
-    }
-
-    // 3. Fall back to baseline_dir from config defaults
-    if let Some(baseline_dir) = &config.defaults.baseline_dir {
-        if is_remote_storage_uri(baseline_dir) {
-            return PathBuf::from(format!(
-                "{}/{}.json",
-                baseline_dir.trim_end_matches('/'),
-                bench_name
-            ));
-        }
-        return PathBuf::from(baseline_dir).join(format!("{}.json", bench_name));
-    }
-
-    // 4. Default convention: baselines/{bench_name}.json
-    PathBuf::from("baselines").join(format!("{}.json", bench_name))
-}
-
-fn render_baseline_pattern(pattern: &str, bench_name: &str) -> PathBuf {
-    PathBuf::from(pattern.replace("{bench}", bench_name))
-}
-
-fn is_remote_storage_uri(path: &str) -> bool {
-    path.starts_with("s3://") || path.starts_with("gs://")
 }
 
 /// Write all artifacts from a check outcome.
@@ -2506,151 +2403,19 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_budgets(
-    baseline: &RunReceipt,
-    current: &RunReceipt,
-    global_threshold: f64,
-    global_warn_factor: f64,
-    metric_thresholds: Vec<(String, f64)>,
-    direction_overrides: Vec<(String, String)>,
-) -> anyhow::Result<BTreeMap<Metric, Budget>> {
-    // Determine candidate metrics: those present in both baseline+current.
-    let mut candidates = Vec::new();
-    candidates.push(Metric::WallMs);
-    if baseline.stats.binary_bytes.is_some() && current.stats.binary_bytes.is_some() {
-        candidates.push(Metric::BinaryBytes);
-    }
-    if baseline.stats.cpu_ms.is_some() && current.stats.cpu_ms.is_some() {
-        candidates.push(Metric::CpuMs);
-    }
-    if baseline.stats.ctx_switches.is_some() && current.stats.ctx_switches.is_some() {
-        candidates.push(Metric::CtxSwitches);
-    }
-    if baseline.stats.max_rss_kb.is_some() && current.stats.max_rss_kb.is_some() {
-        candidates.push(Metric::MaxRssKb);
-    }
-    if baseline.stats.page_faults.is_some() && current.stats.page_faults.is_some() {
-        candidates.push(Metric::PageFaults);
-    }
-    if baseline.stats.throughput_per_s.is_some() && current.stats.throughput_per_s.is_some() {
-        candidates.push(Metric::ThroughputPerS);
-    }
-
-    let mut thresholds: BTreeMap<String, f64> = metric_thresholds.into_iter().collect();
-    let mut dirs: BTreeMap<String, String> = direction_overrides.into_iter().collect();
-
-    let mut budgets = BTreeMap::new();
-
-    for metric in candidates {
-        let key = metric_key(metric);
-        let threshold = thresholds.remove(key).unwrap_or(global_threshold);
-        let warn_threshold = threshold * global_warn_factor;
-        let dir = match dirs.remove(key).as_deref() {
-            Some("lower") => perfgate_types::Direction::Lower,
-            Some("higher") => perfgate_types::Direction::Higher,
-            Some(other) => {
-                anyhow::bail!("invalid direction for {key}: {other} (expected lower|higher)")
-            }
-            None => metric.default_direction(),
-        };
-
-        budgets.insert(
-            metric,
-            Budget {
-                threshold,
-                warn_threshold,
-                direction: dir,
-            },
-        );
-    }
-
-    Ok(budgets)
-}
-
-fn build_metric_statistics(
-    budgets: &BTreeMap<Metric, Budget>,
-    overrides: Vec<(String, String)>,
-) -> anyhow::Result<BTreeMap<Metric, MetricStatistic>> {
-    let mut statistics = BTreeMap::new();
-
-    for (key, value) in overrides {
-        let metric = Metric::parse_key(&key)
-            .ok_or_else(|| anyhow::anyhow!("unknown metric for --metric-stat: {}", key))?;
-        if !budgets.contains_key(&metric) {
-            anyhow::bail!(
-                "metric-stat override for {} is not applicable (metric not present in both receipts)",
-                key
-            );
-        }
-
-        let statistic = parse_metric_statistic(&value).ok_or_else(|| {
-            anyhow::anyhow!(
-                "invalid statistic for {}: {} (expected median|p95)",
-                key,
-                value
-            )
-        })?;
-
-        statistics.insert(metric, statistic);
-    }
-
-    Ok(statistics)
-}
-
-fn parse_metric_statistic(s: &str) -> Option<MetricStatistic> {
-    match s {
-        "median" => Some(MetricStatistic::Median),
-        "p95" => Some(MetricStatistic::P95),
-        _ => None,
-    }
-}
-
-fn metric_key(metric: Metric) -> &'static str {
-    metric.as_str()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, DefaultsConfig, Direction, F64Summary, HostInfo, PerfgateReport, RUN_SCHEMA_V1,
-        ReportSummary, RunMeta, RunReceipt, Stats, U64Summary, Verdict, VerdictCounts,
-        VerdictStatus,
+        BenchMeta, HostInfo, Metric, PerfgateReport, RUN_SCHEMA_V1, ReportSummary, RunMeta,
+        RunReceipt, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
     };
+
     use serde_json::json;
-    use std::any::Any;
     use std::fs;
     use std::path::PathBuf;
     use tempfile::tempdir;
     use uuid::Uuid;
-
-    fn make_stats(cpu: bool, rss: bool, throughput: bool) -> Stats {
-        Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 90,
-                max: 110,
-            },
-            cpu_ms: cpu.then_some(U64Summary {
-                median: 50,
-                min: 40,
-                max: 60,
-            }),
-            page_faults: None,
-            ctx_switches: None,
-            max_rss_kb: rss.then_some(U64Summary {
-                median: 2048,
-                min: 1024,
-                max: 4096,
-            }),
-            binary_bytes: None,
-            throughput_per_s: throughput.then_some(F64Summary {
-                median: 200.0,
-                min: 180.0,
-                max: 220.0,
-            }),
-        }
-    }
 
     fn make_receipt(stats: Stats) -> RunReceipt {
         RunReceipt {
@@ -2698,20 +2463,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
-    fn slow_command() -> Vec<String> {
-        vec!["sh".to_string(), "-c".to_string(), "sleep 0.05".to_string()]
-    }
-
-    #[cfg(windows)]
-    fn slow_command() -> Vec<String> {
-        vec![
-            "powershell".to_string(),
-            "-Command".to_string(),
-            "Start-Sleep -Milliseconds 50".to_string(),
-        ]
-    }
-
     fn create_compare_receipt_json(verdict_status: &str, metric_status: &str) -> String {
         format!(
             r#"{{
@@ -2726,47 +2477,6 @@ mod tests {
 }}"#,
             metric_status, verdict_status
         )
-    }
-
-    fn create_check_config_json(
-        temp_dir: &std::path::Path,
-        bench_name: &str,
-    ) -> std::path::PathBuf {
-        let config_path = temp_dir.join("perfgate.json");
-        let cmd = slow_command();
-        let config = json!({
-            "defaults": {
-                "repeat": 1,
-                "warmup": 0,
-                "threshold": 0.0,
-                "warn_factor": 0.0
-            },
-            "bench": [{
-                "name": bench_name,
-                "command": cmd
-            }]
-        });
-
-        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
-            .expect("Failed to write config file");
-
-        config_path
-    }
-
-    fn assert_exit_code(result: Result<(), Box<dyn Any + Send>>, expected: i32) {
-        let err = result.expect_err("expected exit panic");
-        let msg = if let Some(s) = err.downcast_ref::<String>() {
-            s.clone()
-        } else if let Some(s) = err.downcast_ref::<&str>() {
-            s.to_string()
-        } else {
-            "<non-string panic>".to_string()
-        };
-        assert!(
-            msg.contains(&format!("exit {}", expected)),
-            "unexpected panic: {}",
-            msg
-        );
     }
 
     #[test]
@@ -2909,81 +2619,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_baseline_path_uses_cli_over_config() {
-        let config = ConfigFile {
-            defaults: DefaultsConfig {
-                baseline_pattern: Some("pattern/{bench}.receipt.json".to_string()),
-                baseline_dir: Some("bases".to_string()),
-                ..Default::default()
-            },
-            baseline_server: BaselineServerConfig::default(),
-            benches: Vec::new(),
-        };
-
-        let cli = Some(PathBuf::from("cli.json"));
-        assert_eq!(
-            resolve_baseline_path(&cli, "bench", &config),
-            PathBuf::from("cli.json")
-        );
-
-        let no_cli = None;
-        assert_eq!(
-            resolve_baseline_path(&no_cli, "bench", &config),
-            PathBuf::from("pattern").join("bench.receipt.json")
-        );
-
-        let config_no_default = ConfigFile::default();
-        assert_eq!(
-            resolve_baseline_path(&no_cli, "bench", &config_no_default),
-            PathBuf::from("baselines").join("bench.json")
-        );
-    }
-
-    #[test]
-    fn resolve_baseline_path_supports_remote_baseline_dir() {
-        let config = ConfigFile {
-            defaults: DefaultsConfig {
-                baseline_dir: Some("s3://my-bucket/baselines".to_string()),
-                ..Default::default()
-            },
-            baseline_server: BaselineServerConfig::default(),
-            benches: Vec::new(),
-        };
-        let no_cli = None;
-        assert_eq!(
-            resolve_baseline_path(&no_cli, "bench-a", &config),
-            PathBuf::from("s3://my-bucket/baselines/bench-a.json")
-        );
-
-        let config_dir_only = ConfigFile {
-            defaults: DefaultsConfig {
-                baseline_dir: Some("bases".to_string()),
-                ..Default::default()
-            },
-            baseline_server: BaselineServerConfig::default(),
-            benches: Vec::new(),
-        };
-        assert_eq!(
-            resolve_baseline_path(&no_cli, "bench", &config_dir_only),
-            PathBuf::from("bases").join("bench.json")
-        );
-
-        let config_no_default = ConfigFile::default();
-        assert_eq!(
-            resolve_baseline_path(&no_cli, "bench", &config_no_default),
-            PathBuf::from("baselines").join("bench.json")
-        );
-    }
-
-    #[test]
-    fn is_remote_storage_uri_accepts_s3_and_gs_only() {
-        assert!(is_remote_storage_uri("s3://bucket/key.json"));
-        assert!(is_remote_storage_uri("gs://bucket/key.json"));
-        assert!(!is_remote_storage_uri("file:///tmp/key.json"));
-        assert!(!is_remote_storage_uri("baselines/key.json"));
-    }
-
-    #[test]
     fn rename_extras_to_versioned_moves_files() {
         let dir = tempdir().unwrap();
         let extras = dir.path();
@@ -3050,686 +2685,6 @@ mod tests {
         let err = anyhow::Error::new(DomainError::InvalidBaseline(Metric::WallMs));
         let mapped = map_domain_err(err);
         assert_eq!(mapped.to_string(), "invalid baseline for WallMs");
-    }
-
-    #[test]
-    fn build_budgets_includes_matching_metrics_and_applies_overrides() {
-        let baseline = make_receipt(make_stats(true, true, true));
-        let current = make_receipt(make_stats(true, false, true));
-
-        let budgets = build_budgets(
-            &baseline,
-            &current,
-            0.20,
-            0.90,
-            vec![("cpu_ms".to_string(), 0.10)],
-            vec![("throughput_per_s".to_string(), "lower".to_string())],
-        )
-        .unwrap();
-
-        assert!(budgets.contains_key(&Metric::WallMs));
-        assert!(budgets.contains_key(&Metric::CpuMs));
-        assert!(budgets.contains_key(&Metric::ThroughputPerS));
-        assert!(!budgets.contains_key(&Metric::MaxRssKb));
-
-        let cpu = budgets.get(&Metric::CpuMs).unwrap();
-        assert!((cpu.threshold - 0.10).abs() < f64::EPSILON);
-        assert!((cpu.warn_threshold - 0.09).abs() < f64::EPSILON);
-
-        let throughput = budgets.get(&Metric::ThroughputPerS).unwrap();
-        assert_eq!(throughput.direction, Direction::Lower);
-    }
-
-    #[test]
-    fn build_budgets_rejects_invalid_direction() {
-        let baseline = make_receipt(make_stats(false, false, false));
-        let current = make_receipt(make_stats(false, false, false));
-
-        let err = build_budgets(
-            &baseline,
-            &current,
-            0.20,
-            0.90,
-            Vec::new(),
-            vec![("wall_ms".to_string(), "sideways".to_string())],
-        )
-        .unwrap_err();
-
-        let msg = err.to_string();
-        assert!(
-            msg.contains("invalid direction for wall_ms"),
-            "unexpected error: {}",
-            msg
-        );
-    }
-
-    #[test]
-    fn compare_command_rejects_invalid_direction() {
-        let dir = tempdir().unwrap();
-        let baseline_path = dir.path().join("baseline.json");
-        let current_path = dir.path().join("current.json");
-        let out_path = dir.path().join("compare.json");
-
-        write_json(
-            &baseline_path,
-            &make_receipt(make_stats_with_wall(100)),
-            false,
-        )
-        .unwrap();
-        write_json(
-            &current_path,
-            &make_receipt(make_stats_with_wall(100)),
-            false,
-        )
-        .unwrap();
-
-        let err = run_command(
-            Command::Compare {
-                baseline: baseline_path.to_string_lossy().to_string(),
-                current: current_path,
-                threshold: 0.20,
-                warn_factor: 0.90,
-                metric_threshold: Vec::new(),
-                direction: vec![("wall_ms".to_string(), "sideways".to_string())],
-                metric_stat: Vec::new(),
-                significance_alpha: None,
-                significance_min_samples: 8,
-                require_significance: false,
-                fail_on_warn: false,
-                host_mismatch: HostMismatchPolicy::Warn,
-                out: out_path,
-                pretty: false,
-            },
-            ResolvedServerConfig::default(),
-        )
-        .unwrap_err();
-
-        assert!(
-            err.to_string().contains("invalid direction"),
-            "unexpected error: {}",
-            err
-        );
-    }
-
-    #[test]
-    fn compare_command_rejects_invalid_metric_statistic() {
-        let dir = tempdir().unwrap();
-        let baseline_path = dir.path().join("baseline.json");
-        let current_path = dir.path().join("current.json");
-        let out_path = dir.path().join("compare.json");
-
-        write_json(
-            &baseline_path,
-            &make_receipt(make_stats_with_wall(100)),
-            false,
-        )
-        .unwrap();
-        write_json(
-            &current_path,
-            &make_receipt(make_stats_with_wall(100)),
-            false,
-        )
-        .unwrap();
-
-        let err = run_command(
-            Command::Compare {
-                baseline: baseline_path.to_string_lossy().to_string(),
-                current: current_path,
-                threshold: 0.20,
-                warn_factor: 0.90,
-                metric_threshold: Vec::new(),
-                direction: Vec::new(),
-                metric_stat: vec![("wall_ms".to_string(), "p99".to_string())],
-                significance_alpha: None,
-                significance_min_samples: 8,
-                require_significance: false,
-                fail_on_warn: false,
-                host_mismatch: HostMismatchPolicy::Warn,
-                out: out_path,
-                pretty: false,
-            },
-            ResolvedServerConfig::default(),
-        )
-        .unwrap_err();
-
-        assert!(
-            err.to_string().contains("invalid statistic"),
-            "unexpected error: {}",
-            err
-        );
-    }
-
-    #[test]
-    fn compare_command_exits_with_fail_code() {
-        let dir = tempdir().unwrap();
-        let baseline_path = dir.path().join("baseline.json");
-        let current_path = dir.path().join("current.json");
-        let out_path = dir.path().join("compare.json");
-
-        write_json(
-            &baseline_path,
-            &make_receipt(make_stats_with_wall(100)),
-            false,
-        )
-        .unwrap();
-        write_json(
-            &current_path,
-            &make_receipt(make_stats_with_wall(150)),
-            false,
-        )
-        .unwrap();
-
-        let out_clone = out_path.clone();
-        let result = std::panic::catch_unwind(|| {
-            run_command(
-                Command::Compare {
-                    baseline: baseline_path.to_string_lossy().to_string(),
-                    current: current_path,
-                    threshold: 0.20,
-                    warn_factor: 0.90,
-                    metric_threshold: Vec::new(),
-                    direction: Vec::new(),
-                    metric_stat: Vec::new(),
-                    significance_alpha: None,
-                    significance_min_samples: 8,
-                    require_significance: false,
-                    fail_on_warn: false,
-                    host_mismatch: HostMismatchPolicy::Warn,
-                    out: out_clone,
-                    pretty: false,
-                },
-                ResolvedServerConfig::default(),
-            )
-            .unwrap();
-        });
-
-        assert_exit_code(result, 2);
-        assert!(out_path.exists());
-    }
-
-    #[test]
-    fn compare_command_exits_with_warn_code() {
-        let dir = tempdir().unwrap();
-        let baseline_path = dir.path().join("baseline.json");
-        let current_path = dir.path().join("current.json");
-        let out_path = dir.path().join("compare.json");
-
-        write_json(
-            &baseline_path,
-            &make_receipt(make_stats_with_wall(100)),
-            false,
-        )
-        .unwrap();
-        write_json(
-            &current_path,
-            &make_receipt(make_stats_with_wall(119)),
-            false,
-        )
-        .unwrap();
-
-        let out_clone = out_path.clone();
-        let result = std::panic::catch_unwind(|| {
-            run_command(
-                Command::Compare {
-                    baseline: baseline_path.to_string_lossy().to_string(),
-                    current: current_path,
-                    threshold: 0.20,
-                    warn_factor: 0.90,
-                    metric_threshold: Vec::new(),
-                    direction: Vec::new(),
-                    metric_stat: Vec::new(),
-                    significance_alpha: None,
-                    significance_min_samples: 8,
-                    require_significance: false,
-                    fail_on_warn: true,
-                    host_mismatch: HostMismatchPolicy::Warn,
-                    out: out_clone,
-                    pretty: false,
-                },
-                ResolvedServerConfig::default(),
-            )
-            .unwrap();
-        });
-
-        assert_exit_code(result, 3);
-        assert!(out_path.exists());
-    }
-
-    #[test]
-    fn report_command_creates_parent_dirs_for_md() {
-        let dir = tempdir().unwrap();
-        let compare_path = dir.path().join("compare.json");
-        let report_path = dir.path().join("report.json");
-        let md_path = dir.path().join("nested").join("comment.md");
-
-        fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
-
-        run_command(
-            Command::Report {
-                compare: compare_path,
-                out: report_path,
-                md: Some(md_path.clone()),
-                md_template: None,
-                pretty: false,
-            },
-            ResolvedServerConfig::default(),
-        )
-        .unwrap();
-
-        assert!(md_path.exists());
-    }
-
-    #[test]
-    fn report_command_skips_parent_dir_for_relative_md() {
-        let dir = tempdir().unwrap();
-        let compare_path = dir.path().join("compare.json");
-        let report_path = dir.path().join("report.json");
-        let md_name = format!("comment_{}.md", Uuid::new_v4());
-        let md_path = PathBuf::from(&md_name);
-
-        fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
-
-        run_command(
-            Command::Report {
-                compare: compare_path,
-                out: report_path,
-                md: Some(md_path.clone()),
-                md_template: None,
-                pretty: false,
-            },
-            ResolvedServerConfig::default(),
-        )
-        .unwrap();
-
-        assert!(md_path.exists());
-        let _ = fs::remove_file(&md_path);
-    }
-
-    #[test]
-    fn report_command_errors_on_empty_md_path() {
-        let dir = tempdir().unwrap();
-        let compare_path = dir.path().join("compare.json");
-        let report_path = dir.path().join("report.json");
-
-        fs::write(&compare_path, create_compare_receipt_json("pass", "pass")).unwrap();
-
-        let err = run_command(
-            Command::Report {
-                compare: compare_path,
-                out: report_path,
-                md: Some(PathBuf::from("")),
-                md_template: None,
-                pretty: false,
-            },
-            ResolvedServerConfig::default(),
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("write"));
-    }
-
-    #[test]
-    fn run_check_standard_exits_with_fail_code() {
-        let dir = tempdir().unwrap();
-        let config_path = create_check_config_json(dir.path(), "bench");
-        let baseline_path = dir.path().join("baseline.json");
-        let out_dir = dir.path().join("out");
-
-        write_json(
-            &baseline_path,
-            &make_receipt(make_stats_with_wall(1)),
-            false,
-        )
-        .unwrap();
-
-        let result = std::panic::catch_unwind(|| {
-            run_check_standard(
-                config_path,
-                Some("bench".to_string()),
-                false,
-                None,
-                out_dir,
-                Some(baseline_path),
-                false,
-                false,
-                Vec::new(),
-                8192,
-                false,
-                HostMismatchPolicy::Warn,
-                None,
-                8,
-                false,
-                false,
-                None,
-                false,
-            )
-            .unwrap();
-        });
-
-        assert_exit_code(result, 2);
-    }
-
-    /// Create a multi-bench config JSON with given bench names.
-    /// `threshold` and `warn_factor` are set per the caller so that
-    /// baselines with wall_ms=1 trigger fail (threshold=0.0) while
-    /// benches without a baseline just pass.
-    fn create_multi_bench_config_json(
-        temp_dir: &std::path::Path,
-        bench_names: &[&str],
-        threshold: f64,
-        warn_factor: f64,
-    ) -> std::path::PathBuf {
-        let config_path = temp_dir.join("perfgate.json");
-        let cmd = slow_command();
-        let baselines_abs = temp_dir.join("baselines");
-        let benches: Vec<serde_json::Value> = bench_names
-            .iter()
-            .map(|name| {
-                json!({
-                    "name": *name,
-                    "command": cmd
-                })
-            })
-            .collect();
-        let config = json!({
-            "defaults": {
-                "repeat": 1,
-                "warmup": 0,
-                "threshold": threshold,
-                "warn_factor": warn_factor,
-                "baseline_dir": baselines_abs.to_string_lossy()
-            },
-            "bench": benches
-        });
-        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
-            .expect("Failed to write multi-bench config");
-        config_path
-    }
-
-    /// Helper: run `run_check_standard` in --all mode and return the exit code
-    /// (0 if no panic, otherwise the exit code extracted from the panic message).
-    fn run_check_standard_all(config_path: PathBuf, out_dir: PathBuf, fail_on_warn: bool) -> i32 {
-        let result = std::panic::catch_unwind(|| {
-            run_check_standard(
-                config_path,
-                None, // bench
-                true, // all
-                None, // bench_regex
-                out_dir,
-                None,  // baseline (not valid with --all)
-                false, // require_baseline
-                fail_on_warn,
-                Vec::new(),
-                8192,
-                false,
-                HostMismatchPolicy::Warn,
-                None,
-                8,
-                false,
-                false,
-                None,
-                false,
-            )
-            .unwrap();
-        });
-        match result {
-            Ok(()) => 0,
-            Err(err) => {
-                let msg = if let Some(s) = err.downcast_ref::<String>() {
-                    s.clone()
-                } else if let Some(s) = err.downcast_ref::<&str>() {
-                    s.to_string()
-                } else {
-                    panic!("unexpected non-string panic");
-                };
-                if msg.contains("exit 2") {
-                    2
-                } else if msg.contains("exit 3") {
-                    3
-                } else {
-                    panic!("unexpected panic: {}", msg);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn run_check_standard_all_pass_exits_zero() {
-        let dir = tempdir().unwrap();
-        let config_path =
-            create_multi_bench_config_json(dir.path(), &["bench-a", "bench-b"], 0.0, 0.0);
-        let out_dir = dir.path().join("out");
-        // No baselines → both benches pass
-        let code = run_check_standard_all(config_path, out_dir, false);
-        assert_eq!(code, 0);
-    }
-
-    #[test]
-    fn run_check_standard_all_one_fail_exits_two() {
-        let dir = tempdir().unwrap();
-        let config_path =
-            create_multi_bench_config_json(dir.path(), &["pass-bench", "fail-bench"], 0.0, 0.0);
-        let out_dir = dir.path().join("out");
-
-        // Create baseline only for fail-bench (wall_ms=1 guarantees regression)
-        let baselines_dir = dir.path().join("baselines");
-        fs::create_dir_all(&baselines_dir).unwrap();
-        write_json(
-            &baselines_dir.join("fail-bench.json"),
-            &make_receipt(make_stats_with_wall(1)),
-            false,
-        )
-        .unwrap();
-
-        let code = run_check_standard_all(config_path, out_dir, false);
-        assert_eq!(code, 2);
-    }
-
-    #[test]
-    fn run_check_standard_all_one_warn_exits_three() {
-        let dir = tempdir().unwrap();
-        // Use a very large threshold so no fail, but warn_factor=0.0 so warn at any regression.
-        // Baseline wall_ms=1 vs actual command (could be ~500ms+ on Windows PowerShell).
-        // threshold=100000.0 → fail threshold = 100001x → never fails.
-        // warn_factor=0.0 → warn threshold = 0.0 → any regression warns.
-        let config_path = create_multi_bench_config_json(
-            dir.path(),
-            &["pass-bench", "warn-bench"],
-            100_000.0,
-            0.0,
-        );
-        let out_dir = dir.path().join("out");
-
-        let baselines_dir = dir.path().join("baselines");
-        fs::create_dir_all(&baselines_dir).unwrap();
-        write_json(
-            &baselines_dir.join("warn-bench.json"),
-            &make_receipt(make_stats_with_wall(1)),
-            false,
-        )
-        .unwrap();
-
-        // --fail-on-warn turns the warn into exit 3
-        let code = run_check_standard_all(config_path, out_dir, true);
-        assert_eq!(code, 3);
-    }
-
-    #[test]
-    fn run_check_standard_all_fail_plus_warn_exits_two() {
-        let dir = tempdir().unwrap();
-        // Three benches: pass (no baseline), warn, fail
-        // fail-bench: threshold=0.0 → any regression fails
-        // warn-bench: threshold=100000.0, warn_factor=0.0 → warn only
-        // To achieve different thresholds per bench we use per-bench budgets.
-        // But the simple approach: create two configs... Actually the config
-        // `defaults` applies uniformly, so we use threshold=0.0 which makes
-        // ANY regression a fail. That means both baseline benches fail (exit 2).
-        //
-        // Instead we build a JSON config with per-bench budget overrides.
-        let config_path = dir.path().join("perfgate.json");
-        let cmd = slow_command();
-        let baselines_abs = dir.path().join("baselines");
-        let config = json!({
-            "defaults": {
-                "repeat": 1,
-                "warmup": 0,
-                "threshold": 100_000.0,
-                "warn_factor": 0.0,
-                "baseline_dir": baselines_abs.to_string_lossy()
-            },
-            "bench": [
-                { "name": "pass-bench", "command": cmd },
-                { "name": "warn-bench", "command": cmd },
-                {
-                    "name": "fail-bench",
-                    "command": cmd,
-                    "budgets": { "wall_ms": { "threshold": 0.0 } }
-                }
-            ]
-        });
-        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
-
-        let baselines_dir = dir.path().join("baselines");
-        fs::create_dir_all(&baselines_dir).unwrap();
-        // warn-bench baseline → regression in warn zone (threshold=100000.0, warn at 0.0)
-        write_json(
-            &baselines_dir.join("warn-bench.json"),
-            &make_receipt(make_stats_with_wall(1)),
-            false,
-        )
-        .unwrap();
-        // fail-bench baseline → regression fails (threshold=0.0)
-        write_json(
-            &baselines_dir.join("fail-bench.json"),
-            &make_receipt(make_stats_with_wall(1)),
-            false,
-        )
-        .unwrap();
-
-        let out_dir = dir.path().join("out");
-        // --fail-on-warn so warn-bench exits 3, fail-bench exits 2
-        let code = run_check_standard_all(config_path, out_dir, true);
-        assert_eq!(code, 2);
-    }
-
-    #[test]
-    fn run_check_cockpit_returns_error_when_report_write_fails() {
-        let dir = tempdir().unwrap();
-        let out_dir = dir.path().join("out");
-        fs::create_dir_all(&out_dir).unwrap();
-        fs::create_dir_all(out_dir.join("report.json")).unwrap();
-
-        let config_path = dir.path().join("perfgate.json");
-        let config = json!({
-            "defaults": {},
-            "bench": []
-        });
-        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
-
-        let err = run_check_cockpit(
-            config_path,
-            None,
-            false,
-            None,
-            out_dir,
-            None,
-            false,
-            false,
-            Vec::new(),
-            8192,
-            false,
-            HostMismatchPolicy::Warn,
-            None,
-            8,
-            false,
-            false,
-            None,
-            false,
-        )
-        .unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("either --bench or --all must be specified"),
-            "unexpected error: {}",
-            err
-        );
-    }
-
-    #[test]
-    fn update_max_exit_code_prioritizes_fail_over_warn() {
-        let mut max_exit_code = 0;
-        update_max_exit_code(&mut max_exit_code, 3);
-        assert_eq!(max_exit_code, 3);
-        update_max_exit_code(&mut max_exit_code, 2);
-        assert_eq!(max_exit_code, 2);
-        update_max_exit_code(&mut max_exit_code, 3);
-        assert_eq!(max_exit_code, 2);
-    }
-
-    #[test]
-    fn update_max_exit_code_all_pass_stays_zero() {
-        let mut code = 0;
-        update_max_exit_code(&mut code, 0);
-        assert_eq!(code, 0);
-        update_max_exit_code(&mut code, 0);
-        assert_eq!(code, 0);
-        update_max_exit_code(&mut code, 0);
-        assert_eq!(code, 0);
-    }
-
-    #[test]
-    fn update_max_exit_code_single_warn_among_passes() {
-        let mut code = 0;
-        update_max_exit_code(&mut code, 0);
-        update_max_exit_code(&mut code, 3);
-        update_max_exit_code(&mut code, 0);
-        assert_eq!(code, 3);
-    }
-
-    #[test]
-    fn update_max_exit_code_single_fail_among_passes() {
-        let mut code = 0;
-        update_max_exit_code(&mut code, 0);
-        update_max_exit_code(&mut code, 2);
-        update_max_exit_code(&mut code, 0);
-        assert_eq!(code, 2);
-    }
-
-    #[test]
-    fn update_max_exit_code_fail_plus_warn_yields_fail() {
-        let mut code = 0;
-        update_max_exit_code(&mut code, 3);
-        update_max_exit_code(&mut code, 2);
-        assert_eq!(code, 2);
-
-        // Also verify the reverse order
-        let mut code2 = 0;
-        update_max_exit_code(&mut code2, 2);
-        update_max_exit_code(&mut code2, 3);
-        assert_eq!(code2, 2);
-    }
-
-    #[test]
-    fn update_max_exit_code_single_fail() {
-        let mut code = 0;
-        update_max_exit_code(&mut code, 2);
-        assert_eq!(code, 2);
-    }
-
-    #[test]
-    fn execute_export_rejects_both_run_and_compare() {
-        let dir = tempdir().unwrap();
-        let run_path = dir.path().join("run.json");
-        let compare_path = dir.path().join("compare.json");
-        let out_path = dir.path().join("out.csv");
-
-        let err = execute_export(Some(run_path), Some(compare_path), "csv", &out_path).unwrap_err();
-        assert!(
-            err.to_string().contains("mutually exclusive"),
-            "unexpected error: {}",
-            err
-        );
     }
 
     #[test]

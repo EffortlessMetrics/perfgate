@@ -27,7 +27,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
@@ -107,21 +107,21 @@ tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 libc = "0.2.182"
 
 # Internal crates
-perfgate-error = { path = "crates/perfgate-error", version = "0.3.0" }
-perfgate-types = { path = "crates/perfgate-types", version = "0.3.0" }
-perfgate-validation = { path = "crates/perfgate-validation", version = "0.3.0" }
-perfgate-stats = { path = "crates/perfgate-stats", version = "0.3.0" }
-perfgate-significance = { path = "crates/perfgate-significance", version = "0.3.0" }
-perfgate-paired = { path = "crates/perfgate-paired", version = "0.3.0" }
-perfgate-budget = { path = "crates/perfgate-budget", version = "0.3.0" }
-perfgate-domain = { path = "crates/perfgate-domain", version = "0.3.0" }
-perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.3.0" }
-perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.3.0" }
-perfgate-render = { path = "crates/perfgate-render", version = "0.3.0" }
-perfgate-export = { path = "crates/perfgate-export", version = "0.3.0" }
-perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.3.0" }
-perfgate-fake = { path = "crates/perfgate-fake", version = "0.3.0" }
-perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.3.0" }
-perfgate-app = { path = "crates/perfgate-app", version = "0.3.0" }
-perfgate-server = { path = "crates/perfgate-server", version = "0.3.0" }
-perfgate-client = { path = "crates/perfgate-client", version = "0.3.0" }
+perfgate-error = { path = "crates/perfgate-error", version = "0.4.0" }
+perfgate-types = { path = "crates/perfgate-types", version = "0.4.0" }
+perfgate-validation = { path = "crates/perfgate-validation", version = "0.4.0" }
+perfgate-stats = { path = "crates/perfgate-stats", version = "0.4.0" }
+perfgate-significance = { path = "crates/perfgate-significance", version = "0.4.0" }
+perfgate-paired = { path = "crates/perfgate-paired", version = "0.4.0" }
+perfgate-budget = { path = "crates/perfgate-budget", version = "0.4.0" }
+perfgate-domain = { path = "crates/perfgate-domain", version = "0.4.0" }
+perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.4.0" }
+perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.4.0" }
+perfgate-render = { path = "crates/perfgate-render", version = "0.4.0" }
+perfgate-export = { path = "crates/perfgate-export", version = "0.4.0" }
+perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.4.0" }
+perfgate-fake = { path = "crates/perfgate-fake", version = "0.4.0" }
+perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.4.0" }
+perfgate-app = { path = "crates/perfgate-app", version = "0.4.0" }
+perfgate-server = { path = "crates/perfgate-server", version = "0.4.0" }
+perfgate-client = { path = "crates/perfgate-client", version = "0.4.0" }

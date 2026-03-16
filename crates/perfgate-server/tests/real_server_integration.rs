@@ -39,7 +39,10 @@ async fn test_server_end_to_end_workflow() {
 
     // 3. Upload baseline
     let upload_req = create_test_upload_request("test-bench");
-    let expected_version = upload_req.version.clone().expect("test request should have a version");
+    let expected_version = upload_req
+        .version
+        .clone()
+        .expect("test request should have a version");
 
     let upload_res = client
         .upload_baseline("test-proj", &upload_req)

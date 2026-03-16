@@ -3,7 +3,9 @@
 //! The app layer coordinates adapters and domain logic.
 //! It does not parse CLI flags and it does not do filesystem I/O.
 
+pub mod baseline_resolve;
 mod check;
+pub mod comparison_logic;
 mod paired;
 mod promote;
 mod report;
