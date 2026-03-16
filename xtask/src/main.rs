@@ -725,11 +725,14 @@ fn check_schema_mirror_at(generated_dir: &Path, committed_dir: &Path) -> anyhow:
             continue;
         }
 
-        let generated_bytes = fs::read(&generated_path)
-            .with_context(|| format!("read {}", generated_path.display()))?;
-        let committed_bytes = fs::read(&committed_path)
-            .with_context(|| format!("read {}", committed_path.display()))?;
-        if generated_bytes != committed_bytes {
+        let generated_str = fs::read_to_string(&generated_path)
+            .with_context(|| format!("read {}", generated_path.display()))?
+            .replace("\r\n", "\n");
+        let committed_str = fs::read_to_string(&committed_path)
+            .with_context(|| format!("read {}", committed_path.display()))?
+            .replace("\r\n", "\n");
+
+        if generated_str != committed_str {
             println!("  DRIFT  {} differs from generated schema", name);
             drift += 1;
         }
