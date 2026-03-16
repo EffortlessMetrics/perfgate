@@ -1,6 +1,6 @@
 //! Integration tests for CLI commands using a mock server.
 
-use perfgate_types::{BASELINE_SCHEMA_V1, RUN_SCHEMA_V1};
+use perfgate::types::{BASELINE_SCHEMA_V1, RUN_SCHEMA_V1};
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
