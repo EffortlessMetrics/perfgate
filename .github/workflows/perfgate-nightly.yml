@@ -1,0 +1,35 @@
+name: perfgate-nightly
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly-perf:
+    name: "Nightly Calibration Lane"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: cargo build --release -p perfgate-cli
+      - name: Make scripts executable
+        run: chmod +x .ci/perf/*.sh
+      - name: Run dogfooding
+        run: ./target/release/perfgate check --config .ci/perfgate-self.toml --all --mode cockpit --output-github
+      - name: Promote Baselines
+        if: success()
+        run: |
+          for file in artifacts/perfgate/extras/*/*/perfgate.run.v1.json; do
+            BENCH_PATH=$(echo "$file" | sed -n 's|artifacts/perfgate/extras/\(.*\)/perfgate.run.v1.json|\1|p')
+            mkdir -p "baselines/gha-linux-x86_64/$(dirname "$BENCH_PATH")"
+            ./target/release/perfgate promote --current "$file" --to "baselines/gha-linux-x86_64/$BENCH_PATH.json"
+          done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perfgate-artifacts
+          path: artifacts/perfgate
+          if-no-files-found: warn

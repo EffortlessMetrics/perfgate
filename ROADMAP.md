@@ -8,6 +8,7 @@ This document outlines the planned evolution of `perfgate`. It serves as a high-
 - **Ecosystem Maintenance**: Hardening the 19-crate micro-architecture and ensuring stable CI/CD across all platforms. [DONE: Fixed server pagination and test coverage]
 - **Documentation Alignment**: Keeping ADRs and crate-level READMEs in sync with the rapidly evolving modular codebase. [DONE: ADRs 0001-0005 created]
 - **Windows Parity**: Improving best-effort system metrics (CPU/RSS/PageFaults) for Windows parity with Unix `rusage`. [DONE: page_faults added to Windows best-effort]
+- **Self-Dogfooding**: Implementing strict performance gating for `perfgate` development itself, ensuring artifact stability and tool efficiency. [DONE: v0.5.0 rollout]
 
 ### Next
 - **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
@@ -23,9 +24,10 @@ To become the standard, low-friction "build truth" sensor for performance gating
 
 ---
 
-## Current Status (v2.x)
-- [x] **v2.0 Baseline Server**: Centralized baseline management with RBAC and REST API.
-- [x] **Micro-crate Architecture**: Full decomposition into 19 specialized crates for better maintenance.
+## Current Status (v0.5.x)
+- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops and artifact stability gating.
+- [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API.
+- [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates for better maintenance.
 - [x] **Statistical Significance**: Integrated Welch's t-test and p-value support.
 - [x] **Multi-format Export**: CSV, JSONL, HTML, and Prometheus support.
 - [x] **Paired Benchmarking**: Interleaved execution to minimize CI noise.

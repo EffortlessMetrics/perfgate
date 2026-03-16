@@ -1,0 +1,40 @@
+name: perfgate-self
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  smoke:
+    name: "Action Smoke Lane"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make scripts executable
+        run: chmod +x .ci/perf/*.sh
+      - uses: ./
+        with:
+          config: .ci/perfgate-self.toml
+          all: "true"
+          out_dir: artifacts/perfgate-smoke
+
+  perf:
+    name: "Core Perf Lane"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: cargo build --release -p perfgate-cli
+      - name: Make scripts executable
+        run: chmod +x .ci/perf/*.sh
+      - name: Run dogfooding
+        run: ./target/release/perfgate check --config .ci/perfgate-self.toml --all --mode cockpit --output-github
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perfgate-artifacts
+          path: artifacts/perfgate
+          if-no-files-found: warn

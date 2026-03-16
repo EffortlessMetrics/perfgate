@@ -1,0 +1,12 @@
+[defaults]
+repeat = 3
+warmup = 0
+baseline_pattern = ".ci/fixtures/check/baselines/{bench}.json"
+
+[[bench]]
+name = "test-bench"
+command = ["git", "--version"]
+
+[[bench]]
+name = "test-no-baseline"
+command = ["git", "--version"]
