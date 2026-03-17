@@ -16,11 +16,18 @@ We use three distinct lanes to validate different aspects of the system:
 
 Performance metrics are sensitive to the environment. We pin our authoritative runner to:
 
-- **OS/Image**: `ubuntu-24.04`
+- **OS/Image**: `ubuntu-24.04` (fixed version)
 - **Arch**: `x86_64`
 - **Namespace**: `baselines/gha-ubuntu-24.04-x86_64/`
 
 Metrics from other platforms (e.g., Windows) are currently observe-only.
+
+## Automation (xtask)
+
+We use `xtask` to manage dogfooding fixtures and verification:
+
+- `cargo run -p xtask -- dogfood fixtures`: Regenerates the stable JSON fixtures in `.ci/fixtures/` using the release binary.
+- `cargo run -p xtask -- dogfood verify`: Validates that required artifacts (`report.json`, `comment.md`) exist in the expected layout.
 
 ## Configurations
 

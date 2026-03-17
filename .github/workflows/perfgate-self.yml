@@ -23,6 +23,8 @@ jobs:
           all: "true"
           out_dir: artifacts/perfgate-smoke
           artifact_name: perfgate-artifacts-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Verify artifacts
+        run: cargo run -p xtask -- dogfood verify
 
   perf:
     name: Core Perf Lane
@@ -62,18 +64,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build current binary
-        run: cd current && cargo build --release -p perfgate-cli --bin perfgate
+        run: cd current && cargo build --release -p perfgate-cli --bin perfgate && cargo build --release -p perfgate-selfbench
 
       - name: Build main binary
-        run: cd main && cargo build --release -p perfgate-cli --bin perfgate
+        run: cd main && cargo build --release -p perfgate-cli --bin perfgate && cargo build --release -p perfgate-selfbench
 
       - name: Run paired comparison
         run: |
           mkdir -p artifacts/paired
           ./current/target/release/perfgate paired \
             --name cli/paired-main \
-            --baseline-cmd "./main/target/release/perfgate --version" \
-            --current-cmd "./current/target/release/perfgate --version" \
+            --baseline-cmd "./main/target/release/perfgate-selfbench noop" \
+            --current-cmd "./current/target/release/perfgate-selfbench noop" \
             --repeat 10 \
             --out artifacts/paired/compare.json
 

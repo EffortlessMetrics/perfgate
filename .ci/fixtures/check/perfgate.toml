@@ -5,8 +5,8 @@ baseline_pattern = ".ci/fixtures/check/baselines/{bench}.json"
 
 [[bench]]
 name = "test-bench"
-command = ["git", "--version"]
+command = ["./target/release/perfgate-selfbench", "noop"]
 
 [[bench]]
 name = "test-no-baseline"
-command = ["git", "--version"]
+command = ["./target/release/perfgate-selfbench", "noop"]
