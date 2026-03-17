@@ -6,8 +6,8 @@ This document outlines the planned evolution of `perfgate`. It serves as a high-
 
 ### Now
 - **Ecosystem Maintenance**: Hardening the 20-crate micro-architecture and ensuring stable CI/CD across all platforms. [DONE: Fixed server pagination and test coverage]
-- **Self-Dogfooding & Hardening**: Implementing strict performance gating for `perfgate` development itself, ensuring artifact stability and tool efficiency across multiple CI lanes. [DONE: v0.5.0 implementation across 5 phases]
-- **Documentation & Governance**: Establishing formal policies for baseline management and troubleshooting guides. [DONE: ADR 0006 and policy docs created]
+- **Self-Dogfooding & Hardening**: Implementing strict performance gating for `perfgate` development itself, ensuring artifact stability and tool efficiency across multiple CI lanes. [DONE: v0.5.0 implementation across 6 phases]
+- **Learning Loop & Automation**: Implementing automated baseline refreshes, trend summaries, and repo-owned deterministic workloads via `xtask` and `perfgate-selfbench`. [DONE: v0.5.0 follow-up]
 
 ### Next
 - **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
