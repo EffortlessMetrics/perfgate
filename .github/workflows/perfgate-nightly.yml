@@ -57,21 +57,26 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           git checkout -b "$BRANCH_NAME" || git checkout "$BRANCH_NAME"
-          git add baselines/gha-ubuntu-24.04-x86_64/
+          
+          # Move trends into the repo for persistence
+          mkdir -p baselines/trends
+          cp -r artifacts/trends/* baselines/trends/
+          
+          git add baselines/gha-ubuntu-24.04-x86_64/ baselines/trends/
           
           if git diff --staged --quiet; then
-            echo "No baseline changes detected."
+            echo "No baseline or trend changes detected."
             exit 0
           fi
           
-          git commit -m "perf: refresh nightly baselines (gha-ubuntu-24.04-x86_64)"
+          git commit -m "perf: refresh nightly baselines and persist trends"
           git push origin "$BRANCH_NAME" --force
           
           gh pr create \
-            --title "perf: refresh nightly baselines" \
-            --body "Automatic nightly baseline calibration for gha-ubuntu-24.04-x86_64. 
+            --title "perf: refresh nightly baselines and trends" \
+            --body "Automatic nightly baseline calibration and trend persistence for gha-ubuntu-24.04-x86_64. 
             
-            This PR updates the canonical performance baselines based on the latest nightly run." \
+            This PR updates the canonical performance baselines and saves the latest trend data (JSONL/Prometheus/Summary) to \`baselines/trends/\` for long-term historical analysis." \
             --base main \
             --head "$BRANCH_NAME" || echo "PR already exists"
           
