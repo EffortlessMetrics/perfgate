@@ -5,15 +5,14 @@ This document outlines the planned evolution of `perfgate`. It serves as a high-
 ## Strategic Outlook (2026+)
 
 ### Now
-- **Ecosystem Maintenance**: Hardening the 19-crate micro-architecture and ensuring stable CI/CD across all platforms. [DONE: Fixed server pagination and test coverage]
-- **Documentation Alignment**: Keeping ADRs and crate-level READMEs in sync with the rapidly evolving modular codebase. [DONE: ADRs 0001-0005 created]
-- **Windows Parity**: Improving best-effort system metrics (CPU/RSS/PageFaults) for Windows parity with Unix `rusage`. [DONE: page_faults added to Windows best-effort]
-- **Self-Dogfooding**: Implementing strict performance gating for `perfgate` development itself, ensuring artifact stability and tool efficiency. [DONE: v0.5.0 rollout]
+- **Ecosystem Maintenance**: Hardening the 20-crate micro-architecture and ensuring stable CI/CD across all platforms. [DONE: Fixed server pagination and test coverage]
+- **Self-Dogfooding & Hardening**: Implementing strict performance gating for `perfgate` development itself, ensuring artifact stability and tool efficiency across multiple CI lanes. [DONE: v0.5.0 implementation across 5 phases]
+- **Documentation & Governance**: Establishing formal policies for baseline management and troubleshooting guides. [DONE: ADR 0006 and policy docs created]
 
 ### Next
 - **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
 - **Enhanced Baseline Server**: Adding support for pluggable storage backends (PostgreSQL, S3) and OIDC authentication.
-- **Observability**: Native OpenTelemetry export support for direct ingestion into observability platforms.
+- **Learning Loop Expansion**: Implementing weekly variance summaries and threshold recommendation reports.
 
 ### Later
 - **AI-Driven Analysis**: Exploring LLM-assisted performance regression diagnosis based on historical trends.
@@ -25,7 +24,7 @@ To become the standard, low-friction "build truth" sensor for performance gating
 ---
 
 ## Current Status (v0.5.x)
-- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops and artifact stability gating.
+- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes.
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API.
 - [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates for better maintenance.
 - [x] **Statistical Significance**: Integrated Welch's t-test and p-value support.

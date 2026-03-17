@@ -14,7 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-03-16
 
 ### Added
-- Self-dogfooding infrastructure for perfgate, including GitHub Actions workflows (`perfgate-self.yml`, `perfgate-nightly.yml`), fixed deterministic fixture corpus, and `.ci/perf/*.sh` evaluation scripts.
+- **Self-Dogfooding Infrastructure** — `perfgate` now uses itself to gate its own performance across three CI lanes (Smoke, Perf, and Nightly).
+- **Multi-Lane CI Workflows** — Implemented `perfgate-self.yml` and `perfgate-nightly.yml` with unique artifact naming and authoritative runner pinning (`ubuntu-24.04`).
+- **Hardened Workload Wrappers** — Introduced `.ci/perf/lib.sh` for shared binary resolution and strict exit code classification (allowing 0, 2, 3 while failing on crashes).
+- **Automated Baseline Lifecycle** — Nightly calibration now generates candidate baselines and automatically proposes refreshes via bot-driven Pull Requests.
+- **Learning Loop & Trends** — Added trend export to JSONL and Prometheus formats in the nightly lane for long-term drift analysis.
+- **Paired Observation Lane** — New "PR-vs-Main" lane dogfoods interleaved benchmarking by comparing the current binary directly against the last blessed `main` binary.
+- **Enhanced Repo Automation** — Added `xtask dogfood` subcommands for fixture regeneration and artifact verification, plus a framework for `docs-sync`.
+- **New Micro-crate** — Introduced `perfgate` facade crate as the high-level entrypoint for the ecosystem.
 
 ## [0.4.1] - 2026-03-12
 
