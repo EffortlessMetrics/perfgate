@@ -171,8 +171,10 @@ pub(crate) async fn create_storage(
                 .postgres_url
                 .clone()
                 .unwrap_or_else(|| "postgres://localhost:5432/perfgate".to_string());
-            info!(url = %url, "Using PostgreSQL storage (stub)");
-            Ok(Arc::new(PostgresStore::new(&url)))
+            info!(url = %url, "Using PostgreSQL storage");
+            let store = PostgresStore::new(&url).await
+                .map_err(|e| ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e)))?;
+            Ok(Arc::new(store))
         }
     }
 }
