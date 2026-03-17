@@ -147,8 +147,8 @@ runs:
 
     - name: Upload perfgate artifacts
       if: always() && inputs.upload_artifact == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
-        name: ${{ inputs.artifact_name }}
+        name: ${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ inputs.out_dir }}
         if-no-files-found: warn

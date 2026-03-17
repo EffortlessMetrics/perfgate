@@ -2,34 +2,73 @@ name: perfgate-nightly
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  nightly-perf:
-    name: "Nightly Calibration Lane"
-    runs-on: ubuntu-latest
+  nightly:
+    name: Nightly Calibration Lane
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Build release binary
-        run: cargo build --release -p perfgate-cli
+        run: cargo build --release -p perfgate-cli --bin perfgate
+
       - name: Make scripts executable
         run: chmod +x .ci/perf/*.sh
-      - name: Run dogfooding
-        run: ./target/release/perfgate check --config .ci/perfgate-self.toml --all --mode cockpit --output-github
-      - name: Promote Baselines
-        if: success()
+
+      - name: Run calibration
+        run: ./target/release/perfgate check --config .ci/perfgate-nightly.toml --all --mode cockpit --output-github
+
+      - name: Refresh candidate baselines
         run: |
-          for file in artifacts/perfgate/extras/*/*/perfgate.run.v1.json; do
-            BENCH_PATH=$(echo "$file" | sed -n 's|artifacts/perfgate/extras/\(.*\)/perfgate.run.v1.json|\1|p')
-            mkdir -p "baselines/gha-linux-x86_64/$(dirname "$BENCH_PATH")"
-            ./target/release/perfgate promote --current "$file" --to "baselines/gha-linux-x86_64/$BENCH_PATH.json"
+          find artifacts/perfgate/extras -name 'perfgate.run.v1.json' -print0 |
+          while IFS= read -r -d '' file; do
+            rel="${file#artifacts/perfgate/extras/}"
+            bench="${rel%/perfgate.run.v1.json}"
+            mkdir -p "baselines/gha-ubuntu-24.04-x86_64/$(dirname "$bench")"
+            ./target/release/perfgate promote \
+              --current "$file" \
+              --to "baselines/gha-ubuntu-24.04-x86_64/${bench}.json"
           done
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+
+      - name: Create or update baseline PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH_NAME="bot/perfgate-baselines"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b "$BRANCH_NAME" || git checkout "$BRANCH_NAME"
+          git add baselines/gha-ubuntu-24.04-x86_64/
+          
+          if git diff --staged --quiet; then
+            echo "No baseline changes detected."
+            exit 0
+          fi
+          
+          git commit -m "perf: refresh nightly baselines (gha-ubuntu-24.04-x86_64)"
+          git push origin "$BRANCH_NAME" --force
+          
+          gh pr create \
+            --title "perf: refresh nightly baselines" \
+            --body "Automatic nightly baseline calibration for gha-ubuntu-24.04-x86_64. 
+            
+            This PR updates the canonical performance baselines based on the latest nightly run." \
+            --base main \
+            --head "$BRANCH_NAME" || echo "PR already exists"
+
+      - name: Upload nightly artifacts
         if: always()
+        uses: actions/upload-artifact@v6
         with:
-          name: perfgate-artifacts
+          name: perfgate-artifacts-nightly-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/perfgate
           if-no-files-found: warn

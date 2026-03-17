@@ -1,41 +1,45 @@
 name: perfgate-self
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   smoke:
-    name: "Action Smoke Lane"
-    runs-on: ubuntu-latest
+    name: Action Smoke Lane
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Make scripts executable
         run: chmod +x .ci/perf/*.sh
       - uses: ./
         with:
-          config: .ci/perfgate-self.toml
+          config: .ci/perfgate-pr.toml
           all: "true"
           out_dir: artifacts/perfgate-smoke
-          artifact_name: perfgate-artifacts-smoke
+          artifact_name: perfgate-artifacts-smoke-${{ github.run_id }}-${{ github.run_attempt }}
 
   perf:
-    name: "Core Perf Lane"
-    runs-on: ubuntu-latest
+    name: Core Perf Lane
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Build release binary
-        run: cargo build --release -p perfgate-cli
+        run: cargo build --release -p perfgate-cli --bin perfgate
       - name: Make scripts executable
         run: chmod +x .ci/perf/*.sh
       - name: Run dogfooding
-        run: ./target/release/perfgate check --config .ci/perfgate-self.toml --all --mode cockpit --output-github
+        run: ./target/release/perfgate check --config .ci/perfgate-pr.toml --all --mode cockpit --output-github
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v6
         with:
-          name: perfgate-artifacts-core
+          name: perfgate-artifacts-core-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/perfgate
           if-no-files-found: warn
