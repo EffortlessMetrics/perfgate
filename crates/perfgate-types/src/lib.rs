@@ -1367,8 +1367,11 @@ mod tests {
 
     #[test]
     fn perfgate_error_display_run_command() {
-        let err = PerfgateError::RunCommand("spawn failed".to_string());
-        assert_eq!(format!("{}", err), "run command: spawn failed");
+        let err = PerfgateError::RunCommand {
+            command: "echo".to_string(),
+            reason: "spawn failed".to_string(),
+        };
+        assert_eq!(format!("{}", err), "failed to execute command \"echo\": spawn failed");
     }
 
     #[test]

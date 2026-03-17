@@ -214,10 +214,9 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         } else {
             // No baseline
             if req.require_baseline {
-                return Err(PerfgateError::BaselineResolve(format!(
-                    "baseline required but not found for bench '{}'",
-                    req.bench_name
-                ))
+                return Err(PerfgateError::BaselineNotFound {
+                    path: format!("bench '{}'", req.bench_name),
+                }
                 .into());
             }
             warnings.push(format!(
@@ -1319,8 +1318,8 @@ mod tests {
 
         let err = usecase.execute(req).unwrap_err();
         assert!(
-            err.to_string().contains("baseline required"),
-            "expected baseline required error, got: {}",
+            err.to_string().contains("baseline not found"),
+            "expected baseline not found error, got: {}",
             err
         );
     }

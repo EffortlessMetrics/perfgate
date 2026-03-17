@@ -1,5 +1,6 @@
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate::adapters::{StdHostProbe, StdProcessRunner};
 use perfgate::app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
@@ -667,6 +668,13 @@ enum Command {
         #[command(subcommand)]
         action: BaselineAction,
     },
+
+    /// Summarize one or more compare receipts in a terminal table.
+    Summary {
+        /// Paths to compare receipts (glob patterns supported)
+        #[arg(required = true)]
+        files: Vec<String>,
+    },
 }
 
 /// Subcommands for baseline management.
@@ -1231,7 +1239,50 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
         }
 
         Command::Baseline { action } => execute_baseline_action(action, &server_config),
+
+        Command::Summary { files } => execute_summary(files),
     }
+}
+
+/// Execute the summary command to display a table of results.
+fn execute_summary(files: Vec<String>) -> anyhow::Result<()> {
+    let mut paths = Vec::new();
+    for pattern in files {
+        for entry in glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))? {
+            paths.push(entry?);
+        }
+    }
+
+    if paths.is_empty() {
+        anyhow::bail!("no comparison receipts found");
+    }
+
+    println!("\n| Benchmark | Status | Wall (ms) | Change |");
+    println!("|-----------|--------|-----------|--------|");
+
+    for path in paths {
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("read {}", path.display()))?;
+        let compare: perfgate::types::CompareReceipt = serde_json::from_str(&content)
+            .with_context(|| format!("parse JSON from {}", path.display()))?;
+
+        let bench = &compare.bench.name;
+        let status = format!("{:?}", compare.verdict.status).to_lowercase();
+
+        let wall = compare.deltas.get(&perfgate::types::Metric::WallMs);
+        let (val, pct) = if let Some(d) = wall {
+            (
+                format!("{:.2}", d.current),
+                format!("{:.1}%", d.pct * 100.0),
+            )
+        } else {
+            ("N/A".to_string(), "N/A".to_string())
+        };
+
+        println!("| {} | {} | {} | {} |", bench, status, val, pct);
+    }
+
+    Ok(())
 }
 
 /// Execute baseline management actions.

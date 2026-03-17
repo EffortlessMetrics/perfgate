@@ -84,10 +84,17 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
                 timeout: req.timeout,
                 output_cap_bytes: req.output_cap_bytes,
             };
-            let baseline_run = self
-                .runner
-                .run(&baseline_spec)
-                .with_context(|| format!("failed to run baseline (pair {})", i + 1))?;
+            let baseline_run = self.runner.run(&baseline_spec).map_err(|e| match e {
+                perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+                    anyhow::anyhow!(
+                        "failed to run baseline pair {}: {}: {}",
+                        i + 1,
+                        command,
+                        reason
+                    )
+                }
+                _ => anyhow::anyhow!("failed to run baseline pair {}: {}", i + 1, e),
+            })?;
 
             let current_spec = CommandSpec {
                 argv: req.current_command.clone(),
@@ -96,10 +103,17 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
                 timeout: req.timeout,
                 output_cap_bytes: req.output_cap_bytes,
             };
-            let current_run = self
-                .runner
-                .run(&current_spec)
-                .with_context(|| format!("failed to run current (pair {})", i + 1))?;
+            let current_run = self.runner.run(&current_spec).map_err(|e| match e {
+                perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+                    anyhow::anyhow!(
+                        "failed to run current pair {}: {}: {}",
+                        i + 1,
+                        command,
+                        reason
+                    )
+                }
+                _ => anyhow::anyhow!("failed to run current pair {}: {}", i + 1, e),
+            })?;
 
             let baseline = sample_half(&baseline_run);
             let current = sample_half(&current_run);

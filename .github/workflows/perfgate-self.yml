@@ -22,9 +22,11 @@ jobs:
           config: .ci/perfgate-pr.toml
           all: "true"
           out_dir: artifacts/perfgate-smoke
-          artifact_name: perfgate-artifacts-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact_name: perfgate-artifacts-smoke
       - name: Verify artifacts
-        run: cargo run -p xtask -- dogfood verify
+        run: cargo run -p xtask -- dogfood verify --dir artifacts/perfgate-smoke
+      - name: Check documentation drift
+        run: cargo run -p xtask -- docs-check
 
   perf:
     name: Core Perf Lane
@@ -74,8 +76,8 @@ jobs:
           mkdir -p artifacts/paired
           ./current/target/release/perfgate paired \
             --name cli/paired-main \
-            --baseline-cmd "./main/target/release/perfgate-selfbench noop" \
-            --current-cmd "./current/target/release/perfgate-selfbench noop" \
+            --baseline-cmd "./main/target/release/perfgate-selfbench cpu-fixed" \
+            --current-cmd "./current/target/release/perfgate-selfbench cpu-fixed" \
             --repeat 10 \
             --out artifacts/paired/compare.json
 
