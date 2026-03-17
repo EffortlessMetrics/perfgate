@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Hardened wrapper for cockpit report rendering benchmark.
+source "$(dirname "$0")/lib.sh"
 
-if [ -f "./target/release/perfgate" ]; then
-  BIN="./target/release/perfgate"
-elif [ -f "./target/release/perfgate.exe" ]; then
-  BIN="./target/release/perfgate.exe"
-else
-  echo "perfgate binary not found" >&2
-  exit 1
-fi
-
-OUT_DIR="$(mktemp -d)"
-trap 'rm -rf "$OUT_DIR"' EXIT
+BIN=$(perfgate_bin)
+OUT_DIR=$(make_tempdir)
 
 "$BIN" report \
   --compare .ci/fixtures/compare/compare-receipt.json \
