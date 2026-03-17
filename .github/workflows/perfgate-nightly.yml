@@ -38,6 +38,20 @@ jobs:
               --to "baselines/gha-ubuntu-24.04-x86_64/${bench}.json"
           done
 
+      - name: Export trends
+        run: |
+          mkdir -p artifacts/trends
+          find artifacts/perfgate/extras -name 'perfgate.run.v1.json' -print0 |
+          while IFS= read -r -d '' file; do
+            bench=$(echo "$file" | sed -n 's|artifacts/perfgate/extras/\(.*\)/perfgate.run.v1.json|\1|p' | tr '/' '-')
+            ./target/release/perfgate export --run "$file" --format jsonl --out "artifacts/trends/history-${bench}.jsonl"
+          done
+          find artifacts/perfgate/extras -name 'perfgate.compare.v1.json' -print0 |
+          while IFS= read -r -d '' file; do
+            bench=$(echo "$file" | sed -n 's|artifacts/perfgate/extras/\(.*\)/perfgate.compare.v1.json|\1|p' | tr '/' '-')
+            ./target/release/perfgate export --compare "$file" --format prometheus --out "artifacts/trends/metrics-${bench}.prom"
+          done
+
       - name: Create or update baseline PR
         env:
           GH_TOKEN: ${{ github.token }}
