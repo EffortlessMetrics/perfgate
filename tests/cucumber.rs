@@ -5003,6 +5003,103 @@ async fn when_baseline_delete_no_server(world: &mut PerfgateWorld) {
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
+use cucumber::gherkin::Step;
+
+#[given(expr = "a compare receipt exists at {string} with:")]
+async fn given_compare_receipt_exists_with(
+    world: &mut PerfgateWorld,
+    step: &Step,
+    path_str: String,
+) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    
+    // Default to a PASS compare receipt
+    let mut receipt = world.create_compare_receipt(VerdictStatus::Pass);
+    receipt.bench.name = path.file_stem().unwrap().to_string_lossy().to_string();
+
+    if let Some(table) = &step.table {
+        // parse the table
+        for row in table.rows.iter().skip(1) {
+            let metric_name = &row[0];
+            let status_str = &row[1];
+            let current: f64 = row[2].parse().unwrap();
+            let pct: f64 = row[3].parse().unwrap();
+            
+            let status = match status_str.as_str() {
+                "pass" => perfgate_types::MetricStatus::Pass,
+                "warn" => perfgate_types::MetricStatus::Warn,
+                "fail" => perfgate_types::MetricStatus::Fail,
+                _ => panic!("unknown status"),
+            };
+
+            let metric = match metric_name.as_str() {
+                "wall_ms" => perfgate_types::Metric::WallMs,
+                _ => panic!("unknown metric"),
+            };
+
+            receipt.deltas.insert(
+                metric,
+                perfgate_types::Delta {
+                    baseline: current / (1.0 + pct),
+                    current,
+                    ratio: 1.0 + pct,
+                    pct,
+                    regression: if pct > 0.0 { pct } else { 0.0 },
+                    statistic: perfgate_types::MetricStatistic::Median,
+                    significance: None,
+                    status,
+                },
+            );
+            
+            // update verdict if we have warn/fail
+            if status == perfgate_types::MetricStatus::Fail {
+                receipt.verdict.status = VerdictStatus::Fail;
+                receipt.verdict.counts.fail += 1;
+            } else if status == perfgate_types::MetricStatus::Warn {
+                if receipt.verdict.status != VerdictStatus::Fail {
+                    receipt.verdict.status = VerdictStatus::Warn;
+                }
+                receipt.verdict.counts.warn += 1;
+            }
+        }
+    }
+    
+    let json = serde_json::to_string_pretty(&receipt).unwrap();
+    std::fs::write(path, json).unwrap();
+}
+
+#[when(expr = "I run \"perfgate summary {word}\"")]
+async fn when_run_perfgate_summary(world: &mut PerfgateWorld, pattern: String) {
+    world.ensure_temp_dir();
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(world.temp_path());
+    cmd.arg("summary");
+    
+    // Evaluate the glob manually or just let the shell do it. 
+    // Actually, assert_cmd doesn't expand globs. We have to expand it manually.
+    for entry in glob::glob(&format!("{}/{}", world.temp_path().display(), pattern)).unwrap() {
+        if let Ok(path) = entry {
+            cmd.arg(path);
+        }
+    }
+    
+    let output = cmd.output().expect("Failed to execute perfgate summary");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+#[then("the command should succeed")]
+async fn then_command_should_succeed(world: &mut PerfgateWorld) {
+    let actual = world.last_exit_code.expect("No exit code recorded");
+    assert_eq!(
+        actual, 0,
+        "Expected command to succeed (exit code 0), got {}. Stderr: {}",
+        actual, world.last_stderr
+    );
+}
+
 // ============================================================================
 // MAIN FUNCTION
 // ============================================================================
