@@ -35,6 +35,7 @@ cargo run -p perfgate -- --help
 | `export` | Export data to CSV/JSONL/HTML/Prometheus for trend analysis |
 | `check` | Config-driven one-command workflow |
 | `paired` | Paired benchmarking with interleaved baseline/current runs |
+| `summary` | Summarize one or more compare receipts in a terminal table |
 
 ## Exit Codes
 
