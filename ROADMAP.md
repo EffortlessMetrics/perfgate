@@ -4,13 +4,11 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ## Strategic Outlook (2026-2027)
 
-### Now: Foundations & Dogfooding (0.5.x)
-- **Hardening**: Stabilizing the 20-crate architecture.
-- **Self-Dogfooding**: Strict gating on the `perfgate` repo itself.
-- **CLI Polishing**: Landing `summary` and improved error diagnostics.
-
-### Next: The Learning Loop & Enterprise Server (0.6.0 - 0.10.0)
+### Now: The Learning Loop (0.6.x)
 - **Automation**: Moving from "manual gating" to "intelligent observation."
+- **Trend Persistence**: Persisting nightly trends to git for variance summaries.
+
+### Next: Enterprise Server (0.7.0 - 0.10.0)
 - **Server Depth**: Production-grade storage, auth, and visualization.
 
 ### Later: Intelligent Gating & Ecosystem (0.11.0 - 0.15.0)
@@ -24,7 +22,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 ### 0.6.0: The Learning Loop
 - [x] **Weekly Variance Summaries**: `xtask` command to aggregate nightly trend JSONL into a human-readable stability report.
 - [x] **Threshold Recommendations**: Automatically suggest `perfgate.toml` threshold updates based on observed 7-day variance.
-- [ ] **Trend Persistence**: First-class support for storing trend data in local Git or S3 without requiring the full server.
+- [x] **Trend Persistence**: First-class support for storing trend data in local Git or S3 without requiring the full server.
 
 ### 0.7.0: Production Storage
 - [ ] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`.
@@ -70,7 +68,8 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ---
 
-## Current Status (v0.5.x)
+## Current Status (v0.6.x)
+- [x] **v0.6.0 The Learning Loop**: Automated variance summaries, threshold recommendations, and git-based trend persistence. [DONE]
 - [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes. [DONE]
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
 - [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates. [DONE]
