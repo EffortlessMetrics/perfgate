@@ -203,7 +203,7 @@ fn io_error_display_messages() {
             reason: "spawn failed".to_string(),
         }
             .to_string()
-            .contains("run command")
+            .contains("failed to execute command")
     );
 }
 
