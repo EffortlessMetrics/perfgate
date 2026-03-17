@@ -16,6 +16,16 @@ When adding features or fixing bugs, update [CHANGELOG.md](CHANGELOG.md) under t
 cargo run -p xtask -- schema
 ```
 
+## Dogfooding
+
+`perfgate` uses itself to gate its own performance. If you make changes that affect the core CLI execution or artifact format, you may need to update the dogfooding fixtures:
+
+```bash
+cargo run -p xtask -- dogfood fixtures
+```
+
+See [docs/SELF_DOGFOODING.md](docs/SELF_DOGFOODING.md) for details on the CI lanes and baseline policy.
+
 ## Mutation testing
 
 Install:

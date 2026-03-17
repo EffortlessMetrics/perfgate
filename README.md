@@ -445,6 +445,32 @@ cargo run -p xtask -- conform --fixtures path/to/dir
 
 `--fixtures` validates all `*.json` files in the provided directory, which supports third-party sensor artifact validation.
 
+## Self-Dogfooding
+
+`perfgate` uses itself to monitor and gate its own performance across three distinct CI lanes:
+
+- **Action Smoke Lane**: Validates the GitHub Action integration and installation path.
+- **Core Perf Lane**: Strictly gates the performance of core CLI commands against fixed workloads on `ubuntu-24.04`.
+- **Nightly Calibration**: Performs high-precision trend analysis and automated baseline refreshes via bot PRs.
+
+See [SELF_DOGFOODING.md](docs/SELF_DOGFOODING.md) and [BASELINE_POLICY.md](docs/BASELINE_POLICY.md) for detailed governance.
+
+## Automation (xtask)
+
+The `xtask` crate provides comprehensive repo automation:
+
+| Command | Description |
+|---------|-------------|
+| `schema` / `schema-check` | Manage and verify JSON schemas |
+| `ci` | Run standard repo checks (fmt, clippy, test, conform) |
+| `conform` | Validate fixtures against schemas |
+| `sync-fixtures` | Synchronize golden fixtures to contracts |
+| `dogfood fixtures` | Regenerate stable dogfooding fixtures |
+| `dogfood verify` | Validate artifact layout in CI |
+| `docs-sync` / `docs-check` | Manage and verify system documentation |
+| `mutants` | Run mutation testing via cargo-mutants |
+| `microcrates` | Inventory all workspace crates and kill rate targets |
+
 ## Design
 
 `perfgate` follows a highly modularized architecture composed of specialized micro-crates. For the rationale behind this design, see the [Architectural Decision Records (ADRs)](docs/adrs/).
