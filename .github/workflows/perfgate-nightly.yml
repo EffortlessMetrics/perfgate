@@ -43,6 +43,11 @@ jobs:
             ./target/release/perfgate export --compare "$file" --format prometheus --out "artifacts/trends/metrics-${bench}.prom"
           done
 
+      - name: Generate weekly variance summary
+        run: |
+          cargo run -p xtask -- dogfood summarize --dir artifacts/trends > artifacts/trends/variance-summary.md
+          cat artifacts/trends/variance-summary.md >> $GITHUB_STEP_SUMMARY
+
       - name: Create or update baseline PR
         env:
           GH_TOKEN: ${{ github.token }}

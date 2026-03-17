@@ -19,4 +19,6 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 perfgate-types.workspace = true
+perfgate-stats.workspace = true
+perfgate-export.workspace = true
 glob.workspace = true

@@ -170,7 +170,11 @@ enum DogfoodAction {
     /// Turn nightly outputs into refreshed baseline files.
     Promote,
     /// Generate a compact Markdown/JSON summary of drift, noise, and recommendations.
-    Summarize,
+    Summarize {
+        /// Directory containing perfgate export trends
+        #[arg(long, default_value = "artifacts/trends")]
+        dir: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -1105,38 +1109,58 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             println!("Promoted {} baselines.", count);
             Ok(())
         }
-        DogfoodAction::Summarize => {
-            println!("Generating dogfooding summary...");
-            let pattern = "artifacts/perfgate/extras/**/perfgate.compare.v1.json";
+        DogfoodAction::Summarize { dir } => {
+            println!("Generating trend variance summary...");
+            let pattern = format!("{}/**/*.jsonl", dir.display());
 
-            println!("\n| Benchmark | Status | Wall (ms) | Change |");
-            println!("|-----------|--------|-----------|--------|");
-
-            let mut count = 0;
-            for entry in glob(pattern)? {
+            let mut all_rows: Vec<perfgate_export::RunExportRow> = Vec::new();
+            for entry in glob(&pattern)? {
                 let path = entry?;
                 let content = fs::read_to_string(&path)?;
-                let compare: perfgate_types::CompareReceipt = serde_json::from_str(&content)?;
-
-                let bench = &compare.bench.name;
-                let status = format!("{:?}", compare.verdict.status).to_lowercase();
-
-                let wall = compare.deltas.get(&perfgate_types::Metric::WallMs);
-                let (val, pct) = if let Some(d) = wall {
-                    (
-                        format!("{:.2}", d.current),
-                        format!("{:.1}%", d.pct * 100.0),
-                    )
-                } else {
-                    ("N/A".to_string(), "N/A".to_string())
-                };
-
-                println!("| {} | {} | {} | {} |", bench, status, val, pct);
-                count += 1;
+                for line in content.lines() {
+                    if let Ok(row) = serde_json::from_str::<perfgate_export::RunExportRow>(line) {
+                        all_rows.push(row);
+                    }
+                }
             }
-            if count == 0 {
-                println!("No comparison receipts found matching {}", pattern);
+
+            if all_rows.is_empty() {
+                println!("No trend data found in {}", dir.display());
+                return Ok(());
             }
+
+            // Group by bench name
+            let mut by_bench: std::collections::BTreeMap<String, Vec<f64>> = std::collections::BTreeMap::new();
+            for row in all_rows {
+                by_bench.entry(row.bench_name).or_default().push(row.wall_ms_median as f64);
+            }
+
+            println!("\n## Weekly Variance Summary");
+            println!("\n| Benchmark | Samples | Mean (ms) | StdDev | CV (%) | Rec. Threshold |");
+            println!("|-----------|---------|-----------|--------|--------|----------------|");
+
+            for (bench, mut vals) in by_bench {
+                vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let count = vals.len();
+                if count < 2 {
+                    let mean = vals.first().unwrap_or(&0.0);
+                    println!("| {} | {} | {:.2} | N/A | N/A | N/A |", bench, count, mean);
+                    continue;
+                }
+
+                let (mean, variance) = perfgate_stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
+                let stddev = variance.sqrt();
+                let cv = if mean > 0.0 { (stddev / mean) * 100.0 } else { 0.0 };
+                
+                // Recommended Threshold: usually 3x CV + small buffer
+                let rec_thresh = (cv * 3.0).max(5.0); // minimum 5% threshold
+
+                println!(
+                    "| {} | {} | {:.2} | {:.2} | {:.2}% | {:.1}% |",
+                    bench, count, mean, stddev, cv, rec_thresh
+                );
+            }
+
             Ok(())
         }
     }
