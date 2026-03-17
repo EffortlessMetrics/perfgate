@@ -161,9 +161,10 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
 
     if let Some(pe) = err.downcast_ref::<PerfgateError>() {
         return match pe {
+            PerfgateError::BaselineNotFound { .. } => (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO),
             PerfgateError::BaselineResolve(_) => (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO),
             PerfgateError::ArtifactWrite(_) => (STAGE_WRITE_ARTIFACTS, ERROR_KIND_IO),
-            PerfgateError::RunCommand(_) => (STAGE_RUN_COMMAND, ERROR_KIND_EXEC),
+            PerfgateError::RunCommand { .. } => (STAGE_RUN_COMMAND, ERROR_KIND_EXEC),
             PerfgateError::Other(_) => (STAGE_RUN_COMMAND, ERROR_KIND_IO),
         };
     }
@@ -171,9 +172,10 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
     // Walk the error chain for AdapterError.
     if let Some(ae) = err.downcast_ref::<AdapterError>() {
         return match ae {
-            AdapterError::EmptyArgv | AdapterError::Timeout | AdapterError::TimeoutUnsupported => {
-                (STAGE_RUN_COMMAND, ERROR_KIND_EXEC)
-            }
+            AdapterError::EmptyArgv
+            | AdapterError::Timeout
+            | AdapterError::TimeoutUnsupported
+            | AdapterError::RunCommand { .. } => (STAGE_RUN_COMMAND, ERROR_KIND_EXEC),
             AdapterError::Other(_) => (STAGE_RUN_COMMAND, ERROR_KIND_IO),
         };
     }
@@ -411,7 +413,11 @@ mod tests {
 
     #[test]
     fn test_classify_error_typed_run_command() {
-        let err: anyhow::Error = PerfgateError::RunCommand("spawn failed".to_string()).into();
+        let err: anyhow::Error = PerfgateError::RunCommand {
+            command: "r".to_string(),
+            reason: "spawn failed".to_string(),
+        }
+        .into();
         let (stage, kind) = classify_error(&err);
         assert_eq!(stage, STAGE_RUN_COMMAND);
         assert_eq!(kind, ERROR_KIND_EXEC);

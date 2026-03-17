@@ -143,12 +143,11 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
                 output_cap_bytes: req.output_cap_bytes,
             };
 
-            let run = self.runner.run(&spec).with_context(|| {
-                format!(
-                    "failed to run command (iteration {}): {:?}",
-                    i + 1,
-                    spec.argv
-                )
+            let run = self.runner.run(&spec).map_err(|e| match e {
+                perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+                    anyhow::anyhow!("failed to run iteration {}: {}: {}", i + 1, command, reason)
+                }
+                _ => anyhow::anyhow!("failed to run iteration {}: {}", i + 1, e),
             })?;
 
             let s = sample_from_run(run, is_warmup);

@@ -21,6 +21,7 @@ path = "src/main.rs"
 perfgate.workspace = true
 perfgate-client.workspace = true
 anyhow.workspace = true
+glob.workspace = true
 clap.workspace = true
 humantime.workspace = true
 serde.workspace = true

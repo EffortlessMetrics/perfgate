@@ -145,14 +145,17 @@ pub enum ConfigValidationError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IoError {
+    #[error("baseline not found at {path:?}; run 'perfgate promote' to establish one")]
+    BaselineNotFound { path: String },
+
     #[error("baseline resolve: {0}")]
     BaselineResolve(String),
 
     #[error("write artifacts: {0}")]
     ArtifactWrite(String),
 
-    #[error("run command: {0}")]
-    RunCommand(String),
+    #[error("failed to execute command {command:?}: {reason}")]
+    RunCommand { command: String, reason: String },
 
     #[error("IO error: {0}")]
     Other(String),
@@ -349,7 +352,10 @@ mod tests {
 
     #[test]
     fn io_error_run_command() {
-        let err = IoError::RunCommand("spawn failed".to_string());
+        let err = IoError::RunCommand {
+            command: "r".to_string(),
+            reason: "spawn failed".to_string(),
+        };
         assert!(err.to_string().contains("run command"));
     }
 
@@ -608,7 +614,10 @@ mod tests {
         let err = IoError::ArtifactWrite("artifacts/perfgate/run.json".to_string());
         assert!(err.to_string().contains("artifacts/perfgate/run.json"));
 
-        let err = IoError::RunCommand("failed to spawn /usr/bin/echo".to_string());
+        let err = IoError::RunCommand {
+            command: "/usr/bin/echo".to_string(),
+            reason: "failed to spawn".to_string(),
+        };
         assert!(err.to_string().contains("/usr/bin/echo"));
     }
 
@@ -637,7 +646,11 @@ mod tests {
             ConfigValidationError::ConfigFile("c".into()).into(),
             IoError::BaselineResolve("r".into()).into(),
             IoError::ArtifactWrite("w".into()).into(),
-            IoError::RunCommand("r".into()).into(),
+            IoError::RunCommand {
+                command: "r".into(),
+                reason: "err".into(),
+            }
+            .into(),
             IoError::Other("o".into()).into(),
             PairedError::NoSamples.into(),
         ];
@@ -674,7 +687,10 @@ mod tests {
         let cases = vec![
             PerfgateError::Io(IoError::BaselineResolve("x".into())),
             PerfgateError::Io(IoError::ArtifactWrite("x".into())),
-            PerfgateError::Io(IoError::RunCommand("x".into())),
+            PerfgateError::Io(IoError::RunCommand {
+                command: "x".into(),
+                reason: "y".into(),
+            }),
             PerfgateError::Io(IoError::Other("x".into())),
         ];
         for err in cases {

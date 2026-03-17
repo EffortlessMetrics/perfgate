@@ -69,11 +69,15 @@ jobs:
             This PR updates the canonical performance baselines based on the latest nightly run." \
             --base main \
             --head "$BRANCH_NAME" || echo "PR already exists"
+          
+          gh pr merge "$BRANCH_NAME" --auto --merge || echo "Already merged or merge failed"
 
       - name: Upload nightly artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: perfgate-artifacts-nightly-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/perfgate
+          path: |
+            artifacts/perfgate
+            artifacts/trends
           if-no-files-found: warn

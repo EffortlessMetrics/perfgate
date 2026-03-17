@@ -198,7 +198,10 @@ fn io_error_display_messages() {
             .contains("write artifacts")
     );
     assert!(
-        IoError::RunCommand("spawn failed".to_string())
+        IoError::RunCommand {
+            command: "echo".to_string(),
+            reason: "spawn failed".to_string(),
+        }
             .to_string()
             .contains("run command")
     );

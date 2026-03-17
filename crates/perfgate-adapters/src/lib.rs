@@ -52,6 +52,9 @@ pub enum AdapterError {
     #[error("timeout is not supported on this platform")]
     TimeoutUnsupported,
 
+    #[error("failed to execute command {command:?}: {reason}")]
+    RunCommand { command: String, reason: String },
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -119,10 +122,10 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         cmd.env(k, v);
     }
 
-    let out = cmd
-        .output()
-        .with_context(|| format!("failed to run {:?}", spec.argv))
-        .map_err(AdapterError::Other)?;
+    let out = cmd.output().map_err(|e| AdapterError::RunCommand {
+        command: spec.argv.join(" "),
+        reason: e.to_string(),
+    })?;
 
     let wall_ms = start.elapsed().as_millis() as u64;
     let exit_code = out.status.code().unwrap_or(-1);
@@ -165,10 +168,10 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .with_context(|| format!("failed to spawn {:?}", spec.argv))
-        .map_err(AdapterError::Other)?;
+    let mut child = cmd.spawn().map_err(|e| AdapterError::RunCommand {
+        command: spec.argv.join(" "),
+        reason: e.to_string(),
+    })?;
 
     let mut stdout = child.stdout.take().expect("stdout piped");
     let mut stderr = child.stderr.take().expect("stderr piped");
@@ -177,10 +180,10 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     let out_handle = thread::spawn(move || read_with_cap(&mut stdout, cap));
     let err_handle = thread::spawn(move || read_with_cap(&mut stderr, cap));
 
-    let status = child
-        .wait()
-        .with_context(|| format!("failed to wait for {:?}", spec.argv))
-        .map_err(AdapterError::Other)?;
+    let status = child.wait().map_err(|e| AdapterError::RunCommand {
+        command: spec.argv.join(" "),
+        reason: e.to_string(),
+    })?;
 
     let (cpu_ms, max_rss_kb, page_faults) = probe_process_usage_windows(child.as_raw_handle());
 
@@ -230,10 +233,10 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .with_context(|| format!("failed to spawn {:?}", spec.argv))
-        .map_err(AdapterError::Other)?;
+    let mut child = cmd.spawn().map_err(|e| AdapterError::RunCommand {
+        command: spec.argv.join(" "),
+        reason: e.to_string(),
+    })?;
 
     let pid = child.id() as libc::pid_t;
 

@@ -1,7 +1,7 @@
 # ADR 0006: Self-Dogfooding Performance Gating
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 As `perfgate` grows in complexity, it is critical to ensure that its own performance does not regress and that its output artifacts remain stable. We need a system that can measure the tool's execution against fixed workloads and gate PRs based on these measurements.
