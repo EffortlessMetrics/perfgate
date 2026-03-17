@@ -22,8 +22,8 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 ## The 10-Release Plan (0.6.0 - 0.15.0)
 
 ### 0.6.0: The Learning Loop
-- [ ] **Weekly Variance Summaries**: `xtask` command to aggregate nightly trend JSONL into a human-readable stability report.
-- [ ] **Threshold Recommendations**: Automatically suggest `perfgate.toml` threshold updates based on observed 7-day variance.
+- [x] **Weekly Variance Summaries**: `xtask` command to aggregate nightly trend JSONL into a human-readable stability report.
+- [x] **Threshold Recommendations**: Automatically suggest `perfgate.toml` threshold updates based on observed 7-day variance.
 - [ ] **Trend Persistence**: First-class support for storing trend data in local Git or S3 without requiring the full server.
 
 ### 0.7.0: Production Storage
