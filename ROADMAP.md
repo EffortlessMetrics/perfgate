@@ -4,12 +4,13 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ## Strategic Outlook (2026-2027)
 
-### Now: The Learning Loop (0.6.x)
-- **Automation**: Moving from "manual gating" to "intelligent observation."
-- **Trend Persistence**: Persisting nightly trends to git for variance summaries.
+### Now: Production Storage (0.7.x)
+- **Database**: Implementing robust PostgreSQL storage for fleet-scale monitoring.
+- **Object Storage**: Supporting S3/GCS for large-scale artifact persistence.
 
-### Next: Enterprise Server (0.7.0 - 0.10.0)
-- **Server Depth**: Production-grade storage, auth, and visualization.
+### Next: Security & Identity (0.8.0 - 0.10.0)
+- **Auth**: OIDC and service account support for secure CI integration.
+- **Server Depth**: Web dashboards and visualization.
 
 ### Later: Intelligent Gating & Ecosystem (0.11.0 - 0.15.0)
 - **Analytics**: p-value bisection, noise detection, and trend analysis.
@@ -25,7 +26,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 - [x] **Trend Persistence**: First-class support for storing trend data in local Git or S3 without requiring the full server.
 
 ### 0.7.0: Production Storage
-- [ ] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`.
+- [x] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`.
 - [ ] **S3/Object Storage**: Support for storing raw receipts in S3/GCS while keeping metadata in DB.
 - [ ] **Migration Tooling**: CLI helpers to move baselines from local files to the server.
 
@@ -68,7 +69,8 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ---
 
-## Current Status (v0.6.x)
+## Current Status (v0.7.x)
+- [x] **v0.7.0 Production Storage**: PostgreSQL backend implemented. [IN PROGRESS]
 - [x] **v0.6.0 The Learning Loop**: Automated variance summaries, threshold recommendations, and git-based trend persistence. [DONE]
 - [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes. [DONE]
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
