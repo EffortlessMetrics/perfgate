@@ -6,7 +6,6 @@ mod fake;
 
 pub use fake::FakeProcessRunner;
 
-use anyhow::Context;
 use perfgate_sha256::sha256_hex;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

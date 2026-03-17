@@ -30,7 +30,6 @@ pub use perfgate_render::{
 // Re-export export functionality from perfgate-export for backward compatibility
 pub use perfgate_export::{CompareExportRow, ExportFormat, ExportUseCase, RunExportRow};
 
-use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
 use perfgate_domain::{
     Comparison, SignificancePolicy, compare_runs, compute_stats, detect_host_mismatch,

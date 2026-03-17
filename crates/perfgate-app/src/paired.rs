@@ -1,6 +1,5 @@
 //! Paired benchmark execution for perfgate.
 
-use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner};
 use perfgate_domain::compute_paired_stats;
 use perfgate_types::{
