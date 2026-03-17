@@ -473,7 +473,7 @@ The `xtask` crate provides comprehensive repo automation:
 
 ## Design
 
-`perfgate` follows a highly modularized architecture composed of specialized micro-crates. For the rationale behind this design, see the [Architectural Decision Records (ADRs)](docs/adrs/).
+`perfgate` follows a highly modularized architecture composed of 21 specialized micro-crates. For the rationale behind this design, see the [Architectural Decision Records (ADRs)](docs/adrs/).
 
 Workspace crates:
 - [`crates/perfgate-adapters`](crates/perfgate-adapters/README.md): process execution and host probing adapters
@@ -488,6 +488,7 @@ Workspace crates:
 - [`crates/perfgate-host-detect`](crates/perfgate-host-detect/README.md): host fingerprinting and mismatch detection
 - [`crates/perfgate-paired`](crates/perfgate-paired/README.md): orchestration for paired (interleaved) benchmarking
 - [`crates/perfgate-render`](crates/perfgate-render/README.md): Markdown, terminal, and Handlebars rendering logic
+- [`crates/perfgate-selfbench`](crates/perfgate-selfbench/README.md): internal benchmarking workloads for self-dogfooding
 - [`crates/perfgate-sensor`](crates/perfgate-sensor/README.md): cockpit-compatible sensor report generation
 - [`crates/perfgate-server`](crates/perfgate-server/README.md): REST API server for centralized baseline management
 - [`crates/perfgate-sha256`](crates/perfgate-sha256/README.md): SIMD-accelerated SHA-256 for finding fingerprints
@@ -495,6 +496,7 @@ Workspace crates:
 - [`crates/perfgate-stats`](crates/perfgate-stats/README.md): pure statistical summaries and aggregations
 - [`crates/perfgate-types`](crates/perfgate-types/README.md): versioned receipt/config contracts and JSON schemas
 - [`crates/perfgate-validation`](crates/perfgate-validation/README.md): fixture and schema conformance validation logic
+- [`crates/perfgate`](crates/perfgate/README.md): unified facade library
 - [`xtask`](xtask/README.md): workspace automation (schema, CI bundle, fixture conformance, mutants)
 
 ### Measurement model
