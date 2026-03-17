@@ -33,7 +33,7 @@ When creating a new schema version:
 5. Generate new JSON Schema file to `schemas/`
 6. Update documentation to reflect changes
 
-### Current Schema Versions (v2.x)
+### Current Schema Versions (v0.x)
 
 | Schema | Version | Status |
 |--------|---------|--------|
@@ -67,9 +67,9 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Architectural Components (19-Crate Workspace)
+## Architectural Components (21-Crate Workspace)
 
-The perfgate v2.x architecture is modularized into 19 specialized crates:
+The perfgate architecture is modularized into 21 specialized crates:
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -92,22 +92,24 @@ The perfgate v2.x architecture is modularized into 19 specialized crates:
 | `perfgate-validation` | Schema validation and contract testing |
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-fake` | Test fixtures and mock data generators |
+| `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
+| `perfgate` | Unified facade library |
 
 ## Implementation Status
 
-### Baseline Server API (v2.0)
+### Baseline Server API
 
-**Status:** Implemented (v2.0)
+**Status:** Implemented (v0.4.0)
 
 Centralized storage for fleet-scale performance monitoring:
-- REST API with Axum and multi-backend support (SQLite, PostgreSQL)
+- REST API with Axum and multi-backend support (SQLite, PostgreSQL planned)
 - Multi-tenancy (projects) and versioned baselines
 - Client-side fallback to local/cloud storage for resilience
 - `baseline` command group for management
 
 ### Cockpit Mode
 
-**Status:** Implemented (v2.0)
+**Status:** Implemented (v0.5.0)
 
 Standardized integration for monitoring dashboards:
 - `--mode cockpit` wraps output in `sensor.report.v1` envelope
@@ -117,7 +119,7 @@ Standardized integration for monitoring dashboards:
 
 ### Paired Mode
 
-**Status:** Implemented (v2.0)
+**Status:** Implemented (v0.5.0)
 
 Interleaved baseline/current runs to reduce environmental noise:
 - `perfgate paired --baseline-cmd "..." --current-cmd "..."`
@@ -125,7 +127,7 @@ Interleaved baseline/current runs to reduce environmental noise:
 
 ### Host Mismatch Policy
 
-**Status:** Implemented (v2.0)
+**Status:** Implemented (v0.5.0)
 
 Detection of OS, arch, CPU, and hostname differences:
 - `--host-mismatch` policy support (`warn`, `error`, `ignore`)
@@ -133,11 +135,10 @@ Detection of OS, arch, CPU, and hostname differences:
 
 ### Additional Metrics
 
-**Status:** Implemented (v2.0)
+**Status:** Implemented (v0.5.0)
 
 1. **CPU time** (`cpu_ms`): Combined user and system CPU time
 2. **Page faults** (`page_faults`): Major page faults
-   - **Status:** Implemented (v2.0)
    - Direction: Lower
    - Platform: Unix + best-effort Windows (via `GetProcessMemoryInfo`)
 3. **Context switches** (`ctx_switches`): Voluntary + involuntary (Unix only)
@@ -145,7 +146,7 @@ Detection of OS, arch, CPU, and hostname differences:
 
 ### Multi-Format Export
 
-**Status:** Implemented (v2.0)
+**Status:** Implemented (v0.5.0)
 
 The `export` command supports multiple output formats:
 - **CSV**: RFC 4180 compliant for spreadsheet analysis
@@ -165,7 +166,7 @@ When making changes, ensure property tests cover:
 4. **Report determinism**: Same input MUST produce same output
 5. **Export ordering**: Metrics MUST be sorted alphabetically
 
-### Mutation Testing Targets (19-Crate)
+### Mutation Testing Targets (21-Crate)
 
 Minimum kill rates by crate:
 
