@@ -27,16 +27,7 @@ jobs:
         run: ./target/release/perfgate check --config .ci/perfgate-nightly.toml --all --mode cockpit --output-github
 
       - name: Refresh candidate baselines
-        run: |
-          find artifacts/perfgate/extras -name 'perfgate.run.v1.json' -print0 |
-          while IFS= read -r -d '' file; do
-            rel="${file#artifacts/perfgate/extras/}"
-            bench="${rel%/perfgate.run.v1.json}"
-            mkdir -p "baselines/gha-ubuntu-24.04-x86_64/$(dirname "$bench")"
-            ./target/release/perfgate promote \
-              --current "$file" \
-              --to "baselines/gha-ubuntu-24.04-x86_64/${bench}.json"
-          done
+        run: cargo run -p xtask -- dogfood promote
 
       - name: Export trends
         run: |
