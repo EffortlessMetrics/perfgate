@@ -5,14 +5,13 @@ This document outlines the planned evolution of `perfgate`. It serves as a high-
 ## Strategic Outlook (2026+)
 
 ### Now
-- **Ecosystem Maintenance**: Hardening the 20-crate micro-architecture and ensuring stable CI/CD across all platforms. [DONE: Fixed server pagination and test coverage]
-- **Self-Dogfooding & Hardening**: Implementing strict performance gating for `perfgate` development itself, ensuring artifact stability and tool efficiency across multiple CI lanes. [DONE: v0.5.0 implementation across 6 phases]
-- **Learning Loop & Automation**: Implementing automated baseline refreshes, trend summaries, and repo-owned deterministic workloads via `xtask` and `perfgate-selfbench`. [DONE: v0.5.0 follow-up]
+- **v1.0 Core Stabilization**: Polishing the API, documentation, and ensuring robust error reporting across all commands. Finalizing schema stability.
+- **Devex Improvements**: Expanding CLI usability with features like `summary` (recently added), better error diagnostics, and easy cross-platform setup.
 
 ### Next
-- **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
+- **Learning Loop Expansion**: Implementing weekly variance summaries and automated threshold recommendation reports based on nightly trends.
 - **Enhanced Baseline Server**: Adding support for pluggable storage backends (PostgreSQL, S3) and OIDC authentication.
-- **Learning Loop Expansion**: Implementing weekly variance summaries and threshold recommendation reports.
+- **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
 
 ### Later
 - **AI-Driven Analysis**: Exploring LLM-assisted performance regression diagnosis based on historical trends.
@@ -23,14 +22,11 @@ To become the standard, low-friction "build truth" sensor for performance gating
 
 ---
 
-## Current Status (v0.5.x)
-- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes.
-- [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API.
-- [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates for better maintenance.
-- [x] **Statistical Significance**: Integrated Welch's t-test and p-value support.
-- [x] **Multi-format Export**: CSV, JSONL, HTML, and Prometheus support.
-- [x] **Paired Benchmarking**: Interleaved execution to minimize CI noise.
-- [x] **Stable Schemas**: Versioned JSON receipts with schema-locking tests.
+## Current Status (v1.0-rc)
+- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, bot-driven baseline refreshes. [DONE]
+- [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
+- [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates. [DONE]
+- [ ] **v1.0 Stabilization Target**: In progress.
 
 ---
 
@@ -102,3 +98,4 @@ To become the standard, low-friction "build truth" sensor for performance gating
   - [x] Multi-dimensional gating (e.g., gate on `P95` wall time + `median` RSS).
 - [ ] **Schema Evolution**
   - [ ] Transition to `v2` schemas if breaking changes are required for advanced features.
+
