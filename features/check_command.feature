@@ -34,7 +34,7 @@ Feature: Check Command
     Given a config file with bench "no-baseline-bench"
     When I run perfgate check for bench "no-baseline-bench" with --require-baseline
     Then the exit code should be 1
-    And the stderr should contain "baseline required"
+    And the stderr should contain "baseline not found"
 
   # Note: Scenarios that test specific exit codes for budget violations require
   # controlling runtime behavior, which is tested via unit and integration tests.

@@ -135,4 +135,4 @@ Feature: Run Command
   Scenario: Run with non-existent command
     When I run perfgate run with a non-existent command
     Then the exit code should be 1
-    And the stderr should contain "failed to run command"
+    And the stderr should contain "failed to run iteration 1"
