@@ -1,0 +1,20 @@
+[defaults]
+repeat = 5
+warmup = 1
+threshold = 0.20
+warn_factor = 0.90
+baseline_pattern = "baselines/gha-ubuntu-24.04-x86_64/{bench}.json"
+
+[[bench]]
+name = "cli/compare-small"
+command = ["bash", ".ci/perf/compare-small.sh"]
+budgets = { wall_ms = { threshold = 0.15, warn_factor = 0.90, statistic = "median" } }
+
+[[bench]]
+name = "cli/check-single"
+command = ["bash", ".ci/perf/check-single.sh"]
+budgets = { wall_ms = { threshold = 0.20, warn_factor = 0.90, statistic = "p95" } }
+
+[[bench]]
+name = "render/md"
+command = ["bash", ".ci/perf/render-md.sh"]
