@@ -5013,7 +5013,7 @@ async fn given_compare_receipt_exists_with(
 ) {
     world.ensure_temp_dir();
     let path = world.temp_path().join(path_str);
-    
+
     // Default to a PASS compare receipt
     let mut receipt = world.create_compare_receipt(VerdictStatus::Pass);
     receipt.bench.name = path.file_stem().unwrap().to_string_lossy().to_string();
@@ -5025,7 +5025,7 @@ async fn given_compare_receipt_exists_with(
             let status_str = &row[1];
             let current: f64 = row[2].parse().unwrap();
             let pct: f64 = row[3].parse().unwrap();
-            
+
             let status = match status_str.as_str() {
                 "pass" => perfgate_types::MetricStatus::Pass,
                 "warn" => perfgate_types::MetricStatus::Warn,
@@ -5051,7 +5051,7 @@ async fn given_compare_receipt_exists_with(
                     status,
                 },
             );
-            
+
             // update verdict if we have warn/fail
             if status == perfgate_types::MetricStatus::Fail {
                 receipt.verdict.status = VerdictStatus::Fail;
@@ -5064,7 +5064,7 @@ async fn given_compare_receipt_exists_with(
             }
         }
     }
-    
+
     let json = serde_json::to_string_pretty(&receipt).unwrap();
     std::fs::write(path, json).unwrap();
 }
@@ -5075,15 +5075,16 @@ async fn when_run_perfgate_summary(world: &mut PerfgateWorld, pattern: String) {
     let mut cmd = perfgate_cmd();
     cmd.current_dir(world.temp_path());
     cmd.arg("summary");
-    
-    // Evaluate the glob manually or just let the shell do it. 
+
+    // Evaluate the glob manually or just let the shell do it.
     // Actually, assert_cmd doesn't expand globs. We have to expand it manually.
-    for entry in glob::glob(&format!("{}/{}", world.temp_path().display(), pattern)).unwrap() {
-        if let Ok(path) = entry {
-            cmd.arg(path);
-        }
+    for path in glob::glob(&format!("{}/{}", world.temp_path().display(), pattern))
+        .unwrap()
+        .flatten()
+    {
+        cmd.arg(path);
     }
-    
+
     let output = cmd.output().expect("Failed to execute perfgate summary");
     world.last_exit_code = Some(output.status.code().unwrap_or(-1));
     world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();

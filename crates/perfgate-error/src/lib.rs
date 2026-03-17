@@ -356,7 +356,7 @@ mod tests {
             command: "r".to_string(),
             reason: "spawn failed".to_string(),
         };
-        assert!(err.to_string().contains("run command"));
+        assert!(err.to_string().contains("failed to execute command"));
     }
 
     #[test]

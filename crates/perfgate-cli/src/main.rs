@@ -1261,8 +1261,8 @@ fn execute_summary(files: Vec<String>) -> anyhow::Result<()> {
     println!("|-----------|--------|-----------|--------|");
 
     for path in paths {
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("read {}", path.display()))?;
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
         let compare: perfgate::types::CompareReceipt = serde_json::from_str(&content)
             .with_context(|| format!("parse JSON from {}", path.display()))?;
 

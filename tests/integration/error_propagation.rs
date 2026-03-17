@@ -202,8 +202,8 @@ fn io_error_display_messages() {
             command: "echo".to_string(),
             reason: "spawn failed".to_string(),
         }
-            .to_string()
-            .contains("failed to execute command")
+        .to_string()
+        .contains("failed to execute command")
     );
 }
 

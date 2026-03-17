@@ -1245,7 +1245,11 @@ fn generate_workspace_inventory_md() -> String {
             "CLI argument parsing and command dispatch",
             70,
         ),
-        ("perfgate-server", "REST API server for baseline management", 90),
+        (
+            "perfgate-server",
+            "REST API server for baseline management",
+            90,
+        ),
         (
             "perfgate-client",
             "API client for baseline server interaction",
