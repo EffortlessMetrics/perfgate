@@ -43,3 +43,44 @@ jobs:
           name: perfgate-artifacts-core-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/perfgate
           if-no-files-found: warn
+
+  paired:
+    name: Paired PR-vs-Main Lane
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Current
+        uses: actions/checkout@v6
+        with:
+          path: current
+
+      - name: Checkout Main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build current binary
+        run: cd current && cargo build --release -p perfgate-cli --bin perfgate
+
+      - name: Build main binary
+        run: cd main && cargo build --release -p perfgate-cli --bin perfgate
+
+      - name: Run paired comparison
+        run: |
+          mkdir -p artifacts/paired
+          ./current/target/release/perfgate paired \
+            --name cli/paired-main \
+            --baseline-cmd "./main/target/release/perfgate --version" \
+            --current-cmd "./current/target/release/perfgate --version" \
+            --repeat 10 \
+            --out artifacts/paired/compare.json
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perfgate-artifacts-paired-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/paired
+          if-no-files-found: warn
