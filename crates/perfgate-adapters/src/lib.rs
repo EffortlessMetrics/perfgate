@@ -1304,7 +1304,7 @@ mod tests {
 
     /// Non-existent command returns AdapterError::Other (not EmptyArgv).
     #[test]
-    fn nonexistent_command_returns_other_error() {
+    fn nonexistent_command_returns_run_command_error() {
         let runner = StdProcessRunner;
         let spec = CommandSpec {
             argv: vec!["__perfgate_nonexistent_cmd_xyz__".into()],
@@ -1316,8 +1316,8 @@ mod tests {
 
         let err = runner.run(&spec).unwrap_err();
         assert!(
-            matches!(err, AdapterError::Other(_)),
-            "Expected AdapterError::Other for missing binary, got: {err:?}",
+            matches!(err, AdapterError::RunCommand { .. }),
+            "Expected AdapterError::RunCommand for missing binary, got: {err:?}",
         );
     }
 
