@@ -1,101 +1,78 @@
 # perfgate Roadmap
 
-This document outlines the planned evolution of `perfgate`. It serves as a high-level guide for contributors and users to understand the project's direction.
+This document outlines the planned evolution of `perfgate`. We are currently in the **0.x.y stabilization phase**, focusing on building a world-class performance gating tool before reaching 1.0.
 
-## Strategic Outlook (2026+)
+## Strategic Outlook (2026-2027)
 
-### Now
-- **v1.0 Core Stabilization**: Polishing the API, documentation, and ensuring robust error reporting across all commands. Finalizing schema stability.
-- **Devex Improvements**: Expanding CLI usability with features like `summary` (recently added), better error diagnostics, and easy cross-platform setup.
+### Now: Foundations & Dogfooding (0.5.x)
+- **Hardening**: Stabilizing the 20-crate architecture.
+- **Self-Dogfooding**: Strict gating on the `perfgate` repo itself.
+- **CLI Polishing**: Landing `summary` and improved error diagnostics.
 
-### Next
-- **Learning Loop Expansion**: Implementing weekly variance summaries and automated threshold recommendation reports based on nightly trends.
-- **Enhanced Baseline Server**: Adding support for pluggable storage backends (PostgreSQL, S3) and OIDC authentication.
-- **Schema Evolution**: Planning the transition to `v2` schemas to support more complex multi-dimensional gating.
+### Next: The Learning Loop & Enterprise Server (0.6.0 - 0.10.0)
+- **Automation**: Moving from "manual gating" to "intelligent observation."
+- **Server Depth**: Production-grade storage, auth, and visualization.
 
-### Later
-- **AI-Driven Analysis**: Exploring LLM-assisted performance regression diagnosis based on historical trends.
-- **Distributed Benchmarking**: Orchestrating multi-node performance tests with centralized gating.
-
-## Vision
-To become the standard, low-friction "build truth" sensor for performance gating in modern CI/CD pipelines, providing stable, versioned, and actionable performance data.
+### Later: Intelligent Gating & Ecosystem (0.11.0 - 0.15.0)
+- **Analytics**: p-value bisection, noise detection, and trend analysis.
+- **Integrations**: Expanding beyond GitHub into the broader CI/CD ecosystem.
 
 ---
 
-## Current Status (v1.0-rc)
-- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, bot-driven baseline refreshes. [DONE]
+## The 10-Release Plan (0.6.0 - 0.15.0)
+
+### 0.6.0: The Learning Loop
+- [ ] **Weekly Variance Summaries**: `xtask` command to aggregate nightly trend JSONL into a human-readable stability report.
+- [ ] **Threshold Recommendations**: Automatically suggest `perfgate.toml` threshold updates based on observed 7-day variance.
+- [ ] **Trend Persistence**: First-class support for storing trend data in local Git or S3 without requiring the full server.
+
+### 0.7.0: Production Storage
+- [ ] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`.
+- [ ] **S3/Object Storage**: Support for storing raw receipts in S3/GCS while keeping metadata in DB.
+- [ ] **Migration Tooling**: CLI helpers to move baselines from local files to the server.
+
+### 0.8.0: Security & Identity
+- [ ] **OIDC Integration**: Support for GitHub/GitLab identity providers in the server.
+- [ ] **Service Accounts**: Scoped API keys for CI runners with "contributor" only permissions.
+- [ ] **RBAC Hardening**: Fine-grained permissions for promoting baselines vs. just viewing them.
+
+### 0.9.0: Visual Insights
+- [ ] **Server Web UI**: A minimal Read-only dashboard to view performance trends and baseline history.
+- [ ] **Metric Graphing**: Plotting wall time and RSS trends directly in the server UI.
+- [ ] **Verdict History**: Tracking how often a benchmark fails vs. passes over time.
+
+### 0.10.0: Noise & Flakiness Detection
+- [ ] **Noise Detection**: Automatically identify "unstable" benchmarks with high coefficient of variation.
+- [ ] **Auto-Skipping**: Option to skip/warn instead of fail for benchmarks identified as flaky.
+- [ ] **Retry Logic**: Built-in `paired` retry support when significance is not reached.
+
+### 0.11.0: Deep Observability
+- [ ] **IO & Network Metrics**: Track disk bytes read/written and network packets via `rusage` extensions.
+- [ ] **Power/Energy Metrics**: Experimental support for tracking CPU energy usage (RAPL on Linux).
+- [ ] **Binary Delta Blame**: Map `binary_bytes` changes to specific dependency updates in `Cargo.lock`.
+
+### 0.12.0: Ecosystem Expansion
+- [ ] **GitLab CI Integration**: Official templates and documentation for GitLab environments.
+- [ ] **Jenkins/Generic Plugin**: A stable JSON-to-JUnit or similar adapter for legacy CI systems.
+- [ ] **Liquid Template Hub**: A repository of community-contributed Markdown templates for PR comments.
+
+### 0.13.0: Automated Bisection
+- [ ] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression.
+- [ ] **Regression Blame**: Automatically identifying the likely author of a performance dip.
+
+### 0.14.0: Distributed Gating
+- [ ] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict.
+- [ ] **Matrix Gating**: Support for gating across a matrix of OS/Arch combinations before merging to main.
+
+### 0.15.0: The Intelligent Gater (AI Alpha)
+- [ ] **LLM Regression Explainer**: Integration with LLMs to analyze code diffs + performance deltas to provide a "likely cause" explanation in PRs.
+- [ ] **Automated Playbooks**: Suggesting specific optimization strategies based on the metric that regressed.
+
+---
+
+## Current Status (v0.5.x)
+- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes. [DONE]
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
 - [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates. [DONE]
-- [ ] **v1.0 Stabilization Target**: In progress.
-
----
-
-## Milestone 1: v1.0 Core Stabilization
-**Target: Q1 2026**
-*Focus: Reliability, documentation completeness, and initial ecosystem hardening.*
-
-- [x] **Contract Hardening**
-  - [x] Finalize and lock `v1` schemas for receipts and config.
-  - [x] Ensure byte-for-byte deterministic output for all report generators.
-  - [x] Detect and flag extra/stale files in contract mirror checks.
-- [x] **Documentation & DX**
-  - [x] Complete documentation alignment (metrics names, CLI flags).
-  - [x] Provide canonical "Getting Started" guides for common CI providers (GitHub Actions, GitLab CI).
-  - [x] Standardize error stage/kind classifications across all failure paths.
-- [x] **Tooling**
-  - [x] Deduplicate `xtask` and test helpers into shared library modules.
-  - [x] Stabilize `conform` command for third-party sensor validation.
-
----
-
-## Milestone 2: v1.1 Extended Observability
-**Target: Q2 2026**
-*Focus: Deeper system metrics and improved platform parity.*
-
-- [x] **New Metrics (Unix)**
-  - [x] `page_faults`: Track major page faults to detect memory pressure changes.
-  - [x] `ctx_switches`: Track voluntary and involuntary context switches.
-- [x] **Static Analysis Metrics**
-  - [x] `binary_bytes`: Track changes in compiled executable size.
-- [x] **Improved Platform Support**
-  - [x] Explore best-effort CPU time and memory tracking for Windows.
-  - [x] Support custom environment injection for `paired` mode executions.
-- [x] **Configuration Enhancements**
-  - [x] Implement metric-specific budgets in `perfgate.toml` (overriding globals).
-  - [x] Support regex-based bench selection in `check --all`.
-
----
-
-## Milestone 3: v1.2 Ecosystem & CI Integration
-**Target: Q3 2026**
-*Focus: Seamless integration into the developer's workflow.*
-
-- [x] **Native GitHub Actions Integration**
-  - [x] Official `perfgate-action` for zero-config setup.
-  - [x] Support setting Action outputs (verdict, counts) for workflow branching.
-- [x] **Flexible Reporting**
-  - [x] Support Liquid/Handlebars templates for Markdown comments.
-  - [x] Multi-format export (e.g., HTML summary, Prometheus/OpenTelemetry push).
-- [x] **Baseline Management**
-  - [x] Auto-discovery of baselines using naming patterns.
-  - [x] S3/GCS backend support for `promote` and `check`.
-
----
-
-## Milestone 4: v2.0 Fleet-Scale Performance
-**Target: 2027+**
-*Focus: Advanced analytics and long-term trend management.*
-
-- [x] **Baseline Service API**
-  - [x] Optional client/server mode to fetch baselines from a central service.
-  - [x] Centralized authentication and permission model for promoting baselines.
-  - [x] REST API with SQLite/in-memory storage backends.
-  - [x] CLI integration with `--baseline-server`, `--upload`, `--to-server` flags.
-  - [x] `perfgate baseline` subcommand for baseline management.
-  - [x] Role-based access control (viewer, contributor, promoter, admin).
-- [x] **Advanced Analytics**
-  - [x] Statistical significance testing (p-values) for large sample sizes.
-  - [x] Multi-dimensional gating (e.g., gate on `P95` wall time + `median` RSS).
-- [ ] **Schema Evolution**
-  - [ ] Transition to `v2` schemas if breaking changes are required for advanced features.
+- [x] **Contract Hardening**: Locked `v1` schemas and deterministic reporting. [DONE]
 

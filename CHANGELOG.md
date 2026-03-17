@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **E2E Integration Suite** — Added a real-world server integration test suite (`real_server_integration.rs`) that verifies full workflows against a live in-memory instance.
 - **Test Utilities Feature** — Introduced `test-utils` feature in `perfgate-server` to expose internal assembly helpers for integration tests without widening the default public API surface.
 - **CLI Mock Server Tests** — Added `cli_mock_server_tests.rs` utilizing `wiremock` to validate CLI client behavior in isolation.
-- **Full BDD Coverage** — New `baseline_command.feature` ensuring all new v2.0 subcommands are verified via user-facing scenarios.
+- **Full BDD Coverage** — New `baseline_command.feature` ensuring all new baseline management subcommands are verified via user-facing scenarios.
 - **Baseline Pattern Auto-discovery** — New `defaults.baseline_pattern` in config (supports `{bench}` placeholder) for `check` workflow.
 - **Markdown Templating** — Support for Handlebars templates in `md`, `report`, and `check` commands via `--template`.
 - **GitHub Actions Integration** — Added `--output-github` to `check` command for native GITHUB_OUTPUT support.

@@ -1371,7 +1371,10 @@ mod tests {
             command: "echo".to_string(),
             reason: "spawn failed".to_string(),
         };
-        assert_eq!(format!("{}", err), "failed to execute command \"echo\": spawn failed");
+        assert_eq!(
+            format!("{}", err),
+            "failed to execute command \"echo\": spawn failed"
+        );
     }
 
     #[test]

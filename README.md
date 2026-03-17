@@ -312,12 +312,12 @@ git commit -m "Update performance baseline"
 
 - **In-repo**: Commit baselines to `baselines/` directory (simple, versioned)
 - **Cloud object storage**: Use `s3://...` or `gs://...` directly with `check --baseline` / `defaults.baseline_pattern` and `promote --to`
-- **Baseline Server**: Use the perfgate baseline server for centralized management (see [v2.0 Baseline Server](#v20-baseline-server))
+- **Baseline Server**: Use the perfgate baseline server for centralized management (see [Baseline Server](#baseline-server))
 - **Database**: Store in a metrics database for advanced trend analysis
 
-## v2.0 Baseline Server
+## Baseline Server
 
-perfgate v2.0 introduces an optional client/server mode for centralized baseline management. This is useful for teams that want to:
+perfgate introduces an optional client/server mode for centralized baseline management. This is useful for teams that want to:
 
 - Share baselines across multiple repositories
 - Manage baseline promotion with role-based access control
