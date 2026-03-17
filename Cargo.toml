@@ -74,6 +74,7 @@ perfgate-paired.workspace = true
 perfgate-app.workspace = true
 perfgate-significance.workspace = true
 perfgate.workspace = true
+glob.workspace = true
 
 [[test]]
 name = "cucumber"
