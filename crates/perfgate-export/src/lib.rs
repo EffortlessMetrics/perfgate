@@ -141,7 +141,7 @@ impl std::str::FromStr for ExportFormat {
 /// assert_eq!(row.bench_name, "my-bench");
 /// assert_eq!(row.sample_count, 5);
 /// ```
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RunExportRow {
     pub bench_name: String,
     pub wall_ms_median: u64,
@@ -176,7 +176,7 @@ pub struct RunExportRow {
 /// assert_eq!(row.metric, "wall_ms");
 /// assert_eq!(row.status, "pass");
 /// ```
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CompareExportRow {
     pub bench_name: String,
     pub metric: String,
