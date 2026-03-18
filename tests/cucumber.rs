@@ -139,6 +139,8 @@ pub struct PerfgateWorld {
     significance_current: Vec<f64>,
     /// Microcrate test state: significance result
     significance_result: Option<perfgate_types::Significance>,
+    /// Mock server for baseline service tests
+    server: Option<wiremock::MockServer>,
 }
 
 impl PerfgateWorld {
@@ -5069,28 +5071,6 @@ async fn given_compare_receipt_exists_with(
     std::fs::write(path, json).unwrap();
 }
 
-#[when(expr = "I run \"perfgate summary {word}\"")]
-async fn when_run_perfgate_summary(world: &mut PerfgateWorld, pattern: String) {
-    world.ensure_temp_dir();
-    let mut cmd = perfgate_cmd();
-    cmd.current_dir(world.temp_path());
-    cmd.arg("summary");
-
-    // Evaluate the glob manually or just let the shell do it.
-    // Actually, assert_cmd doesn't expand globs. We have to expand it manually.
-    for path in glob::glob(&format!("{}/{}", world.temp_path().display(), pattern))
-        .unwrap()
-        .flatten()
-    {
-        cmd.arg(path);
-    }
-
-    let output = cmd.output().expect("Failed to execute perfgate summary");
-    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
-    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
-}
-
 #[then("the command should succeed")]
 async fn then_command_should_succeed(world: &mut PerfgateWorld) {
     let actual = world.last_exit_code.expect("No exit code recorded");
@@ -5099,6 +5079,72 @@ async fn then_command_should_succeed(world: &mut PerfgateWorld) {
         "Expected command to succeed (exit code 0), got {}. Stderr: {}",
         actual, world.last_stderr
     );
+}
+
+#[given("a mock baseline server is running")]
+async fn given_mock_server(world: &mut PerfgateWorld) {
+    let server = wiremock::MockServer::start().await;
+    
+    // Mock the upload endpoint
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path_regex(r"^/api/v1/projects/[^/]+/baselines$"))
+        .respond_with(wiremock::ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "new-baseline-id",
+            "benchmark": "bench1",
+            "version": "v1",
+            "created_at": "2026-01-01T00:00:00Z",
+            "etag": "test-etag"
+        })))
+        .mount(&server)
+        .await;
+        
+    world.server = Some(server);
+}
+
+#[given(expr = "a baseline file exists at {string}")]
+async fn given_baseline_file_exists_at(world: &mut PerfgateWorld, path_str: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    
+    // Create a dummy run receipt
+    let receipt = world.create_run_receipt(100);
+    // Set bench name to match file name if possible
+    let mut receipt = receipt;
+    if let Some(stem) = path.file_stem() {
+        receipt.bench.name = stem.to_string_lossy().to_string();
+    }
+    
+    let json = serde_json::to_string_pretty(&receipt).unwrap();
+    std::fs::write(path, json).unwrap();
+}
+
+#[when(expr = "I run {string}")]
+async fn when_run_command(world: &mut PerfgateWorld, command: String) {
+    world.ensure_temp_dir();
+    let args: Vec<String> = shell_words::split(&command).expect("Failed to parse command");
+    if args.is_empty() || args[0] != "perfgate" {
+        panic!("Only perfgate commands are supported in this generic step");
+    }
+    
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(world.temp_path());
+    
+    // Add server URL if mock server is running
+    if let Some(ref server) = world.server {
+        cmd.arg("--baseline-server").arg(server.uri() + "/api/v1");
+    }
+    
+    for arg in args.iter().skip(1) {
+        cmd.arg(arg);
+    }
+    
+    let output = cmd.output().expect("Failed to execute command");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
 // ============================================================================
