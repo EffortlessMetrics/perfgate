@@ -24,6 +24,7 @@ use perfgate_client::{
     BaselineClient, ClientConfig, FallbackClient, FallbackStorage, ListBaselinesQuery,
     UploadBaselineRequest,
 };
+use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
@@ -774,6 +775,25 @@ enum BaselineAction {
         #[arg(long, default_value_t = 20)]
         limit: u32,
     },
+
+    /// Migrate local baselines to the server.
+    Migrate {
+        /// Directory containing baseline JSON files
+        #[arg(long, default_value = "baselines")]
+        dir: PathBuf,
+
+        /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Recursively search for JSON files
+        #[arg(long, default_value_t = false)]
+        recursive: bool,
+
+        /// Do not actually upload, just show what would be done
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
 }
 
 fn render_markdown_with_optional_template(
@@ -1240,49 +1260,13 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
 
         Command::Baseline { action } => execute_baseline_action(action, &server_config),
 
-        Command::Summary { files } => execute_summary(files),
-    }
-}
-
-/// Execute the summary command to display a table of results.
-fn execute_summary(files: Vec<String>) -> anyhow::Result<()> {
-    let mut paths = Vec::new();
-    for pattern in files {
-        for entry in glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))? {
-            paths.push(entry?);
+        Command::Summary { files } => {
+            let usecase = SummaryUseCase;
+            let outcome = usecase.execute(SummaryRequest { files })?;
+            println!("{}", usecase.render_markdown(&outcome));
+            Ok(())
         }
     }
-
-    if paths.is_empty() {
-        anyhow::bail!("no comparison receipts found");
-    }
-
-    println!("\n| Benchmark | Status | Wall (ms) | Change |");
-    println!("|-----------|--------|-----------|--------|");
-
-    for path in paths {
-        let content =
-            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-        let compare: perfgate::types::CompareReceipt = serde_json::from_str(&content)
-            .with_context(|| format!("parse JSON from {}", path.display()))?;
-
-        let bench = &compare.bench.name;
-        let status = format!("{:?}", compare.verdict.status).to_lowercase();
-
-        let wall = compare.deltas.get(&perfgate::types::Metric::WallMs);
-        let (val, pct) = if let Some(d) = wall {
-            (
-                format!("{:.2}", d.current),
-                format!("{:.1}%", d.pct * 100.0),
-            )
-        } else {
-            ("N/A".to_string(), "N/A".to_string())
-        };
-
-        println!("| {} | {} | {} | {} |", bench, status, val, pct);
-    }
-
-    Ok(())
 }
 
 /// Execute baseline management actions.
@@ -1497,6 +1481,107 @@ fn execute_baseline_action(
 
                 Ok::<_, anyhow::Error>(())
             })?;
+        }
+
+        BaselineAction::Migrate {
+            dir,
+            project,
+            recursive,
+            dry_run,
+        } => {
+            let project = server_config.resolve_project(project)?;
+
+            if !dir.exists() {
+                anyhow::bail!("Directory does not exist: {}", dir.display());
+            }
+
+            let pattern = if recursive {
+                format!("{}/**/*.json", dir.display())
+            } else {
+                format!("{}/*.json", dir.display())
+            };
+
+            let paths: Vec<PathBuf> = glob(&pattern)
+                .with_context(|| format!("Invalid glob pattern: {}", pattern))?
+                .filter_map(|e| e.ok())
+                .filter(|p| p.is_file())
+                .collect();
+
+            if paths.is_empty() {
+                println!("No baseline files found in {}.", dir.display());
+                return Ok(());
+            }
+
+            println!(
+                "Migrating {} baselines to project '{}'...",
+                paths.len(),
+                project
+            );
+
+            if dry_run {
+                println!("Dry run enabled. No files will be uploaded.");
+            }
+
+            let mut success_count = 0;
+            let mut error_count = 0;
+
+            for path in paths {
+                let res: anyhow::Result<()> = (|| {
+                    let receipt: RunReceipt = read_json(&path).with_context(|| {
+                        format!("Failed to read run receipt from {}", path.display())
+                    })?;
+
+                    if dry_run {
+                        println!("Would upload: {}", path.display());
+                        return Ok(());
+                    }
+
+                    let benchmark_name = receipt.bench.name.clone();
+                    let request = UploadBaselineRequest {
+                        benchmark: benchmark_name.clone(),
+                        version: None,
+                        git_ref: None,
+                        git_sha: None,
+                        receipt,
+                        metadata: BTreeMap::new(),
+                        tags: vec!["migration".to_string()],
+                        normalize: true,
+                    };
+
+                    rt.block_on(async {
+                        client
+                            .upload_baseline(&project, &request)
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "Failed to upload baseline {} from {}",
+                                    benchmark_name,
+                                    path.display()
+                                )
+                            })?;
+                        Ok::<_, anyhow::Error>(())
+                    })?;
+
+                    println!("Migrated: {}", benchmark_name);
+                    Ok(())
+                })();
+
+                if let Err(err) = res {
+                    eprintln!("Error migrating {}: {:#}", path.display(), err);
+                    error_count += 1;
+                } else {
+                    success_count += 1;
+                }
+            }
+
+            println!(
+                "\nMigration complete: {} succeeded, {} failed.",
+                success_count, error_count
+            );
+
+            if error_count > 0 {
+                anyhow::bail!("Migration finished with errors.");
+            }
         }
     }
 

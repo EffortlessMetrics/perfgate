@@ -15,6 +15,7 @@ members = [
   "crates/perfgate-export",
   "crates/perfgate-sensor",
   "crates/perfgate-fake",
+  "crates/perfgate-summary",
   "crates/perfgate-adapters",
   "crates/perfgate-app",
   "crates/perfgate-cli",
@@ -57,6 +58,7 @@ cucumber.workspace = true
 tempfile.workspace = true
 assert_cmd.workspace = true
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
 serde_json.workspace = true
 toml.workspace = true
 perfgate-types.workspace = true
@@ -75,6 +77,7 @@ perfgate-app.workspace = true
 perfgate-significance.workspace = true
 perfgate.workspace = true
 glob.workspace = true
+shell-words.workspace = true
 
 [[test]]
 name = "cucumber"
@@ -106,6 +109,7 @@ insta = { version = "1.46.3", features = ["json"] }
 cucumber = "0.22.1"
 tempfile = "3.26.0"
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
 
 # Unix-only
 libc = "0.2.182"
@@ -125,6 +129,7 @@ perfgate-render = { path = "crates/perfgate-render", version = "0.5.0" }
 perfgate-export = { path = "crates/perfgate-export", version = "0.5.0" }
 perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.5.0" }
 perfgate-fake = { path = "crates/perfgate-fake", version = "0.5.0" }
+perfgate-summary = { path = "crates/perfgate-summary", version = "0.5.0" }
 perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.5.0" }
 perfgate-app = { path = "crates/perfgate-app", version = "0.5.0" }
 perfgate-server = { path = "crates/perfgate-server", version = "0.5.0" }
