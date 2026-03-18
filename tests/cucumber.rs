@@ -141,6 +141,10 @@ pub struct PerfgateWorld {
     significance_result: Option<perfgate_types::Significance>,
     /// Mock server for baseline service tests
     server: Option<wiremock::MockServer>,
+    /// Role for auth tests
+    current_role: Option<perfgate_auth::Role>,
+    /// Generated API key
+    last_api_key: Option<String>,
 }
 
 impl PerfgateWorld {
@@ -5145,6 +5149,89 @@ async fn when_run_command(world: &mut PerfgateWorld, command: String) {
     world.last_exit_code = Some(output.status.code().unwrap_or(-1));
     world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+// ============================================================================
+// AUTH STEPS
+// ============================================================================
+
+#[then(expr = "API key {string} should be valid")]
+async fn then_api_key_valid(_world: &mut PerfgateWorld, key: String) {
+    use perfgate_auth::validate_key_format;
+    assert!(validate_key_format(&key).is_ok());
+}
+
+#[then(expr = "API key {string} should be invalid")]
+async fn then_api_key_invalid(_world: &mut PerfgateWorld, key: String) {
+    use perfgate_auth::validate_key_format;
+    assert!(validate_key_format(&key).is_err());
+}
+
+#[given(expr = "a role {string}")]
+async fn given_role(world: &mut PerfgateWorld, role_str: String) {
+    use perfgate_auth::Role;
+    let role = match role_str.as_str() {
+        "viewer" => Role::Viewer,
+        "contributor" => Role::Contributor,
+        "promoter" => Role::Promoter,
+        "admin" => Role::Admin,
+        _ => panic!("Unknown role: {}", role_str),
+    };
+    world.current_role = Some(role);
+}
+
+#[then(expr = "it should have scope {string}")]
+async fn then_role_has_scope(world: &mut PerfgateWorld, scope_str: String) {
+    use perfgate_auth::Scope;
+    let scope = match scope_str.as_str() {
+        "read" => Scope::Read,
+        "write" => Scope::Write,
+        "promote" => Scope::Promote,
+        "delete" => Scope::Delete,
+        "admin" => Scope::Admin,
+        _ => panic!("Unknown scope: {}", scope_str),
+    };
+    let role = world.current_role.expect("No role set");
+    assert!(role.has_scope(scope));
+}
+
+#[then(expr = "it should not have scope {string}")]
+async fn then_role_not_has_scope(world: &mut PerfgateWorld, scope_str: String) {
+    use perfgate_auth::Scope;
+    let scope = match scope_str.as_str() {
+        "read" => Scope::Read,
+        "write" => Scope::Write,
+        "promote" => Scope::Promote,
+        "delete" => Scope::Delete,
+        "admin" => Scope::Admin,
+        _ => panic!("Unknown scope: {}", scope_str),
+    };
+    let role = world.current_role.expect("No role set");
+    assert!(!role.has_scope(scope));
+}
+
+#[when("I generate a live API key")]
+async fn when_generate_live_key(world: &mut PerfgateWorld) {
+    use perfgate_auth::generate_api_key;
+    world.last_api_key = Some(generate_api_key(false));
+}
+
+#[when("I generate a test API key")]
+async fn when_generate_test_key(world: &mut PerfgateWorld) {
+    use perfgate_auth::generate_api_key;
+    world.last_api_key = Some(generate_api_key(true));
+}
+
+#[then(expr = "it should start with {string}")]
+async fn then_key_starts_with(world: &mut PerfgateWorld, prefix: String) {
+    let key = world.last_api_key.as_ref().expect("No API key generated");
+    assert!(key.starts_with(&prefix));
+}
+
+#[then(expr = "it should be at least {int} characters long")]
+async fn then_key_length(world: &mut PerfgateWorld, len: usize) {
+    let key = world.last_api_key.as_ref().expect("No API key generated");
+    assert!(key.len() >= len);
 }
 
 // ============================================================================

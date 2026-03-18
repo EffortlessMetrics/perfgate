@@ -14,6 +14,7 @@
 //! - **Config**: Configuration parsing and validation errors
 //! - **IO**: File system and network I/O errors
 //! - **Paired**: Paired benchmark errors
+//! - **Auth**: Authentication and authorization errors
 //!
 //! # Example
 //!
@@ -161,6 +162,30 @@ pub enum IoError {
     Other(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AuthError {
+    #[error("missing authentication header")]
+    MissingAuth,
+
+    #[error("invalid API key format")]
+    InvalidKeyFormat,
+
+    #[error("invalid API key")]
+    InvalidKey,
+
+    #[error("API key has expired")]
+    ExpiredKey,
+
+    #[error("invalid JWT token: {0}")]
+    InvalidToken(String),
+
+    #[error("JWT token has expired")]
+    ExpiredToken,
+
+    #[error("insufficient permissions: required {required}, has {actual}")]
+    InsufficientPermissions { required: String, actual: String },
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PerfgateError {
     #[error(transparent)]
@@ -180,6 +205,9 @@ pub enum PerfgateError {
 
     #[error(transparent)]
     Paired(#[from] PairedError),
+
+    #[error(transparent)]
+    Auth(#[from] AuthError),
 }
 
 impl From<std::io::Error> for PerfgateError {
@@ -202,6 +230,7 @@ pub enum ErrorCategory {
     Config,
     Io,
     Paired,
+    Auth,
 }
 
 impl PerfgateError {
@@ -213,6 +242,7 @@ impl PerfgateError {
             PerfgateError::Config(_) => ErrorCategory::Config,
             PerfgateError::Io(_) => ErrorCategory::Io,
             PerfgateError::Paired(_) => ErrorCategory::Paired,
+            PerfgateError::Auth(_) => ErrorCategory::Auth,
         }
     }
 
@@ -227,6 +257,7 @@ impl PerfgateError {
             PerfgateError::Config(_) => false,
             PerfgateError::Io(_) => true,
             PerfgateError::Paired(PairedError::NoSamples) => false,
+            PerfgateError::Auth(_) => false,
         }
     }
 
@@ -241,6 +272,7 @@ impl PerfgateError {
             PerfgateError::Config(_) => 1,
             PerfgateError::Io(_) => 1,
             PerfgateError::Paired(_) => 1,
+            PerfgateError::Auth(_) => 1,
         }
     }
 }
@@ -254,6 +286,7 @@ impl ErrorCategory {
             ErrorCategory::Config => "config",
             ErrorCategory::Io => "io",
             ErrorCategory::Paired => "paired",
+            ErrorCategory::Auth => "auth",
         }
     }
 }
@@ -418,6 +451,7 @@ mod tests {
         assert_eq!(ErrorCategory::Config.to_string(), "config");
         assert_eq!(ErrorCategory::Io.to_string(), "io");
         assert_eq!(ErrorCategory::Paired.to_string(), "paired");
+        assert_eq!(ErrorCategory::Auth.to_string(), "auth");
     }
 
     #[test]
@@ -447,6 +481,7 @@ mod tests {
             ConfigValidationError::BenchName("test".to_string()).into(),
             IoError::Other("test".to_string()).into(),
             PairedError::NoSamples.into(),
+            AuthError::MissingAuth.into(),
         ];
 
         for err in errors {
@@ -653,6 +688,7 @@ mod tests {
             .into(),
             IoError::Other("o".into()).into(),
             PairedError::NoSamples.into(),
+            AuthError::MissingAuth.into(),
         ];
         for err in &errors {
             assert_eq!(err.exit_code(), 1, "exit_code for {:?}", err);
@@ -668,6 +704,7 @@ mod tests {
             ErrorCategory::Config,
             ErrorCategory::Io,
             ErrorCategory::Paired,
+            ErrorCategory::Auth,
         ];
         for cat in &categories {
             assert_eq!(cat.as_str(), cat.to_string());
@@ -727,6 +764,23 @@ mod tests {
         let err = PerfgateError::Paired(PairedError::NoSamples);
         assert!(!err.is_recoverable());
     }
+
+    #[test]
+    fn auth_error_missing_auth() {
+        let err = AuthError::MissingAuth;
+        assert!(err.to_string().contains("missing authentication"));
+    }
+
+    #[test]
+    fn auth_error_insufficient_permissions() {
+        let err = AuthError::InsufficientPermissions {
+            required: "admin".into(),
+            actual: "read".into(),
+        };
+        assert!(err.to_string().contains("insufficient permissions"));
+        assert!(err.to_string().contains("admin"));
+        assert!(err.to_string().contains("read"));
+    }
 }
 
 #[cfg(test)]
@@ -769,8 +823,9 @@ mod property_tests {
                 PerfgateError::Stats(StatsError::NoSamples),
                 PerfgateError::Adapter(AdapterError::Other(msg.clone())),
                 PerfgateError::Config(ConfigValidationError::ConfigFile(msg.clone())),
-                PerfgateError::Io(IoError::Other(msg)),
+                PerfgateError::Io(IoError::Other(msg.clone())),
                 PerfgateError::Paired(PairedError::NoSamples),
+                PerfgateError::Auth(AuthError::MissingAuth),
             ];
 
             for err in errors {

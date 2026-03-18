@@ -2,6 +2,9 @@
 resolver = "2"
 members = [
   "crates/perfgate-error",
+  "crates/perfgate-auth",
+  "crates/perfgate-config",
+  "crates/perfgate-api",
   "crates/perfgate-types",
   "crates/perfgate-validation",
   "crates/perfgate-stats",
@@ -75,6 +78,10 @@ perfgate-domain.workspace = true
 perfgate-paired.workspace = true
 perfgate-app.workspace = true
 perfgate-significance.workspace = true
+perfgate-auth.workspace = true
+perfgate-config.workspace = true
+perfgate-api.workspace = true
+perfgate-summary.workspace = true
 perfgate.workspace = true
 glob.workspace = true
 shell-words.workspace = true
@@ -89,11 +96,14 @@ path = "tests/integration/mod.rs"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
+axum = { version = "0.8.1", features = ["macros"] }
 clap = { version = "4.5.60", features = ["derive"] }
 humantime = "2.3.0"
+http = "1.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 thiserror = "2.0.18"
+async-trait = "0.1.86"
 time = { version = "0.3.47", features = ["formatting"] }
 uuid = { version = "1.21.0", features = ["v4"] }
 schemars = { version = "1.2.1", features = ["uuid1", "chrono04"] }
@@ -101,6 +111,7 @@ shell-words = "1.1.1"
 toml = "0.9.8"
 statrs = "0.18.0"
 glob = "0.3.2"
+url = "2.5.4"
 
 # Test deps
 assert_cmd = "2.1.2"
@@ -116,6 +127,9 @@ libc = "0.2.182"
 
 # Internal crates
 perfgate-error = { path = "crates/perfgate-error", version = "0.5.0" }
+perfgate-auth = { path = "crates/perfgate-auth", version = "0.5.0" }
+perfgate-api = { path = "crates/perfgate-api", version = "0.5.0" }
+perfgate-config = { path = "crates/perfgate-config", version = "0.5.0" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.5.0" }
 perfgate-validation = { path = "crates/perfgate-validation", version = "0.5.0" }
 perfgate-stats = { path = "crates/perfgate-stats", version = "0.5.0" }
