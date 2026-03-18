@@ -67,9 +67,9 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Architectural Components (21-Crate Workspace)
+## Architectural Components (22-Crate Workspace)
 
-The perfgate architecture is modularized into 21 specialized crates:
+The perfgate architecture is modularized into 22 specialized crates:
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -93,6 +93,7 @@ The perfgate architecture is modularized into 21 specialized crates:
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-fake` | Test fixtures and mock data generators |
 | `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
+| `perfgate-summary` | Summarization logic for comparison receipts |
 | `perfgate` | Unified facade library |
 
 ## Implementation Status
