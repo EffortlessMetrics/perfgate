@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use super::{ArtifactStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
-    BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery,
+    BaselineRecord, BaselineRecordExt, BaselineSource, BaselineVersion, ListBaselinesQuery,
     ListBaselinesResponse, PaginationInfo,
 };
 

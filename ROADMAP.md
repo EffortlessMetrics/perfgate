@@ -75,6 +75,6 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 - [x] **v0.6.0 The Learning Loop**: Automated variance summaries, threshold recommendations, and git-based trend persistence. [DONE]
 - [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes. [DONE]
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
-- [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates. [DONE]
+- [x] **Micro-crate Architecture**: Full decomposition into 25 specialized crates. [DONE]
 - [x] **Contract Hardening**: Locked `v1` schemas and deterministic reporting. [DONE]
 

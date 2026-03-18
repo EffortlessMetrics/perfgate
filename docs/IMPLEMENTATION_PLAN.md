@@ -67,13 +67,16 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Architectural Components (22-Crate Workspace)
+## Architectural Components (25-Crate Workspace)
 
-The perfgate architecture is modularized into 22 specialized crates:
+The perfgate architecture is modularized into 25 specialized crates:
 
 | Crate | Responsibility |
 |-------|----------------|
 | `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-api` | Common API types and models for baseline service |
+| `perfgate-auth` | Authentication and authorization types |
+| `perfgate-config` | Configuration loading and merging logic |
 | `perfgate-domain` | Core business logic and statistical computations |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-cli` | Command-line interface and argument parsing |
@@ -167,16 +170,16 @@ When making changes, ensure property tests cover:
 4. **Report determinism**: Same input MUST produce same output
 5. **Export ordering**: Metrics MUST be sorted alphabetically
 
-### Mutation Testing Targets (21-Crate)
+### Mutation Testing Targets (25-Crate)
 
 Minimum kill rates by crate:
 
 | Crate Category | Target Kill Rate |
 |----------------|-----------------|
-| Core Domain (`domain`, `types`, `budget`, `stats`) | 95-100% |
+| Core Domain (`domain`, `types`, `budget`, `stats`, `auth`, `api`, `config`) | 95-100% |
 | Application (`app`, `client`, `server`) | 90% |
 | Adapters & Infrastructure (`adapters`, `host-detect`, `paired`) | 80-85% |
-| Presentation (`export`, `render`, `sensor`) | 80% |
+| Presentation (`export`, `render`, `sensor`, `summary`) | 80% |
 | CLI (`cli`) | 70% |
 
 ## Deprecation Policy

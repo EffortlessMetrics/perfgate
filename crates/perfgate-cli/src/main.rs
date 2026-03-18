@@ -15,15 +15,14 @@ use perfgate::app::{
     render_markdown_template,
 };
 use perfgate::domain::{DomainError, SignificancePolicy};
-use perfgate::types::{
+use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    ConfigValidationError, HostMismatchPolicy, PerfgateError, RunReceipt, SensorVerdictStatus,
+    HostMismatchPolicy, RunReceipt, SensorVerdictStatus,
     ToolInfo,
 };
-use perfgate_client::{
-    BaselineClient, ClientConfig, FallbackClient, FallbackStorage, ListBaselinesQuery,
-    UploadBaselineRequest,
-};
+use perfgate_error::{ConfigValidationError, PerfgateError, IoError};
+use perfgate_client::{ListBaselinesQuery, UploadBaselineRequest};
+use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -69,129 +68,19 @@ pub struct ServerFlags {
 
 impl ServerFlags {
     /// Resolves server configuration from CLI flags, environment variables, and config file.
-    /// Priority: CLI flags > environment variables > config file.
     pub fn resolve(&self, config: &BaselineServerConfig) -> ResolvedServerConfig {
-        ResolvedServerConfig {
-            url: self
-                .baseline_server
-                .clone()
-                .or_else(|| config.resolved_url()),
-            api_key: self.api_key.clone().or_else(|| config.resolved_api_key()),
-            project: self.project.clone().or_else(|| config.resolved_project()),
-            fallback_to_local: config.fallback_to_local,
-        }
-    }
-}
-
-/// Resolved server configuration with all sources merged.
-#[derive(Debug, Clone)]
-pub struct ResolvedServerConfig {
-    pub url: Option<String>,
-    pub api_key: Option<String>,
-    pub project: Option<String>,
-    pub fallback_to_local: bool,
-}
-
-impl Default for ResolvedServerConfig {
-    fn default() -> Self {
-        Self {
-            url: None,
-            api_key: None,
-            project: None,
-            fallback_to_local: true,
-        }
-    }
-}
-
-impl ResolvedServerConfig {
-    /// Returns true if server is configured (has a URL).
-    pub fn is_configured(&self) -> bool {
-        self.url.is_some() && !self.url.as_ref().unwrap().is_empty()
-    }
-
-    /// Creates a BaselineClient from this configuration.
-    pub fn create_client(&self) -> anyhow::Result<Option<BaselineClient>> {
-        if !self.is_configured() {
-            return Ok(None);
-        }
-
-        let url = self.url.as_ref().unwrap();
-        let mut config = ClientConfig::new(url);
-
-        if let Some(api_key) = &self.api_key {
-            config = config.with_api_key(api_key);
-        }
-
-        let client = BaselineClient::new(config)
-            .with_context(|| format!("Failed to create baseline client for {}", url))?;
-
-        Ok(Some(client))
-    }
-
-    /// Creates a FallbackClient if fallback is enabled and server is configured.
-    pub fn create_fallback_client(
-        &self,
-        fallback_dir: Option<&Path>,
-    ) -> anyhow::Result<Option<FallbackClient>> {
-        let client = match self.create_client()? {
-            Some(c) => c,
-            None => return Ok(None),
-        };
-
-        let fallback = if self.fallback_to_local {
-            fallback_dir.map(|dir| FallbackStorage::local(dir.to_path_buf()))
-        } else {
-            None
-        };
-
-        Ok(Some(FallbackClient::new(client, fallback)))
-    }
-
-    /// Returns a baseline client for server operations, or an error if not configured.
-    pub fn require_fallback_client(
-        &self,
-        fallback_dir: Option<&Path>,
-    ) -> anyhow::Result<FallbackClient> {
-        self.create_fallback_client(fallback_dir)?
-            .ok_or_else(|| anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED))
-    }
-
-    /// Resolve a project for server operations.
-    pub fn resolve_project(&self, project: Option<String>) -> anyhow::Result<String> {
-        project.or_else(|| self.project.clone()).ok_or_else(|| {
-            anyhow::anyhow!(
-                "--project is required (or set --project flag, PERFGATE_PROJECT, or [baseline_server].project in perfgate.toml)"
-            )
-        })
+        resolve_server_config(
+            self.baseline_server.clone(),
+            self.api_key.clone(),
+            self.project.clone(),
+            config,
+        )
     }
 }
 
 enum BaselineSelector {
     Local(PathBuf),
     Server { benchmark: String },
-}
-
-fn resolve_baseline_server_config() -> anyhow::Result<BaselineServerConfig> {
-    let path = Path::new("perfgate.toml");
-    if !path.exists() {
-        return Ok(BaselineServerConfig::default());
-    }
-
-    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-
-    let config_file = if path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext == "json")
-    {
-        serde_json::from_str::<ConfigFile>(&content)
-            .with_context(|| format!("parse {}", path.display()))?
-    } else {
-        toml::from_str::<ConfigFile>(&content)
-            .with_context(|| format!("parse {}", path.display()))?
-    };
-
-    Ok(config_file.baseline_server)
 }
 
 fn parse_baseline_selector(
@@ -647,6 +536,7 @@ enum Command {
         allow_nonzero: bool,
 
         /// Include a hashed hostname in the host fingerprint for noise mitigation.
+        /// The hostname is SHA-256 hashed for privacy.
         #[arg(long, default_value_t = false)]
         include_hostname_hash: bool,
 
@@ -819,8 +709,8 @@ fn main() -> ExitCode {
 
 fn real_main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let baseline_server_config = resolve_baseline_server_config()?;
-    let server_config = cli.server.resolve(&baseline_server_config);
+    let config_file = load_config_file(Path::new("perfgate.toml"))?;
+    let server_config = cli.server.resolve(&config_file.baseline_server);
     run_command(cli.cmd, server_config)
 }
 
@@ -869,8 +759,10 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
 
             // Upload to server if requested
             if upload {
-                let client = server_config
-                    .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                let client = server_config.require_fallback_client(
+                    Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                    BASELINE_SERVER_NOT_CONFIGURED,
+                )?;
                 let project = server_config.resolve_project(upload_project)?;
 
                 let request = UploadBaselineRequest {
@@ -927,8 +819,10 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
             let (baseline_receipt, baseline_ref) = match baseline_selector {
                 BaselineSelector::Server { benchmark } => {
-                    let client = server_config
-                        .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                    let client = server_config.require_fallback_client(
+                        Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                        BASELINE_SERVER_NOT_CONFIGURED,
+                    )?;
                     let project = server_config.resolve_project(None)?;
                     let record = with_tokio_runtime(async {
                         client
@@ -1066,8 +960,10 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
 
             if to_server {
                 // Promote to server
-                let client = server_config
-                    .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                let client = server_config.require_fallback_client(
+                    Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                    BASELINE_SERVER_NOT_CONFIGURED,
+                )?;
                 let project = server_config.resolve_project(promote_project)?;
 
                 let benchmark_name = benchmark.ok_or_else(|| {
@@ -1274,7 +1170,7 @@ fn execute_baseline_action(
     action: BaselineAction,
     server_config: &ResolvedServerConfig,
 ) -> anyhow::Result<()> {
-    let client = server_config.require_fallback_client(None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
 
     let rt = tokio::runtime::Runtime::new()?;
 
@@ -1681,15 +1577,15 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Resolve baseline path (--baseline flag only valid for single bench mode)
         let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
         let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
-            .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
+            .map_err(|e| PerfgateError::Io(IoError::BaselineResolve(format!("{:#}", e))))?;
 
         // Create output directory
         fs::create_dir_all(&bench_out_dir).map_err(|e| {
-            PerfgateError::ArtifactWrite(format!(
+            PerfgateError::Io(IoError::ArtifactWrite(format!(
                 "create output dir {}: {}",
                 bench_out_dir.display(),
                 e
-            ))
+            )))
         })?;
 
         // Execute check
@@ -1718,13 +1614,13 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
 
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
-            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+            .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(format!("{:#}", e))))?;
 
         if let Some(compare) = &outcome.compare_receipt {
             let markdown =
                 render_markdown_with_optional_template(compare, markdown_template_path.as_deref())?;
             atomic_write(&outcome.markdown_path, markdown.as_bytes())
-                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(format!("{:#}", e))))?;
         } else {
             let msg = "markdown template ignored for no-baseline bench".to_string();
             if req.all {
@@ -1946,17 +1842,17 @@ fn run_check_cockpit_inner(
                 req.out_dir.join("extras")
             };
             fs::create_dir_all(&extras_dir).map_err(|e| {
-                PerfgateError::ArtifactWrite(format!(
+                PerfgateError::Io(IoError::ArtifactWrite(format!(
                     "create extras dir {}: {}",
                     extras_dir.display(),
                     e
-                ))
+                )))
             })?;
 
             // Resolve baseline path
             let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
             let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
-                .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::BaselineResolve(format!("{:#}", e))))?;
             let baseline_available = baseline_receipt.is_some();
 
             // Execute check
@@ -1984,7 +1880,7 @@ fn run_check_cockpit_inner(
 
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
-                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(format!("{:#}", e))))?;
 
             let final_markdown = if let Some(compare) = &check_outcome.compare_receipt {
                 let rendered = render_markdown_with_optional_template(
@@ -1992,7 +1888,7 @@ fn run_check_cockpit_inner(
                     markdown_template_path.as_deref(),
                 )?;
                 atomic_write(&check_outcome.markdown_path, rendered.as_bytes())
-                    .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                    .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(format!("{:#}", e))))?;
                 rendered
             } else {
                 eprintln!(
@@ -2004,7 +1900,7 @@ fn run_check_cockpit_inner(
 
             // Rename extras files to versioned names
             rename_extras_to_versioned(&extras_dir)
-                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(format!("{:#}", e))))?;
 
             // Print warnings (CLI concern, not part of aggregation)
             for warning in &check_outcome.warnings {
