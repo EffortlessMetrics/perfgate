@@ -4,13 +4,13 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ## Strategic Outlook (2026-2027)
 
-### Now: Production Storage (0.7.x)
-- **Database**: Implementing robust PostgreSQL storage for fleet-scale monitoring.
-- **Object Storage**: Supporting S3/GCS for large-scale artifact persistence.
+### Now: Security & Identity (0.8.x)
+- **Auth**: Implementing OIDC and service account support for secure CI integration.
+- **RBAC**: Hardening role-based access control for baseline management.
 
-### Next: Security & Identity (0.8.0 - 0.10.0)
-- **Auth**: OIDC and service account support for secure CI integration.
-- **Server Depth**: Web dashboards and visualization.
+### Next: Visual Insights (0.9.0 - 0.10.0)
+- **Dashboard**: Minimal web UI for viewing performance trends.
+- **Noise Detection**: Identifying flaky benchmarks and unstable environments.
 
 ### Later: Intelligent Gating & Ecosystem (0.11.0 - 0.15.0)
 - **Analytics**: p-value bisection, noise detection, and trend analysis.
@@ -28,7 +28,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 ### 0.7.0: Production Storage
 - [x] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`. [DONE]
 - [x] **S3/Object Storage**: Support for storing raw receipts in S3/GCS while keeping metadata in DB. [DONE]
-- [ ] **Migration Tooling**: CLI helpers to move baselines from local files to the server.
+- [x] **Migration Tooling**: CLI helpers to move baselines from local files to the server. [DONE]
 
 
 ### 0.8.0: Security & Identity
@@ -71,7 +71,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 ---
 
 ## Current Status (v0.7.x)
-- [x] **v0.7.0 Production Storage**: PostgreSQL backend implemented. [IN PROGRESS]
+- [x] **v0.7.0 Production Storage**: PostgreSQL backend, S3 offloading, and migration tooling. [DONE]
 - [x] **v0.6.0 The Learning Loop**: Automated variance summaries, threshold recommendations, and git-based trend persistence. [DONE]
 - [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes. [DONE]
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
