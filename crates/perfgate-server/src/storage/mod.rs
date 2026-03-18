@@ -3,10 +3,12 @@
 //! This module provides the [`BaselineStore`] trait for abstracting storage
 //! operations and implementations for different backends.
 
+mod artifacts;
 mod memory;
 mod postgres;
 mod sqlite;
 
+pub use artifacts::ObjectArtifactStore;
 pub use memory::InMemoryStore;
 pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
@@ -14,6 +16,19 @@ pub use sqlite::SqliteStore;
 use crate::error::StoreError;
 use crate::models::{BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse};
 use async_trait::async_trait;
+
+/// Trait for storing raw artifacts (receipts).
+#[async_trait]
+pub trait ArtifactStore: std::fmt::Debug + Send + Sync {
+    /// Stores an artifact at the given path.
+    async fn put(&self, path: &str, data: Vec<u8>) -> Result<(), StoreError>;
+
+    /// Retrieves an artifact from the given path.
+    async fn get(&self, path: &str) -> Result<Vec<u8>, StoreError>;
+
+    /// Deletes an artifact from the given path.
+    async fn delete(&self, path: &str) -> Result<(), StoreError>;
+}
 
 /// Trait for baseline storage operations.
 ///
