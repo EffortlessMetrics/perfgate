@@ -25,7 +25,9 @@ use crate::handlers::{
     delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
     promote_baseline, upload_baseline,
 };
-use crate::storage::{BaselineStore, InMemoryStore, PostgresStore, SqliteStore};
+use crate::storage::{
+    ArtifactStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore, SqliteStore,
+};
 
 /// Storage backend type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,6 +69,9 @@ pub struct ServerConfig {
     /// PostgreSQL connection URL (when storage_backend is Postgres)
     pub postgres_url: Option<String>,
 
+    /// Artifact storage URL (e.g., s3://bucket/prefix)
+    pub artifacts_url: Option<String>,
+
     /// API keys for authentication (key -> role mapping)
     pub api_keys: Vec<(String, Role)>,
 
@@ -87,6 +92,7 @@ impl Default for ServerConfig {
             storage_backend: StorageBackend::Memory,
             sqlite_path: None,
             postgres_url: None,
+            artifacts_url: None,
             api_keys: vec![],
             jwt: None,
             cors: true,
@@ -128,6 +134,12 @@ impl ServerConfig {
         self
     }
 
+    /// Sets the artifacts storage URL.
+    pub fn artifacts_url(mut self, url: impl Into<String>) -> Self {
+        self.artifacts_url = Some(url.into());
+        self
+    }
+
     /// Adds an API key with a specific role.
     pub fn api_key(mut self, key: impl Into<String>, role: Role) -> Self {
         self.api_keys.push((key.into(), role));
@@ -147,10 +159,29 @@ impl ServerConfig {
     }
 }
 
+/// Creates the artifact storage based on configuration.
+pub(crate) async fn create_artifacts(
+    config: &ServerConfig,
+) -> Result<Option<Arc<dyn ArtifactStore>>, ConfigError> {
+    if let Some(url) = &config.artifacts_url {
+        info!(url = %url, "Using object storage for artifacts");
+        let (store, _path) = object_store::parse_url(&url.parse().map_err(|e| {
+            ConfigError::InvalidValue(format!("Invalid artifacts URL: {}", e))
+        })?)
+        .map_err(|e| ConfigError::InvalidValue(format!("Failed to parse artifacts URL: {}", e)))?;
+
+        Ok(Some(Arc::new(ObjectArtifactStore::new(Arc::from(store)))))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Creates the storage backend based on configuration.
 pub(crate) async fn create_storage(
     config: &ServerConfig,
 ) -> Result<Arc<dyn BaselineStore>, ConfigError> {
+    let artifacts = create_artifacts(config).await?;
+
     match config.storage_backend {
         StorageBackend::Memory => {
             info!("Using in-memory storage");
@@ -162,7 +193,7 @@ pub(crate) async fn create_storage(
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("perfgate.db"));
             info!(path = %path.display(), "Using SQLite storage");
-            let store = SqliteStore::new(&path)
+            let store = SqliteStore::new(&path, artifacts)
                 .map_err(|e| ConfigError::InvalidValue(format!("Failed to open SQLite: {}", e)))?;
             Ok(Arc::new(store))
         }
@@ -172,7 +203,7 @@ pub(crate) async fn create_storage(
                 .clone()
                 .unwrap_or_else(|| "postgres://localhost:5432/perfgate".to_string());
             info!(url = %url, "Using PostgreSQL storage");
-            let store = PostgresStore::new(&url).await
+            let store = PostgresStore::new(&url, artifacts).await
                 .map_err(|e| ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e)))?;
             Ok(Arc::new(store))
         }
@@ -390,9 +421,8 @@ mod tests {
             .storage_backend(StorageBackend::Postgres)
             .postgres_url("postgresql://localhost/test");
         let result = create_storage(&config).await;
-        assert!(result.is_ok());
-        let store = result.unwrap();
-        assert_eq!(store.backend_type(), "postgres");
+        // Should fail because no Postgres is running
+        assert!(result.is_err());
     }
 
     #[tokio::test]

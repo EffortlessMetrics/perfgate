@@ -3,7 +3,7 @@
 //! This module provides a robust, asynchronous PostgreSQL backend for storing
 //! and querying perfgate baseline records using sqlx.
 
-use super::{BaselineStore, StorageHealth};
+use super::{ArtifactStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery,
@@ -11,17 +11,19 @@ use crate::models::{
 };
 use async_trait::async_trait;
 use sqlx::{PgPool, postgres::PgPoolOptions, Row};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// PostgreSQL storage backend for baselines.
 #[derive(Debug, Clone)]
 pub struct PostgresStore {
     pool: PgPool,
+    artifacts: Option<Arc<dyn ArtifactStore>>,
 }
 
 impl PostgresStore {
     /// Creates a new PostgreSQL storage backend and runs initial schema migrations.
-    pub async fn new(url: &str) -> Result<Self, StoreError> {
+    pub async fn new(url: &str, artifacts: Option<Arc<dyn ArtifactStore>>) -> Result<Self, StoreError> {
         let pool = PgPoolOptions::new()
             .max_connections(10)
             .acquire_timeout(Duration::from_secs(5))
@@ -29,7 +31,7 @@ impl PostgresStore {
             .await
             .map_err(|e| StoreError::ConnectionError(e.to_string()))?;
 
-        let store = Self { pool };
+        let store = Self { pool, artifacts };
         store.init_schema().await?;
         Ok(store)
     }
@@ -44,7 +46,8 @@ impl PostgresStore {
                 schema_id VARCHAR(64) NOT NULL,
                 git_ref VARCHAR(255),
                 git_sha VARCHAR(40),
-                receipt JSONB NOT NULL,
+                receipt JSONB,
+                artifact_path TEXT,
                 metadata JSONB NOT NULL,
                 tags JSONB NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL,
@@ -67,10 +70,47 @@ impl PostgresStore {
         Ok(())
     }
 
-    fn row_to_record(row: sqlx::postgres::PgRow) -> Result<BaselineRecord, StoreError> {
-        let receipt_json: serde_json::Value = row.get("receipt");
-        let receipt = serde_json::from_value(receipt_json)
-            .map_err(StoreError::SerializationError)?;
+    async fn store_artifact(&self, record: &BaselineRecord) -> Result<Option<String>, StoreError> {
+        if let Some(store) = &self.artifacts {
+            let path = format!("{}/{}/{}.json", record.project, record.benchmark, record.version);
+            let data = serde_json::to_vec(&record.receipt)
+                .map_err(StoreError::SerializationError)?;
+            store.put(&path, data).await?;
+            Ok(Some(path))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn row_to_record(row: sqlx::postgres::PgRow) -> Result<(BaselineRecord, Option<String>), StoreError> {
+        let artifact_path: Option<String> = row.get("artifact_path");
+        
+        let receipt = if let Some(receipt_json) = row.get:: <Option<serde_json::Value>, _>("receipt") {
+            serde_json::from_value(receipt_json)
+                .map_err(StoreError::SerializationError)?
+        } else {
+            // Placeholder, will be loaded from artifact store if needed
+            serde_json::from_value(serde_json::json!({
+                "schema": "perfgate.run.v1",
+                "tool": {"name": "placeholder", "version": "0"},
+                "run": {
+                    "id": "placeholder",
+                    "started_at": "1970-01-01T00:00:00Z",
+                    "ended_at": "1970-01-01T00:00:00Z",
+                    "host": {"os": "unknown", "arch": "unknown"}
+                },
+                "bench": {
+                    "name": "placeholder",
+                    "command": [],
+                    "repeat": 0,
+                    "warmup": 0
+                },
+                "samples": [],
+                "stats": {
+                    "wall_ms": {"median": 0, "min": 0, "max": 0}
+                }
+            })).unwrap()
+        };
         
         let metadata_json: serde_json::Value = row.get("metadata");
         let metadata = serde_json::from_value(metadata_json)
@@ -87,7 +127,7 @@ impl PostgresStore {
         let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
         let updated_at: chrono::DateTime<chrono::Utc> = row.get("updated_at");
 
-        Ok(BaselineRecord {
+        Ok((BaselineRecord {
             schema: row.get("schema_id"),
             id: row.get("id"),
             project: row.get("project"),
@@ -103,15 +143,30 @@ impl PostgresStore {
             content_hash: row.get("content_hash"),
             source,
             deleted: row.get("deleted"),
-        })
+        }, artifact_path))
+    }
+
+    async fn load_artifact(&self, path: Option<String>, mut record: BaselineRecord) -> Result<BaselineRecord, StoreError> {
+        if let (Some(store), Some(path)) = (&self.artifacts, path) {
+            let data = store.get(&path).await?;
+            record.receipt = serde_json::from_slice(&data)
+                .map_err(StoreError::SerializationError)?;
+        }
+        Ok(record)
     }
 }
 
 #[async_trait]
 impl BaselineStore for PostgresStore {
     async fn create(&self, record: &BaselineRecord) -> Result<(), StoreError> {
-        let receipt_json = serde_json::to_value(&record.receipt)
-            .map_err(StoreError::SerializationError)?;
+        let artifact_path = self.store_artifact(record).await?;
+        
+        let receipt_json = if artifact_path.is_none() {
+            Some(serde_json::to_value(&record.receipt).map_err(StoreError::SerializationError)?)
+        } else {
+            None
+        };
+
         let metadata_json = serde_json::to_value(&record.metadata)
             .map_err(StoreError::SerializationError)?;
         let tags_json = serde_json::to_value(&record.tags)
@@ -123,9 +178,9 @@ impl BaselineStore for PostgresStore {
         let sql = r#"
             INSERT INTO baselines (
                 id, project, benchmark, version, schema_id, 
-                git_ref, git_sha, receipt, metadata, tags,
+                git_ref, git_sha, receipt, artifact_path, metadata, tags,
                 created_at, updated_at, content_hash, source, deleted
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         "#;
 
         let result = sqlx::query(sql)
@@ -137,6 +192,7 @@ impl BaselineStore for PostgresStore {
             .bind(&record.git_ref)
             .bind(&record.git_sha)
             .bind(receipt_json)
+            .bind(artifact_path)
             .bind(metadata_json)
             .bind(tags_json)
             .bind(record.created_at)
@@ -173,7 +229,10 @@ impl BaselineStore for PostgresStore {
             .map_err(|e| StoreError::QueryError(e.to_string()))?;
 
         match row_opt {
-            Some(row) => Ok(Some(Self::row_to_record(row)?)),
+            Some(row) => {
+                let (record, artifact_path) = Self::row_to_record(row)?;
+                Ok(Some(self.load_artifact(artifact_path, record).await?))
+            },
             None => Ok(None),
         }
     }
@@ -193,7 +252,10 @@ impl BaselineStore for PostgresStore {
             .map_err(|e| StoreError::QueryError(e.to_string()))?;
 
         match row_opt {
-            Some(row) => Ok(Some(Self::row_to_record(row)?)),
+            Some(row) => {
+                let (record, artifact_path) = Self::row_to_record(row)?;
+                Ok(Some(self.load_artifact(artifact_path, record).await?))
+            },
             None => Ok(None),
         }
     }
@@ -230,7 +292,11 @@ impl BaselineStore for PostgresStore {
         
         let mut baselines = Vec::with_capacity(take_count);
         for row in rows.into_iter().take(take_count) {
-            baselines.push(Self::row_to_record(row)?.into());
+            let (mut record, artifact_path) = Self::row_to_record(row)?;
+            if query.include_receipt {
+                record = self.load_artifact(artifact_path, record).await?;
+            }
+            baselines.push(record.into());
         }
 
         // Determine total count
