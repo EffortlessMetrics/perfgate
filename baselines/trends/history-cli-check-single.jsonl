@@ -1,0 +1,1 @@
+{"bench_name":"cli/check-single","wall_ms_median":8,"wall_ms_min":8,"wall_ms_max":8,"binary_bytes_median":1446024,"cpu_ms_median":8,"ctx_switches_median":18,"max_rss_kb_median":6920,"page_faults_median":0,"throughput_median":null,"sample_count":15,"timestamp":"2026-03-18T03:54:13.362486215Z"}
