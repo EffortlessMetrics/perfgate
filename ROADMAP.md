@@ -26,9 +26,10 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 - [x] **Trend Persistence**: First-class support for storing trend data in local Git or S3 without requiring the full server.
 
 ### 0.7.0: Production Storage
-- [x] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`.
-- [ ] **S3/Object Storage**: Support for storing raw receipts in S3/GCS while keeping metadata in DB.
+- [x] **PostgreSQL Backend**: Implementation of the `BaselineStore` trait for Postgres in `perfgate-server`. [DONE]
+- [x] **S3/Object Storage**: Support for storing raw receipts in S3/GCS while keeping metadata in DB. [DONE]
 - [ ] **Migration Tooling**: CLI helpers to move baselines from local files to the server.
+
 
 ### 0.8.0: Security & Identity
 - [ ] **OIDC Integration**: Support for GitHub/GitLab identity providers in the server.
