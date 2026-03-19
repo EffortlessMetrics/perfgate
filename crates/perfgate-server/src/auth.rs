@@ -93,8 +93,16 @@ pub struct AuthState {
 
 impl AuthState {
     /// Creates auth state from a key store and optional JWT/OIDC configuration.
-    pub fn new(key_store: Arc<ApiKeyStore>, jwt: Option<JwtConfig>, oidc: Option<OidcProvider>) -> Self {
-        Self { key_store, jwt, oidc }
+    pub fn new(
+        key_store: Arc<ApiKeyStore>,
+        jwt: Option<JwtConfig>,
+        oidc: Option<OidcProvider>,
+    ) -> Self {
+        Self {
+            key_store,
+            jwt,
+            oidc,
+        }
     }
 }
 

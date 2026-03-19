@@ -63,7 +63,10 @@ impl OidcProvider {
 
         // Initial fetch
         if let Err(e) = provider.refresh_jwks().await {
-            warn!("Failed initial JWKS fetch from {}: {}", provider.config.jwks_url, e);
+            warn!(
+                "Failed initial JWKS fetch from {}: {}",
+                provider.config.jwks_url, e
+            );
         }
 
         Ok(provider)
@@ -101,7 +104,7 @@ impl OidcProvider {
     /// Validates an OIDC token and returns the corresponding mapped ApiKey.
     pub async fn validate_token(&self, token: &str) -> Result<ApiKey, AuthError> {
         let header = decode_header(token).map_err(|e| AuthError::InvalidToken(e.to_string()))?;
-        
+
         let kid = header
             .kid
             .ok_or_else(|| AuthError::InvalidToken("Missing 'kid' in token header".to_string()))?;
@@ -113,9 +116,9 @@ impl OidcProvider {
                 .as_ref()
                 .ok_or_else(|| AuthError::InvalidToken("JWKS not loaded yet".to_string()))?;
 
-            let jwk = jwks
-                .find(&kid)
-                .ok_or_else(|| AuthError::InvalidToken(format!("Key '{}' not found in JWKS", kid)))?;
+            let jwk = jwks.find(&kid).ok_or_else(|| {
+                AuthError::InvalidToken(format!("Key '{}' not found in JWKS", kid))
+            })?;
 
             match &jwk.algorithm {
                 jsonwebtoken::jwk::AlgorithmParameters::RSA(rsa) => {
@@ -134,10 +137,12 @@ impl OidcProvider {
         validation.set_issuer(&[&self.config.issuer]);
         validation.set_audience(&[&self.config.audience]);
 
-        let token_data = decode::<GithubClaims>(token, &decoding_key, &validation)
-            .map_err(|e| match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
-                _ => AuthError::InvalidToken(e.to_string()),
+        let token_data =
+            decode::<GithubClaims>(token, &decoding_key, &validation).map_err(|e| {
+                match e.kind() {
+                    jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
+                    _ => AuthError::InvalidToken(e.to_string()),
+                }
             })?;
 
         let claims = token_data.claims;
@@ -156,7 +161,7 @@ impl OidcProvider {
 
         let expires_at = chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
             .unwrap_or_else(chrono::Utc::now);
-            
+
         let created_at = claims
             .iat
             .and_then(|iat| chrono::DateTime::<chrono::Utc>::from_timestamp(iat as i64, 0))

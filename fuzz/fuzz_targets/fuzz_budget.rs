@@ -19,3 +19,4 @@ fuzz_target!(|input: BudgetInput| {
         let _ = determine_status(regression, input.threshold, input.warn_threshold);
     }
 });
+

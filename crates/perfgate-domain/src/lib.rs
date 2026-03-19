@@ -14,18 +14,24 @@ pub use perfgate_budget::{
 };
 
 pub use perfgate_significance::{compute_significance, mean_and_variance};
+pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, summarize_u64};
 
 use perfgate_types::{
-    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, F64Summary, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, U64Summary,
-    Verdict, VerdictCounts, VerdictStatus,
+    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
+
+pub use perfgate_error::StatsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DomainError {
     #[error("no samples to summarize")]
     NoSamples,
+
+    #[error(transparent)]
+    Stats(#[from] StatsError),
 
     #[error("baseline value for {0:?} must be > 0")]
     InvalidBaseline(Metric),
@@ -169,65 +175,6 @@ mod advanced_analytics_tests {
         .expect("compare enforced");
         let enforced_delta = enforced.deltas.get(&Metric::WallMs).expect("wall delta");
         assert_eq!(enforced_delta.status, MetricStatus::Pass);
-    }
-}
-
-/// Compute median/min/max summary from a slice of `u64` values.
-///
-/// # Examples
-///
-/// ```
-/// use perfgate_domain::summarize_u64;
-///
-/// let summary = summarize_u64(&[120, 100, 110, 105, 115]).unwrap();
-/// assert_eq!(summary.median, 110);
-/// assert_eq!(summary.min, 100);
-/// assert_eq!(summary.max, 120);
-/// ```
-pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, DomainError> {
-    if values.is_empty() {
-        return Err(DomainError::NoSamples);
-    }
-    let mut v = values.to_vec();
-    v.sort_unstable();
-    let min = *v.first().unwrap();
-    let max = *v.last().unwrap();
-    let median = median_u64_sorted(&v);
-    Ok(U64Summary { median, min, max })
-}
-
-pub fn summarize_f64(values: &[f64]) -> Result<F64Summary, DomainError> {
-    if values.is_empty() {
-        return Err(DomainError::NoSamples);
-    }
-    let mut v = values.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let min = *v.first().unwrap();
-    let max = *v.last().unwrap();
-    let median = median_f64_sorted(&v);
-    Ok(F64Summary { median, min, max })
-}
-
-fn median_u64_sorted(sorted: &[u64]) -> u64 {
-    debug_assert!(!sorted.is_empty());
-    let n = sorted.len();
-    let mid = n / 2;
-    if n % 2 == 1 {
-        sorted[mid]
-    } else {
-        // average, rounding down
-        (sorted[mid - 1] / 2) + (sorted[mid] / 2) + ((sorted[mid - 1] % 2 + sorted[mid] % 2) / 2)
-    }
-}
-
-fn median_f64_sorted(sorted: &[f64]) -> f64 {
-    debug_assert!(!sorted.is_empty());
-    let n = sorted.len();
-    let mid = n / 2;
-    if n % 2 == 1 {
-        sorted[mid]
-    } else {
-        (sorted[mid - 1] + sorted[mid]) / 2.0
     }
 }
 
@@ -392,12 +339,12 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// use std::collections::BTreeMap;
 ///
 /// let baseline = Stats {
-///     wall_ms: U64Summary { median: 100, min: 90, max: 110 },
+///     wall_ms: U64Summary::new(100, 90, 110 ),
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
 ///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
 /// };
 /// let current = Stats {
-///     wall_ms: U64Summary { median: 105, min: 95, max: 115 },
+///     wall_ms: U64Summary::new(105, 95, 115 ),
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
 ///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
 /// };
@@ -1609,11 +1556,7 @@ mod tests {
 
                 // Create stats for baseline and current
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline as u64,
-                        min: baseline as u64,
-                        max: baseline as u64,
-                    },
+                    wall_ms: U64Summary::new(baseline as u64, baseline as u64, baseline as u64),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
@@ -1623,11 +1566,7 @@ mod tests {
                 };
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: current as u64,
-                        min: current as u64,
-                        max: current as u64,
-                    },
+                    wall_ms: U64Summary::new(current as u64, current as u64, current as u64),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
@@ -1687,39 +1626,23 @@ mod tests {
 
                 // Create stats for baseline and current using throughput
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: 1000,
-                        min: 1000,
-                        max: 1000,
-                    },
+                    wall_ms: U64Summary::new(1000, 1000, 1000),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
                 };
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: 1000,
-                        min: 1000,
-                        max: 1000,
-                    },
+                    wall_ms: U64Summary::new(1000, 1000, 1000),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: current,
-                        min: current,
-                        max: current,
-                    }),
+                    throughput_per_s: Some(F64Summary::new(current, current, current)),
                 };
 
                 // Create budget with the generated thresholds
@@ -1770,11 +1693,7 @@ mod tests {
                 // Create appropriate stats based on direction
                 let (baseline_stats, current_stats, metric, budgets) = if direction_lower {
                     let bs = Stats {
-                        wall_ms: U64Summary {
-                            median: baseline as u64,
-                            min: baseline as u64,
-                            max: baseline as u64,
-                        },
+                        wall_ms: U64Summary::new(baseline as u64, baseline as u64, baseline as u64),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
@@ -1783,11 +1702,7 @@ mod tests {
                         throughput_per_s: None,
                     };
                     let cs = Stats {
-                        wall_ms: U64Summary {
-                            median: current as u64,
-                            min: current as u64,
-                            max: current as u64,
-                        },
+                        wall_ms: U64Summary::new(current as u64, current as u64, current as u64),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
@@ -1800,30 +1715,22 @@ mod tests {
                     (bs, cs, Metric::WallMs, b)
                 } else {
                     let bs = Stats {
-                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        wall_ms: U64Summary::new(1000, 1000, 1000 ),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary {
-                            median: baseline,
-                            min: baseline,
-                            max: baseline,
-                        }),
+                        throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
                     };
                     let cs = Stats {
-                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        wall_ms: U64Summary::new(1000, 1000, 1000 ),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary {
-                            median: current,
-                            min: current,
-                            max: current,
-                        }),
+                        throughput_per_s: Some(F64Summary::new(current, current, current)),
                     };
                     let mut b = BTreeMap::new();
                     b.insert(Metric::ThroughputPerS, Budget { threshold, warn_threshold, direction });
@@ -1859,17 +1766,13 @@ mod tests {
                 (threshold, warn_threshold) in threshold_pair_strategy(),
             ) {
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                    wall_ms: U64Summary::new(1000, 1000, 1000 ),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
                 };
 
                 // For Direction::Higher, regression = max(0, (baseline - current) / baseline)
@@ -1880,17 +1783,13 @@ mod tests {
                 // Only test if current would be positive
                 if current_at_threshold_higher > 0.0 {
                     let current_stats = Stats {
-                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        wall_ms: U64Summary::new(1000, 1000, 1000 ),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary {
-                            median: current_at_threshold_higher,
-                            min: current_at_threshold_higher,
-                            max: current_at_threshold_higher,
-                        }),
+                        throughput_per_s: Some(F64Summary::new(current_at_threshold_higher, current_at_threshold_higher, current_at_threshold_higher)),
                     };
 
                     let mut budgets = BTreeMap::new();
@@ -1951,11 +1850,7 @@ mod tests {
         /// Helper to create Stats with a specific wall_ms median value.
         fn make_stats_with_wall_ms(median: u64) -> Stats {
             Stats {
-                wall_ms: U64Summary {
-                    median,
-                    min: median,
-                    max: median,
-                },
+                wall_ms: U64Summary::new(median, median, median),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -2060,19 +1955,11 @@ mod tests {
 
                 // Create baseline stats with both wall_ms and max_rss_kb
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2082,19 +1969,11 @@ mod tests {
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: wall_ms_current,
-                        min: wall_ms_current,
-                        max: wall_ms_current,
-                    },
+                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: max_rss_current,
-                        min: max_rss_current,
-                        max: max_rss_current,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2148,25 +2027,13 @@ mod tests {
 
                 // Create baseline stats with all three metrics
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: baseline_throughput,
-                        min: baseline_throughput,
-                        max: baseline_throughput,
-                    }),
+                    throughput_per_s: Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput)),
                 };
 
                 // Compute current values to achieve desired statuses
@@ -2190,25 +2057,13 @@ mod tests {
                 };
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: wall_ms_current,
-                        min: wall_ms_current,
-                        max: wall_ms_current,
-                    },
+                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: max_rss_current,
-                        min: max_rss_current,
-                        max: max_rss_current,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: throughput_current,
-                        min: throughput_current,
-                        max: throughput_current,
-                    }),
+                    throughput_per_s: Some(F64Summary::new(throughput_current, throughput_current, throughput_current)),
                 };
 
                 let mut budgets = BTreeMap::new();
@@ -2266,19 +2121,11 @@ mod tests {
 
                 // Create baseline stats with both wall_ms and max_rss_kb
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2288,19 +2135,11 @@ mod tests {
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, other_status);
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: wall_ms_current,
-                        min: wall_ms_current,
-                        max: wall_ms_current,
-                    },
+                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: max_rss_current,
-                        min: max_rss_current,
-                        max: max_rss_current,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2352,19 +2191,11 @@ mod tests {
 
                 // Create baseline stats with both wall_ms and max_rss_kb
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2374,19 +2205,11 @@ mod tests {
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, other_status);
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: wall_ms_current,
-                        min: wall_ms_current,
-                        max: wall_ms_current,
-                    },
+                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: max_rss_current,
-                        min: max_rss_current,
-                        max: max_rss_current,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2438,30 +2261,18 @@ mod tests {
 
                 // All metrics will be Pass (current == baseline, no regression)
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: if num_metrics >= 2 {
-                        Some(U64Summary {
-                            median: baseline,
-                            min: baseline,
-                            max: baseline,
-                        })
+                        Some(U64Summary::new(baseline, baseline, baseline))
                     } else {
                         None
                     },
                     binary_bytes: None,
                     throughput_per_s: if num_metrics >= 3 {
-                        Some(F64Summary {
-                            median: baseline_throughput,
-                            min: baseline_throughput,
-                            max: baseline_throughput,
-                        })
+                        Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput))
                     } else {
                         None
                     },
@@ -2538,12 +2349,12 @@ mod tests {
                 (threshold, warn_threshold) in threshold_pair_strategy(),
             ) {
                 let baseline = Stats {
-                    wall_ms: U64Summary { median: baseline_wall, min: baseline_wall, max: baseline_wall },
+                    wall_ms: U64Summary::new(baseline_wall, baseline_wall, baseline_wall ),
                     cpu_ms: None, page_faults: None, ctx_switches: None,
                     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
                 };
                 let current = Stats {
-                    wall_ms: U64Summary { median: current_wall, min: current_wall, max: current_wall },
+                    wall_ms: U64Summary::new(current_wall, current_wall, current_wall ),
                     cpu_ms: None, page_faults: None, ctx_switches: None,
                     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
                 };
@@ -2836,9 +2647,13 @@ mod tests {
                 };
 
                 let mk = |median: u64| Stats {
-                    wall_ms: U64Summary { median, min: median, max: median },
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                    wall_ms: U64Summary::new(median, median, median),
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
                 };
 
                 let mut budgets = BTreeMap::new();
@@ -2884,7 +2699,7 @@ mod tests {
                     direction: Direction::Lower,
                 };
                 let mk = |v: u64| Stats {
-                    wall_ms: U64Summary { median: v, min: v, max: v },
+                    wall_ms: U64Summary::new(v, v, v ),
                     cpu_ms: None, page_faults: None, ctx_switches: None,
                     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
                 };
@@ -2916,7 +2731,7 @@ mod tests {
                     direction: Direction::Lower,
                 };
                 let mk = |v: u64| Stats {
-                    wall_ms: U64Summary { median: v, min: v, max: v },
+                    wall_ms: U64Summary::new(v, v, v ),
                     cpu_ms: None, page_faults: None, ctx_switches: None,
                     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
                 };
@@ -2966,14 +2781,14 @@ mod tests {
         ];
 
         let stats = compute_stats(&samples, None).unwrap();
-        assert_eq!(
-            stats.wall_ms,
-            U64Summary {
-                median: 200,
-                min: 200,
-                max: 200
-            }
-        );
+        let expected = U64Summary {
+            median: 200,
+            min: 200,
+            max: 200,
+            mean: Some(200.0),
+            stddev: Some(0.0),
+        };
+        assert_eq!(stats.wall_ms, expected);
     }
 
     // =========================================================================
@@ -3144,16 +2959,8 @@ mod tests {
     #[test]
     fn compare_stats_cpu_ms_regression_detection() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3163,16 +2970,8 @@ mod tests {
 
         // Current has 100% increase in cpu_ms (50 -> 100)
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(100, 100, 100)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3216,16 +3015,8 @@ mod tests {
     #[test]
     fn compare_stats_cpu_ms_improvement_passes() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(100, 100, 100)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3235,16 +3026,8 @@ mod tests {
 
         // Current has 50% decrease in cpu_ms (100 -> 50) - improvement!
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3285,16 +3068,8 @@ mod tests {
     #[test]
     fn compare_stats_skips_cpu_ms_when_only_baseline_has_it() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3303,11 +3078,7 @@ mod tests {
         };
 
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None, // No cpu_ms in current
             page_faults: None,
             ctx_switches: None,
@@ -3339,11 +3110,7 @@ mod tests {
     #[test]
     fn compare_stats_skips_cpu_ms_when_only_current_has_it() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None, // No cpu_ms in baseline
             page_faults: None,
             ctx_switches: None,
@@ -3353,16 +3120,8 @@ mod tests {
         };
 
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3393,16 +3152,8 @@ mod tests {
     #[test]
     fn compare_stats_cpu_ms_warns_within_threshold() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(100, 100, 100)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3412,16 +3163,8 @@ mod tests {
 
         // Current has 15% increase in cpu_ms (100 -> 115)
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 115,
-                min: 115,
-                max: 115,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(115, 115, 115)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
@@ -3457,11 +3200,7 @@ mod tests {
     #[test]
     fn compare_lower_is_worse_regression_is_positive_pct() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 1000,
-                min: 1000,
-                max: 1000,
-            },
+            wall_ms: U64Summary::new(1000, 1000, 1000),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
@@ -3470,11 +3209,7 @@ mod tests {
             throughput_per_s: None,
         };
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 1100,
-                min: 1100,
-                max: 1100,
-            },
+            wall_ms: U64Summary::new(1100, 1100, 1100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
@@ -3502,38 +3237,22 @@ mod tests {
     #[test]
     fn compare_higher_is_better_regression_is_negative_pct() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 1000,
-                min: 1000,
-                max: 1000,
-            },
+            wall_ms: U64Summary::new(1000, 1000, 1000),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary {
-                median: 100.0,
-                min: 100.0,
-                max: 100.0,
-            }),
+            throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
         };
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 1000,
-                min: 1000,
-                max: 1000,
-            },
+            wall_ms: U64Summary::new(1000, 1000, 1000),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary {
-                median: 92.0,
-                min: 92.0,
-                max: 92.0,
-            }),
+            throughput_per_s: Some(F64Summary::new(92.0, 92.0, 92.0)),
         };
 
         let mut budgets = BTreeMap::new();
@@ -3575,8 +3294,7 @@ mod tests {
                 "summarize_u64 should return error for empty input"
             );
             match result {
-                Err(DomainError::NoSamples) => { /* expected */ }
-                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Err(StatsError::NoSamples) => { /* expected */ }
                 Ok(_) => panic!("expected error, got Ok"),
             }
         }
@@ -3592,8 +3310,7 @@ mod tests {
                 "summarize_f64 should return error for empty input"
             );
             match result {
-                Err(DomainError::NoSamples) => { /* expected */ }
-                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Err(StatsError::NoSamples) => { /* expected */ }
                 Ok(_) => panic!("expected error, got Ok"),
             }
         }
@@ -3718,11 +3435,7 @@ mod tests {
         fn compare_stats_zero_baseline_returns_invalid_baseline_error() {
             // Create baseline stats with wall_ms median of 0
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 0,
-                    min: 0,
-                    max: 0,
-                },
+                wall_ms: U64Summary::new(0, 0, 0),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -3732,11 +3445,7 @@ mod tests {
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
+                wall_ms: U64Summary::new(100, 100, 100),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -3779,39 +3488,23 @@ mod tests {
         #[test]
         fn compare_stats_zero_throughput_baseline_returns_invalid_baseline_error() {
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: 0.0,
-                    min: 0.0,
-                    max: 0.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: 100.0,
-                    min: 100.0,
-                    max: 100.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };
 
             let mut budgets = BTreeMap::new();
@@ -3848,37 +3541,21 @@ mod tests {
         #[test]
         fn compare_stats_zero_max_rss_baseline_returns_invalid_baseline_error() {
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 0,
-                    min: 0,
-                    max: 0,
-                }),
+                max_rss_kb: Some(U64Summary::new(0, 0, 0)),
                 binary_bytes: None,
                 throughput_per_s: None,
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1024,
-                    max: 1024,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1024, 1024)),
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3918,39 +3595,23 @@ mod tests {
         #[test]
         fn compare_stats_negative_throughput_baseline_returns_invalid_baseline_error() {
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: -10.0,
-                    min: -10.0,
-                    max: -10.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(-10.0, -10.0, -10.0)),
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: 100.0,
-                    min: 100.0,
-                    max: 100.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };
 
             let mut budgets = BTreeMap::new();

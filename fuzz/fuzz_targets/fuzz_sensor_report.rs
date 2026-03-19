@@ -125,3 +125,4 @@ fuzz_target!(|input: SensorInput| {
     // Basic invariant: verdict counts should be non-negative (they're u32, so always true)
     let _ = serde_json::to_string(&sensor_report);
 });
+

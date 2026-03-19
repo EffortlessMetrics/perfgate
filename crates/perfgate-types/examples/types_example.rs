@@ -25,11 +25,7 @@ fn main() {
 
     // Summary statistics for wall_ms
     let stats = Stats {
-        wall_ms: U64Summary {
-            median: 118,
-            min: 115,
-            max: 122,
-        },
+        wall_ms: U64Summary::new(118, 115, 122),
         cpu_ms: None,
         page_faults: None,
         ctx_switches: None,

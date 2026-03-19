@@ -73,3 +73,4 @@ fuzz_target!(|input: PairedInput| {
         assert!(comparison.ci_95_lower <= comparison.ci_95_upper);
     }
 });
+

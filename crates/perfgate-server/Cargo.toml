@@ -17,12 +17,16 @@ tokio = { version = "1.49.0", features = ["full"] }
 # Web framework
 axum = { version = "0.8.1", features = ["macros"] }
 tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["cors", "trace", "request-id"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace", "request-id", "fs"] }
 
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
+
+# Asset Embedding
+rust-embed = "8.5.0"
+mime_guess = "2.0.5"
 
 # Logging
 tracing = "0.1.41"

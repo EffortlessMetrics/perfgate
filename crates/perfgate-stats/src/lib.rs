@@ -41,7 +41,21 @@ pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
     let min = *v.first().unwrap();
     let max = *v.last().unwrap();
     let median = median_u64_sorted(&v);
-    Ok(U64Summary { median, min, max })
+
+    let f64_vals: Vec<f64> = values.iter().map(|&x| x as f64).collect();
+    let (mean, stddev) = if let Some((m, var)) = mean_and_variance(&f64_vals) {
+        (Some(m), Some(var.sqrt()))
+    } else {
+        (None, None)
+    };
+
+    Ok(U64Summary {
+        median,
+        min,
+        max,
+        mean,
+        stddev,
+    })
 }
 
 /// Compute min, max, and median for an `f64` slice.
@@ -69,7 +83,20 @@ pub fn summarize_f64(values: &[f64]) -> Result<F64Summary, StatsError> {
     let min = *v.first().unwrap();
     let max = *v.last().unwrap();
     let median = median_f64_sorted(&v);
-    Ok(F64Summary { median, min, max })
+
+    let (mean, stddev) = if let Some((m, var)) = mean_and_variance(values) {
+        (Some(m), Some(var.sqrt()))
+    } else {
+        (None, None)
+    };
+
+    Ok(F64Summary {
+        median,
+        min,
+        max,
+        mean,
+        stddev,
+    })
 }
 
 pub fn median_u64_sorted(sorted: &[u64]) -> u64 {

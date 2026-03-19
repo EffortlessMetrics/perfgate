@@ -28,11 +28,7 @@ impl FuzzU64Summary {
         // Ensure min <= median <= max invariant
         let mut vals = [self.min, self.median, self.max];
         vals.sort();
-        perfgate_types::U64Summary {
-            min: vals[0],
-            median: vals[1],
-            max: vals[2],
-        }
+        perfgate_types::U64Summary::new(vals[1], vals[0], vals[2])
     }
 }
 
@@ -53,11 +49,7 @@ impl FuzzF64Summary {
             filter_nan(self.max),
         ];
         vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        perfgate_types::F64Summary {
-            min: vals[0],
-            median: vals[1],
-            max: vals[2],
-        }
+        perfgate_types::F64Summary::new(vals[1], vals[0], vals[2])
     }
 }
 

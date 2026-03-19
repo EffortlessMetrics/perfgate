@@ -490,16 +490,8 @@ fn paired_receipt_json_roundtrip() {
             },
         ],
         stats: PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 101,
-                min: 100,
-                max: 102,
-            },
-            current_wall_ms: U64Summary {
-                median: 92,
-                min: 90,
-                max: 95,
-            },
+            baseline_wall_ms: U64Summary::new(101, 100, 102),
+            current_wall_ms: U64Summary::new(92, 90, 95),
             wall_diff_ms: PairedDiffSummary {
                 mean: -8.5,
                 median: -8.5,
@@ -508,16 +500,8 @@ fn paired_receipt_json_roundtrip() {
                 max: -7.0,
                 count: 2,
             },
-            baseline_max_rss_kb: Some(U64Summary {
-                median: 1026,
-                min: 1024,
-                max: 1028,
-            }),
-            current_max_rss_kb: Some(U64Summary {
-                median: 1022,
-                min: 1020,
-                max: 1024,
-            }),
+            baseline_max_rss_kb: Some(U64Summary::new(1026, 1024, 1028)),
+            current_max_rss_kb: Some(U64Summary::new(1022, 1020, 1024)),
             rss_diff_kb: Some(PairedDiffSummary {
                 mean: -4.0,
                 median: -4.0,

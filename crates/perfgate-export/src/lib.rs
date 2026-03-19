@@ -38,7 +38,7 @@
 //!         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
 //!     }],
 //!     stats: Stats {
-//!         wall_ms: U64Summary { median: 42, min: 42, max: 42 },
+//!         wall_ms: U64Summary::new(42, 42, 42 ),
 //!         cpu_ms: None, page_faults: None, ctx_switches: None,
 //!         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
 //!     },
@@ -218,7 +218,7 @@ impl ExportUseCase {
     ///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
     ///     }],
     ///     stats: Stats {
-    ///         wall_ms: U64Summary { median: 42, min: 42, max: 42 },
+    ///         wall_ms: U64Summary::new(42, 42, 42 ),
     ///         cpu_ms: None, page_faults: None, ctx_switches: None,
     ///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
     ///     },
@@ -694,23 +694,11 @@ mod tests {
                 },
             ],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 98,
-                    max: 102,
-                },
-                cpu_ms: Some(U64Summary {
-                    median: 50,
-                    min: 48,
-                    max: 52,
-                }),
+                wall_ms: U64Summary::new(100, 98, 102),
+                cpu_ms: Some(U64Summary::new(50, 48, 52)),
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1020,
-                    max: 1028,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1020, 1028)),
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -998,11 +986,7 @@ mod tests {
                 },
                 samples: vec![],
                 stats: Stats {
-                    wall_ms: U64Summary {
-                        median: 0,
-                        min: 0,
-                        max: 0,
-                    },
+                    wall_ms: U64Summary::new(0, 0, 0),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
@@ -1067,11 +1051,7 @@ mod tests {
                 stdout: None,
                 stderr: None,
             });
-            receipt.stats.wall_ms = U64Summary {
-                median: 42,
-                min: 42,
-                max: 42,
-            };
+            receipt.stats.wall_ms = U64Summary::new(42, 42, 42);
             receipt
         }
 
@@ -1335,16 +1315,8 @@ mod tests {
         fn huge_values_run_receipt() {
             let mut receipt = create_empty_run_receipt();
             receipt.bench.name = "huge".to_string();
-            receipt.stats.wall_ms = U64Summary {
-                median: u64::MAX,
-                min: u64::MAX - 1,
-                max: u64::MAX,
-            };
-            receipt.stats.max_rss_kb = Some(U64Summary {
-                median: u64::MAX,
-                min: u64::MAX,
-                max: u64::MAX,
-            });
+            receipt.stats.wall_ms = U64Summary::new(u64::MAX, u64::MAX - 1, u64::MAX);
+            receipt.stats.max_rss_kb = Some(U64Summary::new(u64::MAX, u64::MAX, u64::MAX));
 
             let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
             assert!(csv.contains(&u64::MAX.to_string()));
@@ -1513,36 +1485,12 @@ mod tests {
         fn prometheus_run_all_optional_metrics_present() {
             let mut receipt = create_empty_run_receipt();
             receipt.bench.name = "full".to_string();
-            receipt.stats.cpu_ms = Some(U64Summary {
-                median: 50,
-                min: 48,
-                max: 52,
-            });
-            receipt.stats.page_faults = Some(U64Summary {
-                median: 10,
-                min: 8,
-                max: 12,
-            });
-            receipt.stats.ctx_switches = Some(U64Summary {
-                median: 5,
-                min: 3,
-                max: 7,
-            });
-            receipt.stats.max_rss_kb = Some(U64Summary {
-                median: 2048,
-                min: 2000,
-                max: 2100,
-            });
-            receipt.stats.binary_bytes = Some(U64Summary {
-                median: 100000,
-                min: 99000,
-                max: 101000,
-            });
-            receipt.stats.throughput_per_s = Some(F64Summary {
-                median: 1234.567890,
-                min: 1200.0,
-                max: 1300.0,
-            });
+            receipt.stats.cpu_ms = Some(U64Summary::new(50, 48, 52));
+            receipt.stats.page_faults = Some(U64Summary::new(10, 8, 12));
+            receipt.stats.ctx_switches = Some(U64Summary::new(5, 3, 7));
+            receipt.stats.max_rss_kb = Some(U64Summary::new(2048, 2000, 2100));
+            receipt.stats.binary_bytes = Some(U64Summary::new(100000, 99000, 101000));
+            receipt.stats.throughput_per_s = Some(F64Summary::new(1234.567890, 1200.0, 1300.0));
 
             let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
             assert!(prom.contains("perfgate_run_cpu_ms_median{bench=\"full\"} 50"));
@@ -1659,16 +1607,8 @@ mod tests {
         fn html_run_all_optional_metrics_present() {
             let mut receipt = create_empty_run_receipt();
             receipt.bench.name = "full-html".to_string();
-            receipt.stats.cpu_ms = Some(U64Summary {
-                median: 50,
-                min: 48,
-                max: 52,
-            });
-            receipt.stats.throughput_per_s = Some(F64Summary {
-                median: 999.123456,
-                min: 900.0,
-                max: 1100.0,
-            });
+            receipt.stats.cpu_ms = Some(U64Summary::new(50, 48, 52));
+            receipt.stats.throughput_per_s = Some(F64Summary::new(999.123456, 900.0, 1100.0));
 
             let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
             assert!(html.contains("<td>50</td>"));
@@ -1903,11 +1843,7 @@ mod property_tests {
         (0u64..1000000, 0u64..1000000, 0u64..1000000).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort();
-            U64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            U64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 
@@ -1915,11 +1851,7 @@ mod property_tests {
         (0.0f64..1000000.0, 0.0f64..1000000.0, 0.0f64..1000000.0).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort_by(|x, y| x.partial_cmp(y).unwrap());
-            F64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            F64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 

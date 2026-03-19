@@ -2,8 +2,10 @@
 //!
 //! This module implements the REST API endpoints for baseline management.
 
-mod baselines;
-mod health;
+pub mod baselines;
+pub mod dashboard;
+pub mod health;
 
 pub use baselines::*;
+pub use dashboard::*;
 pub use health::*;

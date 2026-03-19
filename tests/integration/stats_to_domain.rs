@@ -111,11 +111,7 @@ fn domain_uses_stats_for_metric_values() {
     use std::collections::BTreeMap;
 
     let baseline = Stats {
-        wall_ms: U64Summary {
-            median: 100,
-            min: 90,
-            max: 110,
-        },
+        wall_ms: U64Summary::new(100, 90, 110),
         cpu_ms: None,
         page_faults: None,
         ctx_switches: None,
@@ -125,11 +121,7 @@ fn domain_uses_stats_for_metric_values() {
     };
 
     let current = Stats {
-        wall_ms: U64Summary {
-            median: 120,
-            min: 110,
-            max: 130,
-        },
+        wall_ms: U64Summary::new(120, 110, 130),
         cpu_ms: None,
         page_faults: None,
         ctx_switches: None,

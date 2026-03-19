@@ -36,11 +36,7 @@ fn make_run_receipt(host: HostInfo) -> RunReceipt {
         },
         samples: vec![],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,

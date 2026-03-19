@@ -2501,11 +2501,7 @@ mod tests {
 
     fn make_stats_with_wall(wall_ms: u64) -> Stats {
         Stats {
-            wall_ms: U64Summary {
-                median: wall_ms,
-                min: wall_ms,
-                max: wall_ms,
-            },
+            wall_ms: U64Summary::new(wall_ms, wall_ms, wall_ms),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,

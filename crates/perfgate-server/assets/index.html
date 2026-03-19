@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>perfgate Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #eee;
+            margin-bottom: 30px;
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { margin: 0; font-size: 24px; color: #0366d6; cursor: pointer; }
+        .card {
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        th { background-color: #f6f8fa; font-weight: 600; }
+        tr.clickable:hover { background-color: #f1f8ff; cursor: pointer; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            background: #e1e4e8;
+        }
+        .project-selector {
+            margin-bottom: 20px;
+        }
+        input {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 16px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #0366d6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background: #0256b9; }
+        .back-btn { margin-bottom: 20px; background: #6a737d; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1 onclick="showDashboard()">perfgate Dashboard</h1>
+        <div class="version">v0.9.0 Alpha</div>
+    </header>
+
+    <div id="dashboardView">
+        <div class="project-selector">
+            <label for="project">Project:</label>
+            <input type="text" id="projectInput" value="default">
+            <button onclick="loadBaselines()">Load</button>
+        </div>
+
+        <div class="card">
+            <h2>Latest Baselines</h2>
+            <table id="baselinesTable">
+                <thead>
+                    <tr>
+                        <th>Benchmark</th>
+                        <th>Version</th>
+                        <th>Created At</th>
+                        <th>Tags</th>
+                    </tr>
+                </thead>
+                <tbody id="baselinesBody">
+                    <tr>
+                        <td colspan="4">Enter a project name and click Load...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="benchmarkView" style="display:none;">
+        <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
+        <h2 id="benchmarkTitle"></h2>
+        
+        <div class="card">
+            <h3>Wall Time Trend (median ms)</h3>
+            <canvas id="trendChart"></canvas>
+        </div>
+
+        <div class="card">
+            <h3>History</h3>
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Created At</th>
+                        <th>Wall (ms)</th>
+                        <th>Max RSS (kb)</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+
+        function showDashboard() {
+            document.getElementById('dashboardView').style.display = 'block';
+            document.getElementById('benchmarkView').style.display = 'none';
+        }
+
+        function showBenchmark(name) {
+            document.getElementById('dashboardView').style.display = 'none';
+            document.getElementById('benchmarkView').style.display = 'block';
+            document.getElementById('benchmarkTitle').innerText = name;
+            loadHistory(name);
+        }
+
+        async function fetchApi(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return await response.json();
+            } catch (e) {
+                console.error("API error", e);
+                return null;
+            }
+        }
+
+        async function loadBaselines() {
+            const project = document.getElementById('projectInput').value;
+            const body = document.getElementById('baselinesBody');
+            body.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
+
+            const data = await fetchApi(`/api/v1/projects/${project}/baselines`);
+            
+            if (!data || data.baselines.length === 0) {
+                body.innerHTML = '<tr><td colspan="4">No baselines found for this project.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = '';
+            data.baselines.forEach(b => {
+                const row = document.createElement('tr');
+                row.className = 'clickable';
+                row.onclick = () => showBenchmark(b.benchmark);
+                row.innerHTML = `
+                    <td><strong>${b.benchmark}</strong></td>
+                    <td><code>${b.version}</code></td>
+                    <td>${new Date(b.created_at).toLocaleString()}</td>
+                    <td>${b.tags.map(t => `<span class="badge">${t}</span>`).join(' ')}</td>
+                `;
+                body.appendChild(row);
+            });
+        }
+
+        async function loadHistory(benchmark) {
+            const project = document.getElementById('projectInput').value;
+            const historyBody = document.getElementById('historyBody');
+            historyBody.innerHTML = '<tr><td colspan="4">Loading history...</td></tr>';
+
+            const data = await fetchApi(`/api/v1/projects/${project}/baselines?benchmark=${benchmark}&include_receipt=true&limit=20`);
+            
+            if (!data || data.baselines.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="4">No history found.</td></tr>';
+                return;
+            }
+
+            const history = data.baselines.reverse(); // Chronological order for chart
+            
+            // Update Table
+            historyBody.innerHTML = '';
+            [...history].reverse().forEach(b => {
+                const wall = b.receipt?.stats?.wall_ms?.median || '-';
+                const rss = b.receipt?.stats?.max_rss_kb?.median || '-';
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><code>${b.version}</code></td>
+                    <td>${new Date(b.created_at).toLocaleString()}</td>
+                    <td>${wall}</td>
+                    <td>${rss}</td>
+                `;
+                historyBody.appendChild(row);
+            });
+
+            // Update Chart
+            updateChart(history);
+        }
+
+        function updateChart(history) {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+
+            const labels = history.map(b => b.version);
+            const wallData = history.map(b => b.receipt?.stats?.wall_ms?.median || 0);
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Wall Time (ms)',
+                        data: wallData,
+                        borderColor: '#0366d6',
+                        backgroundColor: 'rgba(3, 102, 214, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

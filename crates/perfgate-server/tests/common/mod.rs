@@ -101,16 +101,8 @@ pub fn create_test_receipt(benchmark: &str) -> perfgate_types::RunReceipt {
             },
         ],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 98,
-                max: 102,
-            },
-            max_rss_kb: Some(U64Summary {
-                median: 1024,
-                min: 1020,
-                max: 1028,
-            }),
+            wall_ms: U64Summary::new(100, 98, 102),
+            max_rss_kb: Some(U64Summary::new(1024, 1020, 1028)),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,

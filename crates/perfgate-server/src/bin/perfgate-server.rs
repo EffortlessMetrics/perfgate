@@ -205,7 +205,10 @@ async fn main() {
         for mapping in args.github_oidc {
             let parts: Vec<&str> = mapping.split(':').collect();
             if parts.len() != 3 {
-                panic!("Invalid github-oidc format '{}'. Expected 'org/repo:project_id:role'", mapping);
+                panic!(
+                    "Invalid github-oidc format '{}'. Expected 'org/repo:project_id:role'",
+                    mapping
+                );
             }
             let repo = parts[0].to_string();
             let project = parts[1].to_string();

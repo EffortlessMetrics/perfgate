@@ -374,11 +374,7 @@ mod tests {
             },
             samples: vec![],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 90,
-                    max: 110,
-                },
+                wall_ms: U64Summary::new(100, 90, 110),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,

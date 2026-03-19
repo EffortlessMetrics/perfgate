@@ -148,16 +148,8 @@ mod tests {
                 rss_diff_kb: None,
             }],
             stats: PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
-                current_wall_ms: U64Summary {
-                    median: 110,
-                    min: 110,
-                    max: 110,
-                },
+                baseline_wall_ms: U64Summary::new(100, 100, 100),
+                current_wall_ms: U64Summary::new(110, 110, 110),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 10.0,
                     median: 10.0,

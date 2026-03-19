@@ -12,3 +12,4 @@ fuzz_target!(|data: &[u8]| {
         // Should never panic, always return Ok or Err
     }
 });
+

@@ -353,12 +353,28 @@ pub struct Sample {
     pub stderr: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct U64Summary {
     pub median: u64,
     pub min: u64,
     pub max: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mean: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stddev: Option<f64>,
+}
+
+impl U64Summary {
+    pub fn new(median: u64, min: u64, max: u64) -> Self {
+        Self {
+            median,
+            min,
+            max,
+            mean: None,
+            stddev: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -367,6 +383,22 @@ pub struct F64Summary {
     pub median: f64,
     pub min: f64,
     pub max: f64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mean: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stddev: Option<f64>,
+}
+
+impl F64Summary {
+    pub fn new(median: f64, min: f64, max: f64) -> Self {
+        Self {
+            median,
+            min,
+            max,
+            mean: None,
+            stddev: None,
+        }
+    }
 }
 
 /// Aggregated statistics for a benchmark run.
@@ -377,11 +409,11 @@ pub struct F64Summary {
 /// use perfgate_types::{Stats, U64Summary};
 ///
 /// let stats = Stats {
-///     wall_ms: U64Summary { median: 100, min: 90, max: 120 },
+///     wall_ms: U64Summary::new(100, 90, 120 ),
 ///     cpu_ms: None,
 ///     page_faults: None,
 ///     ctx_switches: None,
-///     max_rss_kb: Some(U64Summary { median: 4096, min: 4000, max: 4200 }),
+///     max_rss_kb: Some(U64Summary::new(4096, 4000, 4200 )),
 ///     binary_bytes: None,
 ///     throughput_per_s: None,
 /// };
@@ -442,7 +474,7 @@ pub struct Stats {
 ///     },
 ///     samples: vec![],
 ///     stats: Stats {
-///         wall_ms: U64Summary { median: 100, min: 90, max: 120 },
+///         wall_ms: U64Summary::new(100, 90, 120 ),
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
 ///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
 ///     },
@@ -1500,41 +1532,13 @@ mod tests {
                 },
             ],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 95,
-                    min: 90,
-                    max: 100,
-                },
-                cpu_ms: Some(U64Summary {
-                    median: 75,
-                    min: 70,
-                    max: 80,
-                }),
-                page_faults: Some(U64Summary {
-                    median: 10,
-                    min: 10,
-                    max: 10,
-                }),
-                ctx_switches: Some(U64Summary {
-                    median: 5,
-                    min: 5,
-                    max: 5,
-                }),
-                max_rss_kb: Some(U64Summary {
-                    median: 2048,
-                    min: 2000,
-                    max: 2100,
-                }),
-                binary_bytes: Some(U64Summary {
-                    median: 4096,
-                    min: 4096,
-                    max: 4096,
-                }),
-                throughput_per_s: Some(F64Summary {
-                    median: 10.526,
-                    min: 10.0,
-                    max: 11.111,
-                }),
+                wall_ms: U64Summary::new(95, 90, 100),
+                cpu_ms: Some(U64Summary::new(75, 70, 80)),
+                page_faults: Some(U64Summary::new(10, 10, 10)),
+                ctx_switches: Some(U64Summary::new(5, 5, 5)),
+                max_rss_kb: Some(U64Summary::new(2048, 2000, 2100)),
+                binary_bytes: Some(U64Summary::new(4096, 4096, 4096)),
+                throughput_per_s: Some(F64Summary::new(10.526, 10.0, 11.111)),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -1573,11 +1577,7 @@ mod tests {
             },
             samples: vec![],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 0,
-                    min: 0,
-                    max: 0,
-                },
+                wall_ms: U64Summary::new(0, 0, 0),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -1634,21 +1634,13 @@ mod tests {
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: u64::MAX,
-                    min: 0,
-                    max: u64::MAX,
-                },
+                wall_ms: U64Summary::new(u64::MAX, 0, u64::MAX),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: f64::MAX,
-                    min: 0.0,
-                    max: f64::MAX,
-                }),
+                throughput_per_s: Some(F64Summary::new(f64::MAX, 0.0, f64::MAX)),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -1884,41 +1876,13 @@ mod tests {
     #[test]
     fn stats_serde_roundtrip_all_fields() {
         let stats = Stats {
-            wall_ms: U64Summary {
-                median: 500,
-                min: 100,
-                max: 900,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 400,
-                min: 80,
-                max: 800,
-            }),
-            page_faults: Some(U64Summary {
-                median: 50,
-                min: 10,
-                max: 100,
-            }),
-            ctx_switches: Some(U64Summary {
-                median: 20,
-                min: 5,
-                max: 40,
-            }),
-            max_rss_kb: Some(U64Summary {
-                median: 4096,
-                min: 2048,
-                max: 8192,
-            }),
-            binary_bytes: Some(U64Summary {
-                median: 1024,
-                min: 1024,
-                max: 1024,
-            }),
-            throughput_per_s: Some(F64Summary {
-                median: 2.0,
-                min: 1.111,
-                max: 10.0,
-            }),
+            wall_ms: U64Summary::new(500, 100, 900),
+            cpu_ms: Some(U64Summary::new(400, 80, 800)),
+            page_faults: Some(U64Summary::new(50, 10, 100)),
+            ctx_switches: Some(U64Summary::new(20, 5, 40)),
+            max_rss_kb: Some(U64Summary::new(4096, 2048, 8192)),
+            binary_bytes: Some(U64Summary::new(1024, 1024, 1024)),
+            throughput_per_s: Some(F64Summary::new(2.0, 1.111, 10.0)),
         };
         let json = serde_json::to_string(&stats).unwrap();
         let back: Stats = serde_json::from_str(&json).unwrap();
@@ -1928,21 +1892,13 @@ mod tests {
     #[test]
     fn stats_serde_roundtrip_edge_zeros() {
         let stats = Stats {
-            wall_ms: U64Summary {
-                median: 0,
-                min: 0,
-                max: 0,
-            },
+            wall_ms: U64Summary::new(0, 0, 0),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary {
-                median: 0.0,
-                min: 0.0,
-                max: 0.0,
-            }),
+            throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
         };
         let json = serde_json::to_string(&stats).unwrap();
         let back: Stats = serde_json::from_str(&json).unwrap();
@@ -2103,11 +2059,7 @@ mod tests {
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 1,
-                    min: 1,
-                    max: 1,
-                },
+                wall_ms: U64Summary::new(1, 1, 1),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -2348,11 +2300,7 @@ mod property_tests {
         (0u64..1000000, 0u64..1000000, 0u64..1000000).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort();
-            U64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            U64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 
@@ -2361,11 +2309,7 @@ mod property_tests {
         (0.0f64..1000000.0, 0.0f64..1000000.0, 0.0f64..1000000.0).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort_by(|x, y| x.partial_cmp(y).unwrap());
-            F64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            F64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 

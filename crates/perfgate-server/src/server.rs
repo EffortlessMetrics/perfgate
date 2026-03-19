@@ -22,8 +22,8 @@ use tracing::info;
 use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware};
 use crate::error::ConfigError;
 use crate::handlers::{
-    delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
-    promote_baseline, upload_baseline,
+    dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
+    list_baselines, promote_baseline, static_asset, upload_baseline,
 };
 use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
@@ -284,6 +284,12 @@ pub(crate) fn create_router(
     // Health check (no auth required)
     let health_routes = Router::new().route("/health", get(health_check));
 
+    // Dashboard routes (no auth required for read-only view)
+    let dashboard_routes = Router::new()
+        .route("/", get(dashboard_index))
+        .route("/index.html", get(dashboard_index))
+        .route("/assets/{*path}", get(static_asset));
+
     // API routes that require authentication
     let api_routes = Router::new()
         // Baseline CRUD
@@ -307,8 +313,9 @@ pub(crate) fn create_router(
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
 
-    // Combine routes under /api/v1, plus root /health
+    // Combine routes under /api/v1, plus root /health and dashboard
     let mut app = Router::new()
+        .merge(dashboard_routes)
         .merge(health_routes.clone())
         .nest("/api/v1", health_routes.merge(api_routes));
 
@@ -340,13 +347,15 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     // Create key store
     let key_store = create_key_store(&config).await?;
-    
+
     let mut oidc_provider = None;
     if let Some(oidc_cfg) = config.oidc.clone() {
-        let provider = OidcProvider::new(oidc_cfg).await.map_err(|e| e.to_string())?;
+        let provider = OidcProvider::new(oidc_cfg)
+            .await
+            .map_err(|e| e.to_string())?;
         oidc_provider = Some(provider);
     }
-    
+
     let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider);
 
     // Create router

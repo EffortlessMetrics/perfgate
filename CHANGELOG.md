@@ -8,14 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Web Dashboard (Alpha)** — `perfgate-server` now serves a minimal read-only dashboard at `/` for browsing projects, benchmarks, and viewing historical trends with interactive charts.
+- **Enhanced Summaries** — `U64Summary` and `F64Summary` now include optional `mean` and `stddev` fields, enabling more detailed variance analysis and noise detection.
 - **OIDC Integration** — `perfgate-server` now supports GitHub Actions OIDC tokens for authentication, mapping repository claims directly to project IDs and roles via `--github-oidc` flags.
 - **Security Scoping** — API keys can now be restricted to specific projects and benchmark name patterns (regex).
 - **Project Isolation** — The baseline server now enforces strict project-level isolation. Keys without global admin scope are restricted to their assigned project.
 - **Enhanced CLI** — `perfgate-server` now supports expanded API key definitions: `--api-keys role:key:project:regex`.
 
-### Fixed
-- **Integration Test schema compatibility** — Updated mock server responses to match the v0.5.0 schema requirements (tags, promoted_at).
-- **Baseline visibility** — Fixed logic that incorrectly hid baselines with zero samples from summaries.
+### Changed
+- **perfgate-stats computation** — Statistical summarization now uses Welford's online one-pass algorithm for improved numerical stability when computing mean and variance.
+- **Schema Update** — `perfgate.run.v1` and related schemas updated to include new statistical fields.
 
 ## [0.5.0] - 2026-03-16
 

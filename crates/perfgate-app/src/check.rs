@@ -617,19 +617,15 @@ mod tests {
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms_median,
-                    min: wall_ms_median.saturating_sub(10),
-                    max: wall_ms_median.saturating_add(10),
-                },
+                wall_ms: U64Summary::new(
+                    wall_ms_median,
+                    wall_ms_median.saturating_sub(10),
+                    wall_ms_median.saturating_add(10),
+                ),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1000,
-                    max: 1100,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1000, 1100)),
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -734,19 +730,11 @@ mod tests {
             },
             samples: Vec::new(),
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms,
-                    min: wall_ms,
-                    max: wall_ms,
-                },
+                wall_ms: U64Summary::new(wall_ms, wall_ms, wall_ms),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: max_rss_kb.map(|v| U64Summary {
-                    median: v,
-                    min: v,
-                    max: v,
-                }),
+                max_rss_kb: max_rss_kb.map(|v| U64Summary::new(v, v, v)),
                 binary_bytes: None,
                 throughput_per_s: None,
             },

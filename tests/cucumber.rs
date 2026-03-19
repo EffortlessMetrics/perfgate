@@ -208,11 +208,11 @@ impl PerfgateWorld {
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms_median,
-                    min: wall_ms_median.saturating_sub(10),
-                    max: wall_ms_median.saturating_add(10),
-                },
+                wall_ms: U64Summary::new(
+                    wall_ms_median,
+                    wall_ms_median.saturating_sub(10),
+                    wall_ms_median.saturating_add(10),
+                ),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -277,7 +277,7 @@ impl PerfgateWorld {
             },
             samples,
             stats: Stats {
-                wall_ms: U64Summary { median, min, max },
+                wall_ms: U64Summary::new(median, min, max),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
@@ -546,11 +546,11 @@ async fn given_markdown_template_file(world: &mut PerfgateWorld, content: String
 async fn given_baseline_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u64) {
     world.ensure_temp_dir();
     let mut receipt = world.create_run_receipt(world.baseline_wall_ms.unwrap_or(1000));
-    receipt.stats.max_rss_kb = Some(U64Summary {
-        median: max_rss_kb,
-        min: max_rss_kb.saturating_sub(100),
-        max: max_rss_kb.saturating_add(100),
-    });
+    receipt.stats.max_rss_kb = Some(U64Summary::new(
+        max_rss_kb,
+        max_rss_kb.saturating_sub(100),
+        max_rss_kb.saturating_add(100),
+    ));
     let baseline_path = world.temp_path().join("baseline.json");
 
     let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize baseline");
@@ -563,11 +563,11 @@ async fn given_baseline_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: 
 async fn given_current_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u64) {
     world.ensure_temp_dir();
     let mut receipt = world.create_run_receipt(world.current_wall_ms.unwrap_or(1000));
-    receipt.stats.max_rss_kb = Some(U64Summary {
-        median: max_rss_kb,
-        min: max_rss_kb.saturating_sub(100),
-        max: max_rss_kb.saturating_add(100),
-    });
+    receipt.stats.max_rss_kb = Some(U64Summary::new(
+        max_rss_kb,
+        max_rss_kb.saturating_sub(100),
+        max_rss_kb.saturating_add(100),
+    ));
     let current_path = world.temp_path().join("current.json");
 
     let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
@@ -4263,11 +4263,7 @@ async fn given_run_receipt_for_export(world: &mut PerfgateWorld, bench_name: Str
             stderr: None,
         }],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,

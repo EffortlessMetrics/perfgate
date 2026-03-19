@@ -37,8 +37,8 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 - [x] **RBAC Hardening**: Fine-grained permissions for project isolation and benchmark-level regex scoping. [DONE]
 
 ### 0.9.0: Visual Insights
-- [ ] **Server Web UI**: A minimal Read-only dashboard to view performance trends and baseline history.
-- [ ] **Metric Graphing**: Plotting wall time and RSS trends directly in the server UI.
+- [x] **Server Web UI**: A minimal Read-only dashboard to view performance trends and baseline history. [DONE]
+- [x] **Metric Graphing**: Plotting wall time and RSS trends directly in the server UI. [DONE]
 - [ ] **Verdict History**: Tracking how often a benchmark fails vs. passes over time.
 
 ### 0.10.0: Noise & Flakiness Detection

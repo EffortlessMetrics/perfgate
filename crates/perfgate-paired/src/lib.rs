@@ -257,8 +257,8 @@ pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, Paired
 /// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
 ///
 /// let stats = PairedStats {
-///     baseline_wall_ms: U64Summary { median: 100, min: 100, max: 100 },
-///     current_wall_ms: U64Summary { median: 120, min: 120, max: 120 },
+///     baseline_wall_ms: U64Summary::new(100, 100, 100 ),
+///     current_wall_ms: U64Summary::new(120, 120, 120 ),
 ///     wall_diff_ms: PairedDiffSummary {
 ///         mean: 20.0, median: 20.0, std_dev: 3.0,
 ///         min: 17.0, max: 23.0, count: 10,
@@ -298,8 +298,8 @@ pub struct PairedComparison {
 /// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
 ///
 /// let stats = PairedStats {
-///     baseline_wall_ms: U64Summary { median: 100, min: 90, max: 110 },
-///     current_wall_ms: U64Summary { median: 110, min: 100, max: 120 },
+///     baseline_wall_ms: U64Summary::new(100, 90, 110 ),
+///     current_wall_ms: U64Summary::new(110, 100, 120 ),
 ///     wall_diff_ms: PairedDiffSummary {
 ///         mean: 10.0, median: 10.0, std_dev: 2.0,
 ///         min: 8.0, max: 12.0, count: 5,
@@ -600,16 +600,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_basic() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 90,
-                max: 110,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 100,
-                max: 120,
-            },
+            baseline_wall_ms: U64Summary::new(100, 90, 110),
+            current_wall_ms: U64Summary::new(110, 100, 120),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -643,16 +635,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_ci_calculation() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 110,
-                max: 110,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -697,16 +681,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_large_sample_t_value() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 110,
-                max: 110,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -737,16 +713,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_not_significant() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 101,
-                min: 101,
-                max: 101,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(101, 101, 101),
             wall_diff_ms: PairedDiffSummary {
                 mean: 1.0,
                 median: 1.0,
@@ -779,16 +747,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_single_sample() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 110,
-                max: 110,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -815,16 +775,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_zero_baseline() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 0,
-                min: 0,
-                max: 0,
-            },
-            current_wall_ms: U64Summary {
-                median: 10,
-                min: 10,
-                max: 10,
-            },
+            baseline_wall_ms: U64Summary::new(0, 0, 0),
+            current_wall_ms: U64Summary::new(10, 10, 10),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -852,16 +804,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_negative_improvement() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 80,
-                min: 80,
-                max: 80,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(80, 80, 80),
             wall_diff_ms: PairedDiffSummary {
                 mean: -20.0,
                 median: -20.0,
@@ -936,16 +880,8 @@ mod tests {
         #[test]
         fn test_ci_bounds_with_zero_std_dev() {
             let stats = PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
-                current_wall_ms: U64Summary {
-                    median: 110,
-                    min: 110,
-                    max: 110,
-                },
+                baseline_wall_ms: U64Summary::new(100, 100, 100),
+                current_wall_ms: U64Summary::new(110, 110, 110),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 10.0,
                     median: 10.0,
@@ -972,16 +908,8 @@ mod tests {
         #[test]
         fn test_large_positive_diff() {
             let stats = PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
-                current_wall_ms: U64Summary {
-                    median: 100000,
-                    min: 100000,
-                    max: 100000,
-                },
+                baseline_wall_ms: U64Summary::new(100, 100, 100),
+                current_wall_ms: U64Summary::new(100000, 100000, 100000),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 99900.0,
                     median: 99900.0,
@@ -1007,16 +935,8 @@ mod tests {
         #[test]
         fn test_very_small_diffs() {
             let stats = PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100000,
-                    min: 100000,
-                    max: 100000,
-                },
-                current_wall_ms: U64Summary {
-                    median: 100001,
-                    min: 100001,
-                    max: 100001,
-                },
+                baseline_wall_ms: U64Summary::new(100000, 100000, 100000),
+                current_wall_ms: U64Summary::new(100001, 100001, 100001),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 1.0,
                     median: 1.0,
@@ -1129,8 +1049,8 @@ mod property_tests {
             count in 2u32..100
         ) {
             let stats = PairedStats {
-                baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
                     mean,
                     median: mean,
@@ -1160,8 +1080,8 @@ mod property_tests {
         ) {
             let make_comparison = |count: u32| {
                 let stats = PairedStats {
-                    baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                    current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                    baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                    current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                     wall_diff_ms: PairedDiffSummary {
                         mean,
                         median: mean,
@@ -1195,8 +1115,8 @@ mod property_tests {
             count in 2u32..100
         ) {
             let stats = PairedStats {
-                baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
                     mean,
                     median: mean,
@@ -1227,8 +1147,8 @@ mod property_tests {
             count in 1u32..50
         ) {
             let stats = PairedStats {
-                baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
                     mean,
                     median: mean,

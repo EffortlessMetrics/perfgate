@@ -108,19 +108,11 @@ mod tests {
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 98,
-                    max: 102,
-                },
+                wall_ms: U64Summary::new(100, 98, 102),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1020,
-                    max: 1028,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1020, 1028)),
                 binary_bytes: None,
                 throughput_per_s: None,
             },

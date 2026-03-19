@@ -67,21 +67,9 @@ fn create_run_receipt() -> RunReceipt {
             },
         ],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 102,
-                min: 100,
-                max: 105,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 82,
-                min: 80,
-                max: 85,
-            }),
-            max_rss_kb: Some(U64Summary {
-                median: 2074,
-                min: 2048,
-                max: 2100,
-            }),
+            wall_ms: U64Summary::new(102, 100, 105),
+            cpu_ms: Some(U64Summary::new(82, 80, 85)),
+            max_rss_kb: Some(U64Summary::new(2074, 2048, 2100)),
             page_faults: None,
             ctx_switches: None,
             binary_bytes: None,
