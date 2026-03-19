@@ -8,8 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-### Changed
+- **Security Scoping** — API keys can now be restricted to specific projects and benchmark name patterns (regex).
+- **Project Isolation** — The baseline server now enforces strict project-level isolation. Keys without global admin scope are restricted to their assigned project.
+- **Enhanced CLI** — `perfgate-server` now supports expanded API key definitions: `--api-keys role:key:project:regex`.
+
 ### Fixed
+- **Integration Test schema compatibility** — Updated mock server responses to match the v0.5.0 schema requirements (tags, promoted_at).
+- **Baseline visibility** — Fixed logic that incorrectly hid baselines with zero samples from summaries.
 
 ## [0.5.0] - 2026-03-16
 

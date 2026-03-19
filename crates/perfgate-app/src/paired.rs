@@ -77,6 +77,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             let is_warmup = i < req.warmup;
 
             let baseline_spec = CommandSpec {
+                name: format!("{}-baseline", req.name),
                 argv: req.baseline_command.clone(),
                 cwd: req.cwd.clone(),
                 env: req.env.clone(),
@@ -96,6 +97,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             })?;
 
             let current_spec = CommandSpec {
+                name: format!("{}-current", req.name),
                 argv: req.current_command.clone(),
                 cwd: req.cwd.clone(),
                 env: req.env.clone(),
@@ -221,7 +223,7 @@ mod tests {
         fn run(&self, _spec: &CommandSpec) -> Result<RunResult, AdapterError> {
             let mut runs = self.runs.lock().expect("lock runs");
             if runs.is_empty() {
-                return Err(AdapterError::Other(anyhow::anyhow!("no more queued runs")));
+                return Err(AdapterError::Other("no more queued runs".to_string()));
             }
             Ok(runs.remove(0))
         }

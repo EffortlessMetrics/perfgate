@@ -2,7 +2,8 @@
 //!
 //! **Validates: Paired benchmarking mode with interleaved execution**
 
-use assert_cmd::Command;
+mod common;
+use common::perfgate_cmd;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::tempdir;
@@ -35,7 +36,7 @@ fn test_paired_basic_produces_valid_json() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("test-paired")
@@ -91,7 +92,7 @@ fn test_paired_stats_have_correct_structure() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("stats-test")
@@ -186,7 +187,7 @@ fn test_paired_with_work_units_throughput() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("throughput-test")
@@ -242,7 +243,7 @@ fn test_paired_samples_structure() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("samples-test")
@@ -339,7 +340,7 @@ fn test_paired_error_when_baseline_fails() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("fail-test")
@@ -370,7 +371,7 @@ fn test_paired_error_when_current_fails() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("fail-test")
@@ -401,7 +402,7 @@ fn test_paired_allow_nonzero_succeeds() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("allow-nonzero-test")
@@ -431,7 +432,7 @@ fn test_paired_allow_nonzero_succeeds() {
 /// Test missing required arguments fails
 #[test]
 fn test_paired_missing_name_fails() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--baseline-cmd")
         .arg("true")
@@ -446,7 +447,7 @@ fn test_paired_missing_name_fails() {
 /// Test missing baseline-cmd fails
 #[test]
 fn test_paired_missing_baseline_cmd_fails() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("test")
@@ -461,7 +462,7 @@ fn test_paired_missing_baseline_cmd_fails() {
 /// Test missing current-cmd fails
 #[test]
 fn test_paired_missing_current_cmd_fails() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("test")
@@ -479,7 +480,7 @@ fn test_paired_receipt_contains_tool_info() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("tool-info-test")
@@ -534,7 +535,7 @@ fn test_paired_pretty_flag_formats_json() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("pretty-test")
@@ -574,7 +575,7 @@ fn test_paired_pretty_flag_formats_json() {
 fn test_paired_default_output_file() {
     let temp_dir = tempdir().expect("failed to create temp dir");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("paired")
         .arg("--name")
@@ -611,7 +612,7 @@ fn test_paired_bench_metadata() {
     let baseline_cmd = success_command();
     let current_cmd = success_command();
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("meta-test")
@@ -662,7 +663,7 @@ fn test_paired_with_shell_strings() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("paired.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("paired")
         .arg("--name")
         .arg("shell-test")

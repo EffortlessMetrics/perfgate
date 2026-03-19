@@ -10,14 +10,10 @@ use common::{ADMIN_KEY, CONTRIBUTOR_KEY, create_test_upload_request};
 
 #[tokio::test]
 async fn test_server_end_to_end_workflow() {
-    let config = ServerConfig {
-        storage_backend: StorageBackend::Memory,
-        api_keys: vec![
-            (CONTRIBUTOR_KEY.to_string(), Role::Contributor),
-            (ADMIN_KEY.to_string(), Role::Admin),
-        ],
-        ..Default::default()
-    };
+    let config = ServerConfig::new()
+        .storage_backend(StorageBackend::Memory)
+        .scoped_api_key(CONTRIBUTOR_KEY, Role::Contributor, "test-proj", None)
+        .api_key(ADMIN_KEY, Role::Admin);
 
     let server = spawn_test_server(config).await;
 

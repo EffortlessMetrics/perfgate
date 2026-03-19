@@ -2,13 +2,12 @@
 //!
 //! **Validates: Promote use case requirements**
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::fixtures_dir;
+use common::{fixtures_dir, perfgate_cmd};
 
 /// Test basic promote copies file correctly
 ///
@@ -20,7 +19,7 @@ fn test_promote_creates_baseline_file() {
 
     let current = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)
@@ -60,7 +59,7 @@ fn test_promote_preserves_receipt_data() {
     let original: serde_json::Value =
         serde_json::from_str(&original_content).expect("failed to parse original");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)
@@ -112,7 +111,7 @@ fn test_promote_normalize_strips_run_specific_fields() {
 
     let current = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)
@@ -163,7 +162,7 @@ fn test_promote_normalize_preserves_important_data() {
     let original: serde_json::Value =
         serde_json::from_str(&original_content).expect("failed to parse original");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)
@@ -227,7 +226,7 @@ fn test_promote_missing_source_file() {
 
     let nonexistent = temp_dir.path().join("nonexistent.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&nonexistent)
@@ -252,7 +251,7 @@ fn test_promote_invalid_json_source() {
     let invalid_json = temp_dir.path().join("invalid.json");
     fs::write(&invalid_json, "{ invalid json }").expect("failed to write invalid json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&invalid_json)
@@ -275,7 +274,7 @@ fn test_promote_pretty_flag() {
 
     let current = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)
@@ -309,7 +308,7 @@ fn test_promote_atomic_write_no_temp_files() {
 
     let current = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)
@@ -349,7 +348,7 @@ fn test_promote_creates_parent_directories() {
 
     let current = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("promote")
         .arg("--current")
         .arg(&current)

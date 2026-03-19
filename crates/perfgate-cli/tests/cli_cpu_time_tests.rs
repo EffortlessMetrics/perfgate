@@ -2,8 +2,10 @@
 //!
 //! **Validates: CPU time (user + system) collection and reporting**
 
-use assert_cmd::Command;
+mod common;
+use common::perfgate_cmd;
 use std::fs;
+
 use tempfile::tempdir;
 
 // ============================================================================
@@ -55,7 +57,7 @@ fn test_run_samples_include_cpu_ms_on_unix() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("cpu-time-test")
@@ -112,7 +114,7 @@ fn test_run_stats_include_cpu_ms_summary_on_unix() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let output_path = temp_dir.path().join("output.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("cpu-stats-test")
@@ -178,7 +180,7 @@ fn test_export_csv_includes_cpu_ms_column() {
     let export_path = temp_dir.path().join("export.csv");
 
     // First, run a benchmark to get a run receipt
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("csv-export-test")
@@ -195,7 +197,7 @@ fn test_export_csv_includes_cpu_ms_column() {
     cmd.assert().success();
 
     // Now export to CSV
-    let mut export_cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut export_cmd = perfgate_cmd();
     export_cmd
         .arg("export")
         .arg("--run")
@@ -227,7 +229,7 @@ fn test_export_jsonl_includes_cpu_ms_when_present() {
     let export_path = temp_dir.path().join("export.jsonl");
 
     // First, run a benchmark
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("run")
         .arg("--name")
         .arg("jsonl-export-test")
@@ -244,7 +246,7 @@ fn test_export_jsonl_includes_cpu_ms_when_present() {
     cmd.assert().success();
 
     // Export to JSONL
-    let mut export_cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut export_cmd = perfgate_cmd();
     export_cmd
         .arg("export")
         .arg("--run")
@@ -290,7 +292,7 @@ fn test_export_handles_missing_cpu_ms_gracefully() {
         .join("fixtures")
         .join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -330,7 +332,7 @@ fn test_compare_handles_missing_cpu_ms_gracefully() {
         .join("fixtures")
         .join("current_pass.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -434,7 +436,7 @@ fn test_compare_detects_cpu_ms_budget_violation() {
     .expect("write current");
 
     // Compare with cpu_ms threshold (10% threshold, which is exceeded by 100% regression)
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline_path)
@@ -542,7 +544,7 @@ fn test_compare_cpu_ms_budget_passes_within_threshold() {
     .expect("write current");
 
     // Compare with cpu_ms threshold (20% threshold, which should pass with 5% regression)
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline_path)
@@ -646,7 +648,7 @@ fn test_md_includes_cpu_ms_when_present() {
     .expect("write current");
 
     // Generate compare receipt with cpu_ms threshold
-    let mut compare_cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut compare_cmd = perfgate_cmd();
     compare_cmd
         .arg("compare")
         .arg("--baseline")
@@ -660,7 +662,7 @@ fn test_md_includes_cpu_ms_when_present() {
     compare_cmd.assert().success();
 
     // Generate markdown
-    let mut md_cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut md_cmd = perfgate_cmd();
     md_cmd
         .arg("md")
         .arg("--compare")

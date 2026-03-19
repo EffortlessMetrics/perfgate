@@ -8,12 +8,14 @@
 //! - Significant difference in `memory_bytes` (> 2x)
 //! - Different `hostname_hash` (if both present)
 
-use assert_cmd::Command;
+mod common;
+use common::perfgate_cmd;
 use predicates::prelude::*;
+
 use std::fs;
+
 use tempfile::tempdir;
 
-mod common;
 use common::fixtures_dir;
 
 // ======================================================================
@@ -32,7 +34,7 @@ fn test_compare_host_mismatch_warn_policy_different_hostname() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_hostname.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -70,7 +72,7 @@ fn test_compare_host_mismatch_warn_policy_different_os() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_os.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -96,7 +98,7 @@ fn test_compare_host_mismatch_warn_policy_different_arch() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_arch.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -122,7 +124,7 @@ fn test_compare_host_mismatch_warn_policy_different_cpu_count() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_cpu_count.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -150,7 +152,7 @@ fn test_compare_host_mismatch_error_policy_fails_on_mismatch() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_hostname.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -177,7 +179,7 @@ fn test_compare_host_mismatch_error_policy_os_mismatch() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_os.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -203,7 +205,7 @@ fn test_compare_host_mismatch_error_policy_arch_mismatch() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_arch.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -229,7 +231,7 @@ fn test_compare_host_mismatch_error_policy_cpu_count_mismatch() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_cpu_count.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -257,7 +259,7 @@ fn test_compare_host_mismatch_ignore_policy_no_warnings() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_different_hostname.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -286,7 +288,7 @@ fn test_compare_host_mismatch_ignore_policy_multiple_mismatches() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_multiple_mismatches.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -316,7 +318,7 @@ fn test_compare_host_mismatch_warn_policy_multiple_mismatches() {
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
     let current = fixtures_dir().join("current_host_multiple_mismatches.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -346,7 +348,7 @@ fn test_compare_host_mismatch_no_warning_when_hosts_match() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_pass.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -373,7 +375,7 @@ fn test_compare_host_mismatch_default_policy_is_warn() {
     let current = fixtures_dir().join("current_host_different_hostname.json");
 
     // Note: not specifying --host-mismatch should default to warn
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -511,7 +513,7 @@ fn test_check_host_mismatch_warn_policy() {
         "baseline-hostname-hash",
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -566,7 +568,7 @@ fn test_check_host_mismatch_error_policy() {
         "baseline-hostname-hash",
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -617,7 +619,7 @@ fn test_check_host_mismatch_ignore_policy() {
         "baseline-hostname-hash",
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -665,7 +667,7 @@ fn test_check_explicit_baseline_host_mismatch_error() {
     // Use a fixture file as the explicit baseline
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -704,7 +706,7 @@ fn test_check_explicit_baseline_host_mismatch_warn() {
     // Use a fixture file as the explicit baseline
     let baseline = fixtures_dir().join("baseline_host_linux_x86.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -744,7 +746,7 @@ fn test_compare_host_mismatch_invalid_policy() {
     let baseline = fixtures_dir().join("baseline.json");
     let current = fixtures_dir().join("current_pass.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("compare")
         .arg("--baseline")
         .arg(&baseline)
@@ -768,7 +770,7 @@ fn test_check_host_mismatch_invalid_policy() {
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config_file(temp_dir.path(), "invalid-policy-test");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)

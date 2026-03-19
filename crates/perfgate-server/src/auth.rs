@@ -266,8 +266,15 @@ fn api_key_from_jwt_claims(claims: &JwtClaims) -> ApiKey {
         project_id: claims.project_id.clone(),
         scopes: claims.scopes.clone(),
         role: Role::from_scopes(&claims.scopes),
-        expires_at: Some(chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0).unwrap_or_else(|| chrono::Utc::now())),
-        created_at: claims.iat.and_then(|iat| chrono::DateTime::<chrono::Utc>::from_timestamp(iat as i64, 0)).unwrap_or_else(|| chrono::Utc::now()),
+        benchmark_regex: None,
+        expires_at: Some(
+            chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
+                .unwrap_or_else(chrono::Utc::now),
+        ),
+        created_at: claims
+            .iat
+            .and_then(|iat| chrono::DateTime::<chrono::Utc>::from_timestamp(iat as i64, 0))
+            .unwrap_or_else(chrono::Utc::now),
         last_used_at: None,
     }
 }
@@ -301,34 +308,89 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
-/// Checks if the current auth context has the required scope.
-/// Returns an error response if the scope is not present.
+/// Checks if the current auth context has the required scope, project access, and benchmark access.
+/// Returns an error response if the scope is not present, project mismatch, or benchmark restricted.
 pub fn check_scope(
     auth_ctx: Option<&AuthContext>,
+    project_id: &str,
+    benchmark: Option<&str>,
     scope: Scope,
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
-    match auth_ctx {
-        Some(ctx) if ctx.api_key.has_scope(scope) => Ok(()),
-        Some(ctx) => {
+    let ctx = match auth_ctx {
+        Some(ctx) => ctx,
+        None => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ApiError::unauthorized("Authentication required")),
+            ));
+        }
+    };
+
+    // 1. Check Scope
+    if !ctx.api_key.has_scope(scope) {
+        warn!(
+            key_id = %ctx.api_key.id,
+            required_scope = %scope,
+            actual_role = %ctx.api_key.role,
+            "Insufficient permissions: scope mismatch"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ApiError::forbidden(&format!(
+                "Requires '{}' permission",
+                scope
+            ))),
+        ));
+    }
+
+    // 2. Check Project Isolation
+    // Global admins (those with Scope::Admin) can access any project.
+    // Otherwise, the key's project_id must match the requested project_id.
+    if !ctx.api_key.has_scope(Scope::Admin) && ctx.api_key.project_id != project_id {
+        warn!(
+            key_id = %ctx.api_key.id,
+            key_project = %ctx.api_key.project_id,
+            requested_project = %project_id,
+            "Insufficient permissions: project isolation violation"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ApiError::forbidden(&format!(
+                "Key is restricted to project '{}'",
+                ctx.api_key.project_id
+            ))),
+        ));
+    }
+
+    // 3. Check Benchmark Restriction
+    // If the key has a benchmark_regex, all accessed benchmarks must match it.
+    if let (Some(regex_str), Some(bench)) = (&ctx.api_key.benchmark_regex, benchmark) {
+        let regex = regex::Regex::new(regex_str).map_err(|e| {
+            warn!(key_id = %ctx.api_key.id, regex = %regex_str, error = %e, "Invalid benchmark regex in API key");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError::internal_error("Invalid security configuration")),
+            )
+        })?;
+
+        if !regex.is_match(bench) {
             warn!(
                 key_id = %ctx.api_key.id,
-                required_scope = %scope,
-                actual_role = %ctx.api_key.role,
-                "Insufficient permissions"
+                benchmark = %bench,
+                regex = %regex_str,
+                "Insufficient permissions: benchmark restriction violation"
             );
-            Err((
+            return Err((
                 StatusCode::FORBIDDEN,
                 Json(ApiError::forbidden(&format!(
-                    "Requires '{}' permission",
-                    scope
+                    "Key is restricted to benchmarks matching '{}'",
+                    regex_str
                 ))),
-            ))
+            ));
         }
-        None => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ApiError::unauthorized("Authentication required")),
-        )),
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -336,10 +398,10 @@ mod tests {
     use super::*;
     use axum::{Extension, Router, routing::get};
     use jsonwebtoken::{Header, encode};
+    use perfgate_auth::generate_api_key;
     use tower::ServiceExt;
     use uselesskey::{Factory, HmacFactoryExt, HmacSpec, Seed};
     use uselesskey_jsonwebtoken::JwtKeyExt;
-    use perfgate_auth::generate_api_key;
 
     fn test_jwt_config() -> JwtConfig {
         let seed = Seed::from_env_value("perfgate-server-auth-tests").unwrap();
@@ -499,5 +561,80 @@ mod tests {
 
         let different_hash = hash_api_key("pg_live_different1234567890123456789012");
         assert_ne!(hash1, different_hash);
+    }
+
+    #[test]
+    fn test_check_scope_project_isolation() {
+        let key = ApiKey::new(
+            "k1".to_string(),
+            "n1".to_string(),
+            "project-a".to_string(),
+            Role::Contributor,
+        );
+        let ctx = AuthContext {
+            api_key: key,
+            source_ip: None,
+        };
+
+        // Same project, correct scope -> OK
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Write).is_ok());
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Read).is_ok());
+
+        // Same project, wrong scope -> Forbidden
+        let res = check_scope(Some(&ctx), "project-a", None, Scope::Delete);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        // Different project -> Forbidden
+        let res = check_scope(Some(&ctx), "project-b", None, Scope::Read);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn test_check_scope_global_admin() {
+        let key = ApiKey::new(
+            "k1".to_string(),
+            "admin".to_string(),
+            "any-project".to_string(),
+            Role::Admin,
+        );
+        let ctx = AuthContext {
+            api_key: key,
+            source_ip: None,
+        };
+
+        // Global admin can access ANY project
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Read).is_ok());
+        assert!(check_scope(Some(&ctx), "project-b", None, Scope::Delete).is_ok());
+        assert!(check_scope(Some(&ctx), "other", None, Scope::Admin).is_ok());
+    }
+
+    #[test]
+    fn test_check_scope_benchmark_restriction() {
+        let mut key = ApiKey::new(
+            "k1".to_string(),
+            "n1".to_string(),
+            "project-a".to_string(),
+            Role::Contributor,
+        );
+        key.benchmark_regex = Some("^web-.*$".to_string());
+
+        let ctx = AuthContext {
+            api_key: key,
+            source_ip: None,
+        };
+
+        // Matches regex -> OK
+        assert!(check_scope(Some(&ctx), "project-a", Some("web-auth"), Scope::Read).is_ok());
+        assert!(check_scope(Some(&ctx), "project-a", Some("web-api"), Scope::Write).is_ok());
+
+        // Does not match regex -> Forbidden
+        let res = check_scope(Some(&ctx), "project-a", Some("worker-job"), Scope::Read);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        // No benchmark name provided (e.g. list operation) -> OK (scoping only applies to explicit access)
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Read).is_ok());
     }
 }

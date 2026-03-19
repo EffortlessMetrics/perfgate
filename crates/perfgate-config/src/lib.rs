@@ -4,7 +4,7 @@ use anyhow::Context;
 use perfgate_client::{BaselineClient, ClientConfig, FallbackClient, FallbackStorage};
 use perfgate_types::{BaselineServerConfig, ConfigFile};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Resolved server configuration with all sources merged.
 #[derive(Debug, Clone, Default)]
@@ -18,7 +18,7 @@ pub struct ResolvedServerConfig {
 impl ResolvedServerConfig {
     /// Returns true if server is configured (has a URL).
     pub fn is_configured(&self) -> bool {
-        self.url.as_ref().map_or(false, |u| !u.is_empty())
+        self.url.as_ref().is_some_and(|u| !u.is_empty())
     }
 
     /// Creates a BaselineClient from this configuration.

@@ -37,7 +37,9 @@ impl SummaryUseCase {
         let mut paths = Vec::new();
         for pattern in req.files {
             println!("DEBUG: matching glob {}", pattern);
-            for entry in glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))? {
+            for entry in
+                glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))?
+            {
                 paths.push(entry?);
             }
         }
@@ -100,7 +102,9 @@ impl SummaryUseCase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{BenchMeta, CompareReceipt, CompareRef, ToolInfo, Verdict, VerdictCounts, VerdictStatus};
+    use perfgate_types::{
+        BenchMeta, CompareReceipt, CompareRef, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
+    };
     use std::collections::BTreeMap;
     use tempfile::tempdir;
 
@@ -108,37 +112,52 @@ mod tests {
     fn test_summary_execution() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("run1.json");
-        
+
         let receipt = CompareReceipt {
             schema: "perfgate.compare.v1".to_string(),
-            tool: ToolInfo { name: "test".into(), version: "0".into() },
-            bench: BenchMeta { 
-                name: "bench1".into(), 
-                cwd: None,
-                command: vec![], 
-                repeat: 0, 
-                warmup: 0, 
-                work_units: None, 
-                timeout_ms: None 
+            tool: ToolInfo {
+                name: "test".into(),
+                version: "0".into(),
             },
-            baseline_ref: CompareRef { path: None, run_id: None },
-            current_ref: CompareRef { path: None, run_id: None },
+            bench: BenchMeta {
+                name: "bench1".into(),
+                cwd: None,
+                command: vec![],
+                repeat: 0,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
             budgets: BTreeMap::new(),
             deltas: BTreeMap::new(),
-            verdict: Verdict { 
-                status: VerdictStatus::Pass, 
-                counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 0,
+                },
                 reasons: vec![],
             },
         };
-        
+
         fs::write(&path, serde_json::to_string(&receipt).unwrap()).unwrap();
-        
+
         let usecase = SummaryUseCase;
-        let outcome = usecase.execute(SummaryRequest {
-            files: vec![path.to_str().unwrap().to_string()],
-        }).unwrap();
-        
+        let outcome = usecase
+            .execute(SummaryRequest {
+                files: vec![path.to_str().unwrap().to_string()],
+            })
+            .unwrap();
+
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].benchmark, "bench1");
         assert_eq!(outcome.rows[0].status, "pass");

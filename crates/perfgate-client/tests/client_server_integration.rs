@@ -1,12 +1,12 @@
 //! Integration tests for the baseline client and server.
 
-use perfgate_client::config::ClientConfig;
 use perfgate_client::client::BaselineClient;
+use perfgate_client::config::ClientConfig;
 use perfgate_client::types::*;
+use perfgate_types::{BenchMeta, HostInfo, RunMeta, RunReceipt, Stats, ToolInfo, U64Summary};
+use std::collections::BTreeMap;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use std::collections::BTreeMap;
-use perfgate_types::{RunReceipt, ToolInfo, RunMeta, HostInfo, BenchMeta, Stats, U64Summary};
 
 fn test_config(url: &str) -> ClientConfig {
     ClientConfig::new(url)
@@ -15,7 +15,10 @@ fn test_config(url: &str) -> ClientConfig {
 fn create_test_receipt() -> RunReceipt {
     RunReceipt {
         schema: "perfgate.run.v1".to_string(),
-        tool: ToolInfo { name: "test".into(), version: "0".into() },
+        tool: ToolInfo {
+            name: "test".into(),
+            version: "0".into(),
+        },
         run: RunMeta {
             id: "r1".into(),
             started_at: "2024-01-01T00:00:00Z".into(),
@@ -39,7 +42,11 @@ fn create_test_receipt() -> RunReceipt {
         },
         samples: vec![],
         stats: Stats {
-            wall_ms: U64Summary { median: 100, min: 100, max: 100 },
+            wall_ms: U64Summary {
+                median: 100,
+                min: 100,
+                max: 100,
+            },
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
@@ -110,6 +117,8 @@ async fn test_promote_baseline() {
         normalize: true,
     };
 
-    let result = client.promote_baseline("my-project", "my-bench", &request).await;
+    let result = client
+        .promote_baseline("my-project", "my-bench", &request)
+        .await;
     assert!(result.is_ok());
 }

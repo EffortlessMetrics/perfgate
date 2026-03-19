@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 249
 expression: "help_output(&[\"promote\", \"--help\"])"
 ---
 Promote a run receipt to become the new baseline.
@@ -12,11 +11,11 @@ Exit codes: 0 for success, 1 for errors.
 Usage: perfgate promote [OPTIONS] --current <CURRENT>
 
 Options:
-      --current <CURRENT> Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote
+      --current <CURRENT> Path or cloud URI to the current run receipt to promote
 
-      --to <TO> Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written. Use --to-server to promote to the baseline server instead
+      --to <TO> Path or cloud URI where the baseline should be written
 
-      --to-server Promote to the baseline server instead of a local file. Requires --baseline-server to be configured
+      --to-server Promote to the baseline server instead of a local file
 
       --benchmark <BENCHMARK> Benchmark name for server promotion (required with --to-server)
 

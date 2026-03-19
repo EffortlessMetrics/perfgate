@@ -32,7 +32,7 @@ pub use perfgate_validation::{
     validate_bench_name,
 };
 
-pub use perfgate_error::{ConfigValidationError, IoError as PerfgateError};
+pub use perfgate_error::{ConfigValidationError, PerfgateError};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1355,22 +1355,25 @@ mod tests {
 
     #[test]
     fn perfgate_error_display_baseline_resolve() {
-        let err = PerfgateError::BaselineResolve("file not found".to_string());
+        use perfgate_error::IoError;
+        let err = PerfgateError::Io(IoError::BaselineResolve("file not found".to_string()));
         assert_eq!(format!("{}", err), "baseline resolve: file not found");
     }
 
     #[test]
     fn perfgate_error_display_artifact_write() {
-        let err = PerfgateError::ArtifactWrite("permission denied".to_string());
+        use perfgate_error::IoError;
+        let err = PerfgateError::Io(IoError::ArtifactWrite("permission denied".to_string()));
         assert_eq!(format!("{}", err), "write artifacts: permission denied");
     }
 
     #[test]
     fn perfgate_error_display_run_command() {
-        let err = PerfgateError::RunCommand {
+        use perfgate_error::IoError;
+        let err = PerfgateError::Io(IoError::RunCommand {
             command: "echo".to_string(),
             reason: "spawn failed".to_string(),
-        };
+        });
         assert_eq!(
             format!("{}", err),
             "failed to execute command \"echo\": spawn failed"

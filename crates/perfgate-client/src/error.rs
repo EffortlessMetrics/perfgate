@@ -77,6 +77,10 @@ pub enum ClientError {
     /// Generic request error from reqwest.
     #[error("Request error: {0}")]
     RequestError(#[source] reqwest::Error),
+
+    /// JSON serialization or deserialization error.
+    #[error("JSON error: {0}")]
+    SerializationError(#[from] serde_json::Error),
 }
 
 impl ClientError {
@@ -112,12 +116,13 @@ impl ClientError {
 
     /// Returns true if this error indicates the server is unavailable.
     pub fn is_connection_error(&self) -> bool {
-        matches!(
-            self,
+        match self {
             ClientError::ConnectionError(_)
-                | ClientError::TimeoutError(_)
-                | ClientError::RetryExhausted { .. }
-        )
+            | ClientError::TimeoutError(_)
+            | ClientError::RetryExhausted { .. } => true,
+            ClientError::RequestError(e) => e.is_connect() || e.is_timeout(),
+            _ => false,
+        }
     }
 
     /// Returns true if this error could be retried.
@@ -129,6 +134,7 @@ impl ClientError {
             }
             ClientError::ConnectionError(_) => true,
             ClientError::TimeoutError(_) => true,
+            ClientError::RequestError(e) => e.is_connect() || e.is_timeout(),
             _ => false,
         }
     }

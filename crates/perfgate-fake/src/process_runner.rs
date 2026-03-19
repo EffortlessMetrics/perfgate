@@ -123,7 +123,7 @@ impl ProcessRunner for FakeProcessRunner {
             return Ok(res.clone());
         }
 
-        Err(AdapterError::Other(anyhow::anyhow!(
+        Err(AdapterError::Other(format!(
             "FakeProcessRunner: no result configured for command: {:?}",
             spec.argv
         )))
@@ -151,6 +151,7 @@ mod tests {
 
     fn make_spec(argv: Vec<&str>) -> CommandSpec {
         CommandSpec {
+            name: argv.first().unwrap_or(&"unknown").to_string(),
             argv: argv.into_iter().map(String::from).collect(),
             cwd: None,
             env: vec![],

@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 244
 expression: "help_output(&[\"check\", \"--help\"])"
 ---
 Config-driven one-command workflow.
@@ -24,7 +23,7 @@ Options:
 
       --out-dir <OUT_DIR> Output directory for artifacts [default: artifacts/perfgate]
 
-      --baseline <BASELINE> Path or cloud URI to the baseline file. If not specified, looks in baseline_dir/{bench}.json (only valid when --bench is specified, not with --all)
+      --baseline <BASELINE> Path or cloud URI to the baseline file
 
       --require-baseline Fail if baseline is missing (default: warn and continue)
 
@@ -36,7 +35,7 @@ Options:
 
       --allow-nonzero Do not fail the tool when the command returns nonzero
 
-      --host-mismatch <HOST_MISMATCH> Policy for handling host mismatches between baseline and current runs. - warn (default): Warn but continue with comparison - error: Exit 1 on mismatch - ignore: Suppress warnings [default: warn]
+      --host-mismatch <HOST_MISMATCH> Policy for handling host mismatches between baseline and current runs [default: warn]
 
       --significance-alpha <SIGNIFICANCE_ALPHA> Compute per-metric significance metadata using Welch's t-test (p <= alpha)
 
@@ -46,10 +45,10 @@ Options:
 
       --pretty Pretty-print JSON
 
-      --mode <MODE> Output mode (standard or cockpit). In cockpit mode: - Always writes sensor.report.v1 envelope to report.json - Writes native artifacts to extras/ subdirectory - Exits 0 unless catastrophic failure (cannot write receipt) - Errors are captured in the report rather than causing exit 1
+      --mode <MODE> Output mode (standard or cockpit)
  Possible values: - standard: Standard mode: exit codes reflect verdict (0=pass, 2=fail, 3=warn with --fail-on-warn) - cockpit: Cockpit mode: always write receipt, exit 0 unless catastrophic failure [default: standard]
 
-      --md-template <MD_TEMPLATE> Render markdown using a Handlebars template file. If omitted, falls back to defaults.markdown_template from config
+      --md-template <MD_TEMPLATE> Render markdown using a Handlebars template file
 
       --output-github Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT
 

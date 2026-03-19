@@ -4,7 +4,7 @@ use crate::config::ClientConfig;
 use crate::error::ClientError;
 use crate::types::*;
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use tracing::{debug};
+use tracing::debug;
 
 /// High-level client for the perfgate baseline service.
 #[derive(Clone, Debug)]
@@ -16,8 +16,10 @@ pub struct BaselineClient {
 impl BaselineClient {
     /// Creates a new BaselineClient from the given configuration.
     pub fn new(config: ClientConfig) -> Result<Self, ClientError> {
+        config.validate().map_err(ClientError::ValidationError)?;
+
         let mut headers = HeaderMap::new();
-        
+
         if let Some(auth_val) = config.auth.header_value() {
             let mut auth_value = HeaderValue::from_str(&auth_val)
                 .map_err(|e| ClientError::ValidationError(format!("Invalid auth header: {}", e)))?;
@@ -52,16 +54,18 @@ impl BaselineClient {
                     .json(&request)
                     .send()
                     .await
-                    .map_err(|e| ClientError::RequestError(e))?;
-                
+                    .map_err(ClientError::RequestError)?;
+
                 if !response.status().is_success() {
                     let status = response.status().as_u16();
                     let body = response.text().await.unwrap_or_default();
                     return Err(ClientError::from_http(status, &body));
                 }
 
-                let body = response.json::<UploadBaselineResponse>().await
-                    .map_err(|e| ClientError::RequestError(e))?;
+                let body = response
+                    .json::<UploadBaselineResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
                 Ok(body)
             }
         })
@@ -89,16 +93,18 @@ impl BaselineClient {
                         .get(url)
                         .send()
                         .await
-                        .map_err(|e| ClientError::RequestError(e))?;
-                    
+                        .map_err(ClientError::RequestError)?;
+
                     if !resp.status().is_success() {
                         let status = resp.status().as_u16();
                         let body = resp.text().await.unwrap_or_default();
                         return Err(ClientError::from_http(status, &body));
                     }
-                    
-                    let body = resp.json::<BaselineRecord>().await
-                        .map_err(|e| ClientError::RequestError(e))?;
+
+                    let body = resp
+                        .json::<BaselineRecord>()
+                        .await
+                        .map_err(ClientError::RequestError)?;
                     Ok(body)
                 }
             })
@@ -129,16 +135,18 @@ impl BaselineClient {
                         .get(url)
                         .send()
                         .await
-                        .map_err(|e| ClientError::RequestError(e))?;
-                    
+                        .map_err(ClientError::RequestError)?;
+
                     if !resp.status().is_success() {
                         let status = resp.status().as_u16();
                         let body = resp.text().await.unwrap_or_default();
                         return Err(ClientError::from_http(status, &body));
                     }
-                    
-                    let body = resp.json::<BaselineRecord>().await
-                        .map_err(|e| ClientError::RequestError(e))?;
+
+                    let body = resp
+                        .json::<BaselineRecord>()
+                        .await
+                        .map_err(ClientError::RequestError)?;
                     Ok(body)
                 }
             })
@@ -166,8 +174,8 @@ impl BaselineClient {
                     .json(&request)
                     .send()
                     .await
-                    .map_err(|e| ClientError::RequestError(e))?;
-                
+                    .map_err(ClientError::RequestError)?;
+
                 if !response.status().is_success() {
                     let status = response.status().as_u16();
                     let body = response.text().await.unwrap_or_default();
@@ -175,7 +183,7 @@ impl BaselineClient {
                 }
 
                 let body = response.json::<PromoteBaselineResponse>().await
-                    .map_err(|e| ClientError::RequestError(e))?;
+                    .map_err(ClientError::RequestError)?;
                 Ok(body)
             }
         })
@@ -189,10 +197,10 @@ impl BaselineClient {
         query: &ListBaselinesQuery,
     ) -> Result<ListBaselinesResponse, ClientError> {
         let mut url = self.url(&format!("projects/{}/baselines", project));
-        
+
         let params = query.to_query_params();
         if !params.is_empty() {
-            let mut url_obj = url::Url::parse(&url).map_err(|e| ClientError::UrlError(e))?;
+            let mut url_obj = url::Url::parse(&url).map_err(ClientError::UrlError)?;
             {
                 let mut query_pairs = url_obj.query_pairs_mut();
                 for (k, v) in params {
@@ -213,16 +221,18 @@ impl BaselineClient {
                         .get(url)
                         .send()
                         .await
-                        .map_err(|e| ClientError::RequestError(e))?;
-                    
+                        .map_err(ClientError::RequestError)?;
+
                     if !resp.status().is_success() {
                         let status = resp.status().as_u16();
                         let body = resp.text().await.unwrap_or_default();
                         return Err(ClientError::from_http(status, &body));
                     }
-                    
-                    let body = resp.json::<ListBaselinesResponse>().await
-                        .map_err(|e| ClientError::RequestError(e))?;
+
+                    let body = resp
+                        .json::<ListBaselinesResponse>()
+                        .await
+                        .map_err(ClientError::RequestError)?;
                     Ok(body)
                 }
             })
@@ -252,8 +262,8 @@ impl BaselineClient {
                     .delete(url)
                     .send()
                     .await
-                    .map_err(|e| ClientError::RequestError(e))?;
-                
+                    .map_err(ClientError::RequestError)?;
+
                 if !resp.status().is_success() {
                     let status = resp.status().as_u16();
                     let body = resp.text().await.unwrap_or_default();
@@ -281,16 +291,18 @@ impl BaselineClient {
                         .get(url)
                         .send()
                         .await
-                        .map_err(|e| ClientError::RequestError(e))?;
-                    
+                        .map_err(ClientError::RequestError)?;
+
                     if !resp.status().is_success() {
                         let status = resp.status().as_u16();
                         let body = resp.text().await.unwrap_or_default();
                         return Err(ClientError::from_http(status, &body));
                     }
-                    
-                    let body = resp.json::<HealthResponse>().await
-                        .map_err(|e| ClientError::RequestError(e))?;
+
+                    let body = resp
+                        .json::<HealthResponse>()
+                        .await
+                        .map_err(ClientError::RequestError)?;
                     Ok(body)
                 }
             })
@@ -320,32 +332,24 @@ impl BaselineClient {
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T, ClientError>>,
     {
-        let mut last_error = None;
         let mut attempts = 0;
 
-        while attempts < self.config.retry.max_retries {
+        loop {
             match operation().await {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     attempts += 1;
                     let is_retryable = e.is_retryable();
-                    
-                    if !is_retryable || attempts >= self.config.retry.max_retries {
-                        last_error = Some(e);
-                        break;
+
+                    if !is_retryable || attempts > self.config.retry.max_retries {
+                        return Err(e);
                     }
 
                     debug!(error = %e, attempt = attempts, "Request failed, retrying");
                     tokio::time::sleep(self.config.retry.delay_for_attempt(attempts)).await;
-                    last_error = Some(e);
                 }
             }
         }
-
-        Err(ClientError::RetryExhausted {
-            retries: attempts,
-            message: last_error.unwrap().to_string(),
-        })
     }
 }
 
@@ -406,16 +410,14 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/projects/my-project/baselines/my-bench/promote"))
-            .respond_with(
-                ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                    "id": "bl_new",
-                    "benchmark": "my-bench",
-                    "version": "v2.0.0",
-                    "promoted_from": "v1.0.0",
-                    "promoted_at": "2024-01-01T00:00:00Z",
-                    "created_at": "2024-01-01T00:00:00Z"
-                })),
-            )
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": "bl_new",
+                "benchmark": "my-bench",
+                "version": "v2.0.0",
+                "promoted_from": "v1.0.0",
+                "promoted_at": "2024-01-01T00:00:00Z",
+                "created_at": "2024-01-01T00:00:00Z"
+            })))
             .mount(&mock_server)
             .await;
 

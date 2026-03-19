@@ -8,7 +8,9 @@
 //! - Schema validation of golden fixtures against vendored schema
 //! - Determinism of cockpit output
 
-use assert_cmd::Command;
+mod common;
+
+use common::perfgate_cmd;
 use serde_json::Value;
 use std::fs;
 use tempfile::tempdir;
@@ -70,6 +72,36 @@ fn validate_against_schema(validator: &jsonschema::Validator, instance: &Value, 
     );
 }
 
+/// Test a basic cockpit check passes.
+#[test]
+fn test_cockpit_basic_pass() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts");
+    let config_path = create_config(temp_dir.path(), &["test-bench"]);
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("test-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit");
+
+    let output = cmd.output().expect("failed to execute check");
+    if !output.status.success() {
+        eprintln!("STDOUT: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success(), "cockpit mode should exit 0");
+
+    let report_path = out_dir.join("report.json");
+    assert!(report_path.exists(), "report.json should exist");
+}
+
 /// Test that artifacts are sorted by (type, path)
 #[test]
 fn test_artifact_ordering_sorted() {
@@ -77,7 +109,7 @@ fn test_artifact_ordering_sorted() {
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -125,7 +157,7 @@ fn test_data_opacity_no_compare() {
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -161,7 +193,7 @@ fn test_error_convention_config_error() {
     let config_path = temp_dir.path().join("bad.toml");
     fs::write(&config_path, "this is not valid toml {{{").expect("write bad config");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -173,6 +205,10 @@ fn test_error_convention_config_error() {
         .arg("cockpit");
 
     let output = cmd.output().expect("failed to execute check");
+    if !output.status.success() {
+        eprintln!("STDOUT: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
+    }
     assert!(output.status.success(), "cockpit mode should exit 0");
 
     let report_path = out_dir.join("report.json");
@@ -207,7 +243,7 @@ fn test_extras_versioned_names() {
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -250,7 +286,7 @@ fn test_baseline_reason_normalized() {
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["no-bl-bench"]);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -351,7 +387,7 @@ fn test_cockpit_output_validates_against_vendored_schema() {
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")
@@ -382,7 +418,7 @@ fn test_cockpit_error_report_validates_against_schema() {
     let config_path = temp_dir.path().join("bad.toml");
     fs::write(&config_path, "not valid toml {{{").expect("write bad config");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("check")
         .arg("--config")
         .arg(&config_path)
@@ -413,7 +449,7 @@ fn test_cockpit_mode_determinism() {
     for i in 0..2 {
         let out_dir = temp_dir.path().join(format!("run{}", i));
 
-        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+        let mut cmd = perfgate_cmd();
         cmd.current_dir(temp_dir.path())
             .arg("check")
             .arg("--config")
@@ -469,7 +505,7 @@ fn test_cockpit_output_has_fingerprints() {
     let config_path = create_config(temp_dir.path(), &["fp-bench"]);
     // No baseline → findings with fingerprints
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.current_dir(temp_dir.path())
         .arg("check")
         .arg("--config")

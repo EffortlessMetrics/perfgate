@@ -27,7 +27,8 @@ use perfgate_types::{
 // Microcrate imports for direct testing
 use perfgate_budget::{aggregate_verdict, evaluate_budget, reason_token as budget_reason_token};
 use perfgate_error::{
-    AdapterError, ConfigValidationError, IoError, PairedError, StatsError, ValidationError,
+    AdapterError, ConfigValidationError, IoError, PairedError, PerfgateError, StatsError,
+    ValidationError,
 };
 use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_host_detect::detect_host_mismatch;
@@ -4570,7 +4571,7 @@ async fn when_convert_paired_error_no_samples(world: &mut PerfgateWorld) {
 #[when("I convert std::io::Error to PerfgateError")]
 async fn when_convert_std_io_error(world: &mut PerfgateWorld) {
     let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-    world.perfgate_error = Some(std_err.into());
+    world.perfgate_error = Some(PerfgateError::Io(perfgate_error::IoError::from(std_err)));
 }
 
 #[then(expr = "the error category should be {string}")]
@@ -5088,20 +5089,24 @@ async fn then_command_should_succeed(world: &mut PerfgateWorld) {
 #[given("a mock baseline server is running")]
 async fn given_mock_server(world: &mut PerfgateWorld) {
     let server = wiremock::MockServer::start().await;
-    
+
     // Mock the upload endpoint
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path_regex(r"^/api/v1/projects/[^/]+/baselines$"))
-        .respond_with(wiremock::ResponseTemplate::new(201).set_body_json(serde_json::json!({
-            "id": "new-baseline-id",
-            "benchmark": "bench1",
-            "version": "v1",
-            "created_at": "2026-01-01T00:00:00Z",
-            "etag": "test-etag"
-        })))
+        .and(wiremock::matchers::path_regex(
+            r"^/api/v1/projects/[^/]+/baselines$",
+        ))
+        .respond_with(
+            wiremock::ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": "new-baseline-id",
+                "benchmark": "bench1",
+                "version": "v1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "etag": "test-etag"
+            })),
+        )
         .mount(&server)
         .await;
-        
+
     world.server = Some(server);
 }
 
@@ -5112,7 +5117,7 @@ async fn given_baseline_file_exists_at(world: &mut PerfgateWorld, path_str: Stri
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).unwrap();
     }
-    
+
     // Create a dummy run receipt
     let receipt = world.create_run_receipt(100);
     // Set bench name to match file name if possible
@@ -5120,7 +5125,7 @@ async fn given_baseline_file_exists_at(world: &mut PerfgateWorld, path_str: Stri
     if let Some(stem) = path.file_stem() {
         receipt.bench.name = stem.to_string_lossy().to_string();
     }
-    
+
     let json = serde_json::to_string_pretty(&receipt).unwrap();
     std::fs::write(path, json).unwrap();
 }
@@ -5132,19 +5137,19 @@ async fn when_run_command(world: &mut PerfgateWorld, command: String) {
     if args.is_empty() || args[0] != "perfgate" {
         panic!("Only perfgate commands are supported in this generic step");
     }
-    
+
     let mut cmd = perfgate_cmd();
     cmd.current_dir(world.temp_path());
-    
+
     // Add server URL if mock server is running
     if let Some(ref server) = world.server {
         cmd.arg("--baseline-server").arg(server.uri() + "/api/v1");
     }
-    
+
     for arg in args.iter().skip(1) {
         cmd.arg(arg);
     }
-    
+
     let output = cmd.output().expect("Failed to execute command");
     world.last_exit_code = Some(output.status.code().unwrap_or(-1));
     world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();

@@ -44,11 +44,13 @@ struct Args {
     #[arg(long)]
     database_url: Option<String>,
 
-    /// API keys in format "role:key" (comma-separated, can be specified multiple times)
+    /// API keys in format "role:key[:project[:benchmark_regex]]" (comma-separated, can be specified multiple times)
     /// Roles: admin, promoter, contributor, viewer
-    /// Example: --api-keys admin:pg_live_abc123...,viewer:pg_live_def456...
+    /// project: defaults to "default" if omitted.
+    /// benchmark_regex: optional regex to restrict benchmarks.
+    /// Example: --api-keys admin:pg_live_abc123,contributor:pg_live_def456:my-project:^bench-.*$
     #[arg(long = "api-keys", value_parser = parse_api_key)]
-    api_keys: Vec<(Role, String)>,
+    api_keys: Vec<ApiKeyConfigArg>,
 
     /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
     #[arg(long)]
@@ -79,12 +81,21 @@ struct Args {
     log_format: String,
 }
 
-/// Parses an API key argument in format "role:key".
-fn parse_api_key(s: &str) -> Result<(Role, String), String> {
-    let parts: Vec<&str> = s.splitn(2, ':').collect();
-    if parts.len() != 2 {
+/// Helper struct for parsing API key CLI arguments.
+#[derive(Debug, Clone)]
+struct ApiKeyConfigArg {
+    pub role: Role,
+    pub key: String,
+    pub project: String,
+    pub benchmark_regex: Option<String>,
+}
+
+/// Parses an API key argument in format "role:key[:project[:benchmark_regex]]".
+fn parse_api_key(s: &str) -> Result<ApiKeyConfigArg, String> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() < 2 || parts.len() > 4 {
         return Err(format!(
-            "Invalid API key format '{}'. Expected 'role:key'",
+            "Invalid API key format '{}'. Expected 'role:key[:project[:benchmark_regex]]'",
             s
         ));
     }
@@ -102,7 +113,16 @@ fn parse_api_key(s: &str) -> Result<(Role, String), String> {
         }
     };
 
-    Ok((role, parts[1].to_string()))
+    let key = parts[1].to_string();
+    let project = parts.get(2).unwrap_or(&"default").to_string();
+    let benchmark_regex = parts.get(3).map(|s| s.to_string());
+
+    Ok(ApiKeyConfigArg {
+        role,
+        key,
+        project,
+        benchmark_regex,
+    })
 }
 
 /// Initializes the logging system.
@@ -166,8 +186,8 @@ async fn main() {
     }
 
     // Add API keys
-    for (role, key) in args.api_keys {
-        config = config.api_key(key, role);
+    for cfg in args.api_keys {
+        config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
     }
 
     if let Some(secret) = args.jwt_secret {
@@ -200,25 +220,37 @@ mod tests {
 
     #[test]
     fn test_parse_api_key_admin() {
-        let (role, key) = parse_api_key("admin:pg_live_abc123").unwrap();
-        assert_eq!(role, Role::Admin);
-        assert_eq!(key, "pg_live_abc123");
+        let arg = parse_api_key("admin:pg_live_abc123").unwrap();
+        assert_eq!(arg.role, Role::Admin);
+        assert_eq!(arg.key, "pg_live_abc123");
+        assert_eq!(arg.project, "default");
+        assert_eq!(arg.benchmark_regex, None);
     }
 
     #[test]
     fn test_parse_api_key_viewer() {
-        let (role, key) = parse_api_key("viewer:pg_live_xyz789").unwrap();
-        assert_eq!(role, Role::Viewer);
-        assert_eq!(key, "pg_live_xyz789");
+        let arg = parse_api_key("viewer:pg_live_xyz789").unwrap();
+        assert_eq!(arg.role, Role::Viewer);
+        assert_eq!(arg.key, "pg_live_xyz789");
+        assert_eq!(arg.project, "default");
+    }
+
+    #[test]
+    fn test_parse_api_key_scoped() {
+        let arg = parse_api_key("contributor:pg_live_key:my-proj:^bench-.*$").unwrap();
+        assert_eq!(arg.role, Role::Contributor);
+        assert_eq!(arg.key, "pg_live_key");
+        assert_eq!(arg.project, "my-proj");
+        assert_eq!(arg.benchmark_regex, Some("^bench-.*$".to_string()));
     }
 
     #[test]
     fn test_parse_api_key_case_insensitive() {
-        let (role, _) = parse_api_key("ADMIN:pg_live_abc").unwrap();
-        assert_eq!(role, Role::Admin);
+        let arg = parse_api_key("ADMIN:pg_live_abc").unwrap();
+        assert_eq!(arg.role, Role::Admin);
 
-        let (role, _) = parse_api_key("Contributor:pg_live_abc").unwrap();
-        assert_eq!(role, Role::Contributor);
+        let arg = parse_api_key("Contributor:pg_live_abc").unwrap();
+        assert_eq!(arg.role, Role::Contributor);
     }
 
     #[test]

@@ -188,22 +188,28 @@ pub fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
 
 /// Render a single verdict reason token as a human-readable bullet line.
 pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
-    if let Some((metric, status)) = parse_reason_token(token) {
-        if let (Some(delta), Some(budget)) = (compare.deltas.get(&metric), compare.budgets.get(&metric)) {
-            let pct = format_pct(delta.pct);
-            let warn_pct = budget.warn_threshold * 100.0;
-            let fail_pct = budget.threshold * 100.0;
+    let context = parse_reason_token(token).and_then(|(metric, status)| {
+        compare
+            .deltas
+            .get(&metric)
+            .zip(compare.budgets.get(&metric))
+            .map(|(delta, budget)| (status, delta, budget))
+    });
 
-            return match status {
-                MetricStatus::Warn => {
-                    format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
-                }
-                MetricStatus::Fail => {
-                    format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
-                }
-                MetricStatus::Pass => format!("- {token}\n"),
-            };
-        }
+    if let Some((status, delta, budget)) = context {
+        let pct = format_pct(delta.pct);
+        let warn_pct = budget.warn_threshold * 100.0;
+        let fail_pct = budget.threshold * 100.0;
+
+        return match status {
+            MetricStatus::Warn => {
+                format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
+            }
+            MetricStatus::Fail => {
+                format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
+            }
+            MetricStatus::Pass => format!("- {token}\n"),
+        };
     }
 
     format!("- {token}\n")

@@ -214,9 +214,10 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         } else {
             // No baseline
             if req.require_baseline {
-                return Err(PerfgateError::BaselineNotFound {
+                use perfgate_error::IoError;
+                return Err(PerfgateError::Io(IoError::BaselineNotFound {
                     path: format!("bench '{}'", req.bench_name),
-                }
+                })
                 .into());
             }
             warnings.push(format!(
@@ -652,7 +653,7 @@ mod tests {
         fn run(&self, _spec: &CommandSpec) -> Result<RunResult, AdapterError> {
             let mut runs = self.runs.lock().expect("lock runs");
             if runs.is_empty() {
-                return Err(AdapterError::Other(anyhow::anyhow!("no more queued runs")));
+                return Err(AdapterError::Other("no more queued runs".to_string()));
             }
             Ok(runs.remove(0))
         }

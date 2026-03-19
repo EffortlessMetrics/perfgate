@@ -257,6 +257,8 @@ impl BenchOutcome {
 /// assert_eq!(sensor_report.verdict.status, perfgate_types::SensorVerdictStatus::Pass);
 /// assert_eq!(sensor_report.verdict.counts.info, 2);
 /// ```
+use std::collections::BTreeMap;
+
 pub struct SensorReportBuilder {
     tool: ToolInfo,
     started_at: String,
@@ -267,20 +269,11 @@ pub struct SensorReportBuilder {
     engine_capability: Option<Capability>,
     artifacts: Vec<SensorArtifact>,
     max_findings: Option<usize>,
+    metadata: BTreeMap<String, String>,
 }
 
 impl SensorReportBuilder {
     /// Create a new SensorReportBuilder.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use perfgate_sensor::SensorReportBuilder;
-    /// use perfgate_types::ToolInfo;
-    ///
-    /// let tool = ToolInfo { name: "perfgate".to_string(), version: "0.1.0".to_string() };
-    /// let builder = SensorReportBuilder::new(tool, "2024-01-01T00:00:00Z".to_string());
-    /// ```
     pub fn new(tool: ToolInfo, started_at: String) -> Self {
         Self {
             tool,
@@ -292,7 +285,14 @@ impl SensorReportBuilder {
             engine_capability: Some(default_engine_capability()),
             artifacts: Vec::new(),
             max_findings: None,
+            metadata: BTreeMap::new(),
         }
+    }
+
+    /// Add metadata to the report.
+    pub fn metadata(mut self, key: &str, value: &str) -> Self {
+        self.metadata.insert(key.to_string(), value.to_string());
+        self
     }
 
     /// Set the end time and duration.

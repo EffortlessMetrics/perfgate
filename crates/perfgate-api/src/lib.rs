@@ -153,7 +153,7 @@ pub struct Project {
 }
 
 /// Request for baseline list operation.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ListBaselinesQuery {
     /// Filter by exact benchmark name
     pub benchmark: Option<String>,
@@ -178,6 +178,23 @@ pub struct ListBaselinesQuery {
     /// Pagination offset
     #[serde(default)]
     pub offset: u64,
+}
+
+impl Default for ListBaselinesQuery {
+    fn default() -> Self {
+        Self {
+            benchmark: None,
+            benchmark_prefix: None,
+            git_ref: None,
+            git_sha: None,
+            tags: None,
+            since: None,
+            until: None,
+            include_receipt: false,
+            limit: default_limit(),
+            offset: 0,
+        }
+    }
 }
 
 fn default_limit() -> u32 {
@@ -211,21 +228,42 @@ impl ListBaselinesQuery {
     pub fn parsed_tags(&self) -> Vec<String> {
         self.tags
             .as_ref()
-            .map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            .map(|t| {
+                t.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
             .unwrap_or_default()
     }
     pub fn to_query_params(&self) -> Vec<(String, String)> {
         let mut params = Vec::new();
-        if let Some(b) = &self.benchmark { params.push(("benchmark".to_string(), b.clone())); }
-        if let Some(p) = &self.benchmark_prefix { params.push(("benchmark_prefix".to_string(), p.clone())); }
-        if let Some(r) = &self.git_ref { params.push(("git_ref".to_string(), r.clone())); }
-        if let Some(s) = &self.git_sha { params.push(("git_sha".to_string(), s.clone())); }
-        if let Some(t) = &self.tags { params.push(("tags".to_string(), t.clone())); }
-        if let Some(s) = &self.since { params.push(("since".to_string(), s.to_rfc3339())); }
-        if let Some(u) = &self.until { params.push(("until".to_string(), u.to_rfc3339())); }
+        if let Some(b) = &self.benchmark {
+            params.push(("benchmark".to_string(), b.clone()));
+        }
+        if let Some(p) = &self.benchmark_prefix {
+            params.push(("benchmark_prefix".to_string(), p.clone()));
+        }
+        if let Some(r) = &self.git_ref {
+            params.push(("git_ref".to_string(), r.clone()));
+        }
+        if let Some(s) = &self.git_sha {
+            params.push(("git_sha".to_string(), s.clone()));
+        }
+        if let Some(t) = &self.tags {
+            params.push(("tags".to_string(), t.clone()));
+        }
+        if let Some(s) = &self.since {
+            params.push(("since".to_string(), s.to_rfc3339()));
+        }
+        if let Some(u) = &self.until {
+            params.push(("until".to_string(), u.to_rfc3339()));
+        }
         params.push(("limit".to_string(), self.limit.to_string()));
         params.push(("offset".to_string(), self.offset.to_string()));
-        if self.include_receipt { params.push(("include_receipt".to_string(), "true".to_string())); }
+        if self.include_receipt {
+            params.push(("include_receipt".to_string(), "true".to_string()));
+        }
         params
     }
 }
@@ -276,7 +314,7 @@ impl From<BaselineRecord> for BaselineSummary {
             git_ref: record.git_ref,
             git_sha: record.git_sha,
             tags: record.tags,
-            receipt: if record.receipt.samples.is_empty() { None } else { Some(record.receipt) },
+            receipt: Some(record.receipt),
         }
     }
 }
@@ -369,15 +407,33 @@ impl ApiError {
             details: None,
         }
     }
-    pub fn unauthorized(msg: &str) -> Self { Self::new("unauthorized", msg) }
-    pub fn forbidden(msg: &str) -> Self { Self::new("forbidden", msg) }
-    pub fn not_found(msg: &str) -> Self { Self::new("not_found", msg) }
-    pub fn bad_request(msg: &str) -> Self { Self::new("bad_request", msg) }
-    pub fn conflict(msg: &str) -> Self { Self::new("conflict", msg) }
-    pub fn internal_error(msg: &str) -> Self { Self::new("internal_error", msg) }
-    pub fn internal(msg: &str) -> Self { Self::internal_error(msg) }
-    pub fn validation(msg: &str) -> Self { Self::new("invalid_input", msg) }
-    pub fn already_exists(msg: &str) -> Self { Self::new("conflict", msg) }
+    pub fn unauthorized(msg: &str) -> Self {
+        Self::new("unauthorized", msg)
+    }
+    pub fn forbidden(msg: &str) -> Self {
+        Self::new("forbidden", msg)
+    }
+    pub fn not_found(msg: &str) -> Self {
+        Self::new("not_found", msg)
+    }
+    pub fn bad_request(msg: &str) -> Self {
+        Self::new("bad_request", msg)
+    }
+    pub fn conflict(msg: &str) -> Self {
+        Self::new("conflict", msg)
+    }
+    pub fn internal_error(msg: &str) -> Self {
+        Self::new("internal_error", msg)
+    }
+    pub fn internal(msg: &str) -> Self {
+        Self::internal_error(msg)
+    }
+    pub fn validation(msg: &str) -> Self {
+        Self::new("invalid_input", msg)
+    }
+    pub fn already_exists(msg: &str) -> Self {
+        Self::new("conflict", msg)
+    }
 }
 
 #[cfg(feature = "server")]

@@ -1,7 +1,7 @@
 //! Error types for the perfgate server.
 
-use thiserror::Error;
 pub use perfgate_error::AuthError;
+use thiserror::Error;
 
 /// Storage-related errors.
 #[derive(Debug, Error)]

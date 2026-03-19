@@ -49,6 +49,7 @@ anyhow = { workspace = true }
 
 # CLI
 clap = { workspace = true }
+regex = { workspace = true }
 
 # Additional dependencies
 sha2 = "0.10.8"

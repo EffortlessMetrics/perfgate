@@ -6,11 +6,11 @@
 use super::{ArtifactStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
-    BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery,
-    ListBaselinesResponse, PaginationInfo,
+    BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
+    PaginationInfo,
 };
 use async_trait::async_trait;
-use sqlx::{PgPool, postgres::PgPoolOptions, Row};
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,7 +23,10 @@ pub struct PostgresStore {
 
 impl PostgresStore {
     /// Creates a new PostgreSQL storage backend and runs initial schema migrations.
-    pub async fn new(url: &str, artifacts: Option<Arc<dyn ArtifactStore>>) -> Result<Self, StoreError> {
+    pub async fn new(
+        url: &str,
+        artifacts: Option<Arc<dyn ArtifactStore>>,
+    ) -> Result<Self, StoreError> {
         let pool = PgPoolOptions::new()
             .max_connections(10)
             .acquire_timeout(Duration::from_secs(5))
@@ -72,9 +75,12 @@ impl PostgresStore {
 
     async fn store_artifact(&self, record: &BaselineRecord) -> Result<Option<String>, StoreError> {
         if let Some(store) = &self.artifacts {
-            let path = format!("{}/{}/{}.json", record.project, record.benchmark, record.version);
-            let data = serde_json::to_vec(&record.receipt)
-                .map_err(StoreError::SerializationError)?;
+            let path = format!(
+                "{}/{}/{}.json",
+                record.project, record.benchmark, record.version
+            );
+            let data =
+                serde_json::to_vec(&record.receipt).map_err(StoreError::SerializationError)?;
             store.put(&path, data).await?;
             Ok(Some(path))
         } else {
@@ -82,12 +88,14 @@ impl PostgresStore {
         }
     }
 
-    fn row_to_record(row: sqlx::postgres::PgRow) -> Result<(BaselineRecord, Option<String>), StoreError> {
+    fn row_to_record(
+        row: sqlx::postgres::PgRow,
+    ) -> Result<(BaselineRecord, Option<String>), StoreError> {
         let artifact_path: Option<String> = row.get("artifact_path");
-        
-        let receipt = if let Some(receipt_json) = row.get:: <Option<serde_json::Value>, _>("receipt") {
-            serde_json::from_value(receipt_json)
-                .map_err(StoreError::SerializationError)?
+
+        let receipt = if let Some(receipt_json) = row.get::<Option<serde_json::Value>, _>("receipt")
+        {
+            serde_json::from_value(receipt_json).map_err(StoreError::SerializationError)?
         } else {
             // Placeholder, will be loaded from artifact store if needed
             serde_json::from_value(serde_json::json!({
@@ -109,16 +117,16 @@ impl PostgresStore {
                 "stats": {
                     "wall_ms": {"median": 0, "min": 0, "max": 0}
                 }
-            })).unwrap()
+            }))
+            .unwrap()
         };
-        
+
         let metadata_json: serde_json::Value = row.get("metadata");
-        let metadata = serde_json::from_value(metadata_json)
-            .map_err(StoreError::SerializationError)?;
+        let metadata =
+            serde_json::from_value(metadata_json).map_err(StoreError::SerializationError)?;
 
         let tags_json: serde_json::Value = row.get("tags");
-        let tags = serde_json::from_value(tags_json)
-            .map_err(StoreError::SerializationError)?;
+        let tags = serde_json::from_value(tags_json).map_err(StoreError::SerializationError)?;
 
         let source_str: String = row.get("source");
         let source = serde_json::from_value(serde_json::Value::String(source_str))
@@ -127,30 +135,37 @@ impl PostgresStore {
         let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
         let updated_at: chrono::DateTime<chrono::Utc> = row.get("updated_at");
 
-        Ok((BaselineRecord {
-            schema: row.get("schema_id"),
-            id: row.get("id"),
-            project: row.get("project"),
-            benchmark: row.get("benchmark"),
-            version: row.get("version"),
-            git_ref: row.get("git_ref"),
-            git_sha: row.get("git_sha"),
-            receipt,
-            metadata,
-            tags,
-            created_at,
-            updated_at,
-            content_hash: row.get("content_hash"),
-            source,
-            deleted: row.get("deleted"),
-        }, artifact_path))
+        Ok((
+            BaselineRecord {
+                schema: row.get("schema_id"),
+                id: row.get("id"),
+                project: row.get("project"),
+                benchmark: row.get("benchmark"),
+                version: row.get("version"),
+                git_ref: row.get("git_ref"),
+                git_sha: row.get("git_sha"),
+                receipt,
+                metadata,
+                tags,
+                created_at,
+                updated_at,
+                content_hash: row.get("content_hash"),
+                source,
+                deleted: row.get("deleted"),
+            },
+            artifact_path,
+        ))
     }
 
-    async fn load_artifact(&self, path: Option<String>, mut record: BaselineRecord) -> Result<BaselineRecord, StoreError> {
+    async fn load_artifact(
+        &self,
+        path: Option<String>,
+        mut record: BaselineRecord,
+    ) -> Result<BaselineRecord, StoreError> {
         if let (Some(store), Some(path)) = (&self.artifacts, path) {
             let data = store.get(&path).await?;
-            record.receipt = serde_json::from_slice(&data)
-                .map_err(StoreError::SerializationError)?;
+            record.receipt =
+                serde_json::from_slice(&data).map_err(StoreError::SerializationError)?;
         }
         Ok(record)
     }
@@ -160,19 +175,19 @@ impl PostgresStore {
 impl BaselineStore for PostgresStore {
     async fn create(&self, record: &BaselineRecord) -> Result<(), StoreError> {
         let artifact_path = self.store_artifact(record).await?;
-        
+
         let receipt_json = if artifact_path.is_none() {
             Some(serde_json::to_value(&record.receipt).map_err(StoreError::SerializationError)?)
         } else {
             None
         };
 
-        let metadata_json = serde_json::to_value(&record.metadata)
-            .map_err(StoreError::SerializationError)?;
-        let tags_json = serde_json::to_value(&record.tags)
-            .map_err(StoreError::SerializationError)?;
-        let source_json = serde_json::to_value(&record.source)
-            .map_err(StoreError::SerializationError)?;
+        let metadata_json =
+            serde_json::to_value(&record.metadata).map_err(StoreError::SerializationError)?;
+        let tags_json =
+            serde_json::to_value(&record.tags).map_err(StoreError::SerializationError)?;
+        let source_json =
+            serde_json::to_value(&record.source).map_err(StoreError::SerializationError)?;
         let source_str = source_json.as_str().unwrap_or("upload");
 
         let sql = r#"
@@ -205,9 +220,9 @@ impl BaselineStore for PostgresStore {
 
         match result {
             Ok(_) => Ok(()),
-            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
-                Err(StoreError::already_exists(&record.project, &record.benchmark, &record.version))
-            }
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Err(
+                StoreError::already_exists(&record.project, &record.benchmark, &record.version),
+            ),
             Err(e) => Err(StoreError::QueryError(e.to_string())),
         }
     }
@@ -219,7 +234,7 @@ impl BaselineStore for PostgresStore {
         version: &str,
     ) -> Result<Option<BaselineRecord>, StoreError> {
         let sql = "SELECT * FROM baselines WHERE project = $1 AND benchmark = $2 AND version = $3 AND deleted = FALSE";
-        
+
         let row_opt = sqlx::query(sql)
             .bind(project)
             .bind(benchmark)
@@ -232,7 +247,7 @@ impl BaselineStore for PostgresStore {
             Some(row) => {
                 let (record, artifact_path) = Self::row_to_record(row)?;
                 Ok(Some(self.load_artifact(artifact_path, record).await?))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -243,7 +258,7 @@ impl BaselineStore for PostgresStore {
         benchmark: &str,
     ) -> Result<Option<BaselineRecord>, StoreError> {
         let sql = "SELECT * FROM baselines WHERE project = $1 AND benchmark = $2 AND deleted = FALSE ORDER BY created_at DESC LIMIT 1";
-        
+
         let row_opt = sqlx::query(sql)
             .bind(project)
             .bind(benchmark)
@@ -255,7 +270,7 @@ impl BaselineStore for PostgresStore {
             Some(row) => {
                 let (record, artifact_path) = Self::row_to_record(row)?;
                 Ok(Some(self.load_artifact(artifact_path, record).await?))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -265,8 +280,9 @@ impl BaselineStore for PostgresStore {
         project: &str,
         query: &ListBaselinesQuery,
     ) -> Result<ListBaselinesResponse, StoreError> {
-        let mut sql = String::from("SELECT * FROM baselines WHERE project = $1 AND deleted = FALSE");
-        
+        let mut sql =
+            String::from("SELECT * FROM baselines WHERE project = $1 AND deleted = FALSE");
+
         if let Some(bench) = &query.benchmark {
             sql.push_str(" AND benchmark = '");
             sql.push_str(&bench.replace('\'', "''"));
@@ -274,10 +290,10 @@ impl BaselineStore for PostgresStore {
         }
 
         sql.push_str(" ORDER BY created_at DESC");
-        
+
         let limit = query.limit.min(100) as i64;
         sql.push_str(&format!(" LIMIT {}", limit + 1));
-        
+
         let offset = query.offset as i64;
         sql.push_str(&format!(" OFFSET {}", offset));
 
@@ -289,7 +305,7 @@ impl BaselineStore for PostgresStore {
 
         let has_more = rows.len() > limit as usize;
         let take_count = if has_more { limit as usize } else { rows.len() };
-        
+
         let mut baselines = Vec::with_capacity(take_count);
         for row in rows.into_iter().take(take_count) {
             let (mut record, artifact_path) = Self::row_to_record(row)?;
@@ -312,7 +328,7 @@ impl BaselineStore for PostgresStore {
             .fetch_one(&self.pool)
             .await
             .map_err(|e| StoreError::QueryError(e.to_string()))?;
-            
+
         let total: i64 = total_row.get(0);
 
         let pagination = PaginationInfo {
@@ -329,12 +345,12 @@ impl BaselineStore for PostgresStore {
     }
 
     async fn update(&self, record: &BaselineRecord) -> Result<(), StoreError> {
-        let receipt_json = serde_json::to_value(&record.receipt)
-            .map_err(StoreError::SerializationError)?;
-        let metadata_json = serde_json::to_value(&record.metadata)
-            .map_err(StoreError::SerializationError)?;
-        let tags_json = serde_json::to_value(&record.tags)
-            .map_err(StoreError::SerializationError)?;
+        let receipt_json =
+            serde_json::to_value(&record.receipt).map_err(StoreError::SerializationError)?;
+        let metadata_json =
+            serde_json::to_value(&record.metadata).map_err(StoreError::SerializationError)?;
+        let tags_json =
+            serde_json::to_value(&record.tags).map_err(StoreError::SerializationError)?;
 
         let sql = r#"
             UPDATE baselines 
@@ -360,7 +376,11 @@ impl BaselineStore for PostgresStore {
             .map_err(|e| StoreError::QueryError(e.to_string()))?;
 
         if result.rows_affected() == 0 {
-            return Err(StoreError::not_found(&record.project, &record.benchmark, &record.version));
+            return Err(StoreError::not_found(
+                &record.project,
+                &record.benchmark,
+                &record.version,
+            ));
         }
 
         Ok(())
@@ -373,7 +393,7 @@ impl BaselineStore for PostgresStore {
         version: &str,
     ) -> Result<bool, StoreError> {
         let sql = "UPDATE baselines SET deleted = TRUE, updated_at = NOW() WHERE project = $1 AND benchmark = $2 AND version = $3 AND deleted = FALSE";
-        
+
         let result = sqlx::query(sql)
             .bind(project)
             .bind(benchmark)
@@ -392,7 +412,7 @@ impl BaselineStore for PostgresStore {
         version: &str,
     ) -> Result<bool, StoreError> {
         let sql = "DELETE FROM baselines WHERE project = $1 AND benchmark = $2 AND version = $3";
-        
+
         let result = sqlx::query(sql)
             .bind(project)
             .bind(benchmark)
@@ -410,7 +430,7 @@ impl BaselineStore for PostgresStore {
         benchmark: &str,
     ) -> Result<Vec<BaselineVersion>, StoreError> {
         let sql = "SELECT version, created_at, git_ref, git_sha, source FROM baselines WHERE project = $1 AND benchmark = $2 AND deleted = FALSE ORDER BY created_at DESC";
-        
+
         let rows = sqlx::query(sql)
             .bind(project)
             .bind(benchmark)
@@ -424,7 +444,7 @@ impl BaselineStore for PostgresStore {
             let source_str: String = row.get("source");
             let source = serde_json::from_value(serde_json::Value::String(source_str))
                 .unwrap_or(BaselineSource::Upload);
-                
+
             versions.push(BaselineVersion {
                 version: row.get("version"),
                 created_at,
@@ -435,7 +455,7 @@ impl BaselineStore for PostgresStore {
                 source,
             });
         }
-        
+
         if let Some(first) = versions.first_mut() {
             first.is_current = true;
         }

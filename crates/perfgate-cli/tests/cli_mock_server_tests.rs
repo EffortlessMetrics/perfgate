@@ -1,6 +1,6 @@
 //! Integration tests for CLI commands using a mock server.
 
-use perfgate::types::{BASELINE_SCHEMA_V1, RUN_SCHEMA_V1};
+use perfgate_types::{BASELINE_SCHEMA_V1, RUN_SCHEMA_V1};
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
@@ -75,7 +75,9 @@ async fn test_baseline_list_with_mock_server() {
                     "project": "test-project",
                     "benchmark": "test-bench",
                     "version": "v1.0.0",
-                    "created_at": "2026-01-01T00:00:00Z"
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "tags": [],
+                    "promoted_at": null
                 }
             ],
             "pagination": {
@@ -168,6 +170,7 @@ async fn test_compare_with_server_baseline() {
             },
             "metadata": {},
             "tags": [],
+            "promoted_at": null,
             "source": "upload",
             "content_hash": "abc",
             "deleted": false,

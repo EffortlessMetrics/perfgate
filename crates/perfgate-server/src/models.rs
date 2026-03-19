@@ -3,13 +3,14 @@
 //! These types represent the core domain objects and API request/response types
 //! for the baseline storage service.
 
-pub use perfgate_api::*;
 use chrono::Utc;
+pub use perfgate_api::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 /// Extends BaselineRecord with server-side logic.
 pub trait BaselineRecordExt {
+    #[allow(clippy::new_ret_no_self, clippy::too_many_arguments)]
     fn new(
         project: String,
         benchmark: String,

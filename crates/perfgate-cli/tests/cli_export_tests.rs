@@ -2,12 +2,14 @@
 //!
 //! **Validates: Requirements for export functionality**
 
-use assert_cmd::Command;
+mod common;
+use common::perfgate_cmd;
 use predicates::prelude::*;
+
 use std::fs;
+
 use tempfile::tempdir;
 
-mod common;
 use common::{fixtures_dir, generate_compare_receipt};
 
 // ============================================================================
@@ -22,7 +24,7 @@ fn test_export_run_to_csv() {
 
     let baseline = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -73,7 +75,7 @@ fn test_export_run_to_jsonl() {
 
     let baseline = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -129,7 +131,7 @@ fn test_export_compare_to_csv() {
         "compare receipt should exist"
     );
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--compare")
         .arg(&compare_receipt_path)
@@ -179,7 +181,7 @@ fn test_export_compare_to_jsonl() {
     generate_compare_receipt(&baseline, &current, &compare_receipt_path)
         .expect("failed to generate compare receipt");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--compare")
         .arg(&compare_receipt_path)
@@ -228,7 +230,7 @@ fn test_export_run_to_html() {
     let export_path = temp_dir.path().join("export.html");
     let baseline = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -262,7 +264,7 @@ fn test_export_compare_to_prometheus() {
     generate_compare_receipt(&baseline, &current, &compare_receipt_path)
         .expect("failed to generate compare receipt");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--compare")
         .arg(&compare_receipt_path)
@@ -296,7 +298,7 @@ fn test_export_default_format_is_csv() {
 
     let baseline = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -320,7 +322,7 @@ fn test_export_invalid_format() {
 
     let baseline = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -342,7 +344,7 @@ fn test_export_run_and_compare_mutually_exclusive() {
 
     let baseline = fixtures_dir().join("baseline.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&baseline)
@@ -362,7 +364,7 @@ fn test_export_missing_input() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let export_path = temp_dir.path().join("export.csv");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export").arg("--out").arg(&export_path);
 
     cmd.assert()
@@ -377,7 +379,7 @@ fn test_export_missing_input_file() {
     let export_path = temp_dir.path().join("export.csv");
     let nonexistent = temp_dir.path().join("nonexistent.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--run")
         .arg(&nonexistent)
@@ -396,7 +398,7 @@ fn test_export_missing_compare_input_file() {
     let export_path = temp_dir.path().join("export.csv");
     let nonexistent = temp_dir.path().join("does_not_exist.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--compare")
         .arg(&nonexistent)
@@ -435,7 +437,7 @@ fn test_export_csv_deterministic() {
 
     // Export twice
     for export_path in [&export_path1, &export_path2] {
-        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+        let mut cmd = perfgate_cmd();
         cmd.arg("export")
             .arg("--compare")
             .arg(&compare_receipt_path)
@@ -467,7 +469,7 @@ fn test_export_compare_metrics_sorted() {
     generate_compare_receipt(&baseline, &current, &compare_receipt_path)
         .expect("failed to generate compare receipt");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("export")
         .arg("--compare")
         .arg(&compare_receipt_path)

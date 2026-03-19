@@ -2,7 +2,6 @@
 //!
 //! **Validates: Requirements 8.1**
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::tempdir;
 
@@ -31,7 +30,7 @@ fn test_github_annotations_fail_scenario() {
     );
 
     // Run perfgate github-annotations command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations")
         .arg("--compare")
         .arg(&compare_receipt_path);
@@ -70,7 +69,7 @@ fn test_github_annotations_warn_scenario() {
     );
 
     // Run perfgate github-annotations command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations")
         .arg("--compare")
         .arg(&compare_receipt_path);
@@ -107,7 +106,7 @@ fn test_github_annotations_pass_scenario_empty_output() {
     );
 
     // Run perfgate github-annotations command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations")
         .arg("--compare")
         .arg(&compare_receipt_path);
@@ -137,7 +136,7 @@ fn test_github_annotations_contains_baseline_current_values() {
         .expect("failed to generate compare receipt");
 
     // Run perfgate github-annotations command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations")
         .arg("--compare")
         .arg(&compare_receipt_path);
@@ -159,7 +158,7 @@ fn test_github_annotations_missing_compare_file() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let nonexistent_path = temp_dir.path().join("nonexistent.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations")
         .arg("--compare")
         .arg(&nonexistent_path);
@@ -175,7 +174,7 @@ fn test_github_annotations_missing_compare_file() {
 /// **Validates: Requirements 8.1**
 #[test]
 fn test_github_annotations_missing_compare_argument() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations");
 
     cmd.assert()
@@ -200,7 +199,7 @@ fn test_github_annotations_one_per_metric() {
         .expect("failed to generate compare receipt");
 
     // Run perfgate github-annotations command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("github-annotations")
         .arg("--compare")
         .arg(&compare_receipt_path);

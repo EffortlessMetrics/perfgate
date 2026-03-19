@@ -131,6 +131,9 @@ pub enum AdapterError {
     #[error("timeout is not supported on this platform")]
     TimeoutUnsupported,
 
+    #[error("failed to execute command {command:?}: {reason}")]
+    RunCommand { command: String, reason: String },
+
     #[error("{0}")]
     Other(String),
 }
@@ -188,31 +191,26 @@ pub enum AuthError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PerfgateError {
-    #[error(transparent)]
     Validation(#[from] ValidationError),
-
-    #[error(transparent)]
     Stats(#[from] StatsError),
-
-    #[error(transparent)]
     Adapter(#[from] AdapterError),
-
-    #[error(transparent)]
     Config(#[from] ConfigValidationError),
-
-    #[error(transparent)]
     Io(#[from] IoError),
-
-    #[error(transparent)]
     Paired(#[from] PairedError),
-
-    #[error(transparent)]
     Auth(#[from] AuthError),
 }
 
-impl From<std::io::Error> for PerfgateError {
-    fn from(err: std::io::Error) -> Self {
-        PerfgateError::Io(IoError::Other(err.to_string()))
+impl fmt::Display for PerfgateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PerfgateError::Validation(e) => write!(f, "{}", e),
+            PerfgateError::Stats(e) => write!(f, "{}", e),
+            PerfgateError::Adapter(e) => write!(f, "{}", e),
+            PerfgateError::Config(e) => write!(f, "{}", e),
+            PerfgateError::Io(e) => write!(f, "{}", e),
+            PerfgateError::Paired(e) => write!(f, "{}", e),
+            PerfgateError::Auth(e) => write!(f, "{}", e),
+        }
     }
 }
 
@@ -253,6 +251,7 @@ impl PerfgateError {
             PerfgateError::Adapter(AdapterError::EmptyArgv) => false,
             PerfgateError::Adapter(AdapterError::Timeout) => true,
             PerfgateError::Adapter(AdapterError::TimeoutUnsupported) => false,
+            PerfgateError::Adapter(AdapterError::RunCommand { .. }) => true,
             PerfgateError::Adapter(AdapterError::Other(_)) => true,
             PerfgateError::Config(_) => false,
             PerfgateError::Io(_) => true,
@@ -268,6 +267,7 @@ impl PerfgateError {
             PerfgateError::Adapter(AdapterError::Timeout) => 1,
             PerfgateError::Adapter(AdapterError::EmptyArgv) => 1,
             PerfgateError::Adapter(AdapterError::TimeoutUnsupported) => 1,
+            PerfgateError::Adapter(AdapterError::RunCommand { .. }) => 1,
             PerfgateError::Adapter(AdapterError::Other(_)) => 1,
             PerfgateError::Config(_) => 1,
             PerfgateError::Io(_) => 1,
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn from_std_io_error() {
         let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let err: PerfgateError = std_err.into();
+        let err = PerfgateError::Io(IoError::from(std_err));
         assert!(matches!(err, PerfgateError::Io(IoError::Other(_))));
     }
 

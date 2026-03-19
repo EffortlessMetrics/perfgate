@@ -118,6 +118,10 @@ pub struct ApiKey {
     /// Role (for easier permission checks)
     pub role: Role,
 
+    /// Optional regex to restrict access to specific benchmarks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub benchmark_regex: Option<String>,
+
     /// Expiration timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
@@ -139,6 +143,7 @@ impl ApiKey {
             project_id,
             scopes: role.allowed_scopes(),
             role,
+            benchmark_regex: None,
             expires_at: None,
             created_at: Utc::now(),
             last_used_at: None,

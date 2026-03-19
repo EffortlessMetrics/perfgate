@@ -43,6 +43,7 @@ fn main() {
 
     println!("\n3. Running commands with the fake runner:");
     let spec1 = CommandSpec {
+        name: "echo-hello".to_string(),
         argv: vec!["echo".to_string(), "hello".to_string()],
         cwd: None,
         env: vec![],
@@ -61,6 +62,7 @@ fn main() {
     }
 
     let spec2 = CommandSpec {
+        name: "failing-cmd".to_string(),
         argv: vec!["failing".to_string(), "cmd".to_string()],
         cwd: None,
         env: vec![],
@@ -79,6 +81,7 @@ fn main() {
 
     println!("\n4. Testing deterministic behavior:");
     let spec3 = CommandSpec {
+        name: "slow-command".to_string(),
         argv: vec!["slow".to_string(), "command".to_string()],
         cwd: None,
         env: vec![],
@@ -94,6 +97,7 @@ fn main() {
 
     println!("\n5. Default behavior for unconfigured commands:");
     let unknown_spec = CommandSpec {
+        name: "unknown-command".to_string(),
         argv: vec!["unknown".to_string(), "command".to_string()],
         cwd: None,
         env: vec![],
@@ -121,6 +125,7 @@ fn main() {
     println!("   Set fallback: exit 127, 1ms, stderr='command not found'");
 
     let another_unknown = CommandSpec {
+        name: "another-unknown".to_string(),
         argv: vec!["another".to_string(), "unknown".to_string()],
         cwd: None,
         env: vec![],
@@ -149,6 +154,7 @@ fn main() {
     runner.set_result(&["detailed"], detailed_result);
 
     let detailed_spec = CommandSpec {
+        name: "detailed".to_string(),
         argv: vec!["detailed".to_string()],
         cwd: None,
         env: vec![],

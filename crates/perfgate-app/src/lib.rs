@@ -135,6 +135,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
             let is_warmup = i < req.warmup;
 
             let spec = CommandSpec {
+                name: req.name.clone(),
                 argv: req.command.clone(),
                 cwd: req.cwd.clone(),
                 env: req.env.clone(),
