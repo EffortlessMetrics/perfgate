@@ -102,6 +102,14 @@
         "direction": {
           "$ref": "#/$defs/Direction"
         },
+        "noise_threshold": {
+          "description": "Noise threshold (coefficient of variation).\nIf CV exceeds this, the metric is considered flaky/noisy.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "threshold": {
           "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
           "type": "number",

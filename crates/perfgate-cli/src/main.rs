@@ -311,9 +311,18 @@ pub struct CompareArgs {
     #[arg(long, default_value_t = 0.90)]
     pub warn_factor: f64,
 
+    /// Global noise threshold (coefficient of variation).
+    /// If CV exceeds this, the metric is considered flaky/noisy.
+    #[arg(long)]
+    pub noise_threshold: Option<f64>,
+
     /// Override per-metric threshold, e.g. wall_ms=0.10
     #[arg(long, value_parser = parse_key_val_f64)]
     pub metric_threshold: Vec<(String, f64)>,
+
+    /// Override per-metric noise threshold, e.g. wall_ms=0.05
+    #[arg(long, value_parser = parse_key_val_f64)]
+    pub metric_noise_threshold: Vec<(String, f64)>,
 
     /// Override per-metric direction, e.g. throughput_per_s=higher
     #[arg(long, value_parser = parse_key_val_string)]
@@ -443,6 +452,10 @@ pub struct CheckArgs {
     /// Treat WARN verdict as a failing exit code
     #[arg(long, default_value_t = false)]
     pub fail_on_warn: bool,
+
+    /// Global noise threshold (coefficient of variation).
+    #[arg(long)]
+    pub noise_threshold: Option<f64>,
 
     /// Environment variable (KEY=VALUE). Repeatable.
     #[arg(long, value_parser = parse_key_val_string)]
@@ -849,7 +862,9 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 current,
                 threshold,
                 warn_factor,
+                noise_threshold,
                 metric_threshold,
+                metric_noise_threshold,
                 direction,
                 metric_stat,
                 significance_alpha,
@@ -904,7 +919,9 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 &current_receipt,
                 threshold,
                 warn_factor,
+                noise_threshold,
                 metric_threshold,
+                metric_noise_threshold,
                 direction,
             )?;
 
@@ -1105,6 +1122,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 baseline,
                 require_baseline,
                 fail_on_warn,
+                noise_threshold,
                 env,
                 output_cap_bytes,
                 allow_nonzero,
@@ -1127,6 +1145,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 baseline,
                 require_baseline,
                 fail_on_warn,
+                noise_threshold,
                 env,
                 output_cap_bytes,
                 allow_nonzero,
@@ -1568,6 +1587,7 @@ struct CheckConfig {
     baseline: Option<PathBuf>,
     require_baseline: bool,
     fail_on_warn: bool,
+    noise_threshold: Option<f64>,
     env: Vec<(String, String)>,
     output_cap_bytes: usize,
     allow_nonzero: bool,
@@ -1665,6 +1685,7 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             baseline_path: Some(baseline_path.clone()),
             require_baseline: req.require_baseline,
             fail_on_warn: req.fail_on_warn,
+            noise_threshold: req.noise_threshold,
             tool: tool_info(),
             env: req.env.clone(),
             output_cap_bytes: req.output_cap_bytes,
@@ -1892,6 +1913,7 @@ fn run_check_cockpit_inner(
                 baseline_path: Some(baseline_path.clone()),
                 require_baseline: req.require_baseline,
                 fail_on_warn: req.fail_on_warn,
+                noise_threshold: req.noise_threshold,
                 tool: tool_info(),
                 env: req.env.clone(),
                 output_cap_bytes: req.output_cap_bytes,

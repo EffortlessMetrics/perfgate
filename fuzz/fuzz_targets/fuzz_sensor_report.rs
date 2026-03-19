@@ -126,3 +126,10 @@ fuzz_target!(|input: SensorInput| {
     let _ = serde_json::to_string(&sensor_report);
 });
 
+
+
+
+
+
+
+

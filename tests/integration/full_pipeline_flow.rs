@@ -89,14 +89,7 @@ fn full_pipeline_pass_verdict() {
 
     // 3. Compare stats with budgets
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -122,14 +115,7 @@ fn full_pipeline_warn_verdict() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -150,14 +136,7 @@ fn full_pipeline_fail_verdict() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -238,22 +217,8 @@ fn full_pipeline_multiple_metrics() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.30,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.30, 0.15, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -274,19 +239,15 @@ fn full_pipeline_multiple_metrics() {
 #[test]
 fn full_pipeline_evaluate_budget_directly() {
     // Test the individual budget evaluation step
-    let budget = Budget {
-        threshold: 0.20,
-        warn_threshold: 0.10,
-        direction: Direction::Lower,
-    };
+    let budget = Budget::new(0.20, 0.10, Direction::Lower);
 
-    let pass = evaluate_budget(100.0, 105.0, &budget).unwrap();
+    let pass = evaluate_budget(100.0, 105.0, &budget, None).unwrap();
     assert_eq!(pass.status, MetricStatus::Pass);
 
-    let warn = evaluate_budget(100.0, 115.0, &budget).unwrap();
+    let warn = evaluate_budget(100.0, 115.0, &budget, None).unwrap();
     assert_eq!(warn.status, MetricStatus::Warn);
 
-    let fail = evaluate_budget(100.0, 125.0, &budget).unwrap();
+    let fail = evaluate_budget(100.0, 125.0, &budget, None).unwrap();
     assert_eq!(fail.status, MetricStatus::Fail);
 }
 
@@ -299,14 +260,7 @@ fn full_pipeline_improvement_is_pass() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.05,
-            warn_threshold: 0.03,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.05, 0.03, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 

@@ -102,6 +102,7 @@ mod advanced_analytics_tests {
         budgets.insert(
             Metric::WallMs,
             Budget {
+                noise_threshold: None,
                 threshold,
                 warn_threshold: threshold * 0.9,
                 direction: Direction::Lower,
@@ -350,7 +351,7 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// };
 ///
 /// let mut budgets = BTreeMap::new();
-/// budgets.insert(Metric::WallMs, Budget {
+/// budgets.insert(Metric::WallMs, Budget { noise_threshold: None,
 ///     threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower,
 /// });
 ///
@@ -374,13 +375,14 @@ pub fn compare_stats(
     for (metric, budget) in budgets {
         let b = metric_value(baseline, *metric);
         let c = metric_value(current, *metric);
+        let current_cv = metric_cv(current, *metric);
 
         let (Some(bv), Some(cv)) = (b, c) else {
             continue;
         };
 
-        let result =
-            evaluate_budget(bv, cv, budget).map_err(|_| DomainError::InvalidBaseline(*metric))?;
+        let result = evaluate_budget(bv, cv, budget, current_cv)
+            .map_err(|_| DomainError::InvalidBaseline(*metric))?;
 
         match result.status {
             MetricStatus::Pass => counts.pass += 1,
@@ -443,13 +445,14 @@ pub fn compare_runs(
 
         let b = metric_value_from_run(baseline, *metric, statistic);
         let c = metric_value_from_run(current, *metric, statistic);
+        let current_cv = metric_cv(&current.stats, *metric);
 
         let (Some(bv), Some(cv)) = (b, c) else {
             continue;
         };
 
-        let result =
-            evaluate_budget(bv, cv, budget).map_err(|_| DomainError::InvalidBaseline(*metric))?;
+        let result = evaluate_budget(bv, cv, budget, current_cv)
+            .map_err(|_| DomainError::InvalidBaseline(*metric))?;
 
         let mut status = result.status;
 
@@ -637,6 +640,18 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
     Report {
         verdict: receipt.verdict.status,
         findings,
+    }
+}
+
+fn metric_cv(stats: &Stats, metric: Metric) -> Option<f64> {
+    match metric {
+        Metric::BinaryBytes => stats.binary_bytes.as_ref().and_then(|s| s.cv()),
+        Metric::CpuMs => stats.cpu_ms.as_ref().and_then(|s| s.cv()),
+        Metric::CtxSwitches => stats.ctx_switches.as_ref().and_then(|s| s.cv()),
+        Metric::MaxRssKb => stats.max_rss_kb.as_ref().and_then(|s| s.cv()),
+        Metric::PageFaults => stats.page_faults.as_ref().and_then(|s| s.cv()),
+        Metric::ThroughputPerS => stats.throughput_per_s.as_ref().and_then(|s| s.cv()),
+        Metric::WallMs => stats.wall_ms.cv(),
     }
 }
 
@@ -1579,7 +1594,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction,
@@ -1649,7 +1664,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::ThroughputPerS,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction,
@@ -1711,7 +1726,7 @@ mod tests {
                         throughput_per_s: None,
                     };
                     let mut b = BTreeMap::new();
-                    b.insert(Metric::WallMs, Budget { threshold, warn_threshold, direction });
+                    b.insert(Metric::WallMs, Budget { noise_threshold: None,  threshold, warn_threshold, direction });
                     (bs, cs, Metric::WallMs, b)
                 } else {
                     let bs = Stats {
@@ -1733,7 +1748,7 @@ mod tests {
                         throughput_per_s: Some(F64Summary::new(current, current, current)),
                     };
                     let mut b = BTreeMap::new();
-                    b.insert(Metric::ThroughputPerS, Budget { threshold, warn_threshold, direction });
+                    b.insert(Metric::ThroughputPerS, Budget { noise_threshold: None,  threshold, warn_threshold, direction });
                     (bs, cs, Metric::ThroughputPerS, b)
                 };
 
@@ -1795,7 +1810,7 @@ mod tests {
                     let mut budgets = BTreeMap::new();
                     budgets.insert(
                         Metric::ThroughputPerS,
-                        Budget {
+                        Budget { noise_threshold: None,
                             threshold,
                             warn_threshold,
                             direction: Direction::Higher,
@@ -1919,7 +1934,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -1981,7 +1996,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -1989,7 +2004,7 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::MaxRssKb,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2069,7 +2084,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2077,7 +2092,7 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::MaxRssKb,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2085,7 +2100,7 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::ThroughputPerS,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Higher,
@@ -2147,7 +2162,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2155,7 +2170,7 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::MaxRssKb,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2217,7 +2232,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2225,7 +2240,7 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::MaxRssKb,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2284,7 +2299,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget {
+                    Budget { noise_threshold: None,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2293,7 +2308,7 @@ mod tests {
                 if num_metrics >= 2 {
                     budgets.insert(
                         Metric::MaxRssKb,
-                        Budget {
+                        Budget { noise_threshold: None,
                             threshold,
                             warn_threshold,
                             direction: Direction::Lower,
@@ -2303,7 +2318,7 @@ mod tests {
                 if num_metrics >= 3 {
                     budgets.insert(
                         Metric::ThroughputPerS,
-                        Budget {
+                        Budget { noise_threshold: None,
                             threshold,
                             warn_threshold,
                             direction: Direction::Higher,
@@ -2359,7 +2374,7 @@ mod tests {
                     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
                 };
                 let mut budgets = BTreeMap::new();
-                budgets.insert(Metric::WallMs, Budget {
+                budgets.insert(Metric::WallMs, Budget { noise_threshold: None,
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
 
@@ -2419,7 +2434,7 @@ mod tests {
                 let baseline = make_run_receipt_for_prop("base", baseline_wall);
                 let current = make_run_receipt_for_prop("cur", current_wall);
                 let mut budgets = BTreeMap::new();
-                budgets.insert(Metric::WallMs, Budget {
+                budgets.insert(Metric::WallMs, Budget { noise_threshold: None,
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
                 let stats_map = BTreeMap::new();
@@ -2640,11 +2655,7 @@ mod tests {
                 a in 1u64..10000,
                 b in 1u64..10000,
             ) {
-                let budget = Budget {
-                    threshold: 1.0,
-                    warn_threshold: 0.5,
-                    direction: Direction::Lower,
-                };
+                let budget = Budget::new(1.0, 0.5, Direction::Lower);
 
                 let mk = |median: u64| Stats {
                     wall_ms: U64Summary::new(median, median, median),
@@ -2693,11 +2704,7 @@ mod tests {
                 delta in 1u64..5000,
             ) {
                 let current = baseline + delta; // strictly worse (Direction::Lower)
-                let budget = Budget {
-                    threshold: 0.0,
-                    warn_threshold: 0.0,
-                    direction: Direction::Lower,
-                };
+                let budget = Budget::new(0.0, 0.0, Direction::Lower);
                 let mk = |v: u64| Stats {
                     wall_ms: U64Summary::new(v, v, v ),
                     cpu_ms: None, page_faults: None, ctx_switches: None,
@@ -2725,11 +2732,7 @@ mod tests {
             ) {
                 // current = baseline * (1 + factor/100)
                 let current = baseline + (baseline * factor) / 100;
-                let budget = Budget {
-                    threshold: 1.0,
-                    warn_threshold: 0.5,
-                    direction: Direction::Lower,
-                };
+                let budget = Budget::new(1.0, 0.5, Direction::Lower);
                 let mk = |v: u64| Stats {
                     wall_ms: U64Summary::new(v, v, v ),
                     cpu_ms: None, page_faults: None, ctx_switches: None,
@@ -2980,14 +2983,7 @@ mod tests {
         };
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20, // 20% threshold
-                warn_threshold: 0.10,
-                direction: Direction::Lower, // Lower cpu_ms is better
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3036,14 +3032,7 @@ mod tests {
         };
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3088,14 +3077,7 @@ mod tests {
         };
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3130,14 +3112,7 @@ mod tests {
         };
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3173,14 +3148,7 @@ mod tests {
         };
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,      // 20% fail threshold
-                warn_threshold: 0.10, // 10% warn threshold
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3219,14 +3187,7 @@ mod tests {
         };
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
 
         let c = compare_stats(&baseline, &current, &budgets).unwrap();
         let d = c.deltas.get(&Metric::WallMs).unwrap();
@@ -3258,11 +3219,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(
             Metric::ThroughputPerS,
-            Budget {
-                threshold: 0.15,
-                warn_threshold: 0.135,
-                direction: Direction::Higher,
-            },
+            Budget::new(0.15, 0.135, Direction::Higher),
         );
 
         let c = compare_stats(&baseline, &current, &budgets).unwrap();
@@ -3455,14 +3412,7 @@ mod tests {
             };
 
             let mut budgets = BTreeMap::new();
-            budgets.insert(
-                Metric::WallMs,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Lower,
-                },
-            );
+            budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
             let result = compare_stats(&baseline, &current, &budgets);
 
@@ -3510,11 +3460,7 @@ mod tests {
             let mut budgets = BTreeMap::new();
             budgets.insert(
                 Metric::ThroughputPerS,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Higher,
-                },
+                Budget::new(0.20, 0.10, Direction::Higher),
             );
 
             let result = compare_stats(&baseline, &current, &budgets);
@@ -3561,14 +3507,7 @@ mod tests {
             };
 
             let mut budgets = BTreeMap::new();
-            budgets.insert(
-                Metric::MaxRssKb,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Lower,
-                },
-            );
+            budgets.insert(Metric::MaxRssKb, Budget::new(0.20, 0.10, Direction::Lower));
 
             let result = compare_stats(&baseline, &current, &budgets);
 
@@ -3617,11 +3556,7 @@ mod tests {
             let mut budgets = BTreeMap::new();
             budgets.insert(
                 Metric::ThroughputPerS,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Higher,
-                },
+                Budget::new(0.20, 0.10, Direction::Higher),
             );
 
             let result = compare_stats(&baseline, &current, &budgets);
@@ -3776,11 +3711,7 @@ mod tests {
 
         /// Helper to create a Budget with given threshold.
         fn make_budget(threshold: f64) -> Budget {
-            Budget {
-                threshold,
-                warn_threshold: threshold * 0.9,
-                direction: Direction::Lower,
-            }
+            Budget::new(threshold, threshold * 0.9, Direction::Lower)
         }
 
         /// Test: Empty deltas produces no findings.

@@ -123,15 +123,9 @@ impl FuzzMetric {
 }
 
 #[derive(Arbitrary, Debug, Clone)]
-struct FuzzBudget {
-    threshold: f64,
-    warn_threshold: f64,
-    direction: FuzzDirection,
-}
+struct FuzzBudget::new(f64, f64, FuzzDirection)
 
-impl FuzzBudget {
-    fn to_perfgate(&self) -> perfgate_types::Budget {
-        // Filter NaN and ensure thresholds are non-negative
+impl FuzzBudget {fn to_perfgate(&self) -> perfgate_types::Budget {// Filter NaN and ensure thresholds are non-negative
         let filter = |v: f64| {
             if v.is_nan() || v.is_infinite() {
                 0.2 // Default to 20% threshold
@@ -149,7 +143,7 @@ impl FuzzBudget {
             (warn_threshold, threshold)
         };
 
-        perfgate_types::Budget {
+        perfgate_types::Budget { noise_threshold: None, 
             threshold,
             warn_threshold,
             direction: self.direction.to_perfgate(),
@@ -185,3 +179,11 @@ fuzz_target!(|input: CompareStatsInput| {
     // It may return an error (e.g., InvalidBaseline), which is fine
     let _ = perfgate_domain::compare_stats(&baseline, &current, &budgets);
 });
+
+
+
+
+
+
+
+

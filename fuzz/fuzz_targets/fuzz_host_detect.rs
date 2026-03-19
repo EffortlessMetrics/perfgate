@@ -38,3 +38,10 @@ fuzz_target!(|input: HostDetectInput| {
     assert!(perfgate_host_detect::detect_host_mismatch(&input.current, &input.current).is_none());
 });
 
+
+
+
+
+
+
+

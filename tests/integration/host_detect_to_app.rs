@@ -49,14 +49,7 @@ fn make_run_receipt(host: HostInfo) -> RunReceipt {
 
 fn make_budgets() -> BTreeMap<Metric, Budget> {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
     budgets
 }
 

@@ -54,6 +54,7 @@ mod tests {
     fn test_resolve_baseline_path_uses_cli_over_config() {
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
                 baseline_pattern: Some("pattern/{bench}.receipt.json".to_string()),
                 baseline_dir: Some("bases".to_string()),
                 ..Default::default()

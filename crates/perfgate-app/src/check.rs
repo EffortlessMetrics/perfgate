@@ -50,6 +50,9 @@ pub struct CheckRequest {
     /// If true, treat warn verdict as failure.
     pub fail_on_warn: bool,
 
+    /// Optional noise threshold (coefficient of variation).
+    pub noise_threshold: Option<f64>,
+
     /// Tool info for receipts.
     pub tool: ToolInfo,
 
@@ -165,8 +168,13 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let report_path = req.out_dir.join("report.json");
         let (compare_receipt, compare_path, report) = if let Some(baseline) = &req.baseline {
             // Build budgets from config
-            let (budgets, metric_statistics) =
-                self.build_budgets(bench_config, &req.config, baseline, &run_receipt)?;
+            let (budgets, metric_statistics) = self.build_budgets(
+                bench_config,
+                &req.config,
+                baseline,
+                &run_receipt,
+                req.noise_threshold,
+            )?;
 
             // Compare
             let compare_req = CompareRequest {
@@ -320,6 +328,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         config: &ConfigFile,
         baseline: &RunReceipt,
         current: &RunReceipt,
+        cli_noise_threshold: Option<f64>,
     ) -> anyhow::Result<(BTreeMap<Metric, Budget>, BTreeMap<Metric, MetricStatistic>)> {
         let defaults = &config.defaults;
 
@@ -368,6 +377,12 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
 
             let warn_threshold = threshold * warn_factor;
 
+            let noise_threshold = override_opt
+                .as_ref()
+                .and_then(|o| o.noise_threshold)
+                .or(cli_noise_threshold)
+                .or(defaults.noise_threshold);
+
             let direction = override_opt
                 .as_ref()
                 .and_then(|o| o.direction)
@@ -383,9 +398,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                 Budget {
                     threshold,
                     warn_threshold,
+                    noise_threshold,
                     direction,
                 },
             );
+
             metric_statistics.insert(metric, statistic);
         }
 
@@ -748,6 +765,7 @@ mod tests {
         fail_on_warn: bool,
     ) -> CheckRequest {
         CheckRequest {
+            noise_threshold: None,
             config,
             bench_name: "bench".to_string(),
             out_dir: PathBuf::from("out"),
@@ -772,14 +790,7 @@ mod tests {
     #[test]
     fn test_build_report_from_compare() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -909,6 +920,7 @@ mod tests {
 
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
                 repeat: Some(7),
                 warmup: Some(2),
                 threshold: None,
@@ -923,6 +935,7 @@ mod tests {
         };
 
         let req = CheckRequest {
+            noise_threshold: None,
             config: config.clone(),
             bench_name: "bench".to_string(),
             out_dir: PathBuf::from("out"),
@@ -1008,6 +1021,7 @@ mod tests {
         overrides.insert(
             Metric::WallMs,
             BudgetOverride {
+                noise_threshold: None,
                 threshold: Some(0.3),
                 direction: Some(Direction::Higher),
                 warn_factor: Some(0.8),
@@ -1029,6 +1043,7 @@ mod tests {
 
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
                 repeat: None,
                 warmup: None,
                 threshold: Some(0.2),
@@ -1078,7 +1093,7 @@ mod tests {
         );
 
         let (budgets, statistics) = usecase
-            .build_budgets(&bench, &config, &baseline, &current)
+            .build_budgets(&bench, &config, &baseline, &current, None)
             .expect("build budgets");
 
         let wall = budgets.get(&Metric::WallMs).expect("wall budget");
@@ -1223,6 +1238,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
                 repeat: None,
                 warmup: None,
                 threshold: Some(0.2),
@@ -1356,6 +1372,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
                 repeat: None,
                 warmup: None,
                 threshold: Some(0.5),

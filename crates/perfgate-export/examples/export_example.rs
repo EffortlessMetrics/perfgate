@@ -80,22 +80,8 @@ fn create_run_receipt() -> RunReceipt {
 
 fn create_compare_receipt() -> CompareReceipt {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.2,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.15,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.2, 0.15, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.15, 0.10, Direction::Lower));
 
     let mut deltas = BTreeMap::new();
     deltas.insert(

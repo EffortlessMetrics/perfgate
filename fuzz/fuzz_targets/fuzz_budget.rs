@@ -20,3 +20,10 @@ fuzz_target!(|input: BudgetInput| {
     }
 });
 
+
+
+
+
+
+
+

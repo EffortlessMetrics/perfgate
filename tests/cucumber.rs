@@ -2864,6 +2864,7 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -2914,6 +2915,7 @@ async fn given_config_file_with_bench_threshold(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(threshold),
@@ -2965,6 +2967,7 @@ async fn given_config_file_with_bench_threshold_warn(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(threshold),
@@ -3013,6 +3016,7 @@ async fn given_config_file_with_defaults_repeat_warmup(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(repeat),
             warmup: Some(warmup),
             threshold: Some(0.20),
@@ -3047,6 +3051,7 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(repeat),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3131,6 +3136,7 @@ async fn given_config_file_with_bench_baseline_dir(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3180,6 +3186,7 @@ async fn given_config_file_with_bench_baseline_pattern(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3374,6 +3381,7 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3424,6 +3432,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.0),
@@ -3478,6 +3487,7 @@ async fn given_config_file_with_benches_lenient(
     // threshold=100000.0 (very lenient, no fail), warn_factor=0.0 (warn at any regression)
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(100_000.0),
@@ -3537,6 +3547,7 @@ async fn given_config_file_with_mixed_thresholds(
     lenient_budgets.insert(
         Metric::WallMs,
         BudgetOverride {
+            noise_threshold: None,
             threshold: Some(100_000.0),
             direction: None,
             warn_factor: Some(0.0),
@@ -3558,6 +3569,7 @@ async fn given_config_file_with_mixed_thresholds(
     // Default threshold=0.0 makes regressions fail unless overridden
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.0),
@@ -4634,6 +4646,7 @@ async fn given_budget_direction_lower(
     warn_threshold: f64,
 ) {
     world.test_budget = Some(perfgate_types::Budget {
+        noise_threshold: None,
         threshold,
         warn_threshold,
         direction: perfgate_types::Direction::Lower,
@@ -4647,6 +4660,7 @@ async fn given_budget_direction_higher(
     warn_threshold: f64,
 ) {
     world.test_budget = Some(perfgate_types::Budget {
+        noise_threshold: None,
         threshold,
         warn_threshold,
         direction: perfgate_types::Direction::Higher,
@@ -4656,7 +4670,7 @@ async fn given_budget_direction_higher(
 #[when(expr = "I evaluate budget with baseline {float} and current {float}")]
 async fn when_evaluate_budget(world: &mut PerfgateWorld, baseline: f64, current: f64) {
     let budget = world.test_budget.as_ref().expect("Budget not set");
-    match evaluate_budget(baseline, current, budget) {
+    match evaluate_budget(baseline, current, budget, None) {
         Ok(result) => {
             world.budget_result = Some(result);
             world.budget_error = None;

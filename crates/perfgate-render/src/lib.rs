@@ -270,14 +270,7 @@ mod tests {
 
     fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.1,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.1, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(

@@ -71,39 +71,27 @@ fn make_run_receipt(samples: Vec<u64>) -> RunReceipt {
 
 #[test]
 fn budget_evaluate_basic_pass() {
-    let budget = Budget {
-        threshold: 0.20,
-        warn_threshold: 0.10,
-        direction: Direction::Lower,
-    };
+    let budget = Budget::new(0.20, 0.10, Direction::Lower);
 
-    let result = evaluate_budget(100.0, 105.0, &budget).unwrap();
+    let result = evaluate_budget(100.0, 105.0, &budget, None).unwrap();
     assert_eq!(result.status, MetricStatus::Pass);
     assert!((result.regression - 0.05).abs() < 1e-10);
 }
 
 #[test]
 fn budget_evaluate_basic_warn() {
-    let budget = Budget {
-        threshold: 0.20,
-        warn_threshold: 0.10,
-        direction: Direction::Lower,
-    };
+    let budget = Budget::new(0.20, 0.10, Direction::Lower);
 
-    let result = evaluate_budget(100.0, 115.0, &budget).unwrap();
+    let result = evaluate_budget(100.0, 115.0, &budget, None).unwrap();
     assert_eq!(result.status, MetricStatus::Warn);
     assert!((result.regression - 0.15).abs() < 1e-10);
 }
 
 #[test]
 fn budget_evaluate_basic_fail() {
-    let budget = Budget {
-        threshold: 0.20,
-        warn_threshold: 0.10,
-        direction: Direction::Lower,
-    };
+    let budget = Budget::new(0.20, 0.10, Direction::Lower);
 
-    let result = evaluate_budget(100.0, 130.0, &budget).unwrap();
+    let result = evaluate_budget(100.0, 130.0, &budget, None).unwrap();
     assert_eq!(result.status, MetricStatus::Fail);
     assert!((result.regression - 0.30).abs() < 1e-10);
 }
@@ -128,16 +116,12 @@ fn budget_regression_higher_is_better() {
 
 #[test]
 fn budget_invalid_baseline() {
-    let budget = Budget {
-        threshold: 0.20,
-        warn_threshold: 0.10,
-        direction: Direction::Lower,
-    };
+    let budget = Budget::new(0.20, 0.10, Direction::Lower);
 
-    let result = evaluate_budget(0.0, 100.0, &budget);
+    let result = evaluate_budget(0.0, 100.0, &budget, None);
     assert!(matches!(result, Err(BudgetError::InvalidBaseline)));
 
-    let result = evaluate_budget(-10.0, 100.0, &budget);
+    let result = evaluate_budget(-10.0, 100.0, &budget, None);
     assert!(matches!(result, Err(BudgetError::InvalidBaseline)));
 }
 
@@ -165,14 +149,7 @@ fn significance_testing_with_sufficient_samples() {
     let current = make_run_receipt(vec![110, 112, 108, 111, 109, 110, 112, 108, 111, 109]);
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.05,
-            warn_threshold: 0.03,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.05, 0.03, Direction::Lower));
 
     let comparison = compare_runs(
         &baseline,
@@ -199,14 +176,7 @@ fn significance_testing_without_significance_policy() {
     let current = make_run_receipt(vec![110, 110, 110]);
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.05,
-            warn_threshold: 0.03,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.05, 0.03, Direction::Lower));
 
     let comparison = compare_runs(&baseline, &current, &budgets, &BTreeMap::new(), None).unwrap();
 
@@ -220,14 +190,7 @@ fn significance_require_significance_passes_non_significant() {
     let current = make_run_receipt(vec![101, 103, 99, 102, 100, 101, 103, 99, 102, 100]);
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.05,
-            warn_threshold: 0.03,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.05, 0.03, Direction::Lower));
 
     let comparison = compare_runs(
         &baseline,
@@ -324,29 +287,19 @@ fn budget_reason_token_format() {
 #[test]
 fn budget_evaluate_multiple_metrics() {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.30,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.30, 0.15, Direction::Lower));
 
     let metrics = vec![
         (Metric::WallMs, 100.0, 115.0),
         (Metric::MaxRssKb, 1000.0, 900.0),
     ];
 
-    let (deltas, verdict) = evaluate_budgets(metrics.into_iter(), &budgets).unwrap();
+    let (deltas, verdict) = evaluate_budgets(
+        metrics.into_iter().map(|(m, b, c)| (m, b, c, None)),
+        &budgets,
+    )
+    .unwrap();
 
     assert_eq!(deltas.len(), 2);
     assert_eq!(verdict.status, VerdictStatus::Warn);

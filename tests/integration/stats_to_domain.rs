@@ -131,14 +131,7 @@ fn domain_uses_stats_for_metric_values() {
     };
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.15,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.15, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 

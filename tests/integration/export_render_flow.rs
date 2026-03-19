@@ -95,14 +95,7 @@ fn make_run_receipt() -> RunReceipt {
 
 fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let mut deltas = BTreeMap::new();
     deltas.insert(
@@ -333,22 +326,8 @@ fn run_export_to_prometheus() {
 #[test]
 fn multiple_metrics_in_compare_flow() {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.30,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.30, 0.15, Direction::Lower));
 
     let mut deltas = BTreeMap::new();
     deltas.insert(

@@ -301,14 +301,7 @@ mod tests {
 
     fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.1,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.1, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -400,14 +393,7 @@ mod tests {
     #[test]
     fn markdown_renders_table() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -606,14 +592,7 @@ mod tests {
         );
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.1,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.1, Direction::Lower));
 
         let err = CompareUseCase::execute(CompareRequest {
             baseline: baseline.clone(),
@@ -753,6 +732,7 @@ mod property_tests {
                 // warn_threshold should be <= threshold
                 let warn_threshold = threshold * warn_factor;
                 Budget {
+                    noise_threshold: None,
                     threshold,
                     warn_threshold,
                     direction,

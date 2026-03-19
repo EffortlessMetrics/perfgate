@@ -19,7 +19,7 @@
 //! use std::collections::BTreeMap;
 //!
 //! // Create a budget for a lower-is-better metric (e.g., wall time)
-//! let budget = Budget {
+//! let budget = Budget { noise_threshold: None,
 //!     threshold: 0.20,       // 20% regression fails
 //!     warn_threshold: 0.10,  // 10% regression warns
 //!     direction: Direction::Lower,
@@ -29,7 +29,7 @@
 //! let baseline = 100.0;
 //! let current = 115.0;
 //!
-//! let result = evaluate_budget(baseline, current, &budget).unwrap();
+//! let result = evaluate_budget(baseline, current, &budget, None).unwrap();
 //!
 //! assert_eq!(result.status, MetricStatus::Warn);
 //! assert!((result.regression - 0.15).abs() < 1e-10);
@@ -49,14 +49,14 @@ use thiserror::Error;
 /// use perfgate_budget::{evaluate_budget, BudgetError};
 /// use perfgate_types::{Budget, Direction};
 ///
-/// let budget = Budget {
+/// let budget = Budget { noise_threshold: None,
 ///     threshold: 0.20,
 ///     warn_threshold: 0.10,
 ///     direction: Direction::Lower,
 /// };
 ///
 /// // A zero baseline produces an error
-/// let err = evaluate_budget(0.0, 100.0, &budget).unwrap_err();
+/// let err = evaluate_budget(0.0, 100.0, &budget, None).unwrap_err();
 /// assert_eq!(err.to_string(), "baseline value must be > 0");
 /// ```
 #[derive(Debug, Error)]
@@ -76,13 +76,13 @@ pub enum BudgetError {
 /// use perfgate_budget::evaluate_budget;
 /// use perfgate_types::{Budget, Direction, MetricStatus};
 ///
-/// let budget = Budget {
+/// let budget = Budget { noise_threshold: None,
 ///     threshold: 0.20,
 ///     warn_threshold: 0.10,
 ///     direction: Direction::Lower,
 /// };
 ///
-/// let result = evaluate_budget(100.0, 110.0, &budget).unwrap();
+/// let result = evaluate_budget(100.0, 110.0, &budget, None).unwrap();
 /// assert_eq!(result.baseline, 100.0);
 /// assert_eq!(result.current, 110.0);
 /// assert!((result.ratio - 1.10).abs() < 1e-10);
@@ -102,6 +102,8 @@ pub struct BudgetResult {
     pub pct: f64,
     /// Positive regression amount (0 if improvement).
     pub regression: f64,
+    /// Detected noise level (coefficient of variation), if available.
+    pub noise: Option<f64>,
     /// Determined status based on budget thresholds.
     pub status: MetricStatus,
 }
@@ -111,13 +113,14 @@ pub struct BudgetResult {
 /// This is the core budget evaluation function that:
 /// 1. Validates the baseline is positive
 /// 2. Calculates ratio, percentage change, and regression
-/// 3. Determines the metric status based on budget thresholds
+/// 3. Determines the metric status based on budget thresholds and noise
 ///
 /// # Arguments
 ///
 /// * `baseline` - The baseline value (must be > 0)
 /// * `current` - The current value to compare
 /// * `budget` - The budget configuration with thresholds and direction
+/// * `current_cv` - Optional coefficient of variation for the current run
 ///
 /// # Returns
 ///
@@ -126,35 +129,11 @@ pub struct BudgetResult {
 /// # Errors
 ///
 /// Returns `BudgetError::InvalidBaseline` if baseline is <= 0.
-///
-/// # Example
-///
-/// ```
-/// use perfgate_budget::evaluate_budget;
-/// use perfgate_types::{Budget, Direction, MetricStatus};
-///
-/// let budget = Budget {
-///     threshold: 0.20,
-///     warn_threshold: 0.10,
-///     direction: Direction::Lower,
-/// };
-///
-/// // 15% regression -> Warn
-/// let result = evaluate_budget(100.0, 115.0, &budget).unwrap();
-/// assert_eq!(result.status, MetricStatus::Warn);
-///
-/// // 25% regression -> Fail
-/// let result = evaluate_budget(100.0, 125.0, &budget).unwrap();
-/// assert_eq!(result.status, MetricStatus::Fail);
-///
-/// // 5% regression -> Pass
-/// let result = evaluate_budget(100.0, 105.0, &budget).unwrap();
-/// assert_eq!(result.status, MetricStatus::Pass);
-/// ```
 pub fn evaluate_budget(
     baseline: f64,
     current: f64,
     budget: &Budget,
+    current_cv: Option<f64>,
 ) -> Result<BudgetResult, BudgetError> {
     if baseline <= 0.0 {
         return Err(BudgetError::InvalidBaseline);
@@ -163,7 +142,16 @@ pub fn evaluate_budget(
     let ratio = current / baseline;
     let pct = (current - baseline) / baseline;
     let regression = calculate_regression(baseline, current, budget.direction);
-    let status = determine_status(regression, budget.threshold, budget.warn_threshold);
+
+    let mut status = determine_status(regression, budget.threshold, budget.warn_threshold);
+
+    // Noise detection: if CV exceeds noise_threshold, escalate to Warn
+    if let (Some(cv), Some(limit)) = (current_cv, budget.noise_threshold)
+        && cv > limit
+        && status == MetricStatus::Pass
+    {
+        status = MetricStatus::Warn;
+    }
 
     Ok(BudgetResult {
         baseline,
@@ -171,6 +159,7 @@ pub fn evaluate_budget(
         ratio,
         pct,
         regression,
+        noise: current_cv,
         status,
     })
 }
@@ -346,57 +335,26 @@ pub fn reason_token(metric: Metric, status: MetricStatus) -> String {
 ///
 /// # Arguments
 ///
-/// * `metrics` - Iterator of (metric, baseline, current) tuples
+/// * `metrics` - Iterator of (metric, baseline, current, current_cv) tuples
 /// * `budgets` - Map of metrics to their budget configurations
 ///
 /// # Returns
 ///
 /// A tuple of (deltas map, verdict) where deltas contains per-metric results.
-///
-/// # Examples
-///
-/// ```
-/// use perfgate_budget::evaluate_budgets;
-/// use perfgate_types::{Budget, Direction, Metric, MetricStatus, VerdictStatus};
-/// use std::collections::BTreeMap;
-///
-/// let mut budgets = BTreeMap::new();
-/// budgets.insert(Metric::WallMs, Budget {
-///     threshold: 0.20,
-///     warn_threshold: 0.10,
-///     direction: Direction::Lower,
-/// });
-/// budgets.insert(Metric::MaxRssKb, Budget {
-///     threshold: 0.30,
-///     warn_threshold: 0.15,
-///     direction: Direction::Lower,
-/// });
-///
-/// let metrics = vec![
-///     (Metric::WallMs, 100.0, 115.0),    // 15% regression -> Warn
-///     (Metric::MaxRssKb, 1000.0, 900.0), // improvement -> Pass
-/// ];
-///
-/// let (deltas, verdict) = evaluate_budgets(metrics.into_iter(), &budgets).unwrap();
-/// assert_eq!(deltas.len(), 2);
-/// assert_eq!(verdict.status, VerdictStatus::Warn);
-/// assert_eq!(verdict.counts.warn, 1);
-/// assert_eq!(verdict.counts.pass, 1);
-/// ```
 pub fn evaluate_budgets<'a, I>(
     metrics: I,
     budgets: &BTreeMap<Metric, Budget>,
 ) -> Result<(BTreeMap<Metric, BudgetResult>, Verdict), BudgetError>
 where
-    I: Iterator<Item = (Metric, f64, f64)> + 'a,
+    I: Iterator<Item = (Metric, f64, f64, Option<f64>)> + 'a,
 {
     let mut deltas: BTreeMap<Metric, BudgetResult> = BTreeMap::new();
     let mut statuses: Vec<MetricStatus> = Vec::new();
     let mut reasons: Vec<String> = Vec::new();
 
-    for (metric, baseline, current) in metrics {
+    for (metric, baseline, current, cv) in metrics {
         if let Some(budget) = budgets.get(&metric) {
-            let result = evaluate_budget(baseline, current, budget)?;
+            let result = evaluate_budget(baseline, current, budget, cv)?;
 
             if result.status != MetricStatus::Pass {
                 reasons.push(reason_token(metric, result.status));
@@ -418,17 +376,13 @@ mod tests {
     use super::*;
 
     fn test_budget() -> Budget {
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        }
+        Budget::new(0.20, 0.10, Direction::Lower)
     }
 
     #[test]
     fn evaluate_budget_pass() {
         let budget = test_budget();
-        let result = evaluate_budget(100.0, 105.0, &budget).unwrap();
+        let result = evaluate_budget(100.0, 105.0, &budget, None).unwrap();
         assert_eq!(result.status, MetricStatus::Pass);
         assert!((result.regression - 0.05).abs() < 1e-10);
     }
@@ -436,7 +390,7 @@ mod tests {
     #[test]
     fn evaluate_budget_warn() {
         let budget = test_budget();
-        let result = evaluate_budget(100.0, 115.0, &budget).unwrap();
+        let result = evaluate_budget(100.0, 115.0, &budget, None).unwrap();
         assert_eq!(result.status, MetricStatus::Warn);
         assert!((result.regression - 0.15).abs() < 1e-10);
     }
@@ -444,7 +398,7 @@ mod tests {
     #[test]
     fn evaluate_budget_fail() {
         let budget = test_budget();
-        let result = evaluate_budget(100.0, 130.0, &budget).unwrap();
+        let result = evaluate_budget(100.0, 130.0, &budget, None).unwrap();
         assert_eq!(result.status, MetricStatus::Fail);
         assert!((result.regression - 0.30).abs() < 1e-10);
     }
@@ -452,14 +406,14 @@ mod tests {
     #[test]
     fn evaluate_budget_zero_baseline() {
         let budget = test_budget();
-        let result = evaluate_budget(0.0, 100.0, &budget);
+        let result = evaluate_budget(0.0, 100.0, &budget, None);
         assert!(result.is_err());
     }
 
     #[test]
     fn evaluate_budget_negative_baseline() {
         let budget = test_budget();
-        let result = evaluate_budget(-10.0, 100.0, &budget);
+        let result = evaluate_budget(-10.0, 100.0, &budget, None);
         assert!(result.is_err());
     }
 
@@ -566,29 +520,19 @@ mod tests {
     #[test]
     fn evaluate_budgets_multiple_metrics() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
-        budgets.insert(
-            Metric::MaxRssKb,
-            Budget {
-                threshold: 0.30,
-                warn_threshold: 0.15,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.30, 0.15, Direction::Lower));
 
         let metrics = vec![
             (Metric::WallMs, 100.0, 115.0),    // 15% regression -> Warn
             (Metric::MaxRssKb, 1000.0, 900.0), // 0% regression (improvement) -> Pass
         ];
 
-        let (deltas, verdict) = evaluate_budgets(metrics.into_iter(), &budgets).unwrap();
+        let (deltas, verdict) = evaluate_budgets(
+            metrics.into_iter().map(|(m, b, c)| (m, b, c, None)),
+            &budgets,
+        )
+        .unwrap();
 
         assert_eq!(deltas.len(), 2);
         assert_eq!(verdict.status, VerdictStatus::Warn);
@@ -606,6 +550,7 @@ mod property_tests {
         (0.01f64..1.0, 0.0f64..=1.0).prop_map(|(threshold, warn_factor)| {
             let warn_threshold = threshold * warn_factor;
             Budget {
+                noise_threshold: None,
                 threshold,
                 warn_threshold,
                 direction: Direction::Lower,
@@ -630,7 +575,7 @@ mod property_tests {
             current in 0.1f64..20000.0,
             budget in budget_strategy(),
         ) {
-            let result = evaluate_budget(baseline, current, &budget).unwrap();
+            let result = evaluate_budget(baseline, current, &budget, None).unwrap();
 
             // Check ratio calculation
             let expected_ratio = current / baseline;
@@ -701,8 +646,8 @@ mod property_tests {
             current in 0.1f64..20000.0,
             budget in budget_strategy(),
         ) {
-            let r1 = evaluate_budget(baseline, current, &budget).unwrap();
-            let r2 = evaluate_budget(baseline, current, &budget).unwrap();
+            let r1 = evaluate_budget(baseline, current, &budget, None).unwrap();
+            let r2 = evaluate_budget(baseline, current, &budget, None).unwrap();
             prop_assert_eq!(r1, r2, "evaluate_budget must be deterministic");
         }
 

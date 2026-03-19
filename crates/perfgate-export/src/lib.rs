@@ -707,22 +707,8 @@ mod tests {
 
     fn create_test_compare_receipt() -> CompareReceipt {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
-        budgets.insert(
-            Metric::MaxRssKb,
-            Budget {
-                threshold: 0.15,
-                warn_threshold: 0.135,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.15, 0.135, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -1527,14 +1513,9 @@ mod tests {
                         status,
                     },
                 );
-                receipt.budgets.insert(
-                    metric,
-                    Budget {
-                        threshold: 0.2,
-                        warn_threshold: 0.15,
-                        direction: Direction::Lower,
-                    },
-                );
+                receipt
+                    .budgets
+                    .insert(metric, Budget::new(0.2, 0.15, Direction::Lower));
                 let _ = expected_code; // used below
             }
 
@@ -1913,6 +1894,7 @@ mod property_tests {
             |(threshold, warn_factor, direction)| {
                 let warn_threshold = threshold * warn_factor;
                 Budget {
+                    noise_threshold: None,
                     threshold,
                     warn_threshold,
                     direction,

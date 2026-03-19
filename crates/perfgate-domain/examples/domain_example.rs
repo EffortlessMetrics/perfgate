@@ -56,6 +56,7 @@ fn main() {
     budgets.insert(
         Metric::WallMs,
         Budget {
+            noise_threshold: None,
             threshold: 0.20,      // 20% regression = fail
             warn_threshold: 0.10, // 10% regression = warn
             direction: Direction::Lower,

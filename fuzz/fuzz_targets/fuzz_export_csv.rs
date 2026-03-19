@@ -11,3 +11,10 @@ fuzz_target!(|data: &[u8]| {
     let _ = perfgate_export::csv_escape(&s);
 });
 
+
+
+
+
+
+
+

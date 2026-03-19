@@ -73,14 +73,7 @@ fn run_receipt(name: &str, samples: Vec<Sample>) -> RunReceipt {
 
 fn default_budgets() -> BTreeMap<Metric, Budget> {
     let mut m = BTreeMap::new();
-    m.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    m.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
     m
 }
 
@@ -151,14 +144,7 @@ fn types_to_domain_all_optional_metrics_preserved() {
         Metric::CtxSwitches,
         Metric::BinaryBytes,
     ] {
-        budgets.insert(
-            metric,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(metric, Budget::new(0.20, 0.10, Direction::Lower));
     }
 
     let comparison = compare_runs(&baseline, &current, &budgets, &BTreeMap::new(), None).unwrap();
@@ -658,6 +644,7 @@ direction = "lower"
             budgets.insert(
                 *metric,
                 Budget {
+                    noise_threshold: None,
                     threshold,
                     warn_threshold: threshold * warn_factor,
                     direction,
@@ -710,11 +697,11 @@ command = ["echo"]
     let mut budgets = BTreeMap::new();
     budgets.insert(
         Metric::WallMs,
-        Budget {
-            threshold: global_threshold,
-            warn_threshold: global_threshold * global_warn_factor,
-            direction: Direction::Lower,
-        },
+        Budget::new(
+            global_threshold,
+            global_threshold * global_warn_factor,
+            Direction::Lower,
+        ),
     );
 
     assert!((budgets[&Metric::WallMs].threshold - 0.20).abs() < f64::EPSILON);
@@ -811,11 +798,7 @@ threshold = 0.30
     let mut budgets_a = BTreeMap::new();
     budgets_a.insert(
         Metric::WallMs,
-        Budget {
-            threshold: threshold_a,
-            warn_threshold: threshold_a * global_wf,
-            direction: Direction::Lower,
-        },
+        Budget::new(threshold_a, threshold_a * global_wf, Direction::Lower),
     );
 
     let cmp_a = compare_runs(&baseline, &current, &budgets_a, &BTreeMap::new(), None).unwrap();
@@ -824,11 +807,7 @@ threshold = 0.30
     let mut budgets_b = BTreeMap::new();
     budgets_b.insert(
         Metric::WallMs,
-        Budget {
-            threshold: threshold_b,
-            warn_threshold: threshold_b * global_wf,
-            direction: Direction::Lower,
-        },
+        Budget::new(threshold_b, threshold_b * global_wf, Direction::Lower),
     );
 
     let cmp_b = compare_runs(&baseline, &current, &budgets_b, &BTreeMap::new(), None).unwrap();

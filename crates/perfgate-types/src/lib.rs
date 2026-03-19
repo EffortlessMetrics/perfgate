@@ -375,6 +375,15 @@ impl U64Summary {
             stddev: None,
         }
     }
+
+    /// Returns the coefficient of variation (stddev / mean).
+    /// Returns None if mean is 0 or stddev/mean are not present.
+    pub fn cv(&self) -> Option<f64> {
+        match (self.mean, self.stddev) {
+            (Some(mean), Some(stddev)) if mean > 0.0 => Some(stddev / mean),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -397,6 +406,15 @@ impl F64Summary {
             max,
             mean: None,
             stddev: None,
+        }
+    }
+
+    /// Returns the coefficient of variation (stddev / mean).
+    /// Returns None if mean is 0 or stddev/mean are not present.
+    pub fn cv(&self) -> Option<f64> {
+        match (self.mean, self.stddev) {
+            (Some(mean), Some(stddev)) if mean > 0.0 => Some(stddev / mean),
+            _ => None,
         }
     }
 }
@@ -660,7 +678,24 @@ pub struct Budget {
     /// Warn threshold, as a fraction.
     pub warn_threshold: f64,
 
+    /// Noise threshold (coefficient of variation).
+    /// If CV exceeds this, the metric is considered flaky/noisy.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub noise_threshold: Option<f64>,
+
     pub direction: Direction,
+}
+
+impl Budget {
+    /// Creates a new budget with defaults for noise_threshold.
+    pub fn new(threshold: f64, warn_threshold: f64, direction: Direction) -> Self {
+        Self {
+            threshold,
+            warn_threshold,
+            noise_threshold: None,
+            direction,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1026,6 +1061,9 @@ pub struct DefaultsConfig {
     pub warn_factor: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub noise_threshold: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub out_dir: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -1154,6 +1192,9 @@ pub struct BudgetOverride {
     pub warn_factor: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_threshold: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub statistic: Option<MetricStatistic>,
 }
 
@@ -1164,14 +1205,7 @@ mod tests {
     #[test]
     fn metric_serde_keys_are_snake_case() {
         let mut m = BTreeMap::new();
-        m.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        m.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
         let json = serde_json::to_string(&m).unwrap();
         assert!(json.contains("\"wall_ms\""));
     }
@@ -1651,22 +1685,8 @@ mod tests {
     #[test]
     fn compare_receipt_serde_roundtrip_typical() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
-        budgets.insert(
-            Metric::MaxRssKb,
-            Budget {
-                threshold: 0.15,
-                warn_threshold: 0.1,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -1822,6 +1842,7 @@ mod tests {
     fn config_file_serde_roundtrip_typical() {
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
                 repeat: Some(10),
                 warmup: Some(2),
                 threshold: Some(0.2),
@@ -1846,6 +1867,7 @@ mod tests {
                     m.insert(
                         Metric::WallMs,
                         BudgetOverride {
+                            noise_threshold: None,
                             threshold: Some(0.15),
                             direction: Some(Direction::Lower),
                             warn_factor: Some(0.85),
@@ -2459,6 +2481,7 @@ mod property_tests {
                 // warn_threshold should be <= threshold
                 let warn_threshold = threshold * warn_factor;
                 Budget {
+                    noise_threshold: None,
                     threshold,
                     warn_threshold,
                     direction,
@@ -2686,6 +2709,7 @@ mod property_tests {
             proptest::option::of(0.5f64..1.0),
         )
             .prop_map(|(threshold, direction, warn_factor)| BudgetOverride {
+                noise_threshold: None,
                 threshold,
                 direction,
                 warn_factor,
@@ -2751,6 +2775,7 @@ mod property_tests {
                     baseline_pattern,
                     markdown_template,
                 )| DefaultsConfig {
+                    noise_threshold: None,
                     repeat,
                     warmup,
                     threshold,

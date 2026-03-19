@@ -166,6 +166,13 @@
             }
           ]
         },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "statistic": {
           "anyOf": [
             {
@@ -215,6 +222,13 @@
             "string",
             "null"
           ]
+        },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "out_dir": {
           "type": [
