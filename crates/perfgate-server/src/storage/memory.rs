@@ -137,8 +137,8 @@ impl BaselineStore for InMemoryStore {
                 }
 
                 // Filter by tags (AND logic: all required tags must be present)
-                if let Some(ref required_tags) = parsed_tags {
-                    for tag in required_tags {
+                if !parsed_tags.is_empty() {
+                    for tag in &parsed_tags {
                         if !r.tags.contains(tag) {
                             return false;
                         }

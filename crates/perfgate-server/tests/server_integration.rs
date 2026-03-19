@@ -234,6 +234,7 @@ async fn test_promote_baseline_mock() {
         to_version: "production".to_string(),
         git_ref: Some("main".to_string()),
         git_sha: Some("def456".to_string()),
+        tags: vec![],
         normalize: false,
     };
 

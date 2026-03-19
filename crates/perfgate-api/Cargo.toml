@@ -1,0 +1,28 @@
+[package]
+name = "perfgate-api"
+description = "Common API types and models for perfgate baseline service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4.39", features = ["serde"] }
+perfgate-types.workspace = true
+perfgate-error.workspace = true
+perfgate-auth.workspace = true
+schemars.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+http.workspace = true
+axum = { workspace = true, optional = true }
+
+[features]
+default = []
+server = ["axum"]
