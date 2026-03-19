@@ -21,7 +21,8 @@ use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use perfgate_server::{JwtConfig, Role, ServerConfig, StorageBackend, run_server};
+use perfgate_server::{JwtConfig, OidcConfig, Role, ServerConfig, StorageBackend, run_server};
+use std::collections::HashMap;
 
 /// perfgate baseline service server.
 #[derive(Parser, Debug)]
@@ -63,6 +64,15 @@ struct Args {
     /// Expected JWT audience.
     #[arg(long)]
     jwt_audience: Option<String>,
+
+    /// GitHub Actions OIDC mapping in format "org/repo:project_id:role" (can be specified multiple times).
+    /// Example: --github-oidc EffortlessMetrics/perfgate:perfgate-oss:contributor
+    #[arg(long = "github-oidc")]
+    github_oidc: Vec<String>,
+
+    /// Expected audience for GitHub OIDC tokens.
+    #[arg(long, default_value = "perfgate")]
+    github_oidc_audience: String,
 
     /// Disable CORS
     #[arg(long)]
@@ -188,6 +198,34 @@ async fn main() {
     // Add API keys
     for cfg in args.api_keys {
         config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
+    }
+
+    if !args.github_oidc.is_empty() {
+        let mut repo_mappings = HashMap::new();
+        for mapping in args.github_oidc {
+            let parts: Vec<&str> = mapping.split(':').collect();
+            if parts.len() != 3 {
+                panic!("Invalid github-oidc format '{}'. Expected 'org/repo:project_id:role'", mapping);
+            }
+            let repo = parts[0].to_string();
+            let project = parts[1].to_string();
+            let role = match parts[2].to_lowercase().as_str() {
+                "admin" => Role::Admin,
+                "promoter" => Role::Promoter,
+                "contributor" => Role::Contributor,
+                "viewer" => Role::Viewer,
+                _ => panic!("Unknown role '{}' in github-oidc mapping", parts[2]),
+            };
+            repo_mappings.insert(repo, (project, role));
+        }
+
+        let oidc_config = OidcConfig {
+            jwks_url: "https://token.actions.githubusercontent.com/.well-known/jwks".to_string(),
+            issuer: "https://token.actions.githubusercontent.com".to_string(),
+            audience: args.github_oidc_audience,
+            repo_mappings,
+        };
+        config = config.oidc(oidc_config);
     }
 
     if let Some(secret) = args.jwt_secret {

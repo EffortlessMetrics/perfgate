@@ -19,6 +19,7 @@ use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::models::ApiError;
+use crate::oidc::OidcProvider;
 
 /// JWT validation settings.
 #[derive(Clone)]
@@ -78,19 +79,22 @@ impl std::fmt::Debug for JwtConfig {
 }
 
 /// Authentication state shared by middleware.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AuthState {
     /// In-memory API key store.
     pub key_store: Arc<ApiKeyStore>,
 
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
+
+    /// Optional OIDC provider.
+    pub oidc: Option<OidcProvider>,
 }
 
 impl AuthState {
-    /// Creates auth state from a key store and optional JWT configuration.
-    pub fn new(key_store: Arc<ApiKeyStore>, jwt: Option<JwtConfig>) -> Self {
-        Self { key_store, jwt }
+    /// Creates auth state from a key store and optional JWT/OIDC configuration.
+    pub fn new(key_store: Arc<ApiKeyStore>, jwt: Option<JwtConfig>, oidc: Option<OidcProvider>) -> Self {
+        Self { key_store, jwt, oidc }
     }
 }
 
@@ -234,29 +238,57 @@ fn validate_jwt(token: &str, config: &JwtConfig) -> Result<JwtClaims, AuthError>
     })
 }
 
-fn authenticate_jwt(
-    config: Option<&JwtConfig>,
+async fn authenticate_jwt(
+    auth_state: &AuthState,
     token: &str,
     headers: &HeaderMap,
 ) -> Result<AuthContext, (StatusCode, Json<ApiError>)> {
-    let config = config.ok_or_else(|| {
-        warn!("JWT token received but JWT authentication is not configured");
-        unauthorized("JWT token authentication is not configured")
-    })?;
-
-    let claims = validate_jwt(token, config).map_err(|error| {
-        match &error {
-            AuthError::ExpiredToken => warn!("Expired JWT token"),
-            AuthError::InvalidToken(_) => warn!("Invalid JWT token"),
-            _ => {}
+    // Try static JWT config if available
+    if let Some(config) = &auth_state.jwt {
+        match validate_jwt(token, config) {
+            Ok(claims) => {
+                return Ok(AuthContext {
+                    api_key: api_key_from_jwt_claims(&claims),
+                    source_ip: source_ip(headers),
+                });
+            }
+            Err(e) => {
+                // If we don't have an OIDC provider, fail here.
+                // Otherwise, fall through to OIDC.
+                if auth_state.oidc.is_none() {
+                    match &e {
+                        AuthError::ExpiredToken => warn!("Expired JWT token"),
+                        AuthError::InvalidToken(_) => warn!("Invalid JWT token"),
+                        _ => {}
+                    }
+                    return Err(unauthorized(&e.to_string()));
+                }
+            }
         }
-        unauthorized(&error.to_string())
-    })?;
+    }
 
-    Ok(AuthContext {
-        api_key: api_key_from_jwt_claims(&claims),
-        source_ip: source_ip(headers),
-    })
+    // Try OIDC provider if available
+    if let Some(oidc) = &auth_state.oidc {
+        match oidc.validate_token(token).await {
+            Ok(api_key) => {
+                return Ok(AuthContext {
+                    api_key,
+                    source_ip: source_ip(headers),
+                });
+            }
+            Err(e) => {
+                match &e {
+                    AuthError::ExpiredToken => warn!("Expired OIDC token"),
+                    AuthError::InvalidToken(msg) => warn!("Invalid OIDC token: {}", msg),
+                    _ => {}
+                }
+                return Err(unauthorized(&e.to_string()));
+            }
+        }
+    }
+
+    warn!("JWT token received but no JWT or OIDC authentication is configured");
+    Err(unauthorized("JWT/OIDC authentication is not configured"))
 }
 
 fn api_key_from_jwt_claims(claims: &JwtClaims) -> ApiKey {
@@ -295,7 +327,7 @@ pub async fn auth_middleware(
             authenticate_api_key(&auth_state.key_store, &api_key, request.headers()).await?
         }
         Some(Credentials::Jwt(token)) => {
-            authenticate_jwt(auth_state.jwt.as_ref(), &token, request.headers())?
+            authenticate_jwt(&auth_state, &token, request.headers()).await?
         }
         None => {
             warn!("Missing authentication header");
@@ -490,7 +522,7 @@ mod tests {
             )
             .await;
 
-        let response = auth_test_router(AuthState::new(store, None))
+        let response = auth_test_router(AuthState::new(store, None, None))
             .oneshot(
                 Request::builder()
                     .uri("/protected")
@@ -515,6 +547,7 @@ mod tests {
         let response = auth_test_router(AuthState::new(
             Arc::new(ApiKeyStore::new()),
             Some(test_jwt_config()),
+            None,
         ))
         .oneshot(
             Request::builder()
@@ -537,7 +570,7 @@ mod tests {
         );
         let token = create_test_token(&claims);
 
-        let response = auth_test_router(AuthState::new(Arc::new(ApiKeyStore::new()), None))
+        let response = auth_test_router(AuthState::new(Arc::new(ApiKeyStore::new()), None, None))
             .oneshot(
                 Request::builder()
                     .uri("/protected")

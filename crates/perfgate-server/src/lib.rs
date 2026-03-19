@@ -44,6 +44,7 @@ pub mod auth;
 pub mod error;
 pub mod handlers;
 pub mod models;
+pub mod oidc;
 pub mod server;
 pub mod storage;
 
@@ -53,6 +54,7 @@ pub mod testing;
 pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig, Role, Scope};
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
+pub use oidc::{OidcConfig, OidcProvider};
 pub use server::{ServerConfig, StorageBackend, run_server};
 pub use storage::{BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
 

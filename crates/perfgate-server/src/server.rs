@@ -25,6 +25,7 @@ use crate::handlers::{
     delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
     promote_baseline, upload_baseline,
 };
+use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
     ArtifactStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore, SqliteStore,
 };
@@ -91,6 +92,9 @@ pub struct ServerConfig {
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
 
+    /// Optional OIDC configuration.
+    pub oidc: Option<OidcConfig>,
+
     /// Enable CORS for all origins
     pub cors: bool,
 
@@ -108,6 +112,7 @@ impl Default for ServerConfig {
             artifacts_url: None,
             api_keys: vec![],
             jwt: None,
+            oidc: None,
             cors: true,
             timeout_seconds: 30,
         }
@@ -178,6 +183,12 @@ impl ServerConfig {
     /// Enables JWT token authentication.
     pub fn jwt(mut self, jwt: JwtConfig) -> Self {
         self.jwt = Some(jwt);
+        self
+    }
+
+    /// Configures OIDC authentication.
+    pub fn oidc(mut self, config: OidcConfig) -> Self {
+        self.oidc = Some(config);
         self
     }
 
@@ -329,7 +340,14 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     // Create key store
     let key_store = create_key_store(&config).await?;
-    let auth_state = AuthState::new(key_store, config.jwt.clone());
+    
+    let mut oidc_provider = None;
+    if let Some(oidc_cfg) = config.oidc.clone() {
+        let provider = OidcProvider::new(oidc_cfg).await.map_err(|e| e.to_string())?;
+        oidc_provider = Some(provider);
+    }
+    
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider);
 
     // Create router
     let app = create_router(store.clone(), auth_state, &config);
@@ -491,7 +509,7 @@ mod tests {
     #[tokio::test]
     async fn test_router_creation() {
         let store = Arc::new(InMemoryStore::new());
-        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None);
+        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
         let config = ServerConfig::new();
 
         let _router = create_router(store, auth_state, &config);

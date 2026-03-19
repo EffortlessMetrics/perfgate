@@ -32,7 +32,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 
 ### 0.8.0: Security & Identity
-- [ ] **OIDC Integration**: Support for GitHub/GitLab identity providers in the server.
+- [x] **OIDC Integration**: Support for GitHub/GitLab identity providers in the server. [DONE]
 - [x] **Service Accounts**: Scoped API keys for CI runners with "contributor" only permissions. [DONE]
 - [x] **RBAC Hardening**: Fine-grained permissions for project isolation and benchmark-level regex scoping. [DONE]
 

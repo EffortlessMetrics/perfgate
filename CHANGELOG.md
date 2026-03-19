@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **OIDC Integration** — `perfgate-server` now supports GitHub Actions OIDC tokens for authentication, mapping repository claims directly to project IDs and roles via `--github-oidc` flags.
 - **Security Scoping** — API keys can now be restricted to specific projects and benchmark name patterns (regex).
 - **Project Isolation** — The baseline server now enforces strict project-level isolation. Keys without global admin scope are restricted to their assigned project.
 - **Enhanced CLI** — `perfgate-server` now supports expanded API key definitions: `--api-keys role:key:project:regex`.
