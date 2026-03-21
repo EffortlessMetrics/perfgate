@@ -22,7 +22,16 @@
         "ctx_switches": {
           "$ref": "#/$defs/Budget"
         },
+        "io_read_bytes": {
+          "$ref": "#/$defs/Budget"
+        },
+        "io_write_bytes": {
+          "$ref": "#/$defs/Budget"
+        },
         "max_rss_kb": {
+          "$ref": "#/$defs/Budget"
+        },
+        "network_packets": {
           "$ref": "#/$defs/Budget"
         },
         "page_faults": {
@@ -52,7 +61,16 @@
         "ctx_switches": {
           "$ref": "#/$defs/Delta"
         },
+        "io_read_bytes": {
+          "$ref": "#/$defs/Delta"
+        },
+        "io_write_bytes": {
+          "$ref": "#/$defs/Delta"
+        },
         "max_rss_kb": {
+          "$ref": "#/$defs/Delta"
+        },
+        "network_packets": {
           "$ref": "#/$defs/Delta"
         },
         "page_faults": {

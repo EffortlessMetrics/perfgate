@@ -41,6 +41,12 @@ pub struct RunResult {
     /// Peak resident set size in KB.
     /// Collected on Unix via rusage and best-effort on Windows.
     pub max_rss_kb: Option<u64>,
+    /// Bytes read from disk (best-effort).
+    pub io_read_bytes: Option<u64>,
+    /// Bytes written to disk (best-effort).
+    pub io_write_bytes: Option<u64>,
+    /// Total network packets (best-effort).
+    pub network_packets: Option<u64>,
     /// Size of executed binary in bytes (best-effort).
     pub binary_bytes: Option<u64>,
     pub stdout: Vec<u8>,
@@ -94,6 +100,9 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         page_faults: None,
         ctx_switches: None,
         max_rss_kb: None,
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
         binary_bytes,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),
@@ -151,10 +160,11 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     let mut stdout_buf = Vec::new();
     let mut stderr_buf = Vec::new();
 
-    // Windows memory info requires the handle before child is dropped or stdout/stderr taken?
-    // Actually we need the handle to call GetProcessMemoryInfo.
+    // Windows memory and IO info requires the handle before child is dropped or stdout/stderr taken?
+    // Actually we need the handle to call GetProcessMemoryInfo and GetProcessIoCounters.
     let handle = child.as_raw_handle();
     let max_rss_kb = get_max_rss_windows(handle);
+    let (io_read_bytes, io_write_bytes) = get_io_counters_windows(handle);
 
     if let Some(mut stdout) = child.stdout.take() {
         use std::io::Read;
@@ -173,6 +183,9 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         page_faults: None,
         ctx_switches: None,
         max_rss_kb,
+        io_read_bytes,
+        io_write_bytes,
+        network_packets: None,
         binary_bytes,
         stdout: truncate(stdout_buf, spec.output_cap_bytes),
         stderr: truncate(stderr_buf, spec.output_cap_bytes),
@@ -196,6 +209,24 @@ fn get_max_rss_windows(handle: std::os::windows::io::RawHandle) -> Option<u64> {
             Some((counters.PeakWorkingSetSize / 1024) as u64)
         } else {
             None
+        }
+    }
+}
+
+#[cfg(windows)]
+fn get_io_counters_windows(handle: std::os::windows::io::RawHandle) -> (Option<u64>, Option<u64>) {
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Threading::{GetProcessIoCounters, IO_COUNTERS};
+
+    let mut counters = IO_COUNTERS::default();
+    unsafe {
+        if GetProcessIoCounters(HANDLE(handle as _), &mut counters).is_ok() {
+            (
+                Some(counters.ReadTransferCount),
+                Some(counters.WriteTransferCount),
+            )
+        } else {
+            (None, None)
         }
     }
 }
@@ -267,6 +298,9 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         page_faults: None,
         ctx_switches: None,
         max_rss_kb: None,
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
         binary_bytes,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),

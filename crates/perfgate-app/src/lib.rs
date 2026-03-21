@@ -206,6 +206,9 @@ fn sample_from_run(run: RunResult, warmup: bool) -> Sample {
         page_faults: run.page_faults,
         ctx_switches: run.ctx_switches,
         max_rss_kb: run.max_rss_kb,
+        io_read_bytes: run.io_read_bytes,
+        io_write_bytes: run.io_write_bytes,
+        network_packets: run.network_packets,
         binary_bytes: run.binary_bytes,
         stdout: if run.stdout.is_empty() {
             None
@@ -396,6 +399,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -579,16 +585,19 @@ mod tests {
     #[test]
     fn sample_from_run_sets_optional_stdout_stderr() {
         let run = RunResult {
-            wall_ms: 10,
+            wall_ms: 100,
             exit_code: 0,
             timed_out: false,
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             stdout: b"ok".to_vec(),
-            stderr: Vec::new(),
+            stderr: vec![],
         };
 
         let sample = sample_from_run(run, false);
@@ -857,8 +866,11 @@ mod property_tests {
             Just(Metric::BinaryBytes),
             Just(Metric::CpuMs),
             Just(Metric::CtxSwitches),
+            Just(Metric::IoReadBytes),
+            Just(Metric::IoWriteBytes),
             Just(Metric::WallMs),
             Just(Metric::MaxRssKb),
+            Just(Metric::NetworkPackets),
             Just(Metric::PageFaults),
             Just(Metric::ThroughputPerS),
         ]

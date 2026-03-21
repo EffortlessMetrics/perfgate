@@ -57,6 +57,9 @@ mod advanced_analytics_tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -194,12 +197,14 @@ mod advanced_analytics_tests {
 ///     Sample {
 ///         wall_ms: 100, exit_code: 0, warmup: false, timed_out: false,
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+///         network_packets: None, binary_bytes: None, stdout: None, stderr: None,
 ///     },
 ///     Sample {
 ///         wall_ms: 120, exit_code: 0, warmup: false, timed_out: false,
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+///         network_packets: None, binary_bytes: None, stdout: None, stderr: None,
 ///     },
 /// ];
 ///
@@ -247,6 +252,27 @@ pub fn compute_stats(
         Some(summarize_u64(&rss_vals)?)
     };
 
+    let io_read_vals: Vec<u64> = measured.iter().filter_map(|s| s.io_read_bytes).collect();
+    let io_read_bytes = if io_read_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&io_read_vals)?)
+    };
+
+    let io_write_vals: Vec<u64> = measured.iter().filter_map(|s| s.io_write_bytes).collect();
+    let io_write_bytes = if io_write_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&io_write_vals)?)
+    };
+
+    let network_vals: Vec<u64> = measured.iter().filter_map(|s| s.network_packets).collect();
+    let network_packets = if network_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&network_vals)?)
+    };
+
     let binary_vals: Vec<u64> = measured.iter().filter_map(|s| s.binary_bytes).collect();
     let binary_bytes = if binary_vals.is_empty() {
         None
@@ -278,6 +304,9 @@ pub fn compute_stats(
         page_faults,
         ctx_switches,
         max_rss_kb,
+        io_read_bytes,
+        io_write_bytes,
+        network_packets,
         binary_bytes,
         throughput_per_s,
     })
@@ -345,12 +374,16 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// let baseline = Stats {
 ///     wall_ms: U64Summary::new(100, 90, 110 ),
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
-///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///     max_rss_kb: None,
+///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
+///     binary_bytes: None, throughput_per_s: None,
 /// };
 /// let current = Stats {
 ///     wall_ms: U64Summary::new(105, 95, 115 ),
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
-///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///     max_rss_kb: None,
+///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
+///     binary_bytes: None, throughput_per_s: None,
 /// };
 ///
 /// let mut budgets = BTreeMap::new();
@@ -667,7 +700,10 @@ fn metric_cv(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().and_then(|s| s.cv()),
         Metric::CpuMs => stats.cpu_ms.as_ref().and_then(|s| s.cv()),
         Metric::CtxSwitches => stats.ctx_switches.as_ref().and_then(|s| s.cv()),
+        Metric::IoReadBytes => stats.io_read_bytes.as_ref().and_then(|s| s.cv()),
+        Metric::IoWriteBytes => stats.io_write_bytes.as_ref().and_then(|s| s.cv()),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().and_then(|s| s.cv()),
+        Metric::NetworkPackets => stats.network_packets.as_ref().and_then(|s| s.cv()),
         Metric::PageFaults => stats.page_faults.as_ref().and_then(|s| s.cv()),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().and_then(|s| s.cv()),
         Metric::WallMs => stats.wall_ms.cv(),
@@ -684,7 +720,10 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().map(|s| s.median as f64),
         Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),
         Metric::CtxSwitches => stats.ctx_switches.as_ref().map(|s| s.median as f64),
+        Metric::IoReadBytes => stats.io_read_bytes.as_ref().map(|s| s.median as f64),
+        Metric::IoWriteBytes => stats.io_write_bytes.as_ref().map(|s| s.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
+        Metric::NetworkPackets => stats.network_packets.as_ref().map(|s| s.median as f64),
         Metric::PageFaults => stats.page_faults.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
         Metric::WallMs => Some(stats.wall_ms.median as f64),
@@ -722,8 +761,17 @@ fn metric_series_from_run(run: &RunReceipt, metric: Metric) -> Vec<f64> {
         Metric::CtxSwitches => measured
             .filter_map(|s| s.ctx_switches.map(|v| v as f64))
             .collect(),
+        Metric::IoReadBytes => measured
+            .filter_map(|s| s.io_read_bytes.map(|v| v as f64))
+            .collect(),
+        Metric::IoWriteBytes => measured
+            .filter_map(|s| s.io_write_bytes.map(|v| v as f64))
+            .collect(),
         Metric::MaxRssKb => measured
             .filter_map(|s| s.max_rss_kb.map(|v| v as f64))
+            .collect(),
+        Metric::NetworkPackets => measured
+            .filter_map(|s| s.network_packets.map(|v| v as f64))
             .collect(),
         Metric::PageFaults => measured
             .filter_map(|s| s.page_faults.map(|v| v as f64))
@@ -1359,6 +1407,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -1376,6 +1427,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -1595,6 +1649,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -1605,6 +1662,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -1667,6 +1727,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
                 };
@@ -1677,6 +1740,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(current, current, current)),
                 };
@@ -1736,6 +1802,9 @@ mod tests {
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
                         binary_bytes: None,
                         throughput_per_s: None,
                     };
@@ -1745,6 +1814,9 @@ mod tests {
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
                         binary_bytes: None,
                         throughput_per_s: None,
                     };
@@ -1755,20 +1827,26 @@ mod tests {
                     (bs, cs, Metric::WallMs, b)
                 } else {
                     let bs = Stats {
-                        wall_ms: U64Summary::new(1000, 1000, 1000 ),
+                        wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
                     };
                     let cs = Stats {
-                        wall_ms: U64Summary::new(1000, 1000, 1000 ),
+                        wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(current, current, current)),
                     };
@@ -1808,11 +1886,14 @@ mod tests {
                 (threshold, warn_threshold) in threshold_pair_strategy(),
             ) {
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary::new(1000, 1000, 1000 ),
+                    wall_ms: U64Summary::new(1000, 1000, 1000),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
                 };
@@ -1825,11 +1906,14 @@ mod tests {
                 // Only test if current would be positive
                 if current_at_threshold_higher > 0.0 {
                     let current_stats = Stats {
-                        wall_ms: U64Summary::new(1000, 1000, 1000 ),
+                        wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(current_at_threshold_higher, current_at_threshold_higher, current_at_threshold_higher)),
                     };
@@ -1922,6 +2006,9 @@ mod tests {
                     mean,
                     stddev,
                 }),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
                     median: median as f64,
@@ -2047,9 +2134,11 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
-                    throughput_per_s: None,
-                };
+                    throughput_per_s: None,                };
 
                 // Compute current values to achieve desired statuses
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
@@ -2076,6 +2165,9 @@ mod tests {
                         mean: rss_cv.map(|_cv| max_rss_current as f64),
                         stddev: rss_cv.map(|cv| (max_rss_current as f64) * cv),
                     }),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2144,9 +2236,11 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput)),
-                };
+                    throughput_per_s: Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput)),                };
 
                 // Compute current values to achieve desired statuses
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
@@ -2191,6 +2285,9 @@ mod tests {
                         mean: rss_cv.map(|_cv| max_rss_current as f64),
                         stddev: rss_cv.map(|cv| (max_rss_current as f64) * cv),
                     }),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: throughput_current,
@@ -2276,9 +2373,11 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
-                    throughput_per_s: None,
-                };
+                    throughput_per_s: None,                };
 
                 // wall_ms will be Fail, max_rss will be the random status
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Fail);
@@ -2290,6 +2389,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2350,9 +2452,11 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
-                    throughput_per_s: None,
-                };
+                    throughput_per_s: None,                };
 
                 // wall_ms will be Warn, max_rss will be Pass or Warn
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Warn);
@@ -2364,6 +2468,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2428,6 +2535,9 @@ mod tests {
                     } else {
                         None
                     },
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: if num_metrics >= 3 {
                         Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput))
@@ -2511,16 +2621,30 @@ mod tests {
                 current_wall in 1u64..10000,
                 (threshold, warn_threshold) in threshold_pair_strategy(),
             ) {
-                let baseline = Stats {
-                    wall_ms: U64Summary::new(baseline_wall, baseline_wall, baseline_wall ),
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
-                };
-                let current = Stats {
-                    wall_ms: U64Summary::new(current_wall, current_wall, current_wall ),
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
-                };
+            let baseline = Stats {
+                wall_ms: U64Summary::new(baseline_wall, baseline_wall, baseline_wall),
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
+            let current = Stats {
+                wall_ms: U64Summary::new(current_wall, current_wall, current_wall),
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, Budget {
                         noise_threshold: None,
@@ -2820,6 +2944,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2863,9 +2990,16 @@ mod tests {
                 let current = baseline + delta; // strictly worse (Direction::Lower)
                 let budget = Budget::new(0.0, 0.0, Direction::Lower);
                 let mk = |v: u64| Stats {
-                    wall_ms: U64Summary::new(v, v, v ),
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                    wall_ms: U64Summary::new(v, v, v),
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
                 };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
@@ -2891,9 +3025,16 @@ mod tests {
                 let current = baseline + (baseline * factor) / 100;
                 let budget = Budget::new(1.0, 0.5, Direction::Lower);
                 let mk = |v: u64| Stats {
-                    wall_ms: U64Summary::new(v, v, v ),
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                    wall_ms: U64Summary::new(v, v, v),
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
                 };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
@@ -2921,6 +3062,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2934,6 +3078,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2968,6 +3115,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2981,6 +3131,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2994,6 +3147,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3023,6 +3179,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1024),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3036,6 +3195,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1028),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3069,6 +3231,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3082,6 +3247,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3095,6 +3263,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3124,6 +3295,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3135,6 +3309,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3173,6 +3350,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3184,6 +3364,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3219,6 +3402,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3229,6 +3415,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3254,6 +3443,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3264,6 +3456,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3289,6 +3484,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3300,6 +3498,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3330,15 +3531,22 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
+
         let current = Stats {
             wall_ms: U64Summary::new(1100, 1100, 1100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
@@ -3360,6 +3568,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
         };
@@ -3369,6 +3580,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(92.0, 92.0, 92.0)),
         };
@@ -3462,6 +3676,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(1024),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3475,6 +3692,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(2048),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3488,6 +3708,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(1536),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3520,6 +3743,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3554,6 +3780,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3564,6 +3793,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3600,6 +3832,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
             };
@@ -3610,6 +3845,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };
@@ -3649,6 +3887,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(U64Summary::new(0, 0, 0)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3659,6 +3900,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(U64Summary::new(1024, 1024, 1024)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3696,6 +3940,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(-10.0, -10.0, -10.0)),
             };
@@ -3706,6 +3953,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };

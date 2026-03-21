@@ -39,11 +39,11 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 ### 0.9.0: Visual Insights
 - [x] **Server Web UI**: A minimal Read-only dashboard to view performance trends and baseline history. [DONE]
 - [x] **Metric Graphing**: Plotting wall time and RSS trends directly in the server UI. [DONE]
-- [ ] **Verdict History**: Tracking how often a benchmark fails vs. passes over time.
+- [x] **Verdict History**: Tracking how often a benchmark fails vs. passes over time. [DONE]
 
 ### 0.10.0: Noise & Flakiness Detection
-- [ ] **Noise Detection**: Automatically identify "unstable" benchmarks with high coefficient of variation.
-- [ ] **Auto-Skipping**: Option to skip/warn instead of fail for benchmarks identified as flaky.
+- [x] **Noise Detection**: Automatically identify "unstable" benchmarks with high coefficient of variation. [DONE]
+- [x] **Auto-Skipping**: Option to skip/warn instead of fail for benchmarks identified as flaky. [DONE]
 - [ ] **Retry Logic**: Built-in `paired` retry support when significance is not reached.
 
 ### 0.11.0: Deep Observability

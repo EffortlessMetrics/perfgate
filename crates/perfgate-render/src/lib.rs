@@ -257,7 +257,10 @@ pub fn format_value(metric: Metric, v: f64) -> String {
         Metric::BinaryBytes
         | Metric::CpuMs
         | Metric::CtxSwitches
+        | Metric::IoReadBytes
+        | Metric::IoWriteBytes
         | Metric::MaxRssKb
+        | Metric::NetworkPackets
         | Metric::PageFaults
         | Metric::WallMs => format!("{:.0}", v),
         Metric::ThroughputPerS => format!("{:.3}", v),

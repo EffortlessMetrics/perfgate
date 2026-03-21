@@ -339,9 +339,21 @@ pub struct Sample {
     /// Voluntary + involuntary context switches (Unix only).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ctx_switches: Option<u64>,
-
+    /// Peak resident set size in KB.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_rss_kb: Option<u64>,
+
+    /// Bytes read from disk (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_read_bytes: Option<u64>,
+
+    /// Bytes written to disk (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_write_bytes: Option<u64>,
+
+    /// Total network packets (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub network_packets: Option<u64>,
 
     /// Size of executed binary in bytes (best-effort).
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -435,6 +447,9 @@ impl F64Summary {
 ///     page_faults: None,
 ///     ctx_switches: None,
 ///     max_rss_kb: Some(U64Summary::new(4096, 4000, 4200 )),
+///     io_read_bytes: None,
+///     io_write_bytes: None,
+///     network_packets: None,
 ///     binary_bytes: None,
 ///     throughput_per_s: None,
 /// };
@@ -460,6 +475,18 @@ pub struct Stats {
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_rss_kb: Option<U64Summary>,
+
+    /// Bytes read from disk summary (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_read_bytes: Option<U64Summary>,
+
+    /// Bytes written to disk summary (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_write_bytes: Option<U64Summary>,
+
+    /// Total network packets summary (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub network_packets: Option<U64Summary>,
 
     /// Size of executed binary in bytes (best-effort).
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -497,7 +524,8 @@ pub struct Stats {
 ///     stats: Stats {
 ///         wall_ms: U64Summary::new(100, 90, 120 ),
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+///         network_packets: None, binary_bytes: None, throughput_per_s: None,
 ///     },
 /// };
 ///
@@ -525,7 +553,10 @@ pub enum Metric {
     BinaryBytes,
     CpuMs,
     CtxSwitches,
+    IoReadBytes,
+    IoWriteBytes,
     MaxRssKb,
+    NetworkPackets,
     PageFaults,
     ThroughputPerS,
     WallMs,
@@ -547,7 +578,10 @@ impl Metric {
             Metric::BinaryBytes => "binary_bytes",
             Metric::CpuMs => "cpu_ms",
             Metric::CtxSwitches => "ctx_switches",
+            Metric::IoReadBytes => "io_read_bytes",
+            Metric::IoWriteBytes => "io_write_bytes",
             Metric::MaxRssKb => "max_rss_kb",
+            Metric::NetworkPackets => "network_packets",
             Metric::PageFaults => "page_faults",
             Metric::ThroughputPerS => "throughput_per_s",
             Metric::WallMs => "wall_ms",
@@ -570,7 +604,10 @@ impl Metric {
             "binary_bytes" => Some(Metric::BinaryBytes),
             "cpu_ms" => Some(Metric::CpuMs),
             "ctx_switches" => Some(Metric::CtxSwitches),
+            "io_read_bytes" => Some(Metric::IoReadBytes),
+            "io_write_bytes" => Some(Metric::IoWriteBytes),
             "max_rss_kb" => Some(Metric::MaxRssKb),
+            "network_packets" => Some(Metric::NetworkPackets),
             "page_faults" => Some(Metric::PageFaults),
             "throughput_per_s" => Some(Metric::ThroughputPerS),
             "wall_ms" => Some(Metric::WallMs),
@@ -596,7 +633,10 @@ impl Metric {
             Metric::BinaryBytes => Direction::Lower,
             Metric::CpuMs => Direction::Lower,
             Metric::CtxSwitches => Direction::Lower,
+            Metric::IoReadBytes => Direction::Lower,
+            Metric::IoWriteBytes => Direction::Lower,
             Metric::MaxRssKb => Direction::Lower,
+            Metric::NetworkPackets => Direction::Lower,
             Metric::PageFaults => Direction::Lower,
             Metric::ThroughputPerS => Direction::Higher,
             Metric::WallMs => Direction::Lower,
@@ -624,7 +664,10 @@ impl Metric {
             Metric::BinaryBytes => "bytes",
             Metric::CpuMs => "ms",
             Metric::CtxSwitches => "count",
+            Metric::IoReadBytes => "bytes",
+            Metric::IoWriteBytes => "bytes",
             Metric::MaxRssKb => "KB",
+            Metric::NetworkPackets => "count",
             Metric::PageFaults => "count",
             Metric::ThroughputPerS => "/s",
             Metric::WallMs => "ms",
@@ -1582,6 +1625,9 @@ mod tests {
                     page_faults: Some(10),
                     ctx_switches: Some(5),
                     max_rss_kb: Some(2048),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: Some(4096),
                     stdout: Some("ok".into()),
                     stderr: None,
@@ -1595,6 +1641,9 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(2000),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: Some("warn".into()),
@@ -1606,6 +1655,9 @@ mod tests {
                 page_faults: Some(U64Summary::new(10, 10, 10)),
                 ctx_switches: Some(U64Summary::new(5, 5, 5)),
                 max_rss_kb: Some(U64Summary::new(2048, 2000, 2100)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: Some(U64Summary::new(4096, 4096, 4096)),
                 throughput_per_s: Some(F64Summary::new(10.526, 10.0, 11.111)),
             },
@@ -1651,6 +1703,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -1698,6 +1753,9 @@ mod tests {
                 page_faults: Some(u64::MAX),
                 ctx_switches: Some(u64::MAX),
                 max_rss_kb: Some(u64::MAX),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: Some(u64::MAX),
                 stdout: None,
                 stderr: None,
@@ -1708,6 +1766,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(f64::MAX, 0.0, f64::MAX)),
             },
@@ -1948,6 +2009,9 @@ mod tests {
             page_faults: Some(U64Summary::new(50, 10, 100)),
             ctx_switches: Some(U64Summary::new(20, 5, 40)),
             max_rss_kb: Some(U64Summary::new(4096, 2048, 8192)),
+            io_read_bytes: Some(U64Summary::new(1000, 500, 1500)),
+            io_write_bytes: Some(U64Summary::new(500, 200, 800)),
+            network_packets: Some(U64Summary::new(10, 5, 15)),
             binary_bytes: Some(U64Summary::new(1024, 1024, 1024)),
             throughput_per_s: Some(F64Summary::new(2.0, 1.111, 10.0)),
         };
@@ -1964,6 +2028,9 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
         };
@@ -2121,6 +2188,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2131,6 +2201,9 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -2356,6 +2429,9 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
                     binary_bytes,
                     stdout,
                     stderr,
@@ -2389,6 +2465,9 @@ mod property_tests {
             proptest::option::of(u64_summary_strategy()), // page_faults
             proptest::option::of(u64_summary_strategy()), // ctx_switches
             proptest::option::of(u64_summary_strategy()), // max_rss_kb
+            proptest::option::of(u64_summary_strategy()), // io_read_bytes
+            proptest::option::of(u64_summary_strategy()), // io_write_bytes
+            proptest::option::of(u64_summary_strategy()), // network_packets
             proptest::option::of(u64_summary_strategy()), // binary_bytes
             proptest::option::of(f64_summary_strategy()),
         )
@@ -2399,6 +2478,9 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes,
+                    io_write_bytes,
+                    network_packets,
                     binary_bytes,
                     throughput_per_s,
                 )| Stats {
@@ -2407,6 +2489,9 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes,
+                    io_write_bytes,
+                    network_packets,
                     binary_bytes,
                     throughput_per_s,
                 },
