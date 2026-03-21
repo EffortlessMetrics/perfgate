@@ -1,7 +1,7 @@
 //! Common API types and models for perfgate baseline service.
 
 use chrono::{DateTime, Utc};
-use perfgate_types::RunReceipt;
+use perfgate_types::{RunReceipt, VerdictCounts, VerdictStatus};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -11,6 +11,9 @@ pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 
 /// Schema identifier for project records.
 pub const PROJECT_SCHEMA_V1: &str = "perfgate.project.v1";
+
+/// Schema identifier for verdict records.
+pub const VERDICT_SCHEMA_V1: &str = "perfgate.verdict.v1";
 
 /// Source of baseline creation.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
@@ -72,6 +75,108 @@ impl BaselineRecord {
     pub fn etag(&self) -> String {
         format!("\"sha256:{}\"", self.content_hash)
     }
+}
+
+/// A record of a benchmark execution verdict.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct VerdictRecord {
+    /// Schema identifier (perfgate.verdict.v1)
+    pub schema: String,
+    /// Unique verdict identifier
+    pub id: String,
+    /// Project identifier
+    pub project: String,
+    /// Benchmark name
+    pub benchmark: String,
+    /// Run identifier from receipt
+    pub run_id: String,
+    /// Overall status (pass/warn/fail/skip)
+    pub status: VerdictStatus,
+    /// Detailed counts
+    pub counts: VerdictCounts,
+    /// List of reasons for the verdict
+    pub reasons: Vec<String>,
+    /// Git reference
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
+    /// Git commit SHA
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_sha: Option<String>,
+    /// Creation timestamp
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request for submitting a verdict.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SubmitVerdictRequest {
+    pub benchmark: String,
+    pub run_id: String,
+    pub status: VerdictStatus,
+    pub counts: VerdictCounts,
+    pub reasons: Vec<String>,
+    pub git_ref: Option<String>,
+    pub git_sha: Option<String>,
+}
+
+/// Request for verdict list operation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListVerdictsQuery {
+    /// Filter by exact benchmark name
+    pub benchmark: Option<String>,
+    /// Filter by status
+    pub status: Option<VerdictStatus>,
+    /// Filter by creation date (after)
+    pub since: Option<DateTime<Utc>>,
+    /// Filter by creation date (before)
+    pub until: Option<DateTime<Utc>>,
+    /// Pagination limit
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    /// Pagination offset
+    #[serde(default)]
+    pub offset: u64,
+}
+
+impl Default for ListVerdictsQuery {
+    fn default() -> Self {
+        Self {
+            benchmark: None,
+            status: None,
+            since: None,
+            until: None,
+            limit: default_limit(),
+            offset: 0,
+        }
+    }
+}
+
+impl ListVerdictsQuery {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn with_benchmark(mut self, b: impl Into<String>) -> Self {
+        self.benchmark = Some(b.into());
+        self
+    }
+    pub fn with_status(mut self, s: VerdictStatus) -> Self {
+        self.status = Some(s);
+        self
+    }
+    pub fn with_limit(mut self, l: u32) -> Self {
+        self.limit = l;
+        self
+    }
+    pub fn with_offset(mut self, o: u64) -> Self {
+        self.offset = o;
+        self
+    }
+}
+
+/// Response for verdict list operation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListVerdictsResponse {
+    pub verdicts: Vec<VerdictRecord>,
+    pub pagination: PaginationInfo,
 }
 
 /// Version history metadata (without full receipt).

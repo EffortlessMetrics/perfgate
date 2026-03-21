@@ -14,7 +14,10 @@ pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
 
 use crate::error::StoreError;
-use crate::models::{BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse};
+use crate::models::{
+    BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery,
+    ListVerdictsResponse, VerdictRecord,
+};
 use async_trait::async_trait;
 
 /// Trait for storing raw artifacts (receipts).
@@ -92,6 +95,16 @@ pub trait BaselineStore: Send + Sync {
 
     /// Returns the backend type name.
     fn backend_type(&self) -> &'static str;
+
+    /// Stores a new verdict record.
+    async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError>;
+
+    /// Lists verdicts with optional filtering.
+    async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, StoreError>;
 }
 
 /// Storage backend health status.

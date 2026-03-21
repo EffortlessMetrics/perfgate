@@ -9,8 +9,9 @@ use super::{ArtifactStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
-    PaginationInfo,
+    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
+use perfgate_types::{VerdictCounts, VerdictStatus};
 
 /// SQLite storage backend for baselines.
 #[derive(Debug)]
@@ -91,6 +92,22 @@ impl SqliteStore {
             );
             CREATE INDEX IF NOT EXISTS idx_baselines_project_benchmark ON baselines(project, benchmark);
             CREATE INDEX IF NOT EXISTS idx_baselines_created_at ON baselines(created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS verdicts (
+                id TEXT PRIMARY KEY,
+                schema_id TEXT NOT NULL,
+                project TEXT NOT NULL,
+                benchmark TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                counts TEXT NOT NULL,
+                reasons TEXT NOT NULL,
+                git_ref TEXT,
+                git_sha TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark ON verdicts(project, benchmark);
+            CREATE INDEX IF NOT EXISTS idx_verdicts_created_at ON verdicts(created_at DESC);
             "#,
         )?;
         Ok(())
@@ -455,6 +472,156 @@ impl BaselineStore for SqliteStore {
 
     fn backend_type(&self) -> &'static str {
         "sqlite"
+    }
+
+    async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+
+        let counts_json =
+            serde_json::to_string(&record.counts).map_err(StoreError::SerializationError)?;
+        let reasons_json =
+            serde_json::to_string(&record.reasons).map_err(StoreError::SerializationError)?;
+        let status_str = record.status.as_str();
+        let created_at_str = record.created_at.to_rfc3339();
+
+        conn.execute(
+            r#"
+            INSERT INTO verdicts (
+                id, schema_id, project, benchmark, run_id, status, counts, reasons,
+                git_ref, git_sha, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+            params![
+                record.id,
+                record.schema,
+                record.project,
+                record.benchmark,
+                record.run_id,
+                status_str,
+                counts_json,
+                reasons_json,
+                record.git_ref,
+                record.git_sha,
+                created_at_str
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, StoreError> {
+        let mut sql = "SELECT * FROM verdicts WHERE project = ?".to_string();
+        let mut params_vec: Vec<rusqlite::types::Value> = vec![project.to_string().into()];
+
+        if let Some(bench) = &query.benchmark {
+            sql.push_str(" AND benchmark = ?");
+            params_vec.push(bench.clone().into());
+        }
+
+        if let Some(status) = &query.status {
+            sql.push_str(" AND status = ?");
+            params_vec.push(status.as_str().to_string().into());
+        }
+
+        if let Some(since) = &query.since {
+            sql.push_str(" AND created_at >= ?");
+            params_vec.push(since.to_rfc3339().into());
+        }
+
+        if let Some(until) = &query.until {
+            sql.push_str(" AND created_at <= ?");
+            params_vec.push(until.to_rfc3339().into());
+        }
+
+        sql.push_str(" ORDER BY created_at DESC");
+
+        // Limit and offset
+        sql.push_str(" LIMIT ? OFFSET ?");
+        params_vec.push((query.limit as i64).into());
+        params_vec.push((query.offset as i64).into());
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+                Self::row_to_verdict(row)
+            })
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut verdicts = Vec::new();
+        for row in rows {
+            verdicts.push(row?);
+        }
+
+        // For total count
+        let count_sql = "SELECT COUNT(*) FROM verdicts WHERE project = ?";
+        let total: i64 = conn.query_row(count_sql, params![project], |row| row.get(0))?;
+
+        Ok(ListVerdictsResponse {
+            verdicts,
+            pagination: PaginationInfo {
+                total: total as u64,
+                offset: query.offset,
+                limit: query.limit,
+                has_more: (query.offset + query.limit as u64) < total as u64,
+            },
+        })
+    }
+}
+
+impl SqliteStore {
+    fn row_to_verdict(row: &rusqlite::Row) -> Result<VerdictRecord, rusqlite::Error> {
+        let status_str: String = row.get(5)?;
+        let status = match status_str.as_str() {
+            "pass" => VerdictStatus::Pass,
+            "warn" => VerdictStatus::Warn,
+            "fail" => VerdictStatus::Fail,
+            "skip" => VerdictStatus::Skip,
+            _ => VerdictStatus::Pass,
+        };
+
+        let counts_json: String = row.get(6)?;
+        let counts = serde_json::from_str(&counts_json).unwrap_or(VerdictCounts {
+            pass: 0,
+            warn: 0,
+            fail: 0,
+            skip: 0,
+        });
+
+        let reasons_json: String = row.get(7)?;
+        let reasons = serde_json::from_str(&reasons_json).unwrap_or_default();
+
+        let created_at_str: String = row.get(10)?;
+        let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+
+        Ok(VerdictRecord {
+            id: row.get(0)?,
+            schema: row.get(1)?,
+            project: row.get(2)?,
+            benchmark: row.get(3)?,
+            run_id: row.get(4)?,
+            status,
+            counts,
+            reasons,
+            git_ref: row.get(8)?,
+            git_sha: row.get(9)?,
+            created_at,
+        })
     }
 }
 

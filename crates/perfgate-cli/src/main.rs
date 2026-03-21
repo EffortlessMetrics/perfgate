@@ -14,14 +14,16 @@ use perfgate_app::{
     SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
     render_markdown_template,
 };
-use perfgate_client::{ListBaselinesQuery, UploadBaselineRequest};
+use perfgate_client::{
+    ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
+};
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_domain::{DomainError, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, RunReceipt, SensorVerdictStatus, ToolInfo,
+    HostMismatchPolicy, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -675,6 +677,25 @@ enum BaselineAction {
         limit: u32,
     },
 
+    /// Show execution verdict history.
+    Verdicts {
+        /// Optional benchmark name to filter by
+        #[arg(long)]
+        benchmark: Option<String>,
+
+        /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Maximum number of results
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+
+        /// Optional status to filter by (pass|warn|fail|skip)
+        #[arg(long, value_parser = parse_verdict_status)]
+        status: Option<VerdictStatus>,
+    },
+
     /// Migrate local baselines to the server.
     Migrate {
         /// Directory containing baseline JSON files
@@ -711,10 +732,11 @@ fn render_markdown_with_optional_template(
 fn resolve_server_config_from_path(
     flags: &ServerFlags,
     config_path: Option<&Path>,
-) -> anyhow::Result<ResolvedServerConfig> {
+) -> anyhow::Result<(ResolvedServerConfig, ConfigFile)> {
     let path = config_path.unwrap_or_else(|| Path::new("perfgate.toml"));
     let config_file = load_config_file(path)?;
-    Ok(flags.resolve(&config_file.baseline_server))
+    let resolved = flags.resolve(&config_file.baseline_server);
+    Ok((resolved, config_file))
 }
 
 fn resolve_bench_names(
@@ -822,7 +844,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             // Upload to server if requested
             if upload {
-                let server_config = resolve_server_config_from_path(&server_flags, None)?;
+                let (server_config, _config_file) =
+                    resolve_server_config_from_path(&server_flags, None)?;
                 let client = server_config.require_fallback_client(
                     Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
                     BASELINE_SERVER_NOT_CONFIGURED,
@@ -885,7 +908,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 pretty,
             } = *args;
 
-            let server_config = resolve_server_config_from_path(&server_flags, None)?;
+            let (server_config, config_file) =
+                resolve_server_config_from_path(&server_flags, None)?;
             let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
             let (baseline_receipt, baseline_ref) = match baseline_selector {
                 BaselineSelector::Server { benchmark } => {
@@ -970,6 +994,9 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 }
             }
 
+            // Submit verdict to server if configured
+            submit_verdict_if_possible(&server_flags, &config_file, &compare_result.receipt);
+
             write_json(&out, &compare_result.receipt, pretty)?;
 
             match compare_result.receipt.verdict.status {
@@ -1035,7 +1062,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             let receipt: RunReceipt = read_json_from_location(&current)?;
 
             if to_server {
-                let server_config = resolve_server_config_from_path(&server_flags, None)?;
+                let (server_config, _config_file) =
+                    resolve_server_config_from_path(&server_flags, None)?;
                 // Promote to server
                 let client = server_config.require_fallback_client(
                     Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
@@ -1168,6 +1196,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 pretty,
                 md_template,
                 output_github,
+                server_flags,
             };
             match mode {
                 OutputMode::Standard => run_check_standard(req),
@@ -1257,7 +1286,7 @@ fn execute_baseline_action(
     action: BaselineAction,
     server_flags: &ServerFlags,
 ) -> anyhow::Result<()> {
-    let server_config = resolve_server_config_from_path(server_flags, None)?;
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
     let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -1269,7 +1298,6 @@ fn execute_baseline_action(
             limit,
             include_receipts,
         } => {
-            let server_config = resolve_server_config_from_path(server_flags, None)?;
             let project = server_config.resolve_project(project)?;
 
             let mut query = ListBaselinesQuery::new().with_limit(limit);
@@ -1315,7 +1343,6 @@ fn execute_baseline_action(
             project,
             version,
         } => {
-            let server_config = resolve_server_config_from_path(server_flags, None)?;
             let project = server_config.resolve_project(project)?;
 
             rt.block_on(async {
@@ -1357,7 +1384,6 @@ fn execute_baseline_action(
             version,
             normalize,
         } => {
-            let server_config = resolve_server_config_from_path(server_flags, None)?;
             let project = server_config.resolve_project(project)?;
 
             let receipt: RunReceipt = read_json(&file)
@@ -1399,7 +1425,6 @@ fn execute_baseline_action(
             version,
             force,
         } => {
-            let server_config = resolve_server_config_from_path(server_flags, None)?;
             let project = server_config.resolve_project(project)?;
 
             if !force {
@@ -1438,7 +1463,6 @@ fn execute_baseline_action(
             project,
             limit,
         } => {
-            let server_config = resolve_server_config_from_path(server_flags, None)?;
             let project = server_config.resolve_project(project)?;
 
             let query = ListBaselinesQuery::new()
@@ -1472,13 +1496,57 @@ fn execute_baseline_action(
             })?;
         }
 
+        BaselineAction::Verdicts {
+            benchmark,
+            project,
+            limit,
+            status,
+        } => {
+            let project = server_config.resolve_project(project)?;
+
+            let mut query = ListVerdictsQuery::new().with_limit(limit);
+            if let Some(bench) = benchmark {
+                query = query.with_benchmark(bench);
+            }
+            if let Some(s) = status {
+                query = query.with_status(s);
+            }
+
+            rt.block_on(async {
+                let response = client
+                    .list_verdicts(&project, &query)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to get verdict history for project {}", project)
+                    })?;
+
+                if response.verdicts.is_empty() {
+                    println!("No verdicts found for project '{}'.", project);
+                } else {
+                    println!(
+                        "Verdict history for {} ({} results):",
+                        project,
+                        response.verdicts.len()
+                    );
+                    for record in &response.verdicts {
+                        let git_ref = record.git_ref.as_deref().unwrap_or("unknown");
+                        println!(
+                            "  [{:?}] {} - {} ({})",
+                            record.status, record.benchmark, record.created_at, git_ref
+                        );
+                    }
+                }
+
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
         BaselineAction::Migrate {
             dir,
             project,
             recursive,
             dry_run,
         } => {
-            let server_config = resolve_server_config_from_path(server_flags, None)?;
             let project = server_config.resolve_project(project)?;
 
             if !dir.exists() {
@@ -1611,6 +1679,47 @@ struct CheckConfig {
     pretty: bool,
     md_template: Option<PathBuf>,
     output_github: bool,
+    server_flags: ServerFlags,
+}
+
+fn submit_verdict_if_possible(
+    server_flags: &ServerFlags,
+    config_file: &ConfigFile,
+    compare_receipt: &CompareReceipt,
+) {
+    let server_config = resolve_server_config(
+        server_flags.baseline_server.clone(),
+        server_flags.api_key.clone(),
+        server_flags.project.clone(),
+        &config_file.baseline_server,
+    );
+
+    if server_config.url.is_some()
+        && let Ok(client) = server_config.require_fallback_client(
+            Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+            BASELINE_SERVER_NOT_CONFIGURED,
+        )
+        && let Ok(project) = server_config.resolve_project(None)
+    {
+        let request = SubmitVerdictRequest {
+            benchmark: compare_receipt.bench.name.clone(),
+            run_id: compare_receipt
+                .current_ref
+                .run_id
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            status: compare_receipt.verdict.status,
+            counts: compare_receipt.verdict.counts.clone(),
+            reasons: compare_receipt.verdict.reasons.clone(),
+            git_ref: None, // Could be extracted if needed
+            git_sha: None,
+        };
+
+        let _ = with_tokio_runtime(async {
+            let _ = client.submit_verdict(&project, &request).await;
+            Ok::<(), anyhow::Error>(())
+        });
+    }
 }
 
 /// Run check in standard mode (exit codes reflect verdict).
@@ -1709,6 +1818,11 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             significance_min_samples: req.significance_min_samples,
             require_significance: req.require_significance,
         })?;
+
+        // Submit verdict to server if configured
+        if let Some(compare) = &outcome.compare_receipt {
+            submit_verdict_if_possible(&req.server_flags, &config_file, compare);
+        }
 
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
@@ -1937,6 +2051,11 @@ fn run_check_cockpit_inner(
                 significance_min_samples: req.significance_min_samples,
                 require_significance: req.require_significance,
             })?;
+
+            // Submit verdict to server if configured
+            if let Some(compare) = &check_outcome.compare_receipt {
+                submit_verdict_if_possible(&req.server_flags, &config_file, compare);
+            }
 
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
@@ -2287,6 +2406,18 @@ fn parse_noise_policy(s: &str) -> Result<perfgate_types::NoisePolicy, String> {
         "ignore" => Ok(perfgate_types::NoisePolicy::Ignore),
         _ => Err(format!(
             "invalid noise policy: {s} (expected warn|skip|ignore)"
+        )),
+    }
+}
+
+fn parse_verdict_status(s: &str) -> Result<VerdictStatus, String> {
+    match s.to_lowercase().as_str() {
+        "pass" => Ok(VerdictStatus::Pass),
+        "warn" => Ok(VerdictStatus::Warn),
+        "fail" => Ok(VerdictStatus::Fail),
+        "skip" => Ok(VerdictStatus::Skip),
+        _ => Err(format!(
+            "invalid verdict status: {s} (expected pass|warn|fail|skip)"
         )),
     }
 }

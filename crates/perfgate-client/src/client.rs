@@ -277,6 +277,78 @@ impl BaselineClient {
         Ok(())
     }
 
+    /// Submits a benchmark verdict to the server.
+    pub async fn submit_verdict(
+        &self,
+        project: &str,
+        request: &SubmitVerdictRequest,
+    ) -> Result<VerdictRecord, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("projects/{}/verdicts", project));
+            debug!(url = %url, benchmark = %request.benchmark, "Submitting verdict");
+
+            let client = self.inner.clone();
+            let request = request.clone();
+            async move {
+                let response = client
+                    .post(url)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<VerdictRecord>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Lists verdicts for a project.
+    pub async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("projects/{}/verdicts", project));
+            debug!(url = %url, "Listing verdicts");
+
+            let client = self.inner.clone();
+            let query = query.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .query(&query)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<ListVerdictsResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
     /// Checks the health of the baseline service.
     pub async fn health_check(&self) -> Result<HealthResponse, ClientError> {
         let url = self.url("health");

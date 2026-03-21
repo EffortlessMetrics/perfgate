@@ -7,9 +7,10 @@ use super::{ArtifactStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
-    PaginationInfo,
+    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
 use async_trait::async_trait;
+use perfgate_types::VerdictStatus;
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use std::sync::Arc;
 use std::time::Duration;
@@ -63,6 +64,26 @@ impl PostgresStore {
             
             CREATE INDEX IF NOT EXISTS idx_baselines_project_benchmark 
             ON baselines(project, benchmark);
+
+            CREATE TABLE IF NOT EXISTS verdicts (
+                id VARCHAR(26) PRIMARY KEY,
+                schema_id VARCHAR(64) NOT NULL,
+                project VARCHAR(255) NOT NULL,
+                benchmark VARCHAR(255) NOT NULL,
+                run_id VARCHAR(255) NOT NULL,
+                status VARCHAR(32) NOT NULL,
+                counts JSONB NOT NULL,
+                reasons JSONB NOT NULL,
+                git_ref VARCHAR(255),
+                git_sha VARCHAR(40),
+                created_at TIMESTAMPTZ NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark
+            ON verdicts(project, benchmark);
+
+            CREATE INDEX IF NOT EXISTS idx_verdicts_created_at
+            ON verdicts(created_at);
         "#;
 
         sqlx::query(sql)
@@ -472,5 +493,155 @@ impl BaselineStore for PostgresStore {
 
     fn backend_type(&self) -> &'static str {
         "postgres"
+    }
+
+    async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError> {
+        let sql = r#"
+            INSERT INTO verdicts (
+                id, schema_id, project, benchmark, run_id, status, counts, reasons,
+                git_ref, git_sha, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        "#;
+
+        let counts_json =
+            serde_json::to_value(&record.counts).map_err(StoreError::SerializationError)?;
+        let reasons_json =
+            serde_json::to_value(&record.reasons).map_err(StoreError::SerializationError)?;
+        let status_str = record.status.as_str();
+
+        sqlx::query(sql)
+            .bind(&record.id)
+            .bind(&record.schema)
+            .bind(&record.project)
+            .bind(&record.benchmark)
+            .bind(&record.run_id)
+            .bind(status_str)
+            .bind(counts_json)
+            .bind(reasons_json)
+            .bind(&record.git_ref)
+            .bind(&record.git_sha)
+            .bind(record.created_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, StoreError> {
+        let mut sql = "SELECT * FROM verdicts WHERE project = $1".to_string();
+        let mut params_count = 1;
+
+        if let Some(_bench) = &query.benchmark {
+            params_count += 1;
+            sql.push_str(&format!(" AND benchmark = ${}", params_count));
+        }
+
+        if let Some(_status) = &query.status {
+            params_count += 1;
+            sql.push_str(&format!(" AND status = ${}", params_count));
+        }
+
+        if let Some(_since) = &query.since {
+            params_count += 1;
+            sql.push_str(&format!(" AND created_at >= ${}", params_count));
+        }
+
+        if let Some(_until) = &query.until {
+            params_count += 1;
+            sql.push_str(&format!(" AND created_at <= ${}", params_count));
+        }
+
+        sql.push_str(" ORDER BY created_at DESC");
+
+        // Limit and offset
+        params_count += 1;
+        sql.push_str(&format!(" LIMIT ${}", params_count));
+        params_count += 1;
+        sql.push_str(&format!(" OFFSET ${}", params_count));
+
+        let mut q = sqlx::query(&sql).bind(project);
+
+        if let Some(bench) = &query.benchmark {
+            q = q.bind(bench);
+        }
+        if let Some(status) = &query.status {
+            q = q.bind(status.as_str());
+        }
+        if let Some(since) = &query.since {
+            q = q.bind(since);
+        }
+        if let Some(until) = &query.until {
+            q = q.bind(until);
+        }
+
+        q = q.bind(query.limit as i64);
+        q = q.bind(query.offset as i64);
+
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut verdicts = Vec::with_capacity(rows.len());
+        for row in rows {
+            verdicts.push(self.row_to_verdict(row)?);
+        }
+
+        // For total count
+        let count_sql = "SELECT COUNT(*) FROM verdicts WHERE project = $1";
+        let total: i64 = sqlx::query_scalar(count_sql)
+            .bind(project)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        Ok(ListVerdictsResponse {
+            verdicts,
+            pagination: PaginationInfo {
+                total: total as u64,
+                offset: query.offset,
+                limit: query.limit,
+                has_more: (query.offset + query.limit as u64) < total as u64,
+            },
+        })
+    }
+}
+
+impl PostgresStore {
+    fn row_to_verdict(&self, row: sqlx::postgres::PgRow) -> Result<VerdictRecord, StoreError> {
+        let status_str: String = row.get("status");
+        let status = match status_str.as_str() {
+            "pass" => VerdictStatus::Pass,
+            "warn" => VerdictStatus::Warn,
+            "fail" => VerdictStatus::Fail,
+            "skip" => VerdictStatus::Skip,
+            _ => VerdictStatus::Pass, // Default fallback
+        };
+
+        let counts_json: serde_json::Value = row.get("counts");
+        let counts = serde_json::from_value(counts_json).map_err(StoreError::SerializationError)?;
+
+        let reasons_json: serde_json::Value = row.get("reasons");
+        let reasons =
+            serde_json::from_value(reasons_json).map_err(StoreError::SerializationError)?;
+
+        Ok(VerdictRecord {
+            schema: row.get("schema_id"), // Wait, I didn't add schema_id to verdicts table
+            id: row.get("id"),
+            project: row.get("project"),
+            benchmark: row.get("benchmark"),
+            run_id: row.get("run_id"),
+            status,
+            counts,
+            reasons,
+            git_ref: row.get("git_ref"),
+            git_sha: row.get("git_sha"),
+            created_at: row.get("created_at"),
+        })
     }
 }

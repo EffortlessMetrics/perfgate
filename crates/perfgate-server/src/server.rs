@@ -23,7 +23,7 @@ use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middlewa
 use crate::error::ConfigError;
 use crate::handlers::{
     dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
-    list_baselines, promote_baseline, static_asset, upload_baseline,
+    list_baselines, list_verdicts, promote_baseline, static_asset, submit_verdict, upload_baseline,
 };
 use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
@@ -307,6 +307,8 @@ pub(crate) fn create_router(
             delete(delete_baseline),
         )
         .route("/projects/{project}/baselines", get(list_baselines))
+        .route("/projects/{project}/verdicts", post(submit_verdict))
+        .route("/projects/{project}/verdicts", get(list_verdicts))
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),

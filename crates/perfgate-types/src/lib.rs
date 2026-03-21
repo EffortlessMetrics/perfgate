@@ -835,6 +835,17 @@ pub enum VerdictStatus {
     Skip,
 }
 
+impl VerdictStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VerdictStatus::Pass => "pass",
+            VerdictStatus::Warn => "warn",
+            VerdictStatus::Fail => "fail",
+            VerdictStatus::Skip => "skip",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct VerdictCounts {

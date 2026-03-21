@@ -1,11 +1,11 @@
-//! API handlers for the baseline service.
-//!
-//! This module implements the REST API endpoints for baseline management.
+//! Re-export all handlers for use in the server.
 
-pub mod baselines;
-pub mod dashboard;
-pub mod health;
+mod baselines;
+mod dashboard;
+mod health;
+mod verdicts;
 
 pub use baselines::*;
 pub use dashboard::*;
 pub use health::*;
+pub use verdicts::*;

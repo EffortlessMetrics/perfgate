@@ -156,6 +156,24 @@ impl FallbackClient {
             .await
     }
 
+    /// Submits a benchmark verdict (server only, no fallback).
+    pub async fn submit_verdict(
+        &self,
+        project: &str,
+        request: &SubmitVerdictRequest,
+    ) -> Result<VerdictRecord, ClientError> {
+        self.client.submit_verdict(project, request).await
+    }
+
+    /// Lists verdicts (server only, no fallback).
+    pub async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, ClientError> {
+        self.client.list_verdicts(project, query).await
+    }
+
     /// Checks server health.
     pub async fn health_check(&self) -> Result<HealthResponse, ClientError> {
         self.client.health_check().await
