@@ -96,6 +96,7 @@ where
     let result = CheckUseCase::new(runner.clone(), host_probe.clone(), clock.clone()).execute(
         CheckRequest {
             noise_threshold: None,
+            noise_policy: None,
             config: config.clone(),
             bench_name: bench_name.to_string(),
             out_dir: std::path::PathBuf::from("."),

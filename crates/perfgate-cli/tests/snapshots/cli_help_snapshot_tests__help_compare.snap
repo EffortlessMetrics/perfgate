@@ -12,6 +12,7 @@ Options:
       --threshold <THRESHOLD> Global regression threshold (0.20 = 20%) [default: 0.2]
       --warn-factor <WARN_FACTOR> Global warn factor (warn_threshold = threshold * warn_factor) [default: 0.9]
       --noise-threshold <NOISE_THRESHOLD> Global noise threshold (coefficient of variation). If CV exceeds this, the metric is considered flaky/noisy
+      --noise-policy <NOISE_POLICY> Global noise policy (warn|skip|ignore)
       --metric-threshold <METRIC_THRESHOLD> Override per-metric threshold, e.g. wall_ms=0.10
       --metric-noise-threshold <METRIC_NOISE_THRESHOLD> Override per-metric noise threshold, e.g. wall_ms=0.05
       --direction <DIRECTION> Override per-metric direction, e.g. throughput_per_s=higher

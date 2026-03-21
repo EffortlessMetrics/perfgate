@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-sensor/src/lib.rs
-assertion_line: 2063
 expression: sensor_report
 ---
 {
@@ -15,10 +14,6 @@ expression: sensor_report
     "duration_ms": 60000,
     "capabilities": {
       "baseline": {
-        "status": "unavailable",
-        "reason": "no_baseline"
-      },
-      "engine": {
         "status": "available"
       }
     }
@@ -40,8 +35,15 @@ expression: sensor_report
       "check_id": "perf.budget",
       "code": "metric_fail",
       "severity": "error",
+      "message": "max_rss_kb regression: +25.00% (threshold: 15.0%)",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e"
+    },
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
       "message": "wall_ms regression: +30.00% (threshold: 20.0%)",
-      "fingerprint": "1e1e7703feb87db211c08038a51a1ca85e1f7690a2374d87b2091e4469cbb2c3"
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e"
     }
   ],
   "data": {

@@ -1,3 +1,7 @@
+use crate::NoisePolicy;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct DefaultsConfig {
@@ -17,6 +21,9 @@ pub struct DefaultsConfig {
     pub noise_threshold: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub noise_policy: Option<NoisePolicy>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub out_dir: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -31,8 +38,3 @@ pub struct DefaultsConfig {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub markdown_template: Option<String>,
 }
-
-
-
-
-

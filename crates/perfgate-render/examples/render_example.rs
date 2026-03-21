@@ -26,6 +26,8 @@ fn create_compare_receipt(status: MetricStatus) -> CompareReceipt {
             ratio: 1.18,
             pct: 0.18,
             regression: 0.18,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status,
@@ -69,6 +71,7 @@ fn create_compare_receipt(status: MetricStatus) -> CompareReceipt {
                 pass: if status == MetricStatus::Pass { 1 } else { 0 },
                 warn: if status == MetricStatus::Warn { 1 } else { 0 },
                 fail: if status == MetricStatus::Fail { 1 } else { 0 },
+                skip: if status == MetricStatus::Skip { 1 } else { 0 },
             },
             reasons: if status != MetricStatus::Pass {
                 vec![format!("wall_ms_{}", status.as_str())]

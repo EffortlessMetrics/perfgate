@@ -285,6 +285,7 @@ fn sensor_report_from_run_receipt_pass() {
                 pass: 1,
                 warn: 0,
                 fail: 0,
+                skip: 0,
             },
             reasons: vec![],
         },
@@ -294,6 +295,7 @@ fn sensor_report_from_run_receipt_pass() {
             pass_count: 1,
             warn_count: 0,
             fail_count: 0,
+            skip_count: 0,
             total_count: 1,
         },
     };
@@ -330,6 +332,7 @@ fn sensor_report_serializes_to_valid_json() {
                 pass: 1,
                 warn: 0,
                 fail: 0,
+                skip: 0,
             },
             reasons: vec![],
         },
@@ -339,6 +342,7 @@ fn sensor_report_serializes_to_valid_json() {
             pass_count: 1,
             warn_count: 0,
             fail_count: 0,
+            skip_count: 0,
             total_count: 1,
         },
     };

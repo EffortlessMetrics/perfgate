@@ -31,6 +31,8 @@ Options:
 
       --noise-threshold <NOISE_THRESHOLD> Global noise threshold (coefficient of variation)
 
+      --noise-policy <NOISE_POLICY> Global noise policy (warn|skip|ignore)
+
       --env <ENV> Environment variable (KEY=VALUE). Repeatable
 
       --output-cap-bytes <OUTPUT_CAP_BYTES> Max bytes captured from stdout/stderr per run [default: 8192]

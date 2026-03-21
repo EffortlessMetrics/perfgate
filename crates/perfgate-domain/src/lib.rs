@@ -103,6 +103,7 @@ mod advanced_analytics_tests {
             Metric::WallMs,
             Budget {
                 noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
                 threshold,
                 warn_threshold: threshold * 0.9,
                 direction: Direction::Lower,
@@ -317,8 +318,10 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
         VerdictStatus::Fail
     } else if counts.warn > 0 {
         VerdictStatus::Warn
-    } else {
+    } else if counts.pass > 0 {
         VerdictStatus::Pass
+    } else {
+        VerdictStatus::Skip
     };
 
     Verdict {
@@ -351,7 +354,9 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// };
 ///
 /// let mut budgets = BTreeMap::new();
-/// budgets.insert(Metric::WallMs, Budget { noise_threshold: None,
+/// budgets.insert(Metric::WallMs, Budget {
+///     noise_threshold: None,
+///     noise_policy: perfgate_types::NoisePolicy::Ignore,
 ///     threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower,
 /// });
 ///
@@ -370,6 +375,7 @@ pub fn compare_stats(
         pass: 0,
         warn: 0,
         fail: 0,
+        skip: 0,
     };
 
     for (metric, budget) in budgets {
@@ -394,6 +400,10 @@ pub fn compare_stats(
                 counts.fail += 1;
                 reasons.push(reason_token(*metric, MetricStatus::Fail));
             }
+            MetricStatus::Skip => {
+                counts.skip += 1;
+                reasons.push(reason_token(*metric, MetricStatus::Skip));
+            }
         }
 
         deltas.insert(
@@ -404,6 +414,8 @@ pub fn compare_stats(
                 ratio: result.ratio,
                 pct: result.pct,
                 regression: result.regression,
+                cv: result.cv,
+                noise_threshold: result.noise_threshold,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: result.status,
@@ -435,6 +447,7 @@ pub fn compare_runs(
         pass: 0,
         warn: 0,
         fail: 0,
+        skip: 0,
     };
 
     for (metric, budget) in budgets {
@@ -490,6 +503,10 @@ pub fn compare_runs(
                 counts.fail += 1;
                 reasons.push(reason_token(*metric, MetricStatus::Fail));
             }
+            MetricStatus::Skip => {
+                counts.skip += 1;
+                reasons.push(reason_token(*metric, MetricStatus::Skip));
+            }
         }
 
         deltas.insert(
@@ -500,6 +517,8 @@ pub fn compare_runs(
                 ratio: result.ratio,
                 pct: result.pct,
                 regression: result.regression,
+                cv: result.cv,
+                noise_threshold: result.noise_threshold,
                 statistic,
                 significance,
                 status,
@@ -587,7 +606,7 @@ pub struct Report {
 ///     deltas: BTreeMap::new(),
 ///     verdict: Verdict {
 ///         status: VerdictStatus::Pass,
-///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0, skip: 0 },
 ///         reasons: vec![],
 ///     },
 /// };
@@ -602,12 +621,12 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
     // Iterate over deltas in deterministic order (BTreeMap is sorted by key)
     for (metric, delta) in &receipt.deltas {
         match delta.status {
-            MetricStatus::Pass => continue,
+            MetricStatus::Pass | MetricStatus::Skip => continue,
             MetricStatus::Warn | MetricStatus::Fail => {
                 let code = match delta.status {
                     MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
                     MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
-                    MetricStatus::Pass => unreachable!(),
+                    _ => unreachable!(),
                 };
 
                 // Get the threshold from budgets if available
@@ -1594,7 +1613,9 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction,
@@ -1664,7 +1685,9 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::ThroughputPerS,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction,
@@ -1726,7 +1749,9 @@ mod tests {
                         throughput_per_s: None,
                     };
                     let mut b = BTreeMap::new();
-                    b.insert(Metric::WallMs, Budget { noise_threshold: None,  threshold, warn_threshold, direction });
+                    b.insert(Metric::WallMs, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,  threshold, warn_threshold, direction });
                     (bs, cs, Metric::WallMs, b)
                 } else {
                     let bs = Stats {
@@ -1748,7 +1773,9 @@ mod tests {
                         throughput_per_s: Some(F64Summary::new(current, current, current)),
                     };
                     let mut b = BTreeMap::new();
-                    b.insert(Metric::ThroughputPerS, Budget { noise_threshold: None,  threshold, warn_threshold, direction });
+                    b.insert(Metric::ThroughputPerS, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,  threshold, warn_threshold, direction });
                     (bs, cs, Metric::ThroughputPerS, b)
                 };
 
@@ -1810,7 +1837,9 @@ mod tests {
                     let mut budgets = BTreeMap::new();
                     budgets.insert(
                         Metric::ThroughputPerS,
-                        Budget { noise_threshold: None,
+                        Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                             threshold,
                             warn_threshold,
                             direction: Direction::Higher,
@@ -1844,6 +1873,7 @@ mod tests {
                 Just(MetricStatus::Pass),
                 Just(MetricStatus::Warn),
                 Just(MetricStatus::Fail),
+                Just(MetricStatus::Skip),
             ]
         }
 
@@ -1857,22 +1887,54 @@ mod tests {
                 VerdictStatus::Fail
             } else if statuses.contains(&MetricStatus::Warn) {
                 VerdictStatus::Warn
-            } else {
+            } else if statuses.contains(&MetricStatus::Pass) {
                 VerdictStatus::Pass
+            } else {
+                VerdictStatus::Skip
             }
         }
 
-        /// Helper to create Stats with a specific wall_ms median value.
-        fn make_stats_with_wall_ms(median: u64) -> Stats {
+        /// Helper to create Stats with a specific wall_ms median value and optional CV.
+        fn make_stats_with_wall_ms_and_cv(median: u64, cv: Option<f64>) -> Stats {
+            let (mean, stddev) = if let Some(cv_val) = cv {
+                let mean = median as f64;
+                let stddev = mean * cv_val;
+                (Some(mean), Some(stddev))
+            } else {
+                (None, None)
+            };
+
             Stats {
-                wall_ms: U64Summary::new(median, median, median),
+                wall_ms: U64Summary {
+                    median,
+                    min: median,
+                    max: median,
+                    mean,
+                    stddev,
+                },
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: None,
+                max_rss_kb: Some(U64Summary {
+                    median,
+                    min: median,
+                    max: median,
+                    mean,
+                    stddev,
+                }),
                 binary_bytes: None,
-                throughput_per_s: None,
+                throughput_per_s: Some(F64Summary {
+                    median: median as f64,
+                    min: median as f64,
+                    max: median as f64,
+                    mean,
+                    stddev,
+                }),
             }
+        }
+
+        fn make_stats_with_wall_ms(median: u64) -> Stats {
+            make_stats_with_wall_ms_and_cv(median, None)
         }
 
         /// Helper to compute the current value needed to achieve a specific status.
@@ -1906,6 +1968,9 @@ mod tests {
                     let regression = threshold + 0.1;
                     (baseline_f * (1.0 + regression)).ceil() as u64
                 }
+
+                // For Skip: return baseline (same as Pass for this helper)
+                MetricStatus::Skip => baseline,
             }
         }
 
@@ -1929,17 +1994,24 @@ mod tests {
 
                 let baseline_stats = make_stats_with_wall_ms(baseline);
                 let current_value = current_for_status(baseline, threshold, warn_threshold, status);
-                let current_stats = make_stats_with_wall_ms(current_value);
+                let current_cv = if status == MetricStatus::Skip { Some(0.5) } else { None };
+                let current_stats = make_stats_with_wall_ms_and_cv(current_value, current_cv);
+
+                let mut budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+
+                if status == MetricStatus::Skip {
+                    budget.noise_threshold = Some(0.1);
+                    budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
 
                 let mut budgets = BTreeMap::new();
-                budgets.insert(
-                    Metric::WallMs,
-                    Budget { noise_threshold: None,
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
+                budgets.insert(Metric::WallMs, budget);
 
                 let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
                     .expect("compare_stats should succeed");
@@ -1983,33 +2055,58 @@ mod tests {
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
 
+                let wall_cv = if wall_ms_status == MetricStatus::Skip { Some(0.5) } else { None };
+                let rss_cv = if max_rss_status == MetricStatus::Skip { Some(0.5) } else { None };
+
                 let current_stats = Stats {
-                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
+                    wall_ms: U64Summary {
+                        median: wall_ms_current,
+                        min: wall_ms_current,
+                        max: wall_ms_current,
+                        mean: wall_cv.map(|_cv| wall_ms_current as f64),
+                        stddev: wall_cv.map(|cv| (wall_ms_current as f64) * cv),
+                    },
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
+                    max_rss_kb: Some(U64Summary {
+                        median: max_rss_current,
+                        min: max_rss_current,
+                        max: max_rss_current,
+                        mean: rss_cv.map(|_cv| max_rss_current as f64),
+                        stddev: rss_cv.map(|cv| (max_rss_current as f64) * cv),
+                    }),
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
 
+                let mut wall_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if wall_ms_status == MetricStatus::Skip {
+                    wall_budget.noise_threshold = Some(0.1);
+                    wall_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
+                let mut rss_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if max_rss_status == MetricStatus::Skip {
+                    rss_budget.noise_threshold = Some(0.1);
+                    rss_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
                 let mut budgets = BTreeMap::new();
-                budgets.insert(
-                    Metric::WallMs,
-                    Budget { noise_threshold: None,
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
-                budgets.insert(
-                    Metric::MaxRssKb,
-                    Budget { noise_threshold: None,
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
+                budgets.insert(Metric::WallMs, wall_budget);
+                budgets.insert(Metric::MaxRssKb, rss_budget);
 
                 let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
                     .expect("compare_stats should succeed");
@@ -2055,6 +2152,10 @@ mod tests {
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
 
+                let wall_cv = if wall_ms_status == MetricStatus::Skip { Some(0.5) } else { None };
+                let rss_cv = if max_rss_status == MetricStatus::Skip { Some(0.5) } else { None };
+                let throughput_cv = if throughput_status == MetricStatus::Skip { Some(0.5) } else { None };
+
                 // For throughput (higher is better), we need to invert the logic
                 // Pass: current >= baseline (no regression)
                 // Warn: current = baseline * (1 - midpoint of warn/threshold)
@@ -2069,43 +2170,77 @@ mod tests {
                         let regression = threshold + 0.1;
                         baseline_throughput * (1.0 - regression)
                     }
+                    MetricStatus::Skip => baseline_throughput,
                 };
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
+                    wall_ms: U64Summary {
+                        median: wall_ms_current,
+                        min: wall_ms_current,
+                        max: wall_ms_current,
+                        mean: wall_cv.map(|_cv| wall_ms_current as f64),
+                        stddev: wall_cv.map(|cv| (wall_ms_current as f64) * cv),
+                    },
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
+                    max_rss_kb: Some(U64Summary {
+                        median: max_rss_current,
+                        min: max_rss_current,
+                        max: max_rss_current,
+                        mean: rss_cv.map(|_cv| max_rss_current as f64),
+                        stddev: rss_cv.map(|cv| (max_rss_current as f64) * cv),
+                    }),
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary::new(throughput_current, throughput_current, throughput_current)),
+                    throughput_per_s: Some(F64Summary {
+                        median: throughput_current,
+                        min: throughput_current,
+                        max: throughput_current,
+                        mean: throughput_cv.map(|_cv| throughput_current),
+                        stddev: throughput_cv.map(|cv| (throughput_current) * cv),
+                    }),
                 };
 
+                let mut wall_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if wall_ms_status == MetricStatus::Skip {
+                    wall_budget.noise_threshold = Some(0.1);
+                    wall_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
+                let mut rss_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if max_rss_status == MetricStatus::Skip {
+                    rss_budget.noise_threshold = Some(0.1);
+                    rss_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
+                let mut throughput_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Higher,
+                };
+                if throughput_status == MetricStatus::Skip {
+                    throughput_budget.noise_threshold = Some(0.1);
+                    throughput_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
                 let mut budgets = BTreeMap::new();
-                budgets.insert(
-                    Metric::WallMs,
-                    Budget { noise_threshold: None,
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
-                budgets.insert(
-                    Metric::MaxRssKb,
-                    Budget { noise_threshold: None,
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
-                budgets.insert(
-                    Metric::ThroughputPerS,
-                    Budget { noise_threshold: None,
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Higher,
-                    },
-                );
+                budgets.insert(Metric::WallMs, wall_budget);
+                budgets.insert(Metric::MaxRssKb, rss_budget);
+                budgets.insert(Metric::ThroughputPerS, throughput_budget);
 
                 let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
                     .expect("compare_stats should succeed");
@@ -2162,7 +2297,9 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2170,7 +2307,9 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::MaxRssKb,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2232,7 +2371,9 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2240,7 +2381,9 @@ mod tests {
                 );
                 budgets.insert(
                     Metric::MaxRssKb,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2299,7 +2442,9 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::WallMs,
-                    Budget { noise_threshold: None,
+                    Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2308,17 +2453,20 @@ mod tests {
                 if num_metrics >= 2 {
                     budgets.insert(
                         Metric::MaxRssKb,
-                        Budget { noise_threshold: None,
+                        Budget {
+                            noise_threshold: None,
+                            noise_policy: perfgate_types::NoisePolicy::Ignore,
                             threshold,
                             warn_threshold,
                             direction: Direction::Lower,
-                        },
-                    );
+                        },                    );
                 }
                 if num_metrics >= 3 {
                     budgets.insert(
                         Metric::ThroughputPerS,
-                        Budget { noise_threshold: None,
+                        Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                             threshold,
                             warn_threshold,
                             direction: Direction::Higher,
@@ -2374,7 +2522,9 @@ mod tests {
                     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
                 };
                 let mut budgets = BTreeMap::new();
-                budgets.insert(Metric::WallMs, Budget { noise_threshold: None,
+                budgets.insert(Metric::WallMs, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
 
@@ -2434,7 +2584,9 @@ mod tests {
                 let baseline = make_run_receipt_for_prop("base", baseline_wall);
                 let current = make_run_receipt_for_prop("cur", current_wall);
                 let mut budgets = BTreeMap::new();
-                budgets.insert(Metric::WallMs, Budget { noise_threshold: None,
+                budgets.insert(Metric::WallMs, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
                 let stats_map = BTreeMap::new();
@@ -2489,6 +2641,7 @@ mod tests {
                 Just(MetricStatus::Pass),
                 Just(MetricStatus::Warn),
                 Just(MetricStatus::Fail),
+                Just(MetricStatus::Skip),
             ]
         }
 
@@ -2499,6 +2652,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status,
@@ -2528,13 +2683,14 @@ mod tests {
                         MetricStatus::Pass => pass_count += 1,
                         MetricStatus::Warn => warn_count += 1,
                         MetricStatus::Fail => fail_count += 1,
+                        MetricStatus::Skip => {}
                     }
                 }
                 let verdict = Verdict {
                     status: if fail_count > 0 { VerdictStatus::Fail }
                             else if warn_count > 0 { VerdictStatus::Warn }
                             else { VerdictStatus::Pass },
-                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count },
+                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count, skip: 0 },
                     reasons: vec![],
                 };
                 let receipt = make_compare_receipt(deltas, budgets, verdict.clone());
@@ -2567,6 +2723,7 @@ mod tests {
                         MetricStatus::Pass => pass_count += 1,
                         MetricStatus::Warn => warn_count += 1,
                         MetricStatus::Fail => fail_count += 1,
+                        MetricStatus::Skip => {}
                     }
                 }
                 let expected_status = if fail_count > 0 { VerdictStatus::Fail }
@@ -2574,7 +2731,7 @@ mod tests {
                     else { VerdictStatus::Pass };
                 let verdict = Verdict {
                     status: expected_status,
-                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count },
+                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count, skip: 0 },
                     reasons: vec![],
                 };
                 let receipt = make_compare_receipt(deltas, budgets, verdict);
@@ -3703,6 +3860,8 @@ mod tests {
                 ratio,
                 pct,
                 regression,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status,
@@ -3722,9 +3881,10 @@ mod tests {
                 BTreeMap::new(),
                 VerdictStatus::Pass,
                 VerdictCounts {
-                    pass: 0,
+                    pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -3753,9 +3913,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Pass,
                 VerdictCounts {
-                    pass: 2,
+                    pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -3790,8 +3951,9 @@ mod tests {
                 VerdictStatus::Fail,
                 VerdictCounts {
                     pass: 1,
-                    warn: 1,
-                    fail: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -3841,6 +4003,7 @@ mod tests {
                     pass: 0,
                     warn: 1,
                     fail: 2,
+                    skip: 0,
                 },
             );
 
@@ -3866,9 +4029,10 @@ mod tests {
                 budgets.clone(),
                 VerdictStatus::Warn,
                 VerdictCounts {
-                    pass: 0,
-                    warn: 1,
+                    pass: 1,
+                    warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -3884,9 +4048,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Fail,
                 VerdictCounts {
-                    pass: 0,
+                    pass: 1,
                     warn: 0,
-                    fail: 1,
+                    fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -3919,9 +4084,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Fail,
                 VerdictCounts {
-                    pass: 0,
-                    warn: 1,
-                    fail: 2,
+                    pass: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -3960,9 +4126,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Fail,
                 VerdictCounts {
-                    pass: 0,
+                    pass: 1,
                     warn: 0,
-                    fail: 1,
+                    fail: 0,
+                    skip: 0,
                 },
             );
             receipt.bench.name = "my_benchmark".to_string();
@@ -3996,9 +4163,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Warn,
                 VerdictCounts {
-                    pass: 0,
-                    warn: 1,
+                    pass: 1,
+                    warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 

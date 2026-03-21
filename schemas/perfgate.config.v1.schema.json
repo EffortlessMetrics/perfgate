@@ -166,6 +166,16 @@
             }
           ]
         },
+        "noise_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoisePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "noise_threshold": {
           "type": [
             "number",
@@ -221,6 +231,16 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "noise_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoisePolicy"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "noise_threshold": {
@@ -292,6 +312,25 @@
       "enum": [
         "median",
         "p95"
+      ]
+    },
+    "NoisePolicy": {
+      "oneOf": [
+        {
+          "description": "No change to status based on noise.",
+          "type": "string",
+          "const": "ignore"
+        },
+        {
+          "description": "Escalate Pass to Warn, and demote Fail to Warn.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "Demote Pass and Fail to Skip.",
+          "type": "string",
+          "const": "skip"
+        }
       ]
     }
   }

@@ -645,6 +645,7 @@ direction = "lower"
                 *metric,
                 Budget {
                     noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold: threshold * warn_factor,
                     direction,

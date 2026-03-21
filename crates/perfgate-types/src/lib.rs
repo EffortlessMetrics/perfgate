@@ -20,12 +20,15 @@
 //!
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
+mod defaults_config;
 mod paired;
 
 pub use paired::{
     PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample,
     PairedSampleHalf, PairedStats,
 };
+
+pub use defaults_config::*;
 
 pub use perfgate_validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
@@ -677,13 +680,21 @@ pub struct Budget {
 
     /// Warn threshold, as a fraction.
     pub warn_threshold: f64,
-
     /// Noise threshold (coefficient of variation).
     /// If CV exceeds this, the metric is considered flaky/noisy.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub noise_threshold: Option<f64>,
 
+    /// Policy for handling noisy metrics.
+    #[serde(default, skip_serializing_if = "is_default_noise_policy")]
+    pub noise_policy: NoisePolicy,
+
+    /// Regression direction.
     pub direction: Direction,
+}
+
+fn is_default_noise_policy(policy: &NoisePolicy) -> bool {
+    *policy == NoisePolicy::Ignore
 }
 
 impl Budget {
@@ -693,6 +704,7 @@ impl Budget {
             threshold,
             warn_threshold,
             noise_threshold: None,
+            noise_policy: NoisePolicy::Ignore,
             direction,
         }
     }
@@ -716,6 +728,29 @@ pub struct Significance {
     pub current_samples: u32,
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum NoisePolicy {
+    /// No change to status based on noise.
+    #[default]
+    Ignore,
+    /// Escalate Pass to Warn, and demote Fail to Warn.
+    Warn,
+    /// Demote Pass and Fail to Skip.
+    Skip,
+}
+
+impl NoisePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            NoisePolicy::Ignore => "ignore",
+            NoisePolicy::Warn => "warn",
+            NoisePolicy::Skip => "skip",
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
@@ -723,6 +758,7 @@ pub enum MetricStatus {
     Pass,
     Warn,
     Fail,
+    Skip,
 }
 
 impl MetricStatus {
@@ -742,6 +778,7 @@ impl MetricStatus {
             MetricStatus::Pass => "pass",
             MetricStatus::Warn => "warn",
             MetricStatus::Fail => "fail",
+            MetricStatus::Skip => "skip",
         }
     }
 }
@@ -760,6 +797,14 @@ pub struct Delta {
 
     /// Positive regression amount, normalized as a fraction.
     pub regression: f64,
+
+    /// Coefficient of variation for the current run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cv: Option<f64>,
+
+    /// Noise threshold used for this comparison.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_threshold: Option<f64>,
 
     #[serde(default, skip_serializing_if = "is_default_metric_statistic")]
     pub statistic: MetricStatistic,
@@ -787,6 +832,7 @@ pub enum VerdictStatus {
     Pass,
     Warn,
     Fail,
+    Skip,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -795,6 +841,7 @@ pub struct VerdictCounts {
     pub pass: u32,
     pub warn: u32,
     pub fail: u32,
+    pub skip: u32,
 }
 
 /// Overall verdict for a comparison, with pass/warn/fail counts.
@@ -806,14 +853,14 @@ pub struct VerdictCounts {
 ///
 /// let verdict = Verdict {
 ///     status: VerdictStatus::Pass,
-///     counts: VerdictCounts { pass: 2, warn: 0, fail: 0 },
+///     counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },
 ///     reasons: vec![],
 /// };
 /// assert_eq!(verdict.status, VerdictStatus::Pass);
 ///
 /// let failing = Verdict {
 ///     status: VerdictStatus::Fail,
-///     counts: VerdictCounts { pass: 1, warn: 0, fail: 1 },
+///     counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },
 ///     reasons: vec!["wall_ms.fail".into()],
 /// };
 /// assert_eq!(failing.status, VerdictStatus::Fail);
@@ -849,7 +896,7 @@ pub struct Verdict {
 ///     deltas: BTreeMap::new(),
 ///     verdict: Verdict {
 ///         status: VerdictStatus::Pass,
-///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0, skip: 0 },
 ///         reasons: vec![],
 ///     },
 /// };
@@ -948,9 +995,17 @@ pub struct ReportSummary {
     #[serde(rename = "fail_count")]
     pub fail_count: u32,
 
+    /// Number of metrics that were skipped.
+    #[serde(rename = "skip_count", default, skip_serializing_if = "is_zero_u32")]
+    pub skip_count: u32,
+
     /// Total number of metrics checked.
     #[serde(rename = "total_count")]
     pub total_count: u32,
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 /// A performance report wrapping compare results in a cockpit-compatible envelope.
@@ -1043,40 +1098,6 @@ impl ConfigFile {
         }
         Ok(())
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct DefaultsConfig {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub repeat: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub warmup: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub threshold: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub warn_factor: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub noise_threshold: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub out_dir: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub baseline_dir: Option<String>,
-
-    /// Optional baseline discovery pattern. Supports `{bench}` placeholder.
-    /// Example: `baselines/{bench}.json`.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub baseline_pattern: Option<String>,
-
-    /// Optional Handlebars template path for markdown comments.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub markdown_template: Option<String>,
 }
 
 /// Configuration for the baseline server connection.
@@ -1193,6 +1214,9 @@ pub struct BudgetOverride {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub noise_threshold: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_policy: Option<NoisePolicy>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statistic: Option<MetricStatistic>,
@@ -1697,6 +1721,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -1710,6 +1736,8 @@ mod tests {
                 ratio: 1.2207,
                 pct: 0.2207,
                 regression: 0.2207,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -1747,6 +1775,7 @@ mod tests {
                     pass: 1,
                     warn: 0,
                     fail: 1,
+                    skip: 0,
                 },
                 reasons: vec!["max_rss_kb_fail".into()],
             },
@@ -1789,6 +1818,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -1808,6 +1838,7 @@ mod tests {
                     pass: 1,
                     warn: 1,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_warn".into()],
             },
@@ -1830,6 +1861,7 @@ mod tests {
                 pass_count: 1,
                 warn_count: 1,
                 fail_count: 0,
+                skip_count: 0,
                 total_count: 2,
             },
         };
@@ -1843,6 +1875,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig {
                 noise_threshold: None,
+                noise_policy: None,
                 repeat: Some(10),
                 warmup: Some(2),
                 threshold: Some(0.2),
@@ -1868,6 +1901,7 @@ mod tests {
                         Metric::WallMs,
                         BudgetOverride {
                             noise_threshold: None,
+                            noise_policy: None,
                             threshold: Some(0.15),
                             direction: Some(Direction::Lower),
                             warn_factor: Some(0.85),
@@ -1992,7 +2026,7 @@ mod tests {
             },
             "verdict": {
                 "status": "pass",
-                "counts": {"pass": 1, "warn": 0, "fail": 0},
+                "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
                 "reasons": []
             }
         }"#;
@@ -2136,6 +2170,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -2482,6 +2517,7 @@ mod property_tests {
                 let warn_threshold = threshold * warn_factor;
                 Budget {
                     noise_threshold: None,
+                    noise_policy: NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -2516,6 +2552,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -2534,10 +2572,13 @@ mod property_tests {
 
     // Strategy for VerdictCounts
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 
@@ -2710,6 +2751,7 @@ mod property_tests {
         )
             .prop_map(|(threshold, direction, warn_factor)| BudgetOverride {
                 noise_threshold: None,
+                noise_policy: None,
                 threshold,
                 direction,
                 warn_factor,
@@ -2776,6 +2818,7 @@ mod property_tests {
                     markdown_template,
                 )| DefaultsConfig {
                     noise_threshold: None,
+                    noise_policy: None,
                     repeat,
                     warmup,
                     threshold,
@@ -3434,14 +3477,15 @@ mod property_tests {
     }
 
     fn report_summary_strategy() -> impl Strategy<Value = ReportSummary> {
-        (0u32..100, 0u32..100, 0u32..100).prop_map(|(pass_count, warn_count, fail_count)| {
-            ReportSummary {
+        (0u32..100, 0u32..100, 0u32..100, 0u32..100).prop_map(
+            |(pass_count, warn_count, fail_count, skip_count)| ReportSummary {
                 pass_count,
                 warn_count,
                 fail_count,
-                total_count: pass_count + warn_count + fail_count,
-            }
-        })
+                skip_count,
+                total_count: pass_count + warn_count + fail_count + skip_count,
+            },
+        )
     }
 
     fn perfgate_report_strategy() -> impl Strategy<Value = PerfgateReport> {

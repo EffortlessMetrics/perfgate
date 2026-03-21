@@ -165,13 +165,16 @@ pub struct RunExportRow {
 /// use perfgate_export::CompareExportRow;
 ///
 /// let row = CompareExportRow {
-///     bench_name: "my-bench".into(),
-///     metric: "wall_ms".into(),
+///     bench_name: "my-bench".to_string(),
+///     metric: "wall_ms".to_string(),
 ///     baseline_value: 100.0,
 ///     current_value: 110.0,
 ///     regression_pct: 10.0,
-///     status: "pass".into(),
+///     status: "pass".to_string(),
 ///     threshold: 20.0,
+///     warn_threshold: Some(18.0),
+///     cv: None,
+///     noise_threshold: None,
 /// };
 /// assert_eq!(row.metric, "wall_ms");
 /// assert_eq!(row.status, "pass");
@@ -185,6 +188,9 @@ pub struct CompareExportRow {
     pub regression_pct: f64,
     pub status: String,
     pub threshold: f64,
+    pub warn_threshold: Option<f64>,
+    pub cv: Option<f64>,
+    pub noise_threshold: Option<f64>,
 }
 
 /// Use case for exporting receipts to different formats.
@@ -256,13 +262,13 @@ impl ExportUseCase {
     ///     current_ref: CompareRef { path: None, run_id: None },
     ///     budgets: BTreeMap::new(),
     ///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
-    ///         baseline: 100.0, current: 105.0, ratio: 1.05, pct: 0.05,
-    ///         regression: 0.05, statistic: MetricStatistic::Median,
-    ///         significance: None, status: MetricStatus::Pass,
+    ///         baseline: 100.0, current: 110.0, ratio: 1.1, pct: 0.1, regression: 0.1,
+    ///         cv: None, noise_threshold: None,
+    ///         statistic: MetricStatistic::Median, significance: None, status: MetricStatus::Pass
     ///     })]),
     ///     verdict: Verdict {
     ///         status: VerdictStatus::Pass,
-    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0, skip: 0 },
     ///         reasons: vec![],
     ///     },
     /// };
@@ -310,11 +316,9 @@ impl ExportUseCase {
             .deltas
             .iter()
             .map(|(metric, delta)| {
-                let threshold = receipt
-                    .budgets
-                    .get(metric)
-                    .map(|b| b.threshold)
-                    .unwrap_or(0.0);
+                let budget = receipt.budgets.get(metric);
+                let threshold = budget.map(|b| b.threshold).unwrap_or(0.0);
+                let warn_threshold = budget.map(|b| b.warn_threshold);
 
                 CompareExportRow {
                     bench_name: receipt.bench.name.clone(),
@@ -324,6 +328,9 @@ impl ExportUseCase {
                     regression_pct: delta.pct * 100.0,
                     status: status_to_string(delta.status),
                     threshold: threshold * 100.0,
+                    warn_threshold: warn_threshold.map(|t| t * 100.0),
+                    cv: delta.cv.map(|cv| cv * 100.0),
+                    noise_threshold: delta.noise_threshold.map(|t| t * 100.0),
                 }
             })
             .collect();
@@ -593,6 +600,7 @@ fn status_to_string(status: MetricStatus) -> String {
         MetricStatus::Pass => "pass".to_string(),
         MetricStatus::Warn => "warn".to_string(),
         MetricStatus::Fail => "fail".to_string(),
+        MetricStatus::Skip => "skip".to_string(),
     }
 }
 
@@ -719,6 +727,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -732,6 +742,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -768,7 +780,8 @@ mod tests {
                 counts: VerdictCounts {
                     pass: 1,
                     warn: 0,
-                    fail: 1,
+                    fail: 0,
+                    skip: 0,
                 },
                 reasons: vec!["max_rss_kb_fail".to_string()],
             },
@@ -1012,9 +1025,10 @@ mod tests {
                 verdict: Verdict {
                     status: VerdictStatus::Pass,
                     counts: VerdictCounts {
-                        pass: 0,
+                        pass: 1,
                         warn: 0,
                         fail: 0,
+                        skip: 0,
                     },
                     reasons: vec![],
                 },
@@ -1244,10 +1258,12 @@ mod tests {
                 Metric::WallMs,
                 Delta {
                     baseline: 100.0,
-                    current: 110.0,
-                    ratio: 1.1,
-                    pct: 0.1,
-                    regression: 0.1,
+                    current: 105.0,
+                    ratio: 1.05,
+                    pct: 0.05,
+                    regression: 0.05,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status: MetricStatus::Pass,
@@ -1256,11 +1272,13 @@ mod tests {
             receipt.deltas.insert(
                 Metric::MaxRssKb,
                 Delta {
-                    baseline: 1024.0,
-                    current: 1024.0,
-                    ratio: 1.0,
-                    pct: 0.0,
-                    regression: 0.0,
+                    baseline: 100.0,
+                    current: 105.0,
+                    ratio: 1.05,
+                    pct: 0.05,
+                    regression: 0.05,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status: MetricStatus::Pass,
@@ -1391,6 +1409,8 @@ mod tests {
                     ratio: 1.05,
                     pct: 0.05,
                     regression: 0.05,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status: MetricStatus::Pass,
@@ -1441,6 +1461,8 @@ mod tests {
                         ratio: 1.2,
                         pct: 0.2,
                         regression: 0.2,
+                        cv: None,
+                        noise_threshold: None,
                         statistic: MetricStatistic::Median,
                         significance: None,
                         status,
@@ -1508,6 +1530,8 @@ mod tests {
                         ratio: 1.1,
                         pct: 0.1,
                         regression: 0.1,
+                        cv: None,
+                        noise_threshold: None,
                         statistic: MetricStatistic::Median,
                         significance: None,
                         status,
@@ -1895,6 +1919,7 @@ mod property_tests {
                 let warn_threshold = threshold * warn_factor;
                 Budget {
                     noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -1908,6 +1933,7 @@ mod property_tests {
             Just(MetricStatus::Pass),
             Just(MetricStatus::Warn),
             Just(MetricStatus::Fail),
+            Just(MetricStatus::Skip),
         ]
     }
 
@@ -1923,6 +1949,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -1936,14 +1964,18 @@ mod property_tests {
             Just(VerdictStatus::Pass),
             Just(VerdictStatus::Warn),
             Just(VerdictStatus::Fail),
+            Just(VerdictStatus::Skip),
         ]
     }
 
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 

@@ -301,7 +301,16 @@ mod tests {
 
     fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
         let mut budgets = BTreeMap::new();
-        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.1, Direction::Lower));
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.1,
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
+                direction: Direction::Lower,
+            },
+        );
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -312,6 +321,8 @@ mod tests {
                 ratio: 1.15,
                 pct: 0.15,
                 regression: 0.15,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status,
@@ -346,9 +357,10 @@ mod tests {
             verdict: Verdict {
                 status: VerdictStatus::Warn,
                 counts: VerdictCounts {
-                    pass: 0,
-                    warn: 1,
-                    fail: 0,
+                    pass: if status == MetricStatus::Pass { 1 } else { 0 },
+                    warn: if status == MetricStatus::Warn { 1 } else { 0 },
+                    fail: if status == MetricStatus::Fail { 1 } else { 0 },
+                    skip: if status == MetricStatus::Skip { 1 } else { 0 },
                 },
                 reasons: vec!["wall_ms_warn".to_string()],
             },
@@ -393,7 +405,16 @@ mod tests {
     #[test]
     fn markdown_renders_table() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.18,
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
+                direction: Direction::Lower,
+            },
+        );
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -404,6 +425,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -441,6 +464,7 @@ mod tests {
                     pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -522,6 +546,8 @@ mod tests {
                 ratio: 1.5,
                 pct: 0.5,
                 regression: 0.5,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -535,6 +561,8 @@ mod tests {
                 ratio: 0.9,
                 pct: -0.1,
                 regression: 0.0,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -592,7 +620,16 @@ mod tests {
         );
 
         let mut budgets = BTreeMap::new();
-        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.1, Direction::Lower));
+        budgets.insert(
+            Metric::WallMs,
+            Budget {
+                threshold: 0.2,
+                warn_threshold: 0.1,
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
+                direction: Direction::Lower,
+            },
+        );
 
         let err = CompareUseCase::execute(CompareRequest {
             baseline: baseline.clone(),
@@ -733,6 +770,7 @@ mod property_tests {
                 let warn_threshold = threshold * warn_factor;
                 Budget {
                     noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -747,6 +785,7 @@ mod property_tests {
             Just(MetricStatus::Pass),
             Just(MetricStatus::Warn),
             Just(MetricStatus::Fail),
+            Just(MetricStatus::Skip),
         ]
     }
 
@@ -767,6 +806,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -780,15 +821,19 @@ mod property_tests {
             Just(VerdictStatus::Pass),
             Just(VerdictStatus::Warn),
             Just(VerdictStatus::Fail),
+            Just(VerdictStatus::Skip),
         ]
     }
 
     // Strategy for VerdictCounts
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 
@@ -877,6 +922,7 @@ mod property_tests {
                 VerdictStatus::Pass => "✅",
                 VerdictStatus::Warn => "⚠️",
                 VerdictStatus::Fail => "❌",
+                VerdictStatus::Skip => "⏭️",
             };
             prop_assert!(
                 md.contains(expected_emoji),
@@ -891,6 +937,7 @@ mod property_tests {
                 VerdictStatus::Pass => "pass",
                 VerdictStatus::Warn => "warn",
                 VerdictStatus::Fail => "fail",
+                VerdictStatus::Skip => "skip",
             };
             prop_assert!(
                 md.contains(expected_status_word),
@@ -1021,7 +1068,7 @@ mod property_tests {
 
             // Requirement 8.5: Each annotation contains bench name, metric name, and delta percentage
             for (metric, delta) in &receipt.deltas {
-                if delta.status == MetricStatus::Pass {
+                if delta.status == MetricStatus::Pass || delta.status == MetricStatus::Skip {
                     continue; // Pass metrics don't produce annotations
                 }
 
@@ -1082,7 +1129,7 @@ mod property_tests {
                             annotation
                         );
                     }
-                    MetricStatus::Pass => unreachable!(),
+                    MetricStatus::Pass | MetricStatus::Skip => unreachable!(),
                 }
             }
         }

@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-sensor/src/lib.rs
-assertion_line: 2206
 expression: sensor_report
 ---
 {
@@ -15,9 +14,6 @@ expression: sensor_report
     "duration_ms": 60000,
     "capabilities": {
       "baseline": {
-        "status": "available"
-      },
-      "engine": {
         "status": "available"
       }
     }
@@ -39,7 +35,7 @@ expression: sensor_report
       "code": "metric_fail",
       "severity": "error",
       "message": "metric_0 regression",
-      "fingerprint": "13ef26ebfce200e02bcd23fbce678e293b3ff8e9595d853695213e9044cac188",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e",
       "data": {
         "baseline": 100.0,
         "current": 150.0,
@@ -54,7 +50,7 @@ expression: sensor_report
       "code": "metric_fail",
       "severity": "error",
       "message": "metric_1 regression",
-      "fingerprint": "1e591da573f2265ef622cceedcb7936827e21020f2e4e6b9284cd77332e32e2e",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e",
       "data": {
         "baseline": 100.0,
         "current": 150.0,
@@ -65,20 +61,14 @@ expression: sensor_report
       }
     },
     {
-      "check_id": "tool.truncation",
-      "code": "truncated",
+      "check_id": "perfgate.tool",
+      "code": "tool_truncation",
       "severity": "info",
-      "message": "Showing 2 of 5 findings; 3 omitted",
-      "fingerprint": "56da901e22f89e98806bc021c1acd108256f0bae46907dcd825d334ab6e61432",
-      "data": {
-        "shown_findings": 2,
-        "total_findings": 5
-      }
+      "message": "Some findings were truncated to stay within limits.",
+      "fingerprint": "a54d821885b1a36708a034be2e75637dddf8306b4467ef58826013cbd598c8ed"
     }
   ],
   "data": {
-    "findings_emitted": 2,
-    "findings_total": 5,
     "summary": {
       "bench_count": 1,
       "fail_count": 5,

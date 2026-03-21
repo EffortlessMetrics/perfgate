@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-sensor/src/lib.rs
-assertion_line: 2154
 expression: sensor_report
 ---
 {
@@ -15,17 +14,14 @@ expression: sensor_report
     "duration_ms": 120000,
     "capabilities": {
       "baseline": {
-        "status": "available"
-      },
-      "engine": {
-        "status": "available"
+        "status": "unavailable"
       }
     }
   },
   "verdict": {
     "status": "warn",
     "counts": {
-      "info": 3,
+      "info": 4,
       "warn": 1,
       "error": 0
     },
@@ -39,7 +35,7 @@ expression: sensor_report
       "code": "metric_warn",
       "severity": "warn",
       "message": "[bench-a] wall_ms regression: +15.00%",
-      "fingerprint": "cfbee32ff6d9f8070a03b3bc4259298beb4c19474ba4d4d88e060344c32d6040",
+      "fingerprint": "3ce609dc6bd98bd6fd8fc2a95ec9e175d8ddde3047610880c8287be882d4a710",
       "data": {
         "bench_name": "bench-a"
       }
@@ -47,31 +43,19 @@ expression: sensor_report
   ],
   "artifacts": [
     {
-      "path": "extras/bench-a/perfgate.compare.v1.json",
-      "type": "compare_receipt"
-    },
-    {
-      "path": "extras/bench-b/perfgate.compare.v1.json",
-      "type": "compare_receipt"
-    },
-    {
-      "path": "comment.md",
-      "type": "markdown"
-    },
-    {
-      "path": "extras/bench-a/perfgate.report.v1.json",
+      "path": "artifacts/bench-a/perfgate.report.v1.json",
       "type": "perfgate_report"
     },
     {
-      "path": "extras/bench-b/perfgate.report.v1.json",
+      "path": "artifacts/bench-b/perfgate.report.v1.json",
       "type": "perfgate_report"
     },
     {
-      "path": "extras/bench-a/perfgate.run.v1.json",
+      "path": "artifacts/bench-a/perfgate.run.v1.json",
       "type": "run_receipt"
     },
     {
-      "path": "extras/bench-b/perfgate.run.v1.json",
+      "path": "artifacts/bench-b/perfgate.run.v1.json",
       "type": "run_receipt"
     }
   ],
@@ -79,8 +63,8 @@ expression: sensor_report
     "summary": {
       "bench_count": 2,
       "fail_count": 0,
-      "pass_count": 3,
-      "total_count": 4,
+      "pass_count": 4,
+      "total_count": 5,
       "warn_count": 1
     }
   }

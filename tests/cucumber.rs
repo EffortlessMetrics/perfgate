@@ -301,6 +301,7 @@ impl PerfgateWorld {
             VerdictStatus::Pass => MetricStatus::Pass,
             VerdictStatus::Warn => MetricStatus::Warn,
             VerdictStatus::Fail => MetricStatus::Fail,
+            VerdictStatus::Skip => MetricStatus::Skip,
         };
 
         let mut deltas = BTreeMap::new();
@@ -312,6 +313,8 @@ impl PerfgateWorld {
                 ratio,
                 pct,
                 regression,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: metric_status,
@@ -319,7 +322,7 @@ impl PerfgateWorld {
         );
 
         let reasons = match verdict_status {
-            VerdictStatus::Pass => vec![],
+            VerdictStatus::Pass | VerdictStatus::Skip => vec![],
             VerdictStatus::Warn => vec!["wall_ms_warn".to_string()],
             VerdictStatus::Fail => vec!["wall_ms_fail".to_string()],
         };
@@ -329,16 +332,25 @@ impl PerfgateWorld {
                 pass: 1,
                 warn: 0,
                 fail: 0,
+                skip: 0,
             },
             VerdictStatus::Warn => VerdictCounts {
                 pass: 0,
                 warn: 1,
                 fail: 0,
+                skip: 0,
             },
             VerdictStatus::Fail => VerdictCounts {
                 pass: 0,
                 warn: 0,
                 fail: 1,
+                skip: 0,
+            },
+            VerdictStatus::Skip => VerdictCounts {
+                pass: 0,
+                warn: 0,
+                fail: 0,
+                skip: 1,
             },
         };
 
@@ -1414,6 +1426,7 @@ async fn then_verdict(world: &mut PerfgateWorld, expected: String) {
         VerdictStatus::Pass => "pass",
         VerdictStatus::Warn => "warn",
         VerdictStatus::Fail => "fail",
+        VerdictStatus::Skip => "skip",
     };
 
     assert_eq!(
@@ -2700,6 +2713,7 @@ async fn then_report_verdict(world: &mut PerfgateWorld, expected: String) {
         VerdictStatus::Pass => "pass",
         VerdictStatus::Warn => "warn",
         VerdictStatus::Fail => "fail",
+        VerdictStatus::Skip => "skip",
     };
 
     assert_eq!(
@@ -2865,6 +2879,7 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -2916,6 +2931,7 @@ async fn given_config_file_with_bench_threshold(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(threshold),
@@ -2968,6 +2984,7 @@ async fn given_config_file_with_bench_threshold_warn(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(threshold),
@@ -3017,6 +3034,7 @@ async fn given_config_file_with_defaults_repeat_warmup(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(repeat),
             warmup: Some(warmup),
             threshold: Some(0.20),
@@ -3052,6 +3070,7 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(repeat),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3137,6 +3156,7 @@ async fn given_config_file_with_bench_baseline_dir(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3187,6 +3207,7 @@ async fn given_config_file_with_bench_baseline_pattern(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3382,6 +3403,7 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3433,6 +3455,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.0),
@@ -3488,6 +3511,7 @@ async fn given_config_file_with_benches_lenient(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(100_000.0),
@@ -3548,6 +3572,7 @@ async fn given_config_file_with_mixed_thresholds(
         Metric::WallMs,
         BudgetOverride {
             noise_threshold: None,
+            noise_policy: None,
             threshold: Some(100_000.0),
             direction: None,
             warn_factor: Some(0.0),
@@ -3570,6 +3595,7 @@ async fn given_config_file_with_mixed_thresholds(
     let config = ConfigFile {
         defaults: DefaultsConfig {
             noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.0),
@@ -4333,6 +4359,7 @@ async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: Str
         VerdictStatus::Pass => MetricStatus::Pass,
         VerdictStatus::Warn => MetricStatus::Warn,
         VerdictStatus::Fail => MetricStatus::Fail,
+        VerdictStatus::Skip => MetricStatus::Skip,
     };
 
     let mut deltas = BTreeMap::new();
@@ -4344,6 +4371,8 @@ async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: Str
             ratio: 1.5,
             pct: 0.5,
             regression: 0.5,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status: metric_status,
@@ -4389,6 +4418,11 @@ async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: Str
                     0
                 },
                 fail: if verdict_status == VerdictStatus::Fail {
+                    1
+                } else {
+                    0
+                },
+                skip: if verdict_status == VerdictStatus::Skip {
                     1
                 } else {
                     0
@@ -4466,6 +4500,11 @@ async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
                 } else {
                     0
                 },
+                skip: if verdict_status == VerdictStatus::Skip {
+                    1
+                } else {
+                    0
+                },
             },
             reasons: vec![],
         },
@@ -4487,7 +4526,12 @@ async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
             } else {
                 0
             },
-            total_count: 2,
+            skip_count: if verdict_status == VerdictStatus::Skip {
+                1
+            } else {
+                0
+            },
+            total_count: 4,
         },
     }));
 }
@@ -4647,6 +4691,7 @@ async fn given_budget_direction_lower(
 ) {
     world.test_budget = Some(perfgate_types::Budget {
         noise_threshold: None,
+        noise_policy: perfgate_types::NoisePolicy::Ignore,
         threshold,
         warn_threshold,
         direction: perfgate_types::Direction::Lower,
@@ -4661,6 +4706,7 @@ async fn given_budget_direction_higher(
 ) {
     world.test_budget = Some(perfgate_types::Budget {
         noise_threshold: None,
+        noise_policy: perfgate_types::NoisePolicy::Ignore,
         threshold,
         warn_threshold,
         direction: perfgate_types::Direction::Higher,
@@ -4689,6 +4735,7 @@ async fn then_budget_status_should_be(world: &mut PerfgateWorld, expected: Strin
         perfgate_types::MetricStatus::Pass => "pass",
         perfgate_types::MetricStatus::Warn => "warn",
         perfgate_types::MetricStatus::Fail => "fail",
+        perfgate_types::MetricStatus::Skip => "skip",
     };
     assert_eq!(
         actual, expected,
@@ -4751,6 +4798,7 @@ async fn then_aggregated_verdict_should_be(world: &mut PerfgateWorld, expected: 
         perfgate_types::VerdictStatus::Pass => "pass",
         perfgate_types::VerdictStatus::Warn => "warn",
         perfgate_types::VerdictStatus::Fail => "fail",
+        perfgate_types::VerdictStatus::Skip => "skip",
     };
     assert_eq!(
         actual, expected,
@@ -5063,6 +5111,8 @@ async fn given_compare_receipt_exists_with(
                     ratio: 1.0 + pct,
                     pct,
                     regression: if pct > 0.0 { pct } else { 0.0 },
+                    cv: None,
+                    noise_threshold: None,
                     statistic: perfgate_types::MetricStatistic::Median,
                     significance: None,
                     status,

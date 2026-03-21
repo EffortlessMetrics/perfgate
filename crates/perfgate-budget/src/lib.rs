@@ -19,7 +19,9 @@
 //! use std::collections::BTreeMap;
 //!
 //! // Create a budget for a lower-is-better metric (e.g., wall time)
-//! let budget = Budget { noise_threshold: None,
+//! let budget = Budget {
+//!     noise_threshold: None,
+//!     noise_policy: perfgate_types::NoisePolicy::Ignore,
 //!     threshold: 0.20,       // 20% regression fails
 //!     warn_threshold: 0.10,  // 10% regression warns
 //!     direction: Direction::Lower,
@@ -49,7 +51,9 @@ use thiserror::Error;
 /// use perfgate_budget::{evaluate_budget, BudgetError};
 /// use perfgate_types::{Budget, Direction};
 ///
-/// let budget = Budget { noise_threshold: None,
+/// let budget = Budget {
+///     noise_threshold: None,
+///     noise_policy: perfgate_types::NoisePolicy::Ignore,
 ///     threshold: 0.20,
 ///     warn_threshold: 0.10,
 ///     direction: Direction::Lower,
@@ -76,7 +80,9 @@ pub enum BudgetError {
 /// use perfgate_budget::evaluate_budget;
 /// use perfgate_types::{Budget, Direction, MetricStatus};
 ///
-/// let budget = Budget { noise_threshold: None,
+/// let budget = Budget {
+///     noise_threshold: None,
+///     noise_policy: perfgate_types::NoisePolicy::Ignore,
 ///     threshold: 0.20,
 ///     warn_threshold: 0.10,
 ///     direction: Direction::Lower,
@@ -103,7 +109,9 @@ pub struct BudgetResult {
     /// Positive regression amount (0 if improvement).
     pub regression: f64,
     /// Detected noise level (coefficient of variation), if available.
-    pub noise: Option<f64>,
+    pub cv: Option<f64>,
+    /// Noise threshold used for this comparison.
+    pub noise_threshold: Option<f64>,
     /// Determined status based on budget thresholds.
     pub status: MetricStatus,
 }
@@ -145,12 +153,24 @@ pub fn evaluate_budget(
 
     let mut status = determine_status(regression, budget.threshold, budget.warn_threshold);
 
-    // Noise detection: if CV exceeds noise_threshold, escalate to Warn
+    // Noise detection: if CV exceeds noise_threshold, apply noise_policy
     if let (Some(cv), Some(limit)) = (current_cv, budget.noise_threshold)
         && cv > limit
-        && status == MetricStatus::Pass
     {
-        status = MetricStatus::Warn;
+        match budget.noise_policy {
+            perfgate_types::NoisePolicy::Ignore => {
+                // Even if Ignore, we used to escalate Pass to Warn if noisy?
+                // Actually, if Ignore, we should probably do nothing.
+                // But maybe "Ignore" means "don't demote failures" but still "warn on noise"?
+                // No, let's follow the policy strictly.
+            }
+            perfgate_types::NoisePolicy::Warn => {
+                status = MetricStatus::Warn;
+            }
+            perfgate_types::NoisePolicy::Skip => {
+                status = MetricStatus::Skip;
+            }
+        }
     }
 
     Ok(BudgetResult {
@@ -159,7 +179,8 @@ pub fn evaluate_budget(
         ratio,
         pct,
         regression,
-        noise: current_cv,
+        cv: current_cv,
+        noise_threshold: budget.noise_threshold,
         status,
     })
 }
@@ -285,6 +306,7 @@ pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
         pass: 0,
         warn: 0,
         fail: 0,
+        skip: 0,
     };
 
     for status in statuses {
@@ -292,6 +314,7 @@ pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
             MetricStatus::Pass => counts.pass += 1,
             MetricStatus::Warn => counts.warn += 1,
             MetricStatus::Fail => counts.fail += 1,
+            MetricStatus::Skip => counts.skip += 1,
         }
     }
 
@@ -299,8 +322,10 @@ pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
         VerdictStatus::Fail
     } else if counts.warn > 0 {
         VerdictStatus::Warn
-    } else {
+    } else if counts.pass > 0 {
         VerdictStatus::Pass
+    } else {
+        VerdictStatus::Skip
     };
 
     Verdict {
@@ -551,6 +576,7 @@ mod property_tests {
             let warn_threshold = threshold * warn_factor;
             Budget {
                 noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
                 threshold,
                 warn_threshold,
                 direction: Direction::Lower,
@@ -611,12 +637,22 @@ mod property_tests {
                     prop_assert!(regression <= threshold);
                 }
                 MetricStatus::Pass => prop_assert!(regression < warn_threshold),
+                MetricStatus::Skip => {
+                    // Skip only happens if CV > limit and noise_policy is Skip.
+                    // determine_status doesn't return Skip, so if we have Skip here,
+                    // it means the noise detection logic applied it.
+                }
             }
         }
 
         #[test]
         fn prop_aggregate_verdict_consistency(statuses in prop::collection::vec(
-            prop_oneof![Just(MetricStatus::Pass), Just(MetricStatus::Warn), Just(MetricStatus::Fail)],
+            prop_oneof![
+                Just(MetricStatus::Pass),
+                Just(MetricStatus::Warn),
+                Just(MetricStatus::Fail),
+                Just(MetricStatus::Skip)
+            ],
             0..20
         )) {
             let verdict = aggregate_verdict(&statuses);
@@ -625,18 +661,22 @@ mod property_tests {
             let expected_pass = statuses.iter().filter(|&&s| s == MetricStatus::Pass).count() as u32;
             let expected_warn = statuses.iter().filter(|&&s| s == MetricStatus::Warn).count() as u32;
             let expected_fail = statuses.iter().filter(|&&s| s == MetricStatus::Fail).count() as u32;
+            let expected_skip = statuses.iter().filter(|&&s| s == MetricStatus::Skip).count() as u32;
 
             prop_assert_eq!(verdict.counts.pass, expected_pass);
             prop_assert_eq!(verdict.counts.warn, expected_warn);
             prop_assert_eq!(verdict.counts.fail, expected_fail);
+            prop_assert_eq!(verdict.counts.skip, expected_skip);
 
             // Check status aggregation
             if expected_fail > 0 {
                 prop_assert_eq!(verdict.status, VerdictStatus::Fail);
             } else if expected_warn > 0 {
                 prop_assert_eq!(verdict.status, VerdictStatus::Warn);
-            } else {
+            } else if expected_pass > 0 {
                 prop_assert_eq!(verdict.status, VerdictStatus::Pass);
+            } else {
+                prop_assert_eq!(verdict.status, VerdictStatus::Skip);
             }
         }
 

@@ -100,7 +100,12 @@
       "type": "object",
       "properties": {
         "direction": {
+          "description": "Regression direction.",
           "$ref": "#/$defs/Direction"
+        },
+        "noise_policy": {
+          "description": "Policy for handling noisy metrics.",
+          "$ref": "#/$defs/NoisePolicy"
         },
         "noise_threshold": {
           "description": "Noise threshold (coefficient of variation).\nIf CV exceeds this, the metric is considered flaky/noisy.",
@@ -128,7 +133,7 @@
       ]
     },
     "CompareReceipt": {
-      "description": "A versioned receipt comparing baseline vs current (`perfgate.compare.v1`).\n\n# Examples\n\n```\nuse perfgate_types::*;\nuse std::collections::BTreeMap;\n\nlet receipt = CompareReceipt {\n    schema: COMPARE_SCHEMA_V1.to_string(),\n    tool: ToolInfo { name: \"perfgate\".into(), version: \"0.1.0\".into() },\n    bench: BenchMeta {\n        name: \"my-bench\".into(), cwd: None,\n        command: vec![\"echo\".into()], repeat: 5, warmup: 0,\n        work_units: None, timeout_ms: None,\n    },\n    baseline_ref: CompareRef { path: Some(\"base.json\".into()), run_id: None },\n    current_ref: CompareRef { path: Some(\"cur.json\".into()), run_id: None },\n    budgets: BTreeMap::new(),\n    deltas: BTreeMap::new(),\n    verdict: Verdict {\n        status: VerdictStatus::Pass,\n        counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },\n        reasons: vec![],\n    },\n};\nassert_eq!(receipt.schema, \"perfgate.compare.v1\");\n```",
+      "description": "A versioned receipt comparing baseline vs current (`perfgate.compare.v1`).\n\n# Examples\n\n```\nuse perfgate_types::*;\nuse std::collections::BTreeMap;\n\nlet receipt = CompareReceipt {\n    schema: COMPARE_SCHEMA_V1.to_string(),\n    tool: ToolInfo { name: \"perfgate\".into(), version: \"0.1.0\".into() },\n    bench: BenchMeta {\n        name: \"my-bench\".into(), cwd: None,\n        command: vec![\"echo\".into()], repeat: 5, warmup: 0,\n        work_units: None, timeout_ms: None,\n    },\n    baseline_ref: CompareRef { path: Some(\"base.json\".into()), run_id: None },\n    current_ref: CompareRef { path: Some(\"cur.json\".into()), run_id: None },\n    budgets: BTreeMap::new(),\n    deltas: BTreeMap::new(),\n    verdict: Verdict {\n        status: VerdictStatus::Pass,\n        counts: VerdictCounts { pass: 0, warn: 0, fail: 0, skip: 0 },\n        reasons: vec![],\n    },\n};\nassert_eq!(receipt.schema, \"perfgate.compare.v1\");\n```",
       "type": "object",
       "properties": {
         "baseline_ref": {
@@ -243,6 +248,22 @@
           "type": "number",
           "format": "double"
         },
+        "cv": {
+          "description": "Coefficient of variation for the current run.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "noise_threshold": {
+          "description": "Noise threshold used for this comparison.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "pct": {
           "description": "(current - baseline) / baseline",
           "type": "number",
@@ -345,7 +366,27 @@
       "enum": [
         "pass",
         "warn",
-        "fail"
+        "fail",
+        "skip"
+      ]
+    },
+    "NoisePolicy": {
+      "oneOf": [
+        {
+          "description": "No change to status based on noise.",
+          "type": "string",
+          "const": "ignore"
+        },
+        {
+          "description": "Escalate Pass to Warn, and demote Fail to Warn.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "Demote Pass and Fail to Skip.",
+          "type": "string",
+          "const": "skip"
+        }
       ]
     },
     "ReportFinding": {
@@ -399,6 +440,12 @@
         },
         "pass_count": {
           "description": "Number of metrics that passed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip_count": {
+          "description": "Number of metrics that were skipped.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0
@@ -490,7 +537,7 @@
       ]
     },
     "Verdict": {
-      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
       "type": "object",
       "properties": {
         "counts": {
@@ -525,6 +572,11 @@
           "format": "uint32",
           "minimum": 0
         },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
         "warn": {
           "type": "integer",
           "format": "uint32",
@@ -534,7 +586,8 @@
       "required": [
         "pass",
         "warn",
-        "fail"
+        "fail",
+        "skip"
       ]
     },
     "VerdictStatus": {
@@ -542,7 +595,8 @@
       "enum": [
         "pass",
         "warn",
-        "fail"
+        "fail",
+        "skip"
       ]
     }
   }

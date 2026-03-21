@@ -316,6 +316,10 @@ pub struct CompareArgs {
     #[arg(long)]
     pub noise_threshold: Option<f64>,
 
+    /// Global noise policy (warn|skip|ignore)
+    #[arg(long, value_parser = parse_noise_policy)]
+    pub noise_policy: Option<perfgate_types::NoisePolicy>,
+
     /// Override per-metric threshold, e.g. wall_ms=0.10
     #[arg(long, value_parser = parse_key_val_f64)]
     pub metric_threshold: Vec<(String, f64)>,
@@ -456,6 +460,10 @@ pub struct CheckArgs {
     /// Global noise threshold (coefficient of variation).
     #[arg(long)]
     pub noise_threshold: Option<f64>,
+
+    /// Global noise policy (warn|skip|ignore)
+    #[arg(long, value_parser = parse_noise_policy)]
+    pub noise_policy: Option<perfgate_types::NoisePolicy>,
 
     /// Environment variable (KEY=VALUE). Repeatable.
     #[arg(long, value_parser = parse_key_val_string)]
@@ -863,6 +871,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 threshold,
                 warn_factor,
                 noise_threshold,
+                noise_policy,
                 metric_threshold,
                 metric_noise_threshold,
                 direction,
@@ -920,6 +929,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 threshold,
                 warn_factor,
                 noise_threshold,
+                noise_policy,
                 metric_threshold,
                 metric_noise_threshold,
                 direction,
@@ -963,7 +973,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             write_json(&out, &compare_result.receipt, pretty)?;
 
             match compare_result.receipt.verdict.status {
-                perfgate_types::VerdictStatus::Pass => Ok(()),
+                perfgate_types::VerdictStatus::Pass | perfgate_types::VerdictStatus::Skip => Ok(()),
                 perfgate_types::VerdictStatus::Warn => {
                     if fail_on_warn {
                         exit_with_code(3)
@@ -1123,6 +1133,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 require_baseline,
                 fail_on_warn,
                 noise_threshold,
+                noise_policy,
                 env,
                 output_cap_bytes,
                 allow_nonzero,
@@ -1146,6 +1157,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 require_baseline,
                 fail_on_warn,
                 noise_threshold,
+                noise_policy,
                 env,
                 output_cap_bytes,
                 allow_nonzero,
@@ -1588,6 +1600,7 @@ struct CheckConfig {
     require_baseline: bool,
     fail_on_warn: bool,
     noise_threshold: Option<f64>,
+    noise_policy: Option<perfgate_types::NoisePolicy>,
     env: Vec<(String, String)>,
     output_cap_bytes: usize,
     allow_nonzero: bool,
@@ -1686,6 +1699,7 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             require_baseline: req.require_baseline,
             fail_on_warn: req.fail_on_warn,
             noise_threshold: req.noise_threshold,
+            noise_policy: req.noise_policy,
             tool: tool_info(),
             env: req.env.clone(),
             output_cap_bytes: req.output_cap_bytes,
@@ -1898,7 +1912,6 @@ fn run_check_cockpit_inner(
             let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
             let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
                 .map_err(|e| PerfgateError::Io(IoError::BaselineResolve(e.to_string())))?;
-            let baseline_available = baseline_receipt.is_some();
 
             // Execute check
             let runner = StdProcessRunner;
@@ -1914,6 +1927,7 @@ fn run_check_cockpit_inner(
                 require_baseline: req.require_baseline,
                 fail_on_warn: req.fail_on_warn,
                 noise_threshold: req.noise_threshold,
+                noise_policy: req.noise_policy,
                 tool: tool_info(),
                 env: req.env.clone(),
                 output_cap_bytes: req.output_cap_bytes,
@@ -1961,11 +1975,9 @@ fn run_check_cockpit_inner(
 
             Ok(BenchOutcome::Success {
                 bench_name: bench_name.clone(),
-                has_compare: check_outcome.compare_receipt.is_some(),
-                baseline_available,
                 markdown: final_markdown,
-                extras_prefix,
-                report: check_outcome.report,
+                extras_prefix: Some(extras_prefix),
+                report: Box::new(check_outcome.report),
             })
         })()
         .unwrap_or_else(|err| {
@@ -1973,9 +1985,9 @@ fn run_check_cockpit_inner(
             eprintln!("error: bench '{}': {:#}", bench_name, err);
             BenchOutcome::Error {
                 bench_name: bench_name.clone(),
-                error_message: err.to_string(),
-                stage,
-                error_kind,
+                error: err.to_string(),
+                stage: stage.to_string(),
+                kind: error_kind.to_string(),
             }
         });
         bench_outcomes.push(outcome);
@@ -1985,14 +1997,9 @@ fn run_check_cockpit_inner(
     let ended_at = clock.now_rfc3339();
     let duration_ms = start_instant.elapsed().as_millis() as u64;
 
-    let any_baseline_available = bench_outcomes.iter().any(|o| {
-        matches!(
-            o,
-            BenchOutcome::Success {
-                baseline_available: true,
-                ..
-            }
-        )
+    let any_baseline_available = bench_outcomes.iter().any(|o| match o {
+        BenchOutcome::Success { report, .. } => report.compare.is_some(),
+        _ => false,
     });
 
     let baseline_reason = if !any_baseline_available {
@@ -2001,14 +2008,9 @@ fn run_check_cockpit_inner(
         None
     };
 
-    let all_baseline_available = bench_outcomes.iter().all(|o| {
-        matches!(
-            o,
-            BenchOutcome::Success {
-                baseline_available: true,
-                ..
-            }
-        )
+    let all_baseline_available = bench_outcomes.iter().all(|o| match o {
+        BenchOutcome::Success { report, .. } => report.compare.is_some(),
+        _ => false,
     });
 
     let builder = SensorReportBuilder::new(tool_info(), started_at.to_string())
@@ -2278,6 +2280,17 @@ fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
     Ok((k.to_string(), f))
 }
 
+fn parse_noise_policy(s: &str) -> Result<perfgate_types::NoisePolicy, String> {
+    match s.to_lowercase().as_str() {
+        "warn" => Ok(perfgate_types::NoisePolicy::Warn),
+        "skip" => Ok(perfgate_types::NoisePolicy::Skip),
+        "ignore" => Ok(perfgate_types::NoisePolicy::Ignore),
+        _ => Err(format!(
+            "invalid noise policy: {s} (expected warn|skip|ignore)"
+        )),
+    }
+}
+
 fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
     match s {
         "warn" => Ok(HostMismatchPolicy::Warn),
@@ -2543,7 +2556,7 @@ mod tests {
   "current_ref": {{"path": "current.json", "run_id": "c456"}},
   "budgets": {{"wall_ms": {{"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}}}},
   "deltas": {{"wall_ms": {{"baseline": 100.0, "current": 150.0, "ratio": 1.5, "pct": 0.5, "regression": 0.5, "status": "{}"}}}},
-  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1}}, "reasons": ["wall_ms_fail"]}}
+  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1, "skip": 0}}, "reasons": ["wall_ms_fail"]}}
 }}"#,
             metric_status, verdict_status
         )
@@ -2834,6 +2847,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: Vec::new(),
             },
@@ -2843,6 +2857,7 @@ mod tests {
                 pass_count: 0,
                 warn_count: 0,
                 fail_count: 0,
+                skip_count: 0,
                 total_count: 0,
             },
         };
@@ -2890,6 +2905,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: Vec::new(),
             },
@@ -2899,6 +2915,7 @@ mod tests {
                 pass_count: 0,
                 warn_count: 0,
                 fail_count: 0,
+                skip_count: 0,
                 total_count: 0,
             },
         };

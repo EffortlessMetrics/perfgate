@@ -16,6 +16,7 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
         perfgate_types::VerdictStatus::Pass => "✅ perfgate: pass",
         perfgate_types::VerdictStatus::Warn => "⚠️ perfgate: warn",
         perfgate_types::VerdictStatus::Fail => "❌ perfgate: fail",
+        perfgate_types::VerdictStatus::Skip => "⏭️ perfgate: skip",
     };
 
     out.push_str(header);
@@ -37,7 +38,14 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
             ("".to_string(), "")
         };
 
-        let status_icon = metric_status_icon(delta.status);
+        let mut status_icon = metric_status_icon(delta.status).to_string();
+
+        // If noisy, append noise info
+        if let (Some(cv), Some(limit)) = (delta.cv, delta.noise_threshold)
+            && cv > limit
+        {
+            status_icon.push_str(" (noisy)");
+        }
 
         out.push_str(&format!(
             "| `{metric}` | {b} {u} | {c} {u} | {pct} | {budget} ({dir}) | {status} |\n",
@@ -87,7 +95,7 @@ pub fn github_annotations(compare: &CompareReceipt) -> Vec<String> {
         let prefix = match delta.status {
             MetricStatus::Fail => "::error",
             MetricStatus::Warn => "::warning",
-            MetricStatus::Pass => continue,
+            MetricStatus::Pass | MetricStatus::Skip => continue,
         };
 
         let msg = format!(
@@ -126,6 +134,7 @@ pub fn markdown_template_context(compare: &CompareReceipt) -> serde_json::Value 
         perfgate_types::VerdictStatus::Pass => "✅ perfgate: pass",
         perfgate_types::VerdictStatus::Warn => "⚠️ perfgate: warn",
         perfgate_types::VerdictStatus::Fail => "❌ perfgate: fail",
+        perfgate_types::VerdictStatus::Skip => "⏭️ perfgate: skip",
     };
 
     let rows: Vec<serde_json::Value> = compare
@@ -178,6 +187,7 @@ pub fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
     let status = match status_part {
         "warn" => MetricStatus::Warn,
         "fail" => MetricStatus::Fail,
+        "skip" => MetricStatus::Skip,
         _ => return None,
     };
 
@@ -203,12 +213,38 @@ pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
 
         return match status {
             MetricStatus::Warn => {
-                format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)\n")
+                let mut msg =
+                    format!("- {token}: {pct} (warn >= {warn_pct:.2}%, fail > {fail_pct:.2}%)");
+                if let (Some(cv), Some(limit)) = (delta.cv, delta.noise_threshold)
+                    && cv > limit
+                {
+                    msg.push_str(&format!(
+                        " [NOISY: CV {:.2}% > limit {:.2}%]",
+                        cv * 100.0,
+                        limit * 100.0
+                    ));
+                }
+                msg.push('\n');
+                msg
             }
             MetricStatus::Fail => {
                 format!("- {token}: {pct} (fail > {fail_pct:.2}%)\n")
             }
-            MetricStatus::Pass => format!("- {token}\n"),
+            MetricStatus::Skip => {
+                let mut msg = format!("- {token}: skipped");
+                if let (Some(cv), Some(limit)) = (delta.cv, delta.noise_threshold)
+                    && cv > limit
+                {
+                    msg.push_str(&format!(
+                        " [NOISY: CV {:.2}% > limit {:.2}%]",
+                        cv * 100.0,
+                        limit * 100.0
+                    ));
+                }
+                msg.push('\n');
+                msg
+            }
+            MetricStatus::Pass => String::new(),
         };
     }
 
@@ -248,6 +284,7 @@ pub fn metric_status_icon(status: MetricStatus) -> &'static str {
         MetricStatus::Pass => "✅",
         MetricStatus::Warn => "⚠️",
         MetricStatus::Fail => "❌",
+        MetricStatus::Skip => "⏭️",
     }
 }
 
@@ -257,6 +294,7 @@ pub fn metric_status_str(status: MetricStatus) -> &'static str {
         MetricStatus::Pass => "pass",
         MetricStatus::Warn => "warn",
         MetricStatus::Fail => "fail",
+        MetricStatus::Skip => "skip",
     }
 }
 
@@ -283,6 +321,8 @@ mod tests {
                 regression: 0.15,
                 statistic: MetricStatistic::Median,
                 significance: None,
+                cv: None,
+                noise_threshold: None,
                 status,
             },
         );
@@ -318,6 +358,7 @@ mod tests {
                     pass: 0,
                     warn: 1,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_warn".to_string()],
             },
@@ -368,6 +409,8 @@ mod tests {
                 regression: 0.5,
                 statistic: MetricStatistic::Median,
                 significance: None,
+                cv: None,
+                noise_threshold: None,
                 status: MetricStatus::Fail,
             },
         );

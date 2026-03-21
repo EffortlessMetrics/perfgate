@@ -11,6 +11,7 @@ pub fn build_budgets(
     global_threshold: f64,
     global_warn_factor: f64,
     global_noise_threshold: Option<f64>,
+    global_noise_policy: Option<perfgate_types::NoisePolicy>,
     metric_thresholds: Vec<(String, f64)>,
     noise_thresholds: Vec<(String, f64)>,
     direction_overrides: Vec<(String, String)>,
@@ -48,6 +49,7 @@ pub fn build_budgets(
         let threshold = thresholds.remove(key).unwrap_or(global_threshold);
         let warn_threshold = threshold * global_warn_factor;
         let noise_threshold = noise_limits.remove(key).or(global_noise_threshold);
+        let noise_policy = global_noise_policy.unwrap_or(perfgate_types::NoisePolicy::Warn);
 
         let dir = match dirs.remove(key).as_deref() {
             Some("lower") => perfgate_types::Direction::Lower,
@@ -64,6 +66,7 @@ pub fn build_budgets(
                 threshold,
                 warn_threshold,
                 noise_threshold,
+                noise_policy,
                 direction: dir,
             },
         );

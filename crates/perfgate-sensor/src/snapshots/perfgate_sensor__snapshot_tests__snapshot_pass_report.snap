@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-sensor/src/lib.rs
-assertion_line: 2025
 expression: sensor_report
 ---
 {
@@ -15,10 +14,7 @@ expression: sensor_report
     "duration_ms": 60000,
     "capabilities": {
       "baseline": {
-        "status": "available"
-      },
-      "engine": {
-        "status": "available"
+        "status": "unavailable"
       }
     }
   },

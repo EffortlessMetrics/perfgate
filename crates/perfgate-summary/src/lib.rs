@@ -142,8 +142,9 @@ mod tests {
                 status: VerdictStatus::Pass,
                 counts: VerdictCounts {
                     pass: 0,
-                    warn: 0,
+                    warn: 1,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },

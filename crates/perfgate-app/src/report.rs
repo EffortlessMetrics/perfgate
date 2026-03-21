@@ -97,9 +97,11 @@ impl ReportUseCase {
             pass_count: req.compare.verdict.counts.pass,
             warn_count: req.compare.verdict.counts.warn,
             fail_count: req.compare.verdict.counts.fail,
+            skip_count: req.compare.verdict.counts.skip,
             total_count: req.compare.verdict.counts.pass
                 + req.compare.verdict.counts.warn
-                + req.compare.verdict.counts.fail,
+                + req.compare.verdict.counts.fail
+                + req.compare.verdict.counts.skip,
         };
 
         let report = PerfgateReport {
@@ -141,6 +143,8 @@ mod tests {
                 ratio: 0.9,
                 pct: -0.1,
                 regression: 0.0,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -178,6 +182,7 @@ mod tests {
                     pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -197,6 +202,8 @@ mod tests {
                 ratio: 1.19,
                 pct: 0.19,
                 regression: 0.19,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Warn,
@@ -234,6 +241,7 @@ mod tests {
                     pass: 0,
                     warn: 1,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_warn".to_string()],
             },
@@ -253,6 +261,8 @@ mod tests {
                 ratio: 1.5,
                 pct: 0.5,
                 regression: 0.5,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -290,6 +300,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 1,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_fail".to_string()],
             },
@@ -402,6 +413,8 @@ mod tests {
                 ratio: 1.19,
                 pct: 0.19,
                 regression: 0.19,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Warn,
@@ -415,6 +428,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -452,6 +467,7 @@ mod tests {
                     pass: 0,
                     warn: 1,
                     fail: 1,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_warn".to_string(), "max_rss_kb_fail".to_string()],
             },
@@ -496,6 +512,8 @@ mod tests {
                 ratio: 1.19,
                 pct: 0.19,
                 regression: 0.19,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Warn,
@@ -509,6 +527,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -546,6 +566,7 @@ mod tests {
                     pass: 0,
                     warn: 1,
                     fail: 1,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -624,6 +645,7 @@ mod property_tests {
                 let warn_threshold = threshold * warn_factor;
                 Budget {
                     noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -637,6 +659,7 @@ mod property_tests {
             Just(MetricStatus::Pass),
             Just(MetricStatus::Warn),
             Just(MetricStatus::Fail),
+            Just(MetricStatus::Skip),
         ]
     }
 
@@ -652,6 +675,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -665,14 +690,18 @@ mod property_tests {
             Just(VerdictStatus::Pass),
             Just(VerdictStatus::Warn),
             Just(VerdictStatus::Fail),
+            Just(VerdictStatus::Skip),
         ]
     }
 
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 
@@ -805,6 +834,11 @@ mod property_tests {
                 result.report.summary.fail_count,
                 compare.verdict.counts.fail,
                 "Summary fail count should match verdict counts"
+            );
+            prop_assert_eq!(
+                result.report.summary.skip_count,
+                compare.verdict.counts.skip,
+                "Summary skip count should match verdict counts"
             );
         }
 

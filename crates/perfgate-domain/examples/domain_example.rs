@@ -57,6 +57,7 @@ fn main() {
         Metric::WallMs,
         Budget {
             noise_threshold: None,
+            noise_policy: perfgate_types::NoisePolicy::Ignore,
             threshold: 0.20,      // 20% regression = fail
             warn_threshold: 0.10, // 10% regression = warn
             direction: Direction::Lower,
