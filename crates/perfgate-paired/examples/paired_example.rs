@@ -39,7 +39,7 @@ fn main() -> Result<(), PairedError> {
         make_sample(4, 102, 92),
     ];
 
-    let stats = compute_paired_stats(&improvement_samples, None)?;
+    let stats = compute_paired_stats(&improvement_samples, None, None)?;
     println!("   Baseline median: {} ms", stats.baseline_wall_ms.median);
     println!("   Current median: {} ms", stats.current_wall_ms.median);
     println!("   Mean diff: {:.2} ms", stats.wall_diff_ms.mean);
@@ -66,7 +66,7 @@ fn main() -> Result<(), PairedError> {
         make_sample(4, 102, 118),
     ];
 
-    let reg_stats = compute_paired_stats(&regression_samples, None)?;
+    let reg_stats = compute_paired_stats(&regression_samples, None, None)?;
     let reg_comparison = compare_paired_stats(&reg_stats);
     println!("   Mean diff: {:.2} ms", reg_comparison.mean_diff_ms);
     println!("   % change: {:.2}%", reg_comparison.pct_change * 100.0);
@@ -81,7 +81,7 @@ fn main() -> Result<(), PairedError> {
         make_sample(4, 102, 102),
     ];
 
-    let nc_stats = compute_paired_stats(&no_change_samples, None)?;
+    let nc_stats = compute_paired_stats(&no_change_samples, None, None)?;
     let nc_comparison = compare_paired_stats(&nc_stats);
     println!("   Mean diff: {:.2} ms", nc_comparison.mean_diff_ms);
     println!("   % change: {:.2}%", nc_comparison.pct_change * 100.0);
@@ -90,7 +90,7 @@ fn main() -> Result<(), PairedError> {
     println!("\n5. Large sample (n >= 30) uses normal approximation:");
     let large_samples: Vec<PairedSample> = (0..50).map(|i| make_sample(i, 100, 95)).collect();
 
-    let large_stats = compute_paired_stats(&large_samples, None)?;
+    let large_stats = compute_paired_stats(&large_samples, None, None)?;
     let large_comparison = compare_paired_stats(&large_stats);
     println!("   Sample count: {}", large_stats.wall_diff_ms.count);
     println!("   Mean diff: {:.2} ms", large_comparison.mean_diff_ms);
@@ -121,7 +121,7 @@ fn main() -> Result<(), PairedError> {
         make_sample(3, 105, 95),
     ];
 
-    let mixed_stats = compute_paired_stats(&mixed_samples, None)?;
+    let mixed_stats = compute_paired_stats(&mixed_samples, None, None)?;
     println!("   Total samples: {}", mixed_samples.len());
     println!(
         "   Measured samples (after warmup filter): {}",
@@ -136,7 +136,7 @@ fn main() -> Result<(), PairedError> {
         make_sample(2, 1000, 500),
     ];
 
-    let tp_stats = compute_paired_stats(&throughput_samples, Some(100))?;
+    let tp_stats = compute_paired_stats(&throughput_samples, Some(100), None)?;
     if let Some(tp) = tp_stats.baseline_throughput_per_s {
         println!("   Baseline throughput: {:.2} /s", tp.median);
     }

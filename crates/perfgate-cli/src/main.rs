@@ -570,6 +570,22 @@ pub struct PairedArgs {
     #[arg(long, default_value_t = false)]
     pub include_hostname_hash: bool,
 
+    /// Require statistical significance for wall time difference.
+    #[arg(long, default_value_t = false)]
+    pub require_significance: bool,
+
+    /// Statistical significance level (alpha).
+    #[arg(long)]
+    pub significance_alpha: Option<f64>,
+
+    /// Minimum samples required for significance testing.
+    #[arg(long)]
+    pub significance_min_samples: Option<u32>,
+
+    /// Maximum number of additional pairs to run if significance is not reached.
+    #[arg(long, default_value_t = 0)]
+    pub max_retries: u32,
+
     /// Output file path
     #[arg(long, default_value = "perfgate-paired.json")]
     pub out: PathBuf,
@@ -1220,6 +1236,10 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_cap_bytes,
                 allow_nonzero,
                 include_hostname_hash,
+                require_significance,
+                significance_alpha,
+                significance_min_samples,
+                max_retries,
                 out,
                 pretty,
             } = *args;
@@ -1259,6 +1279,10 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_cap_bytes,
                 allow_nonzero,
                 include_hostname_hash,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
+                max_retries,
             })?;
 
             write_json(&out, &outcome.receipt, pretty)?;

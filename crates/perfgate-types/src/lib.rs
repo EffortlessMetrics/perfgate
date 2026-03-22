@@ -764,11 +764,25 @@ pub enum SignificanceTest {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Significance {
     pub test: SignificanceTest,
-    pub p_value: f64,
+    pub p_value: Option<f64>,
     pub alpha: f64,
     pub significant: bool,
     pub baseline_samples: u32,
     pub current_samples: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ci_lower: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ci_upper: Option<f64>,
+}
+
+/// Policy for statistical significance testing.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SignificancePolicy {
+    /// Significance level (e.g. 0.05).
+    pub alpha: Option<f64>,
+    /// Minimum number of samples required for a significant result.
+    pub min_samples: Option<u32>,
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]

@@ -257,7 +257,7 @@ fn paired_stats_basic() {
         },
     ];
 
-    let stats = compute_paired_stats(&samples, None).unwrap();
+    let stats = compute_paired_stats(&samples, None, None).unwrap();
     assert_eq!(stats.wall_diff_ms.mean, -10.0);
     assert_eq!(stats.wall_diff_ms.count, 3);
 
@@ -271,7 +271,7 @@ fn paired_stats_empty_samples() {
     use perfgate_types::PairedSample;
     let samples: Vec<PairedSample> = vec![];
 
-    let result = compute_paired_stats(&samples, None);
+    let result = compute_paired_stats(&samples, None, None);
     assert!(matches!(result, Err(PairedError::NoSamples)));
 }
 

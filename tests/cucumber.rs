@@ -4908,7 +4908,7 @@ async fn then_result_should_be_significant(world: &mut PerfgateWorld) {
     assert!(
         result.significant,
         "Expected result to be significant, but it is not (p-value: {})",
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4921,7 +4921,7 @@ async fn then_result_should_not_be_significant(world: &mut PerfgateWorld) {
     assert!(
         !result.significant,
         "Expected result to not be significant, but it is (p-value: {})",
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4941,10 +4941,10 @@ async fn then_p_value_should_be_less_than(world: &mut PerfgateWorld, threshold: 
         .as_ref()
         .expect("Significance result not set");
     assert!(
-        result.p_value < threshold,
+        result.p_value.unwrap_or(1.0) < threshold,
         "Expected p-value < {}, got {}",
         threshold,
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4955,10 +4955,10 @@ async fn then_p_value_should_be_approximately(world: &mut PerfgateWorld, expecte
         .as_ref()
         .expect("Significance result not set");
     assert!(
-        (result.p_value - expected).abs() < 0.01,
+        (result.p_value.unwrap_or(1.0) - expected).abs() < 0.01,
         "Expected p-value ≈ {}, got {}",
         expected,
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4969,10 +4969,10 @@ async fn then_p_value_should_be(world: &mut PerfgateWorld, expected: f64) {
         .as_ref()
         .expect("Significance result not set");
     assert!(
-        (result.p_value - expected).abs() < 1e-10,
+        (result.p_value.unwrap_or(1.0) - expected).abs() < 1e-10,
         "Expected p-value {}, got {}",
         expected,
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 

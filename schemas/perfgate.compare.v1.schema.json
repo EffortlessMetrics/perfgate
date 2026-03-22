@@ -335,13 +335,30 @@
           "format": "uint32",
           "minimum": 0
         },
+        "ci_lower": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "ci_upper": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "current_samples": {
           "type": "integer",
           "format": "uint32",
           "minimum": 0
         },
         "p_value": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "format": "double"
         },
         "significant": {
@@ -353,7 +370,6 @@
       },
       "required": [
         "test",
-        "p_value",
         "alpha",
         "significant",
         "baseline_samples",
