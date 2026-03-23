@@ -17,6 +17,7 @@ fn make_sample(wall_ms: u64) -> Sample {
         io_read_bytes: None,
         io_write_bytes: None,
         network_packets: None,
+        energy_uj: None,
         binary_bytes: None,
         stdout: None,
         stderr: None,

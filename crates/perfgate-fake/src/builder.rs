@@ -165,6 +165,7 @@ impl MockProcessBuilder {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: self.binary_bytes,
             stdout: self.stdout,
             stderr: self.stderr,

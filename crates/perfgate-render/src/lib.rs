@@ -257,6 +257,7 @@ pub fn format_value(metric: Metric, v: f64) -> String {
         Metric::BinaryBytes
         | Metric::CpuMs
         | Metric::CtxSwitches
+        | Metric::EnergyUj
         | Metric::IoReadBytes
         | Metric::IoWriteBytes
         | Metric::MaxRssKb

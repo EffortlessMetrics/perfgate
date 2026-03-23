@@ -22,6 +22,9 @@
         "ctx_switches": {
           "$ref": "#/$defs/Budget"
         },
+        "energy_uj": {
+          "$ref": "#/$defs/Budget"
+        },
         "io_read_bytes": {
           "$ref": "#/$defs/Budget"
         },
@@ -59,6 +62,9 @@
           "$ref": "#/$defs/Delta"
         },
         "ctx_switches": {
+          "$ref": "#/$defs/Delta"
+        },
+        "energy_uj": {
           "$ref": "#/$defs/Delta"
         },
         "io_read_bytes": {

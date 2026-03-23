@@ -60,6 +60,7 @@ mod advanced_analytics_tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -198,13 +199,13 @@ mod advanced_analytics_tests {
 ///         wall_ms: 100, exit_code: 0, warmup: false, timed_out: false,
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
 ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
-///         network_packets: None, binary_bytes: None, stdout: None, stderr: None,
+///         network_packets: None, energy_uj: None, binary_bytes: None, stdout: None, stderr: None,
 ///     },
 ///     Sample {
 ///         wall_ms: 120, exit_code: 0, warmup: false, timed_out: false,
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
 ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
-///         network_packets: None, binary_bytes: None, stdout: None, stderr: None,
+///         network_packets: None, energy_uj: None, binary_bytes: None, stdout: None, stderr: None,
 ///     },
 /// ];
 ///
@@ -273,6 +274,13 @@ pub fn compute_stats(
         Some(summarize_u64(&network_vals)?)
     };
 
+    let energy_vals: Vec<u64> = measured.iter().filter_map(|s| s.energy_uj).collect();
+    let energy_uj = if energy_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&energy_vals)?)
+    };
+
     let binary_vals: Vec<u64> = measured.iter().filter_map(|s| s.binary_bytes).collect();
     let binary_bytes = if binary_vals.is_empty() {
         None
@@ -307,6 +315,7 @@ pub fn compute_stats(
         io_read_bytes,
         io_write_bytes,
         network_packets,
+        energy_uj,
         binary_bytes,
         throughput_per_s,
     })
@@ -376,6 +385,7 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
 ///     max_rss_kb: None,
 ///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
+///     energy_uj: None,
 ///     binary_bytes: None, throughput_per_s: None,
 /// };
 /// let current = Stats {
@@ -383,6 +393,7 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
 ///     max_rss_kb: None,
 ///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
+///     energy_uj: None,
 ///     binary_bytes: None, throughput_per_s: None,
 /// };
 ///
@@ -700,6 +711,7 @@ fn metric_cv(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().and_then(|s| s.cv()),
         Metric::CpuMs => stats.cpu_ms.as_ref().and_then(|s| s.cv()),
         Metric::CtxSwitches => stats.ctx_switches.as_ref().and_then(|s| s.cv()),
+        Metric::EnergyUj => stats.energy_uj.as_ref().and_then(|s| s.cv()),
         Metric::IoReadBytes => stats.io_read_bytes.as_ref().and_then(|s| s.cv()),
         Metric::IoWriteBytes => stats.io_write_bytes.as_ref().and_then(|s| s.cv()),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().and_then(|s| s.cv()),
@@ -720,6 +732,7 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().map(|s| s.median as f64),
         Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),
         Metric::CtxSwitches => stats.ctx_switches.as_ref().map(|s| s.median as f64),
+        Metric::EnergyUj => stats.energy_uj.as_ref().map(|s| s.median as f64),
         Metric::IoReadBytes => stats.io_read_bytes.as_ref().map(|s| s.median as f64),
         Metric::IoWriteBytes => stats.io_write_bytes.as_ref().map(|s| s.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
@@ -760,6 +773,9 @@ fn metric_series_from_run(run: &RunReceipt, metric: Metric) -> Vec<f64> {
             .collect(),
         Metric::CtxSwitches => measured
             .filter_map(|s| s.ctx_switches.map(|v| v as f64))
+            .collect(),
+        Metric::EnergyUj => measured
+            .filter_map(|s| s.energy_uj.map(|v| v as f64))
             .collect(),
         Metric::IoReadBytes => measured
             .filter_map(|s| s.io_read_bytes.map(|v| v as f64))
@@ -1410,6 +1426,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -1430,6 +1447,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -1652,6 +1670,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -1665,6 +1684,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -1730,9 +1750,9 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
-                };
+                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                };
 
                 let current_stats = Stats {
                     wall_ms: U64Summary::new(1000, 1000, 1000),
@@ -1743,9 +1763,9 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary::new(current, current, current)),
-                };
+                    throughput_per_s: Some(F64Summary::new(current, current, current)),                };
 
                 // Create budget with the generated thresholds
                 let mut budgets = BTreeMap::new();
@@ -1805,10 +1825,10 @@ mod tests {
                         io_read_bytes: None,
                         io_write_bytes: None,
                         network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: None,
-                    };
-                    let cs = Stats {
+                        };                    let cs = Stats {
                         wall_ms: U64Summary::new(current as u64, current as u64, current as u64),
                         cpu_ms: None,
                         page_faults: None,
@@ -1817,10 +1837,10 @@ mod tests {
                         io_read_bytes: None,
                         io_write_bytes: None,
                         network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: None,
-                    };
-                    let mut b = BTreeMap::new();
+                        };                    let mut b = BTreeMap::new();
                     b.insert(Metric::WallMs, Budget {
                         noise_threshold: None,
                         noise_policy: perfgate_types::NoisePolicy::Ignore,  threshold, warn_threshold, direction });
@@ -1835,9 +1855,9 @@ mod tests {
                         io_read_bytes: None,
                         io_write_bytes: None,
                         network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
-                    };
+                        throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                    };
                     let cs = Stats {
                         wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
@@ -1847,9 +1867,9 @@ mod tests {
                         io_read_bytes: None,
                         io_write_bytes: None,
                         network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary::new(current, current, current)),
-                    };
+                        throughput_per_s: Some(F64Summary::new(current, current, current)),                    };
                     let mut b = BTreeMap::new();
                     b.insert(Metric::ThroughputPerS, Budget {
                         noise_threshold: None,
@@ -1894,9 +1914,9 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),
-                };
+                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                };
 
                 // For Direction::Higher, regression = max(0, (baseline - current) / baseline)
                 // To get regression = threshold, we need: (baseline - current) / baseline = threshold
@@ -1914,6 +1934,7 @@ mod tests {
                         io_read_bytes: None,
                         io_write_bytes: None,
                         network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(current_at_threshold_higher, current_at_threshold_higher, current_at_threshold_higher)),
                     };
@@ -2009,6 +2030,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
                     median: median as f64,
@@ -2137,6 +2159,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,                };
 
@@ -2168,6 +2191,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2239,6 +2263,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput)),                };
 
@@ -2288,6 +2313,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: throughput_current,
@@ -2376,6 +2402,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,                };
 
@@ -2392,6 +2419,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2455,6 +2483,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,                };
 
@@ -2471,6 +2500,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2538,6 +2568,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: if num_metrics >= 3 {
                         Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput))
@@ -2630,6 +2661,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -2642,6 +2674,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -2947,6 +2980,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2998,6 +3032,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -3033,6 +3068,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -3065,6 +3101,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3081,6 +3118,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3118,6 +3156,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3134,6 +3173,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3150,6 +3190,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3182,6 +3223,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3198,6 +3240,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3234,6 +3277,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3250,6 +3294,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3266,6 +3311,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3298,10 +3344,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         // Current has 100% increase in cpu_ms (50 -> 100)
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
@@ -3312,10 +3358,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
@@ -3353,10 +3399,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         // Current has 50% decrease in cpu_ms (100 -> 50) - improvement!
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
@@ -3367,10 +3413,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
@@ -3405,10 +3451,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None, // No cpu_ms in current
@@ -3418,10 +3464,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
@@ -3446,10 +3492,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: Some(U64Summary::new(50, 50, 50)),
@@ -3459,10 +3505,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
@@ -3487,10 +3533,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         // Current has 15% increase in cpu_ms (100 -> 115)
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
@@ -3501,10 +3547,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
@@ -3534,10 +3580,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let current = Stats {
             wall_ms: U64Summary::new(1100, 1100, 1100),
             cpu_ms: None,
@@ -3547,10 +3593,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
 
@@ -3571,8 +3617,9 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
+            throughput_per_s: Some(F64Summary::new(110.0, 110.0, 110.0)),
         };
         let current = Stats {
             wall_ms: U64Summary::new(1000, 1000, 1000),
@@ -3583,10 +3630,10 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary::new(92.0, 92.0, 92.0)),
+            throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(
             Metric::ThroughputPerS,
@@ -3679,6 +3726,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3695,6 +3743,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3711,6 +3760,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3746,6 +3796,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3783,6 +3834,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3796,6 +3848,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3835,6 +3888,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
             };
@@ -3848,6 +3902,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };
@@ -3890,6 +3945,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3903,6 +3959,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
@@ -3943,6 +4000,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(-10.0, -10.0, -10.0)),
             };
@@ -3956,6 +4014,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };

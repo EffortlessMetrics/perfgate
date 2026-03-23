@@ -44,6 +44,7 @@ fn make_run_receipt(host: HostInfo) -> RunReceipt {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         },

@@ -74,6 +74,9 @@
             "ctx_switches": {
               "$ref": "#/$defs/BudgetOverride"
             },
+            "energy_uj": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
             "io_read_bytes": {
               "$ref": "#/$defs/BudgetOverride"
             },
@@ -310,6 +313,7 @@
         "binary_bytes",
         "cpu_ms",
         "ctx_switches",
+        "energy_uj",
         "io_read_bytes",
         "io_write_bytes",
         "max_rss_kb",

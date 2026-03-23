@@ -47,6 +47,8 @@ pub struct RunResult {
     pub io_write_bytes: Option<u64>,
     /// Total network packets (best-effort).
     pub network_packets: Option<u64>,
+    /// CPU energy used in microjoules (RAPL on Linux).
+    pub energy_uj: Option<u64>,
     /// Size of executed binary in bytes (best-effort).
     pub binary_bytes: Option<u64>,
     pub stdout: Vec<u8>,
@@ -103,6 +105,7 @@ fn run_portable(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         io_read_bytes: None,
         io_write_bytes: None,
         network_packets: None,
+        energy_uj: None,
         binary_bytes,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),
@@ -186,6 +189,7 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         io_read_bytes,
         io_write_bytes,
         network_packets: None,
+        energy_uj: None,
         binary_bytes,
         stdout: truncate(stdout_buf, spec.output_cap_bytes),
         stderr: truncate(stderr_buf, spec.output_cap_bytes),
@@ -301,6 +305,7 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         io_read_bytes: None,
         io_write_bytes: None,
         network_packets: None,
+        energy_uj: None,
         binary_bytes,
         stdout: truncate(out.stdout, spec.output_cap_bytes),
         stderr: truncate(out.stderr, spec.output_cap_bytes),

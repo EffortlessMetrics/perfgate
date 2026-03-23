@@ -209,6 +209,7 @@ fn sample_from_run(run: RunResult, warmup: bool) -> Sample {
         io_read_bytes: run.io_read_bytes,
         io_write_bytes: run.io_write_bytes,
         network_packets: run.network_packets,
+        energy_uj: run.energy_uj,
         binary_bytes: run.binary_bytes,
         stdout: if run.stdout.is_empty() {
             None
@@ -402,6 +403,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -595,6 +597,7 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: b"ok".to_vec(),
             stderr: vec![],

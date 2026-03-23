@@ -44,10 +44,10 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 ### 0.10.0: Noise & Flakiness Detection
 - [x] **Noise Detection**: Automatically identify "unstable" benchmarks with high coefficient of variation. [DONE]
 - [x] **Auto-Skipping**: Option to skip/warn instead of fail for benchmarks identified as flaky. [DONE]
-- [ ] **Retry Logic**: Built-in `paired` retry support when significance is not reached.
+- [x] **Retry Logic**: Built-in `paired` retry support when significance is not reached. [DONE]
 
 ### 0.11.0: Deep Observability
-- [ ] **IO & Network Metrics**: Track disk bytes read/written and network packets via `rusage` extensions.
+- [x] **IO & Network Metrics**: Track disk bytes read/written and network packets via `rusage` extensions. [DONE]
 - [ ] **Power/Energy Metrics**: Experimental support for tracking CPU energy usage (RAPL on Linux).
 - [ ] **Binary Delta Blame**: Map `binary_bytes` changes to specific dependency updates in `Cargo.lock`.
 

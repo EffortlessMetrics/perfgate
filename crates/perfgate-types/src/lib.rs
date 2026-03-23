@@ -355,6 +355,10 @@ pub struct Sample {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub network_packets: Option<u64>,
 
+    /// CPU energy used in microjoules (RAPL on Linux).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub energy_uj: Option<u64>,
+
     /// Size of executed binary in bytes (best-effort).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub binary_bytes: Option<u64>,
@@ -450,6 +454,7 @@ impl F64Summary {
 ///     io_read_bytes: None,
 ///     io_write_bytes: None,
 ///     network_packets: None,
+///     energy_uj: None,
 ///     binary_bytes: None,
 ///     throughput_per_s: None,
 /// };
@@ -488,6 +493,10 @@ pub struct Stats {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub network_packets: Option<U64Summary>,
 
+    /// CPU energy used summary in microjoules (RAPL on Linux).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub energy_uj: Option<U64Summary>,
+
     /// Size of executed binary in bytes (best-effort).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub binary_bytes: Option<U64Summary>,
@@ -525,7 +534,7 @@ pub struct Stats {
 ///         wall_ms: U64Summary::new(100, 90, 120 ),
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
 ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
-///         network_packets: None, binary_bytes: None, throughput_per_s: None,
+///         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
 ///     },
 /// };
 ///
@@ -553,6 +562,7 @@ pub enum Metric {
     BinaryBytes,
     CpuMs,
     CtxSwitches,
+    EnergyUj,
     IoReadBytes,
     IoWriteBytes,
     MaxRssKb,
@@ -578,6 +588,7 @@ impl Metric {
             Metric::BinaryBytes => "binary_bytes",
             Metric::CpuMs => "cpu_ms",
             Metric::CtxSwitches => "ctx_switches",
+            Metric::EnergyUj => "energy_uj",
             Metric::IoReadBytes => "io_read_bytes",
             Metric::IoWriteBytes => "io_write_bytes",
             Metric::MaxRssKb => "max_rss_kb",
@@ -604,6 +615,7 @@ impl Metric {
             "binary_bytes" => Some(Metric::BinaryBytes),
             "cpu_ms" => Some(Metric::CpuMs),
             "ctx_switches" => Some(Metric::CtxSwitches),
+            "energy_uj" => Some(Metric::EnergyUj),
             "io_read_bytes" => Some(Metric::IoReadBytes),
             "io_write_bytes" => Some(Metric::IoWriteBytes),
             "max_rss_kb" => Some(Metric::MaxRssKb),
@@ -633,6 +645,7 @@ impl Metric {
             Metric::BinaryBytes => Direction::Lower,
             Metric::CpuMs => Direction::Lower,
             Metric::CtxSwitches => Direction::Lower,
+            Metric::EnergyUj => Direction::Lower,
             Metric::IoReadBytes => Direction::Lower,
             Metric::IoWriteBytes => Direction::Lower,
             Metric::MaxRssKb => Direction::Lower,
@@ -664,6 +677,7 @@ impl Metric {
             Metric::BinaryBytes => "bytes",
             Metric::CpuMs => "ms",
             Metric::CtxSwitches => "count",
+            Metric::EnergyUj => "uj",
             Metric::IoReadBytes => "bytes",
             Metric::IoWriteBytes => "bytes",
             Metric::MaxRssKb => "KB",
@@ -1642,6 +1656,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: Some(4096),
                     stdout: Some("ok".into()),
                     stderr: None,
@@ -1658,6 +1673,7 @@ mod tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: Some("warn".into()),
@@ -1672,6 +1688,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: Some(U64Summary::new(4096, 4096, 4096)),
                 throughput_per_s: Some(F64Summary::new(10.526, 10.0, 11.111)),
             },
@@ -1720,6 +1737,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -1770,6 +1788,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: Some(u64::MAX),
                 stdout: None,
                 stderr: None,
@@ -1783,6 +1802,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(f64::MAX, 0.0, f64::MAX)),
             },
@@ -2026,6 +2046,7 @@ mod tests {
             io_read_bytes: Some(U64Summary::new(1000, 500, 1500)),
             io_write_bytes: Some(U64Summary::new(500, 200, 800)),
             network_packets: Some(U64Summary::new(10, 5, 15)),
+            energy_uj: None,
             binary_bytes: Some(U64Summary::new(1024, 1024, 1024)),
             throughput_per_s: Some(F64Summary::new(2.0, 1.111, 10.0)),
         };
@@ -2045,6 +2066,7 @@ mod tests {
             io_read_bytes: None,
             io_write_bytes: None,
             network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
         };
@@ -2205,6 +2227,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2218,6 +2241,7 @@ mod tests {
                 io_read_bytes: None,
                 io_write_bytes: None,
                 network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -2417,6 +2441,7 @@ mod property_tests {
             proptest::option::of(0u64..1000000),   // page_faults
             proptest::option::of(0u64..1000000),   // ctx_switches
             proptest::option::of(0u64..1000000),   // max_rss_kb
+            proptest::option::of(0u64..1000000),   // energy_uj
             proptest::option::of(0u64..100000000), // binary_bytes
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
@@ -2431,6 +2456,7 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    energy_uj,
                     binary_bytes,
                     stdout,
                     stderr,
@@ -2446,6 +2472,7 @@ mod property_tests {
                     io_read_bytes: None,
                     io_write_bytes: None,
                     network_packets: None,
+                    energy_uj,
                     binary_bytes,
                     stdout,
                     stderr,
@@ -2482,6 +2509,7 @@ mod property_tests {
             proptest::option::of(u64_summary_strategy()), // io_read_bytes
             proptest::option::of(u64_summary_strategy()), // io_write_bytes
             proptest::option::of(u64_summary_strategy()), // network_packets
+            proptest::option::of(u64_summary_strategy()), // energy_uj
             proptest::option::of(u64_summary_strategy()), // binary_bytes
             proptest::option::of(f64_summary_strategy()),
         )
@@ -2495,6 +2523,7 @@ mod property_tests {
                     io_read_bytes,
                     io_write_bytes,
                     network_packets,
+                    energy_uj,
                     binary_bytes,
                     throughput_per_s,
                 )| Stats {
@@ -2506,6 +2535,7 @@ mod property_tests {
                     io_read_bytes,
                     io_write_bytes,
                     network_packets,
+                    energy_uj,
                     binary_bytes,
                     throughput_per_s,
                 },
