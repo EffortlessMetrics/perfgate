@@ -11,7 +11,7 @@ Commands:
   compare Compare a current receipt against a baseline and emit a compare receipt (JSON)
   md Render a Markdown summary from a compare receipt
   github-annotations Emit GitHub Actions annotations from a compare receipt
-  export Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format
+  export Export a run or compare receipt to CSV, JSONL, HTML, Prometheus, or JUnit format
   promote Promote a run receipt to become the new baseline
   report Generate a cockpit-compatible report from a compare receipt
   check Config-driven one-command workflow

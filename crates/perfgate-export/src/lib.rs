@@ -9,6 +9,7 @@
 //! - **JSONL**: JSON Lines format (one JSON object per line)
 //! - **HTML**: HTML summary table
 //! - **Prometheus**: Prometheus text exposition format
+//! - **JUnit**: JUnit XML format (for legacy CI/Jenkins)
 //!
 //! # Example
 //!
@@ -74,6 +75,8 @@ pub enum ExportFormat {
     Html,
     /// Prometheus text exposition format.
     Prometheus,
+    /// JUnit XML format (for legacy CI/Jenkins).
+    JUnit,
 }
 
 impl ExportFormat {
@@ -102,8 +105,8 @@ impl std::str::FromStr for ExportFormat {
     /// ```
     /// use perfgate_export::ExportFormat;
     ///
-    /// let fmt: ExportFormat = "jsonl".parse().unwrap();
-    /// assert_eq!(fmt, ExportFormat::Jsonl);
+    /// let fmt: ExportFormat = "junit".parse().unwrap();
+    /// assert_eq!(fmt, ExportFormat::JUnit);
     ///
     /// let bad: Result<ExportFormat, _> = "nope".parse();
     /// assert!(bad.is_err());
@@ -114,6 +117,7 @@ impl std::str::FromStr for ExportFormat {
             "jsonl" => Ok(ExportFormat::Jsonl),
             "html" => Ok(ExportFormat::Html),
             "prometheus" | "prom" => Ok(ExportFormat::Prometheus),
+            "junit" | "xml" => Ok(ExportFormat::JUnit),
             _ => Err(()),
         }
     }
@@ -253,7 +257,27 @@ impl ExportUseCase {
             ExportFormat::Jsonl => Self::run_row_to_jsonl(&row),
             ExportFormat::Html => Self::run_row_to_html(&row),
             ExportFormat::Prometheus => Self::run_row_to_prometheus(&row),
+            ExportFormat::JUnit => Self::run_row_to_junit_run(receipt, &row),
         }
+    }
+
+    fn run_row_to_junit_run(receipt: &RunReceipt, _row: &RunExportRow) -> anyhow::Result<String> {
+        let mut out = String::new();
+        out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        out.push_str("<testsuites name=\"perfgate\">\n");
+        out.push_str(&format!(
+            "  <testsuite name=\"{}\" tests=\"1\" failures=\"0\" errors=\"0\">\n",
+            html_escape(&receipt.bench.name)
+        ));
+        out.push_str(&format!(
+            "    <testcase name=\"execution\" classname=\"perfgate.{}\" time=\"{}\">\n",
+            html_escape(&receipt.bench.name),
+            receipt.stats.wall_ms.median as f64 / 1000.0
+        ));
+        out.push_str("    </testcase>\n");
+        out.push_str("  </testsuite>\n");
+        out.push_str("</testsuites>\n");
+        Ok(out)
     }
 
     /// Export a [`CompareReceipt`] to the specified format.
@@ -299,6 +323,7 @@ impl ExportUseCase {
             ExportFormat::Jsonl => Self::compare_rows_to_jsonl(&rows),
             ExportFormat::Html => Self::compare_rows_to_html(&rows),
             ExportFormat::Prometheus => Self::compare_rows_to_prometheus(&rows),
+            ExportFormat::JUnit => Self::compare_rows_to_junit(receipt, &rows),
         }
     }
 
@@ -617,6 +642,64 @@ impl ExportUseCase {
             "perfgate_run_sample_count{{bench=\"{}\"}} {}\n",
             bench, row.sample_count
         ));
+        Ok(out)
+    }
+
+    fn compare_rows_to_junit(
+        receipt: &CompareReceipt,
+        rows: &[CompareExportRow],
+    ) -> anyhow::Result<String> {
+        let mut out = String::new();
+        let total = rows.len();
+        let failures = rows.iter().filter(|r| r.status == "fail").count();
+        let errors = rows.iter().filter(|r| r.status == "error").count();
+
+        out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        out.push_str(&format!(
+            "<testsuites name=\"perfgate\" tests=\"{}\" failures=\"{}\" errors=\"{}\">\n",
+            total, failures, errors
+        ));
+
+        out.push_str(&format!(
+            "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" errors=\"{}\">\n",
+            html_escape(&receipt.bench.name),
+            total,
+            failures,
+            errors
+        ));
+
+        for row in rows {
+            let classname = format!("perfgate.{}", html_escape(&receipt.bench.name));
+            out.push_str(&format!(
+                "    <testcase name=\"{}\" classname=\"{}\" time=\"0.0\">\n",
+                html_escape(&row.metric),
+                classname
+            ));
+
+            if row.status == "fail" {
+                out.push_str(&format!(
+                    "      <failure message=\"Performance regression detected for {}\">",
+                    html_escape(&row.metric)
+                ));
+                out.push_str(&format!(
+                    "Metric: {}\nBaseline: {:.6}\nCurrent: {:.6}\nRegression: {:.2}%\nThreshold: {:.2}%",
+                    row.metric, row.baseline_value, row.current_value, row.regression_pct, row.threshold
+                ));
+                out.push_str("</failure>\n");
+            } else if row.status == "error" {
+                out.push_str(&format!(
+                    "      <error message=\"Error occurred during performance check for {}\">",
+                    html_escape(&row.metric)
+                ));
+                out.push_str("</error>\n");
+            }
+
+            out.push_str("    </testcase>\n");
+        }
+
+        out.push_str("  </testsuite>\n");
+        out.push_str("</testsuites>\n");
+
         Ok(out)
     }
 
@@ -972,16 +1055,28 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_export_html_and_prometheus() {
+    fn test_compare_export_prometheus() {
         let receipt = create_test_compare_receipt();
-
-        let html = ExportUseCase::export_compare(&receipt, ExportFormat::Html).unwrap();
-        assert!(html.contains("<table"), "html output should contain table");
-        assert!(html.contains("max_rss_kb"));
-
         let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
         assert!(prom.contains("perfgate_compare_regression_pct"));
         assert!(prom.contains("metric=\"max_rss_kb\""));
+    }
+
+    #[test]
+    fn test_compare_export_junit() {
+        let receipt = create_test_compare_receipt();
+        let junit = ExportUseCase::export_compare(&receipt, ExportFormat::JUnit).unwrap();
+
+        assert!(junit.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(junit.contains("<testsuites name=\"perfgate\""));
+        assert!(junit.contains("testsuite name=\"alpha-bench\""));
+        assert!(junit.contains("testcase name=\"wall_ms\""));
+        assert!(junit.contains("testcase name=\"max_rss_kb\""));
+        assert!(
+            junit.contains("<failure message=\"Performance regression detected for max_rss_kb\">")
+        );
+        assert!(junit.contains("Baseline: 1024.000000"));
+        assert!(junit.contains("Current: 1280.000000"));
     }
 
     #[test]

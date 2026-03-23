@@ -160,7 +160,7 @@ enum Command {
         compare: PathBuf,
     },
 
-    /// Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format.
+    /// Export a run or compare receipt to CSV, JSONL, HTML, Prometheus, or JUnit format.
     Export {
         /// Path to a run receipt (mutually exclusive with --compare)
         #[arg(long, conflicts_with = "compare")]
@@ -170,7 +170,7 @@ enum Command {
         #[arg(long, conflicts_with = "run")]
         compare: Option<PathBuf>,
 
-        /// Output format: csv, jsonl, html, or prometheus
+        /// Output format: csv, jsonl, html, prometheus, or junit
         #[arg(long, default_value = "csv")]
         format: String,
 
