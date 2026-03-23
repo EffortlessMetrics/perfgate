@@ -2,8 +2,12 @@
 //!
 //! This crate is intentionally I/O-free: it does math and policy.
 
+mod blame;
 mod paired;
 
+pub use blame::{
+    BinaryBlame, DependencyChange, DependencyChangeType, compare_lockfiles, parse_lockfile,
+};
 pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
 
 pub use perfgate_host_detect::detect_host_mismatch;

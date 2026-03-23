@@ -23,6 +23,8 @@ perfgate-budget.workspace = true
 perfgate-significance.workspace = true
 thiserror.workspace = true
 statrs.workspace = true
+serde.workspace = true
+schemars.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
