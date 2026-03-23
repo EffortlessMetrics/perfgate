@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Deep Observability (0.11.0)** — Expanded metric collection to include `io_read_bytes`, `io_write_bytes`, `network_packets`, and `energy_uj`.
+- **Windows IO Metrics** — Implemented native IO counter collection on Windows via `GetProcessIoCounters`.
+- **Noise & Flakiness Detection (0.10.0)** — Introduced `NoisePolicy` (`ignore`, `warn`, `skip`) for CV-based escalation and automated skipping of unstable benchmarks.
+- **Significance-based Retries** — The `paired` command now supports automatic retries (up to `--max-retries`) if statistical significance is not reached.
+- **Verdict History (0.9.0)** — Implemented server-side execution history tracking with SQLite, Postgres, and Memory backends.
+- **History CLI** — New `perfgate baseline verdicts` command for viewing historical performance trends and status transitions.
+- **Confidence Intervals** — Welch's t-test now includes confidence interval (CI) calculation for paired differences.
 - **Web Dashboard (Alpha)** — `perfgate-server` now serves a minimal read-only dashboard at `/` for browsing projects, benchmarks, and viewing historical trends with interactive charts.
 - **Enhanced Summaries** — `U64Summary` and `F64Summary` now include optional `mean` and `stddev` fields, enabling more detailed variance analysis and noise detection.
 - **OIDC Integration** — `perfgate-server` now supports GitHub Actions OIDC tokens for authentication, mapping repository claims directly to project IDs and roles via `--github-oidc` flags.
