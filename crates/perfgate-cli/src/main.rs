@@ -256,6 +256,13 @@ enum Command {
     /// This is a wrapper around `git bisect` that uses `perfgate paired`
     /// to determine if a commit is good or bad.
     Bisect(Box<BisectArgs>),
+
+    /// Provide AI-ready prompts and automated playbooks for diagnosing performance regressions.
+    Explain {
+        /// Path to a compare receipt
+        #[arg(long)]
+        compare: PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -1389,6 +1396,13 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 executable: args.executable.clone(),
                 threshold: args.threshold,
             })?;
+            Ok(())
+        }
+
+        Command::Explain { compare } => {
+            let usecase = perfgate_app::ExplainUseCase;
+            let outcome = usecase.execute(perfgate_app::ExplainRequest { compare })?;
+            println!("{}", outcome.markdown);
             Ok(())
         }
     }
