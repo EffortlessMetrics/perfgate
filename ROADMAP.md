@@ -57,7 +57,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 - [x] **Liquid Template Hub**: A repository of community-contributed Markdown templates for PR comments. [DONE]
 
 ### 0.13.0: Automated Bisection
-- [ ] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression.
+- [x] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression. [DONE]
 - [ ] **Regression Blame**: Automatically identifying the likely author of a performance dip.
 
 ### 0.14.0: Distributed Gating

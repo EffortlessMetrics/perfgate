@@ -4,6 +4,7 @@
 //! It does not parse CLI flags and it does not do filesystem I/O.
 
 pub mod baseline_resolve;
+pub mod bisect;
 mod check;
 pub mod comparison_logic;
 mod paired;
@@ -11,6 +12,7 @@ mod promote;
 mod report;
 mod sensor_report;
 
+pub use bisect::{BisectRequest, BisectUseCase};
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};

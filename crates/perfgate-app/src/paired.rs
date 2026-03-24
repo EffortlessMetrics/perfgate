@@ -29,6 +29,7 @@ pub struct PairedRunRequest {
     pub significance_min_samples: Option<u32>,
     pub require_significance: bool,
     pub max_retries: u32,
+    pub fail_on_regression: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +147,18 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             samples,
             stats,
         };
+
+        if let Some(threshold_pct) = req.fail_on_regression {
+            let comparison = perfgate_domain::compare_paired_stats(&receipt.stats);
+            let threshold_fraction = threshold_pct / 100.0;
+            if comparison.pct_change > threshold_fraction && comparison.is_significant {
+                reasons.push(format!(
+                    "wall time regression ({:.2}%) exceeded threshold ({:.2}%)",
+                    comparison.pct_change * 100.0,
+                    threshold_pct
+                ));
+            }
+        }
 
         let failed = !reasons.is_empty();
         Ok(PairedRunOutcome {
@@ -430,6 +443,7 @@ mod tests {
                 significance_min_samples: None,
                 require_significance: false,
                 max_retries: 0,
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 
@@ -516,6 +530,7 @@ mod tests {
                 significance_min_samples: None,
                 require_significance: false,
                 max_retries: 0,
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 
@@ -567,6 +582,7 @@ mod tests {
                 significance_min_samples: None,
                 require_significance: false,
                 max_retries: 0,
+                fail_on_regression: None,
             })
             .unwrap_err();
 
@@ -625,6 +641,7 @@ mod tests {
                 significance_min_samples: None,
                 require_significance: false,
                 max_retries: 0,
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 
@@ -700,6 +717,7 @@ mod tests {
                 significance_min_samples: Some(2),
                 require_significance: true,
                 max_retries: 5, // Allow up to 5 retries
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 

@@ -8,11 +8,11 @@ use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::{
-    BenchOutcome, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase,
-    ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest,
-    PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
-    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
-    render_markdown_template,
+    BenchOutcome, BisectRequest, BisectUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock,
+    CompareRequest, CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
+    PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase,
+    RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock, classify_error,
+    github_annotations, render_markdown, render_markdown_template,
 };
 use perfgate_client::{
     ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
@@ -228,9 +228,38 @@ enum Command {
     /// Summarize one or more compare receipts in a terminal table.
     Summary {
         /// Paths to compare receipts (glob patterns supported)
-        #[arg(required = true)]
+        #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
     },
+
+    /// Automatically find the commit that introduced a performance regression.
+    ///
+    /// This is a wrapper around `git bisect` that uses `perfgate paired`
+    /// to determine if a commit is good or bad.
+    Bisect(Box<BisectArgs>),
+}
+
+#[derive(Debug, Args)]
+pub struct BisectArgs {
+    /// The known good commit
+    #[arg(long)]
+    pub good: String,
+
+    /// The known bad commit
+    #[arg(long, default_value = "HEAD")]
+    pub bad: String,
+
+    /// Shell command to build the project
+    #[arg(long, default_value = "cargo build --release")]
+    pub build_cmd: String,
+
+    /// Path to the executable to benchmark
+    #[arg(long)]
+    pub executable: PathBuf,
+
+    /// Fail the command if a regression exceeds this percentage (e.g., 5.0 for 5%).
+    #[arg(long, default_value = "5.0")]
+    pub threshold: f64,
 }
 
 #[derive(Debug, Args)]
@@ -585,6 +614,10 @@ pub struct PairedArgs {
     /// Maximum number of additional pairs to run if significance is not reached.
     #[arg(long, default_value_t = 0)]
     pub max_retries: u32,
+
+    /// Fail the command (exit code 2) if a regression exceeds this percentage (e.g., 5.0 for 5%).
+    #[arg(long)]
+    pub fail_on_regression: Option<f64>,
 
     /// Output file path
     #[arg(long, default_value = "perfgate-paired.json")]
@@ -1240,6 +1273,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 significance_alpha,
                 significance_min_samples,
                 max_retries,
+                fail_on_regression,
                 out,
                 pretty,
             } = *args;
@@ -1283,6 +1317,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 significance_min_samples,
                 require_significance,
                 max_retries,
+                fail_on_regression,
             })?;
 
             write_json(&out, &outcome.receipt, pretty)?;
@@ -1300,6 +1335,18 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             let usecase = SummaryUseCase;
             let outcome = usecase.execute(SummaryRequest { files })?;
             println!("{}", usecase.render_markdown(&outcome));
+            Ok(())
+        }
+
+        Command::Bisect(args) => {
+            let usecase = BisectUseCase;
+            usecase.execute(BisectRequest {
+                good: args.good.clone(),
+                bad: args.bad.clone(),
+                build_cmd: args.build_cmd.clone(),
+                executable: args.executable.clone(),
+                threshold: args.threshold,
+            })?;
             Ok(())
         }
     }
