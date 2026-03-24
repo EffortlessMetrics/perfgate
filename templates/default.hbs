@@ -1,0 +1,15 @@
+### {{header}}
+**Benchmark:** `{{bench.name}}`
+
+| Metric | Status | Baseline | Current | Delta | Budget |
+|:---|:---:|---:|---:|---:|---:|
+{{#each rows}}
+| `{{metric_with_statistic}}` | {{status_icon}} | {{baseline}} {{unit}} | {{current}} {{unit}} | {{delta_pct}} | {{budget_direction}} {{budget_threshold_pct}}% |
+{{/each}}
+
+{{#if reasons}}
+**Notes:**
+{{#each reasons}}
+- `{{this}}`
+{{/each}}
+{{/if}}

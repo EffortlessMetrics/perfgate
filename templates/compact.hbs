@@ -1,0 +1,7 @@
+{{header}} for `{{bench.name}}`
+
+| Metric | Delta |
+|:---|---:|
+{{#each rows}}
+| {{status_icon}} `{{metric_with_statistic}}` | {{delta_pct}} |
+{{/each}}

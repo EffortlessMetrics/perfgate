@@ -48,13 +48,13 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ### 0.11.0: Deep Observability
 - [x] **IO & Network Metrics**: Track disk bytes read/written and network packets via `rusage` extensions. [DONE]
-- [ ] **Power/Energy Metrics**: Experimental support for tracking CPU energy usage (RAPL on Linux).
-- [ ] **Binary Delta Blame**: Map `binary_bytes` changes to specific dependency updates in `Cargo.lock`.
+- [x] **Power/Energy Metrics**: Experimental support for tracking CPU energy usage (RAPL on Linux). [DONE]
+- [x] **Binary Delta Blame**: Map `binary_bytes` changes to specific dependency updates in `Cargo.lock`. [DONE]
 
 ### 0.12.0: Ecosystem Expansion
-- [ ] **GitLab CI Integration**: Official templates and documentation for GitLab environments.
-- [ ] **Jenkins/Generic Plugin**: A stable JSON-to-JUnit or similar adapter for legacy CI systems.
-- [ ] **Liquid Template Hub**: A repository of community-contributed Markdown templates for PR comments.
+- [x] **GitLab CI Integration**: Official templates and documentation for GitLab environments. [DONE]
+- [x] **Jenkins/Generic Plugin**: A stable JSON-to-JUnit or similar adapter for legacy CI systems. [DONE]
+- [x] **Liquid Template Hub**: A repository of community-contributed Markdown templates for PR comments. [DONE]
 
 ### 0.13.0: Automated Bisection
 - [ ] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression.
