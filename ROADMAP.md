@@ -62,7 +62,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ### 0.14.0: Distributed Gating
 - [x] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict. [DONE]
-- [ ] **Matrix Gating**: Support for gating across a matrix of OS/Arch combinations before merging to main.
+- [x] **Matrix Gating**: Support for gating across a matrix of OS/Arch combinations before merging to main. [DONE]
 
 ### 0.15.0: The Intelligent Gater (AI Alpha)
 - [ ] **LLM Regression Explainer**: Integration with LLMs to analyze code diffs + performance deltas to provide a "likely cause" explanation in PRs.

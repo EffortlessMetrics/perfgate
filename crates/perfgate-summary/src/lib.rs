@@ -25,6 +25,7 @@ pub struct SummaryRow {
 #[derive(Debug, Clone)]
 pub struct SummaryOutcome {
     pub rows: Vec<SummaryRow>,
+    pub failed: bool,
 }
 
 /// Use case for summarizing comparison receipts.
@@ -48,6 +49,7 @@ impl SummaryUseCase {
             anyhow::bail!("no comparison receipts found");
         }
 
+        let mut failed = false;
         let mut rows = Vec::new();
         for path in paths {
             println!("DEBUG: processing {}", path.display());
@@ -60,6 +62,9 @@ impl SummaryUseCase {
 
             let benchmark = compare.bench.name.clone();
             let status = format!("{:?}", compare.verdict.status).to_lowercase();
+            if status == "fail" {
+                failed = true;
+            }
             println!("DEBUG: benchmark={}, status={}", benchmark, status);
 
             let wall = compare.deltas.get(&Metric::WallMs);
@@ -80,7 +85,7 @@ impl SummaryUseCase {
             });
         }
 
-        Ok(SummaryOutcome { rows })
+        Ok(SummaryOutcome { rows, failed })
     }
 
     /// Renders the summary outcome as a Markdown table.

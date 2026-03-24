@@ -230,6 +230,10 @@ enum Command {
         /// Paths to compare receipts (glob patterns supported)
         #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
+
+        /// If true, do not exit with a non-zero status code when a fail verdict is encountered
+        #[arg(long)]
+        allow_nonzero: bool,
     },
 
     /// Aggregate multiple run receipts (e.g. from a fleet) into a single run receipt.
@@ -1346,10 +1350,18 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Baseline { action } => execute_baseline_action(action, &server_flags),
 
-        Command::Summary { files } => {
+        Command::Summary {
+            files,
+            allow_nonzero,
+        } => {
             let usecase = SummaryUseCase;
             let outcome = usecase.execute(SummaryRequest { files })?;
             println!("{}", usecase.render_markdown(&outcome));
+
+            if outcome.failed && !allow_nonzero {
+                anyhow::bail!("Matrix gating failed: at least one benchmark regression detected.");
+            }
+
             Ok(())
         }
 
