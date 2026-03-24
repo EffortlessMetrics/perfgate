@@ -58,7 +58,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 ### 0.13.0: Automated Bisection
 - [x] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression. [DONE]
-- [ ] **Regression Blame**: Automatically identifying the likely author of a performance dip.
+- [x] **Regression Blame**: Automatically identifying the likely author of a performance dip. [DONE]
 
 ### 0.14.0: Distributed Gating
 - [ ] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict.

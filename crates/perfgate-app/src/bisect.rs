@@ -82,6 +82,21 @@ impl BisectUseCase {
 
             if stdout.contains("is the first bad commit") {
                 println!("\n{}", stdout);
+                
+                // Regression Blame
+                if let Some(first_word) = stdout.split_whitespace().next() {
+                    let author_out = Command::new("git")
+                        .args(["show", "-s", "--format='%an <%ae>'", first_word])
+                        .output()
+                        .ok();
+                    if let Some(author_out) = author_out {
+                        if author_out.status.success() {
+                            let author = String::from_utf8_lossy(&author_out.stdout).trim().trim_matches('\'').to_string();
+                            println!("Regression Blame: Likely introduced by {}", author);
+                        }
+                    }
+                }
+                
                 break;
             } else if !out.status.success() {
                 anyhow::bail!(
