@@ -61,7 +61,7 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 - [x] **Regression Blame**: Automatically identifying the likely author of a performance dip. [DONE]
 
 ### 0.14.0: Distributed Gating
-- [ ] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict.
+- [x] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict. [DONE]
 - [ ] **Matrix Gating**: Support for gating across a matrix of OS/Arch combinations before merging to main.
 
 ### 0.15.0: The Intelligent Gater (AI Alpha)

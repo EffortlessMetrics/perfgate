@@ -3,6 +3,7 @@
 //! The app layer coordinates adapters and domain logic.
 //! It does not parse CLI flags and it does not do filesystem I/O.
 
+mod aggregate;
 pub mod baseline_resolve;
 pub mod bisect;
 mod check;
@@ -12,6 +13,7 @@ mod promote;
 mod report;
 mod sensor_report;
 
+pub use aggregate::{AggregateOutcome, AggregateRequest, AggregateUseCase};
 pub use bisect::{BisectRequest, BisectUseCase};
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};

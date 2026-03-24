@@ -232,6 +232,21 @@ enum Command {
         files: Vec<String>,
     },
 
+    /// Aggregate multiple run receipts (e.g. from a fleet) into a single run receipt.
+    Aggregate {
+        /// Paths to run receipts (glob patterns supported)
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<String>,
+
+        /// Output file path
+        #[arg(long, default_value = "perfgate-aggregated.json")]
+        out: PathBuf,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
+
     /// Automatically find the commit that introduced a performance regression.
     ///
     /// This is a wrapper around `git bisect` that uses `perfgate paired`
@@ -1335,6 +1350,21 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             let usecase = SummaryUseCase;
             let outcome = usecase.execute(SummaryRequest { files })?;
             println!("{}", usecase.render_markdown(&outcome));
+            Ok(())
+        }
+
+        Command::Aggregate { files, out, pretty } => {
+            let usecase = perfgate_app::AggregateUseCase;
+            let mut resolved_files = Vec::new();
+            for pattern in files {
+                for entry in glob(&pattern).map_err(|e| anyhow::anyhow!("invalid glob: {}", e))? {
+                    resolved_files.push(entry?);
+                }
+            }
+            let outcome = usecase.execute(perfgate_app::AggregateRequest {
+                files: resolved_files,
+            })?;
+            write_json(&out, &outcome.receipt, pretty)?;
             Ok(())
         }
 
