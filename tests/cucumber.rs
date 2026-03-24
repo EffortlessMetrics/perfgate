@@ -9,6 +9,7 @@
 //! - Then steps: exit code and output assertions
 
 use assert_cmd::Command;
+use cucumber::gherkin::Step;
 use cucumber::{World, given, then, when};
 use std::collections::BTreeMap;
 use std::fs;
@@ -146,6 +147,12 @@ pub struct PerfgateWorld {
     current_role: Option<perfgate_auth::Role>,
     /// Generated API key
     last_api_key: Option<String>,
+    /// Microcrate test state: baseline Cargo.lock
+    baseline_lockfile: Option<String>,
+    /// Microcrate test state: current Cargo.lock
+    current_lockfile: Option<String>,
+    /// Microcrate test state: binary blame result
+    binary_blame: Option<perfgate_domain::BinaryBlame>,
 }
 
 impl PerfgateWorld {
@@ -5092,8 +5099,6 @@ async fn when_baseline_delete_no_server(world: &mut PerfgateWorld) {
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
-use cucumber::gherkin::Step;
-
 #[given(expr = "a compare receipt exists at {string} with:")]
 async fn given_compare_receipt_exists_with(
     world: &mut PerfgateWorld,
@@ -5321,6 +5326,161 @@ async fn then_key_starts_with(world: &mut PerfgateWorld, prefix: String) {
 async fn then_key_length(world: &mut PerfgateWorld, len: usize) {
     let key = world.last_api_key.as_ref().expect("No API key generated");
     assert!(key.len() >= len);
+}
+
+// ============================================================================
+// Binary Delta Blame Steps
+// ============================================================================
+
+#[given("a baseline Cargo.lock with:")]
+async fn given_baseline_lockfile(world: &mut PerfgateWorld, step: &cucumber::gherkin::Step) {
+    world.baseline_lockfile = Some(step.docstring().expect("Docstring required").to_string());
+}
+
+#[given("a current Cargo.lock with:")]
+async fn given_current_lockfile(world: &mut PerfgateWorld, step: &cucumber::gherkin::Step) {
+    world.current_lockfile = Some(step.docstring().expect("Docstring required").to_string());
+}
+
+#[when("I run the binary blame analysis")]
+async fn when_run_binary_blame(world: &mut PerfgateWorld) {
+    let baseline = world
+        .baseline_lockfile
+        .as_ref()
+        .expect("Baseline lockfile not set");
+    let current = world
+        .current_lockfile
+        .as_ref()
+        .expect("Current lockfile not set");
+    world.binary_blame = Some(perfgate_domain::compare_lockfiles(baseline, current));
+}
+
+#[then(expr = "the blame report should show {string} was updated from {string} to {string}")]
+async fn then_blame_report_updated(
+    world: &mut PerfgateWorld,
+    name: String,
+    old: String,
+    new: String,
+) {
+    let blame = world.binary_blame.as_ref().expect("Blame analysis not run");
+    let change = blame
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .expect("Change not found");
+    assert_eq!(
+        change.change_type,
+        perfgate_domain::DependencyChangeType::Updated
+    );
+    assert_eq!(change.old_version.as_ref().unwrap(), &old);
+    assert_eq!(change.new_version.as_ref().unwrap(), &new);
+}
+
+#[then(expr = "the blame report should show {string} was added")]
+async fn then_blame_report_added(world: &mut PerfgateWorld, name: String) {
+    let blame = world.binary_blame.as_ref().expect("Blame analysis not run");
+    let change = blame
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .expect("Change not found");
+    assert_eq!(
+        change.change_type,
+        perfgate_domain::DependencyChangeType::Added
+    );
+}
+
+#[then(expr = "the blame report should show {string} was removed")]
+async fn then_blame_report_removed(world: &mut PerfgateWorld, name: String) {
+    let blame = world.binary_blame.as_ref().expect("Blame analysis not run");
+    let change = blame
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .expect("Change not found");
+    assert_eq!(
+        change.change_type,
+        perfgate_domain::DependencyChangeType::Removed
+    );
+}
+
+// ============================================================================
+// General File Steps
+// ============================================================================
+
+#[then(expr = "the file {string} should exist")]
+async fn then_file_exists(world: &mut PerfgateWorld, path_str: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    assert!(path.exists(), "File {} should exist", path.display());
+}
+
+#[then(expr = "the file {string} should contain valid JSON")]
+async fn then_file_valid_json(world: &mut PerfgateWorld, path_str: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let content = fs::read_to_string(&path).expect("Failed to read file");
+    let _: serde_json::Value = serde_json::from_str(&content).expect("Invalid JSON");
+}
+
+#[then(expr = "the file {string} should contain {string}")]
+async fn then_file_contains(world: &mut PerfgateWorld, path_str: String, expected: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let content = fs::read_to_string(&path).expect("Failed to read file");
+    assert!(
+        content.contains(&expected),
+        "Expected file to contain '{}', got: '{}'",
+        expected,
+        content
+    );
+}
+
+// ============================================================================
+// Aggregate Steps
+// ============================================================================
+
+#[given(expr = "a template file {string} with:")]
+async fn given_template_file(
+    world: &mut PerfgateWorld,
+    step: &cucumber::gherkin::Step,
+    path_str: String,
+) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let content = step.docstring().expect("Docstring required").to_string();
+    fs::write(path, content).expect("Failed to write template file");
+}
+
+#[given(expr = "a run receipt exists at {string} with wall_ms median {int}")]
+async fn given_run_receipt_exists_with_median(
+    world: &mut PerfgateWorld,
+    path_str: String,
+    wall_ms: u64,
+) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let receipt = world.create_run_receipt(wall_ms);
+    let json = serde_json::to_string(&receipt).unwrap();
+    fs::write(path, json).expect("Failed to write run receipt");
+}
+
+#[then(expr = "the aggregated receipt should have {int} samples")]
+async fn then_aggregated_receipt_sample_count(world: &mut PerfgateWorld, expected: usize) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("aggregated.json");
+    let content = fs::read_to_string(path).expect("Failed to read aggregated receipt");
+    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse receipt");
+    assert_eq!(receipt.samples.len(), expected);
+}
+
+#[then(expr = "the aggregated receipt wall_ms median should be {int}")]
+async fn then_aggregated_receipt_wall_ms_median(world: &mut PerfgateWorld, expected: u64) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("aggregated.json");
+    let content = fs::read_to_string(path).expect("Failed to read aggregated receipt");
+    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse receipt");
+    assert_eq!(receipt.stats.wall_ms.median, expected);
 }
 
 // ============================================================================

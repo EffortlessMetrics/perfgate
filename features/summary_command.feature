@@ -13,7 +13,7 @@ Feature: summary command
     And a compare receipt exists at "run2.json" with:
       | metric  | status | current | pct  |
       | wall_ms | fail   | 150.0   | 0.5  |
-    When I run "perfgate summary run*.json"
+    When I run "perfgate summary run*.json --allow-nonzero"
     Then the command should succeed
     And the stdout should contain "run1"
     And the stdout should contain "run2"
@@ -21,3 +21,11 @@ Feature: summary command
     And the stdout should contain "fail"
     And the stdout should contain "-10.0%"
     And the stdout should contain "50.0%"
+
+  Scenario: Summary command fails when a regression is present without --allow-nonzero
+    Given a compare receipt exists at "regressed.json" with:
+      | metric  | status | current | pct |
+      | wall_ms | fail   | 150.0   | 0.5 |
+    When I run "perfgate summary regressed.json"
+    Then the exit code should be 1
+    And the stderr should contain "Matrix gating failed"
