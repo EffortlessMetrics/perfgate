@@ -19,7 +19,7 @@ use perfgate_client::{
     ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
 };
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
-use perfgate_domain::{DependencyChangeType, DomainError, SignificancePolicy};
+use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
