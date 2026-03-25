@@ -489,7 +489,9 @@ impl CommandTimeoutExt for std::process::Child {
 
 #[cfg(unix)]
 fn diff_timeval_ms(after: libc::timeval, before: libc::timeval) -> u64 {
+    #[allow(clippy::unnecessary_cast)]
     let mut sec = after.tv_sec as i64 - before.tv_sec as i64;
+    #[allow(clippy::unnecessary_cast)]
     let mut usec = after.tv_usec as i64 - before.tv_usec as i64;
 
     if usec < 0 {
