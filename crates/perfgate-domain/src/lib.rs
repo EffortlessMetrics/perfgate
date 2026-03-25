@@ -37,9 +37,6 @@ pub enum DomainError {
     #[error(transparent)]
     Stats(#[from] StatsError),
 
-    #[error("baseline value for {0:?} must be > 0")]
-    InvalidBaseline(Metric),
-
     #[error("significance alpha must be between 0.0 and 1.0, got {0}")]
     InvalidAlpha(f64),
 }
@@ -436,7 +433,7 @@ pub fn compare_stats(
         };
 
         let result = evaluate_budget(bv, cv, budget, current_cv)
-            .map_err(|_| DomainError::InvalidBaseline(*metric))?;
+            .expect("evaluate_budget is now infallible for finite inputs");
 
         match result.status {
             MetricStatus::Pass => counts.pass += 1,
@@ -513,7 +510,7 @@ pub fn compare_runs(
         };
 
         let result = evaluate_budget(bv, cv, budget, current_cv)
-            .map_err(|_| DomainError::InvalidBaseline(*metric))?;
+            .expect("evaluate_budget is now infallible for finite inputs");
 
         let mut status = result.status;
 
@@ -3824,10 +3821,10 @@ mod tests {
         // DomainError::InvalidBaseline Tests
         // ---------------------------------------------------------------------
 
-        /// Test that compare_stats returns DomainError::InvalidBaseline when baseline value is 0.
+        /// Test that compare_stats returns Skip when baseline value is 0.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_zero_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_zero_baseline_returns_skip() {
             // Create baseline stats with wall_ms median of 0
             let baseline = Stats {
                 wall_ms: U64Summary::new(0, 0, 0),
@@ -3860,29 +3857,19 @@ mod tests {
             let mut budgets = BTreeMap::new();
             budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when baseline value is 0"
+            assert_eq!(
+                result.deltas.get(&Metric::WallMs).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when baseline value is 0"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::WallMs,
-                        "error should indicate WallMs metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
-        /// Test that compare_stats returns InvalidBaseline for zero throughput baseline.
+        /// Test that compare_stats returns Skip for zero throughput baseline.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_zero_throughput_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_zero_throughput_baseline_returns_skip() {
             let baseline = Stats {
                 wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
@@ -3917,29 +3904,19 @@ mod tests {
                 Budget::new(0.20, 0.10, Direction::Higher),
             );
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when throughput baseline is 0"
+            assert_eq!(
+                result.deltas.get(&Metric::ThroughputPerS).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when throughput baseline is 0"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::ThroughputPerS,
-                        "error should indicate ThroughputPerS metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
-        /// Test that compare_stats returns InvalidBaseline for zero max_rss_kb baseline.
+        /// Test that compare_stats returns Skip for zero max_rss_kb baseline.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_zero_max_rss_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_zero_max_rss_baseline_returns_skip() {
             let baseline = Stats {
                 wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
@@ -3971,30 +3948,20 @@ mod tests {
             let mut budgets = BTreeMap::new();
             budgets.insert(Metric::MaxRssKb, Budget::new(0.20, 0.10, Direction::Lower));
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when max_rss_kb baseline is 0"
+            assert_eq!(
+                result.deltas.get(&Metric::MaxRssKb).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when max_rss_kb baseline is 0"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::MaxRssKb,
-                        "error should indicate MaxRssKb metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
-        /// Test that compare_stats returns InvalidBaseline for negative throughput baseline.
+        /// Test that compare_stats returns Skip for negative throughput baseline.
         /// Note: While negative throughput is unusual, the check is for <= 0.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_negative_throughput_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_negative_throughput_baseline_returns_skip() {
             let baseline = Stats {
                 wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
@@ -4029,23 +3996,13 @@ mod tests {
                 Budget::new(0.20, 0.10, Direction::Higher),
             );
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when throughput baseline is negative"
+            assert_eq!(
+                result.deltas.get(&Metric::ThroughputPerS).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when throughput baseline is negative"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::ThroughputPerS,
-                        "error should indicate ThroughputPerS metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
         /// Test that DomainError::NoSamples has the expected error message.
@@ -4055,23 +4012,6 @@ mod tests {
             let error = DomainError::NoSamples;
             let message = format!("{}", error);
             assert_eq!(message, "no samples to summarize");
-        }
-
-        /// Test that DomainError::InvalidBaseline has the expected error message.
-        /// **Validates: Requirements 11.2**
-        #[test]
-        fn invalid_baseline_error_has_descriptive_message() {
-            let error = DomainError::InvalidBaseline(Metric::WallMs);
-            let message = format!("{}", error);
-            assert_eq!(message, "baseline value for WallMs must be > 0");
-
-            let error2 = DomainError::InvalidBaseline(Metric::ThroughputPerS);
-            let message2 = format!("{}", error2);
-            assert_eq!(message2, "baseline value for ThroughputPerS must be > 0");
-
-            let error3 = DomainError::InvalidBaseline(Metric::MaxRssKb);
-            let message3 = format!("{}", error3);
-            assert_eq!(message3, "baseline value for MaxRssKb must be > 0");
         }
 
         /// Test that DomainError::InvalidAlpha has the expected error message.
