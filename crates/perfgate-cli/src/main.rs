@@ -2639,10 +2639,6 @@ fn tool_info() -> ToolInfo {
 }
 
 fn map_domain_err(err: anyhow::Error) -> anyhow::Error {
-    // Keep it easy to read in CI logs.
-    if let Some(DomainError::InvalidBaseline(m)) = err.downcast_ref::<DomainError>() {
-        return anyhow::anyhow!("invalid baseline for {m:?}");
-    }
     err
 }
 
@@ -3163,13 +3159,6 @@ mod tests {
         let err = read_json::<serde_json::Value>(&path).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("parse json"), "unexpected error: {}", msg);
-    }
-
-    #[test]
-    fn map_domain_err_rewrites_invalid_baseline() {
-        let err = anyhow::Error::new(DomainError::InvalidBaseline(perfgate_types::Metric::WallMs));
-        let mapped = map_domain_err(err);
-        assert_eq!(mapped.to_string(), "invalid baseline for WallMs");
     }
 
     #[test]
