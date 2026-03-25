@@ -155,7 +155,7 @@ impl FuzzBudget {
 
         perfgate_types::Budget {
             noise_threshold: None,
-            noise_policy: None,
+            noise_policy: perfgate_types::NoisePolicy::Ignore,
             threshold,
             warn_threshold,
             direction: self.direction.to_perfgate(),
