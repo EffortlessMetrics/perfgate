@@ -309,10 +309,14 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
 
         cpu_ms = Some(user_ms.saturating_add(sys_ms));
         max_rss_kb = Some(usage_after.ru_maxrss as u64);
-        page_faults = Some((usage_after.ru_majflt as u64).saturating_sub(usage_before.ru_majflt as u64));
+        page_faults =
+            Some((usage_after.ru_majflt as u64).saturating_sub(usage_before.ru_majflt as u64));
         ctx_switches = Some(
-            (usage_after.ru_nvcsw as u64).saturating_sub(usage_before.ru_nvcsw as u64)
-                .saturating_add((usage_after.ru_nivcsw as u64).saturating_sub(usage_before.ru_nivcsw as u64)),
+            (usage_after.ru_nvcsw as u64)
+                .saturating_sub(usage_before.ru_nvcsw as u64)
+                .saturating_add(
+                    (usage_after.ru_nivcsw as u64).saturating_sub(usage_before.ru_nivcsw as u64),
+                ),
         );
     }
 

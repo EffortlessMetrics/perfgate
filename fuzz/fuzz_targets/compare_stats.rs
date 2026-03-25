@@ -86,6 +86,10 @@ impl FuzzStats {
             binary_bytes: None,
             ctx_switches: None,
             page_faults: None,
+            energy_uj: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
         }
     }
 }
@@ -151,6 +155,7 @@ impl FuzzBudget {
 
         perfgate_types::Budget {
             noise_threshold: None,
+            noise_policy: None,
             threshold,
             warn_threshold,
             direction: self.direction.to_perfgate(),
