@@ -304,17 +304,15 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
 
     let mut usage_after = unsafe { std::mem::zeroed::<libc::rusage>() };
     if unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage_after) } == 0 {
-        let user_ms = ((usage_after.ru_utime.tv_sec - usage_before.ru_utime.tv_sec) as u64 * 1000)
-            + ((usage_after.ru_utime.tv_usec - usage_before.ru_utime.tv_usec) as u64 / 1000);
-        let sys_ms = ((usage_after.ru_stime.tv_sec - usage_before.ru_stime.tv_sec) as u64 * 1000)
-            + ((usage_after.ru_stime.tv_usec - usage_before.ru_stime.tv_usec) as u64 / 1000);
+        let user_ms = diff_timeval_ms(usage_after.ru_utime, usage_before.ru_utime);
+        let sys_ms = diff_timeval_ms(usage_after.ru_stime, usage_before.ru_stime);
 
-        cpu_ms = Some(user_ms + sys_ms);
+        cpu_ms = Some(user_ms.saturating_add(sys_ms));
         max_rss_kb = Some(usage_after.ru_maxrss as u64);
-        page_faults = Some((usage_after.ru_majflt - usage_before.ru_majflt) as u64);
+        page_faults = Some((usage_after.ru_majflt as u64).saturating_sub(usage_before.ru_majflt as u64));
         ctx_switches = Some(
-            ((usage_after.ru_nvcsw - usage_before.ru_nvcsw)
-                + (usage_after.ru_nivcsw - usage_before.ru_nivcsw)) as u64,
+            (usage_after.ru_nvcsw as u64).saturating_sub(usage_before.ru_nvcsw as u64)
+                .saturating_add((usage_after.ru_nivcsw as u64).saturating_sub(usage_before.ru_nivcsw as u64)),
         );
     }
 
@@ -483,6 +481,24 @@ impl CommandTimeoutExt for std::process::Child {
         }
         Ok(None)
     }
+}
+
+#[cfg(unix)]
+fn diff_timeval_ms(after: libc::timeval, before: libc::timeval) -> u64 {
+    let mut sec = after.tv_sec as i64 - before.tv_sec as i64;
+    let mut usec = after.tv_usec as i64 - before.tv_usec as i64;
+
+    if usec < 0 {
+        sec -= 1;
+        usec += 1_000_000;
+    }
+
+    // Ensure we don't underflow if rusage somehow goes backwards (unlikely)
+    if sec < 0 {
+        return 0;
+    }
+
+    (sec as u64) * 1000 + (usec as u64) / 1000
 }
 
 #[cfg(test)]
