@@ -257,6 +257,9 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
+    let mut usage_before = unsafe { std::mem::zeroed::<libc::rusage>() };
+    let _ = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage_before) };
+
     let start = Instant::now();
 
     let out = if let Some(timeout) = spec.timeout {
@@ -294,14 +297,35 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         .or_else(|| out.status.signal())
         .unwrap_or(-1);
 
+    let mut cpu_ms = None;
+    let mut max_rss_kb = None;
+    let mut page_faults = None;
+    let mut ctx_switches = None;
+
+    let mut usage_after = unsafe { std::mem::zeroed::<libc::rusage>() };
+    if unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage_after) } == 0 {
+        let user_ms = ((usage_after.ru_utime.tv_sec - usage_before.ru_utime.tv_sec) as u64 * 1000)
+            + ((usage_after.ru_utime.tv_usec - usage_before.ru_utime.tv_usec) as u64 / 1000);
+        let sys_ms = ((usage_after.ru_stime.tv_sec - usage_before.ru_stime.tv_sec) as u64 * 1000)
+            + ((usage_after.ru_stime.tv_usec - usage_before.ru_stime.tv_usec) as u64 / 1000);
+
+        cpu_ms = Some(user_ms + sys_ms);
+        max_rss_kb = Some(usage_after.ru_maxrss as u64);
+        page_faults = Some((usage_after.ru_majflt - usage_before.ru_majflt) as u64);
+        ctx_switches = Some(
+            ((usage_after.ru_nvcsw - usage_before.ru_nvcsw)
+                + (usage_after.ru_nivcsw - usage_before.ru_nivcsw)) as u64,
+        );
+    }
+
     Ok(RunResult {
         wall_ms,
         exit_code,
         timed_out: false,
-        cpu_ms: None,
-        page_faults: None,
-        ctx_switches: None,
-        max_rss_kb: None,
+        cpu_ms,
+        page_faults,
+        ctx_switches,
+        max_rss_kb,
         io_read_bytes: None,
         io_write_bytes: None,
         network_packets: None,
