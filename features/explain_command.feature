@@ -24,3 +24,28 @@ Feature: explain command
     When I run "perfgate explain --compare pass.json"
     Then the exit code should be 0
     And the stdout should contain "Great news!"
+
+  Scenario: Explain a binary size regression with blame
+    Given a baseline Cargo.lock with:
+      """
+      [[package]]
+      name = "serde"
+      version = "1.0.0"
+      """
+    And a current Cargo.lock with:
+      """
+      [[package]]
+      name = "serde"
+      version = "1.0.1"
+      """
+    And a compare receipt exists at "compare-binary.json" with:
+      | metric       | status | current | pct  |
+      | binary_bytes | fail   | 1000000 | 0.20 |
+    When I run "perfgate explain --compare compare-binary.json --baseline-lock baseline.lock --current-lock current.lock"
+    Then the exit code should be 0
+    And the stdout should contain "Binary Size Playbook"
+    And the stdout should contain "Binary Blame Analysis"
+    And the stdout should contain "Detected 1 dependency changes"
+    And the stdout should contain "serde (Updated)"
+    And the stdout should contain "LLM Prompt"
+    And the stdout should contain "Detected Dependency Changes (Binary Blame)"

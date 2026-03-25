@@ -6,6 +6,7 @@
 mod aggregate;
 pub mod baseline_resolve;
 pub mod bisect;
+pub mod blame;
 mod check;
 pub mod comparison_logic;
 mod explain;
@@ -16,6 +17,7 @@ mod sensor_report;
 
 pub use aggregate::{AggregateOutcome, AggregateRequest, AggregateUseCase};
 pub use bisect::{BisectRequest, BisectUseCase};
+pub use blame::{BlameOutcome, BlameRequest, BlameUseCase};
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
 pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};

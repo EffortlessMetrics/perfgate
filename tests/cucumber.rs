@@ -5129,7 +5129,9 @@ async fn given_compare_receipt_exists_with(
 
             let metric = match metric_name.as_str() {
                 "wall_ms" => perfgate_types::Metric::WallMs,
-                _ => panic!("unknown metric"),
+                "binary_bytes" => perfgate_types::Metric::BinaryBytes,
+                _ => perfgate_types::Metric::parse_key(metric_name)
+                    .unwrap_or_else(|| panic!("unknown metric: {}", metric_name)),
             };
 
             receipt.deltas.insert(
@@ -5334,25 +5336,64 @@ async fn then_key_length(world: &mut PerfgateWorld, len: usize) {
 
 #[given("a baseline Cargo.lock with:")]
 async fn given_baseline_lockfile(world: &mut PerfgateWorld, step: &cucumber::gherkin::Step) {
-    world.baseline_lockfile = Some(step.docstring().expect("Docstring required").to_string());
+    let content = step.docstring().expect("Docstring required").to_string();
+    world.baseline_lockfile = Some(content.clone());
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("baseline.lock");
+    fs::write(&path, content).expect("Failed to write baseline.lock");
 }
 
 #[given("a current Cargo.lock with:")]
 async fn given_current_lockfile(world: &mut PerfgateWorld, step: &cucumber::gherkin::Step) {
-    world.current_lockfile = Some(step.docstring().expect("Docstring required").to_string());
+    let content = step.docstring().expect("Docstring required").to_string();
+    world.current_lockfile = Some(content.clone());
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("current.lock");
+    fs::write(&path, content).expect("Failed to write current.lock");
 }
 
 #[when("I run the binary blame analysis")]
 async fn when_run_binary_blame(world: &mut PerfgateWorld) {
-    let baseline = world
-        .baseline_lockfile
-        .as_ref()
-        .expect("Baseline lockfile not set");
-    let current = world
-        .current_lockfile
-        .as_ref()
-        .expect("Current lockfile not set");
-    world.binary_blame = Some(perfgate_domain::compare_lockfiles(baseline, current));
+    world.ensure_temp_dir();
+    let baseline_path = world.temp_path().join("baseline.lock");
+    let current_path = world.temp_path().join("current.lock");
+
+    fs::write(
+        &baseline_path,
+        world
+            .baseline_lockfile
+            .as_ref()
+            .expect("baseline lock missing"),
+    )
+    .expect("Failed to write baseline lock");
+    fs::write(
+        &current_path,
+        world
+            .current_lockfile
+            .as_ref()
+            .expect("current lock missing"),
+    )
+    .expect("Failed to write current lock");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("blame")
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--format")
+        .arg("json");
+
+    let output = cmd.output().expect("Failed to execute perfgate blame");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        world.binary_blame = Some(
+            serde_json::from_slice(&output.stdout).expect("Failed to parse blame JSON output"),
+        );
+    }
 }
 
 #[then(expr = "the blame report should show {string} was updated from {string} to {string}")]

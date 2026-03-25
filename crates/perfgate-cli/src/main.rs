@@ -8,17 +8,18 @@ use perfgate_adapters::{StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::{
-    BenchOutcome, BisectRequest, BisectUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock,
-    CompareRequest, CompareUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
-    PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase,
-    RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock, classify_error,
-    github_annotations, render_markdown, render_markdown_template,
+    BenchOutcome, BisectRequest, BisectUseCase, BlameRequest, BlameUseCase, CheckOutcome,
+    CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase, ExplainRequest,
+    ExplainUseCase, ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase,
+    PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
+    render_markdown_template,
 };
 use perfgate_client::{
     ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
 };
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
-use perfgate_domain::{DomainError, SignificancePolicy};
+use perfgate_domain::{DependencyChangeType, DomainError, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
@@ -257,12 +258,38 @@ enum Command {
     /// to determine if a commit is good or bad.
     Bisect(Box<BisectArgs>),
 
+    /// Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions.
+    Blame(Box<BlameArgs>),
+
     /// Provide AI-ready prompts and automated playbooks for diagnosing performance regressions.
     Explain {
         /// Path to a compare receipt
         #[arg(long)]
         compare: PathBuf,
+
+        /// Path to baseline Cargo.lock for binary blame analysis
+        #[arg(long)]
+        baseline_lock: Option<PathBuf>,
+
+        /// Path to current Cargo.lock for binary blame analysis
+        #[arg(long)]
+        current_lock: Option<PathBuf>,
     },
+}
+
+#[derive(Debug, Args)]
+pub struct BlameArgs {
+    /// Path to baseline Cargo.lock
+    #[arg(long)]
+    pub baseline: PathBuf,
+
+    /// Path to current Cargo.lock
+    #[arg(long)]
+    pub current: PathBuf,
+
+    /// Output format (text|json)
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }
 
 #[derive(Debug, Args)]
@@ -769,6 +796,25 @@ enum BaselineAction {
         /// Optional status to filter by (pass|warn|fail|skip)
         #[arg(long, value_parser = parse_verdict_status)]
         status: Option<VerdictStatus>,
+    },
+
+    /// Submit a benchmark verdict to the server.
+    SubmitVerdict {
+        /// Path to a compare receipt
+        #[arg(long)]
+        compare: PathBuf,
+
+        /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Git reference (e.g. branch name or tag)
+        #[arg(long)]
+        git_ref: Option<String>,
+
+        /// Git commit SHA
+        #[arg(long)]
+        git_sha: Option<String>,
     },
 
     /// Migrate local baselines to the server.
@@ -1388,7 +1434,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::Bisect(args) => {
-            let usecase = BisectUseCase;
+            let usecase = BisectUseCase::default();
             usecase.execute(BisectRequest {
                 good: args.good.clone(),
                 bad: args.bad.clone(),
@@ -1399,13 +1445,69 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
 
-        Command::Explain { compare } => {
-            let usecase = perfgate_app::ExplainUseCase;
-            let outcome = usecase.execute(perfgate_app::ExplainRequest { compare })?;
+        Command::Blame(args) => execute_blame(*args),
+
+        Command::Explain {
+            compare,
+            baseline_lock,
+            current_lock,
+        } => {
+            let usecase = ExplainUseCase;
+            let outcome = usecase.execute(ExplainRequest {
+                compare,
+                baseline_lock,
+                current_lock,
+            })?;
             println!("{}", outcome.markdown);
             Ok(())
         }
     }
+}
+
+fn execute_blame(args: BlameArgs) -> anyhow::Result<()> {
+    let usecase = BlameUseCase;
+    let outcome = usecase.execute(BlameRequest {
+        baseline_lock: args.baseline,
+        current_lock: args.current,
+    })?;
+
+    if args.format == "json" {
+        println!("{}", serde_json::to_string_pretty(&outcome.blame)?);
+    } else {
+        println!("# Binary Blame: Dependency Changes\n");
+        if outcome.blame.changes.is_empty() {
+            println!("No dependency changes detected.");
+        } else {
+            for change in outcome.blame.changes {
+                match change.change_type {
+                    DependencyChangeType::Added => {
+                        println!(
+                            "- Added: {} v{}",
+                            change.name,
+                            change.new_version.as_deref().unwrap_or("?")
+                        );
+                    }
+                    DependencyChangeType::Removed => {
+                        println!(
+                            "- Removed: {} v{}",
+                            change.name,
+                            change.old_version.as_deref().unwrap_or("?")
+                        );
+                    }
+                    DependencyChangeType::Updated => {
+                        println!(
+                            "- Updated: {} ({} -> {})",
+                            change.name,
+                            change.old_version.as_deref().unwrap_or("?"),
+                            change.new_version.as_deref().unwrap_or("?")
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Execute baseline management actions.
@@ -1664,6 +1766,44 @@ fn execute_baseline_action(
                     }
                 }
 
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
+        BaselineAction::SubmitVerdict {
+            compare,
+            project,
+            git_ref,
+            git_sha,
+        } => {
+            let project = server_config.resolve_project(project)?;
+            let compare_receipt: CompareReceipt = read_json(&compare)?;
+
+            let request = SubmitVerdictRequest {
+                benchmark: compare_receipt.bench.name.clone(),
+                run_id: compare_receipt
+                    .current_ref
+                    .run_id
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                status: compare_receipt.verdict.status,
+                counts: compare_receipt.verdict.counts.clone(),
+                reasons: compare_receipt.verdict.reasons.clone(),
+                git_ref,
+                git_sha,
+            };
+
+            rt.block_on(async {
+                client
+                    .submit_verdict(&project, &request)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to submit verdict for benchmark '{}'",
+                            request.benchmark
+                        )
+                    })?;
+                println!("Verdict submitted for benchmark '{}'", request.benchmark);
                 Ok::<(), anyhow::Error>(())
             })?;
         }

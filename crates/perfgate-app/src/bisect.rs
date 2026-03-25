@@ -1,6 +1,7 @@
 //! Bisection orchestration.
 
 use anyhow::Context;
+use perfgate_adapters::{CommandSpec, ProcessRunner, StdProcessRunner};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -13,19 +14,31 @@ pub struct BisectRequest {
     pub threshold: f64,
 }
 
-pub struct BisectUseCase;
+pub struct BisectUseCase<R: ProcessRunner> {
+    runner: R,
+}
 
-impl BisectUseCase {
+impl Default for BisectUseCase<StdProcessRunner> {
+    fn default() -> Self {
+        Self::new(StdProcessRunner)
+    }
+}
+
+impl<R: ProcessRunner> BisectUseCase<R> {
+    pub fn new(runner: R) -> Self {
+        Self { runner }
+    }
+
     pub fn execute(&self, req: BisectRequest) -> anyhow::Result<()> {
         let original_branch = Self::get_current_branch()?;
 
         // 1. Checkout good commit
         println!("Checking out good commit: {}", req.good);
-        Self::run_cmd("git", &["checkout", &req.good])?;
+        Self::run_git(&["checkout", &req.good])?;
 
         // 2. Build good commit
         println!("Building baseline...");
-        Self::run_shell(&req.build_cmd)?;
+        self.run_shell(&req.build_cmd)?;
 
         // 3. Copy executable to temp
         let baseline_exe = req.executable.with_extension("baseline.exe");
@@ -33,23 +46,20 @@ impl BisectUseCase {
 
         // 4. Start bisection
         println!("Starting git bisect...");
-        Self::run_cmd("git", &["bisect", "start", &req.bad, &req.good])?;
+        Self::run_git(&["bisect", "start", &req.bad, &req.good])?;
 
         // 5. Loop until bisect finishes
         loop {
             println!("\nBuilding current commit...");
-            let build_status = Command::new("sh")
-                .arg("-c")
-                .arg(&req.build_cmd)
-                .status()
-                .context("Failed to spawn build command")?;
+            let build_res = self.run_shell(&req.build_cmd);
 
-            let result = if !build_status.success() {
+            let result = if build_res.is_err() || build_res.unwrap().exit_code != 0 {
                 println!("Build failed, skipping commit...");
                 "skip"
             } else {
                 println!("Running performance comparison...");
-                let mut paired = Command::new("perfgate");
+                let current_exe = std::env::current_exe()?;
+                let mut paired = Command::new(current_exe);
                 paired.args([
                     "paired",
                     "--name",
@@ -86,7 +96,7 @@ impl BisectUseCase {
                 // Regression Blame
                 if let Some(first_word) = stdout.split_whitespace().next() {
                     let author_out = Command::new("git")
-                        .args(["show", "-s", "--format='%an <%ae>'", first_word])
+                        .args(["show", "-s", "--format=%an <%ae>", first_word])
                         .output()
                         .ok();
                     if let Some(author_out) = author_out
@@ -94,7 +104,6 @@ impl BisectUseCase {
                     {
                         let author = String::from_utf8_lossy(&author_out.stdout)
                             .trim()
-                            .trim_matches('\'')
                             .to_string();
                         println!("Regression Blame: Likely introduced by {}", author);
                     }
@@ -111,9 +120,9 @@ impl BisectUseCase {
 
         // Cleanup
         println!("Cleaning up...");
-        Self::run_cmd("git", &["bisect", "reset"])?;
+        let _ = Self::run_git(&["bisect", "reset"]);
         if !original_branch.is_empty() {
-            Self::run_cmd("git", &["checkout", &original_branch])?;
+            let _ = Self::run_git(&["checkout", &original_branch]);
         }
         let _ = fs::remove_file(&baseline_exe);
 
@@ -128,19 +137,29 @@ impl BisectUseCase {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
-    fn run_cmd(cmd: &str, args: &[&str]) -> anyhow::Result<()> {
-        let status = Command::new(cmd).args(args).status()?;
+    fn run_git(args: &[&str]) -> anyhow::Result<()> {
+        let status = Command::new("git").args(args).status()?;
         if !status.success() {
-            anyhow::bail!("Command failed: {} {:?}", cmd, args);
+            anyhow::bail!("git command failed: {:?}", args);
         }
         Ok(())
     }
 
-    fn run_shell(cmd: &str) -> anyhow::Result<()> {
-        let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-        if !status.success() {
-            anyhow::bail!("Shell command failed: {}", cmd);
-        }
-        Ok(())
+    fn run_shell(&self, cmd: &str) -> anyhow::Result<perfgate_adapters::RunResult> {
+        let spec = if cfg!(windows) {
+            CommandSpec {
+                name: "cmd".to_string(),
+                argv: vec!["/C".to_string(), cmd.to_string()],
+                ..Default::default()
+            }
+        } else {
+            CommandSpec {
+                name: "sh".to_string(),
+                argv: vec!["-c".to_string(), cmd.to_string()],
+                ..Default::default()
+            }
+        };
+
+        self.runner.run(&spec).map_err(|e| anyhow::anyhow!(e))
     }
 }
