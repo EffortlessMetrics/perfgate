@@ -59,9 +59,9 @@ use thiserror::Error;
 ///     direction: Direction::Lower,
 /// };
 ///
-/// // A zero baseline results in Skip status
-/// let result = evaluate_budget(0.0, 100.0, &budget, None).unwrap();
-/// assert_eq!(result.status, perfgate_types::MetricStatus::Skip);
+/// // A zero baseline results in InvalidBaseline error
+/// let result = evaluate_budget(0.0, 100.0, &budget, None);
+/// assert!(matches!(result, Err(BudgetError::InvalidBaseline)));
 /// ```
 #[derive(Debug, Error)]
 pub enum BudgetError {
@@ -144,16 +144,7 @@ pub fn evaluate_budget(
     current_cv: Option<f64>,
 ) -> Result<BudgetResult, BudgetError> {
     if baseline <= 0.0 {
-        return Ok(BudgetResult {
-            baseline,
-            current,
-            ratio: 1.0,
-            pct: 0.0,
-            regression: 0.0,
-            cv: current_cv,
-            noise_threshold: budget.noise_threshold,
-            status: MetricStatus::Skip,
-        });
+        return Err(BudgetError::InvalidBaseline);
     }
 
     let ratio = current / baseline;
@@ -440,15 +431,15 @@ mod tests {
     #[test]
     fn evaluate_budget_zero_baseline() {
         let budget = test_budget();
-        let result = evaluate_budget(0.0, 100.0, &budget, None).unwrap();
-        assert_eq!(result.status, MetricStatus::Skip);
+        let result = evaluate_budget(0.0, 100.0, &budget, None);
+        assert!(matches!(result, Err(BudgetError::InvalidBaseline)));
     }
 
     #[test]
     fn evaluate_budget_negative_baseline() {
         let budget = test_budget();
-        let result = evaluate_budget(-10.0, 100.0, &budget, None).unwrap();
-        assert_eq!(result.status, MetricStatus::Skip);
+        let result = evaluate_budget(-10.0, 100.0, &budget, None);
+        assert!(matches!(result, Err(BudgetError::InvalidBaseline)));
     }
 
     #[test]
