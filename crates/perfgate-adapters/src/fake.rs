@@ -52,7 +52,7 @@ impl ProcessRunner for FakeProcessRunner {
             return Ok(res.clone());
         }
 
-        Err(AdapterError::Other(anyhow::anyhow!(
+        Err(AdapterError::Other(format!(
             "FakeProcessRunner: no result configured for command: {:?}",
             spec.argv
         )))

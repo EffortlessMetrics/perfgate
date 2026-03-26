@@ -156,6 +156,24 @@ impl FallbackClient {
             .await
     }
 
+    /// Submits a benchmark verdict (server only, no fallback).
+    pub async fn submit_verdict(
+        &self,
+        project: &str,
+        request: &SubmitVerdictRequest,
+    ) -> Result<VerdictRecord, ClientError> {
+        self.client.submit_verdict(project, request).await
+    }
+
+    /// Lists verdicts (server only, no fallback).
+    pub async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, ClientError> {
+        self.client.list_verdicts(project, query).await
+    }
+
     /// Checks server health.
     pub async fn health_check(&self) -> Result<HealthResponse, ClientError> {
         self.client.health_check().await
@@ -374,15 +392,15 @@ mod tests {
             },
             samples: vec![],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 90,
-                    max: 110,
-                },
+                wall_ms: U64Summary::new(100, 100, 100),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },

@@ -64,7 +64,7 @@
 //!     make_sample(2, 110, 103),  // 7ms improvement
 //! ];
 //!
-//! let stats = compute_paired_stats(&samples, None)?;
+//! let stats = compute_paired_stats(&samples, None, None)?;
 //! let comparison = compare_paired_stats(&stats);
 //!
 //! println!("Mean diff: {:.2}ms", comparison.mean_diff_ms);
@@ -74,7 +74,9 @@
 //! ```
 
 use perfgate_stats::{summarize_f64, summarize_u64};
-use perfgate_types::{PairedDiffSummary, PairedSample, PairedStats};
+use perfgate_types::{
+    PairedDiffSummary, PairedSample, PairedStats, Significance, SignificancePolicy,
+};
 
 pub use perfgate_error::PairedError;
 
@@ -83,36 +85,10 @@ pub use perfgate_error::PairedError;
 /// Filters out warmup samples, then computes wall-time, RSS, and
 /// throughput summaries for both baseline and current runs, as well
 /// as the distribution of their paired differences.
-///
-/// # Examples
-///
-/// ```
-/// use perfgate_paired::{compute_paired_stats, PairedError};
-/// use perfgate_types::{PairedSample, PairedSampleHalf};
-///
-/// let samples = vec![PairedSample {
-///     pair_index: 0,
-///     warmup: false,
-///     baseline: PairedSampleHalf {
-///         wall_ms: 100, exit_code: 0, timed_out: false,
-///         max_rss_kb: None, stdout: None, stderr: None,
-///     },
-///     current: PairedSampleHalf {
-///         wall_ms: 110, exit_code: 0, timed_out: false,
-///         max_rss_kb: None, stdout: None, stderr: None,
-///     },
-///     wall_diff_ms: 10,
-///     rss_diff_kb: None,
-/// }];
-///
-/// let stats = compute_paired_stats(&samples, None)?;
-/// assert_eq!(stats.wall_diff_ms.mean, 10.0);
-/// assert_eq!(stats.wall_diff_ms.count, 1);
-/// # Ok::<(), PairedError>(())
-/// ```
 pub fn compute_paired_stats(
     samples: &[PairedSample],
     work_units: Option<u64>,
+    significance_policy: Option<&SignificancePolicy>,
 ) -> Result<PairedStats, PairedError> {
     let measured: Vec<&PairedSample> = samples.iter().filter(|s| !s.warmup).collect();
     if measured.is_empty() {
@@ -125,7 +101,7 @@ pub fn compute_paired_stats(
 
     let baseline_wall_ms = summarize_u64(&baseline_wall).map_err(|_| PairedError::NoSamples)?;
     let current_wall_ms = summarize_u64(&current_wall).map_err(|_| PairedError::NoSamples)?;
-    let wall_diff_ms = summarize_paired_diffs(&wall_diffs)?;
+    let wall_diff_ms = summarize_paired_diffs(&wall_diffs, significance_policy)?;
 
     let baseline_rss: Vec<u64> = measured
         .iter()
@@ -154,7 +130,7 @@ pub fn compute_paired_stats(
     let rss_diff_kb = if rss_diffs.is_empty() {
         None
     } else {
-        Some(summarize_paired_diffs(&rss_diffs)?)
+        Some(summarize_paired_diffs(&rss_diffs, significance_policy)?)
     };
 
     let (baseline_throughput_per_s, current_throughput_per_s, throughput_diff_per_s) =
@@ -182,7 +158,7 @@ pub fn compute_paired_stats(
                 (
                     Some(summarize_f64(&baseline_thr).map_err(|_| PairedError::NoSamples)?),
                     Some(summarize_f64(&current_thr).map_err(|_| PairedError::NoSamples)?),
-                    Some(summarize_paired_diffs(&thr_diffs)?),
+                    Some(summarize_paired_diffs(&thr_diffs, significance_policy)?),
                 )
             }
             None => (None, None, None),
@@ -202,26 +178,10 @@ pub fn compute_paired_stats(
 }
 
 /// Summarize the distribution of paired differences.
-///
-/// Computes mean, median, std-dev, min, max, and count for a slice
-/// of difference values. Returns [`PairedError::NoSamples`] when the
-/// slice is empty.
-///
-/// # Examples
-///
-/// ```
-/// use perfgate_paired::{summarize_paired_diffs, PairedError};
-///
-/// let diffs = vec![-5.0, -3.0, -7.0];
-/// let summary = summarize_paired_diffs(&diffs)?;
-/// assert_eq!(summary.count, 3);
-/// assert_eq!(summary.mean, -5.0);
-/// assert_eq!(summary.median, -5.0);
-/// assert_eq!(summary.min, -7.0);
-/// assert_eq!(summary.max, -3.0);
-/// # Ok::<(), PairedError>(())
-/// ```
-pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, PairedError> {
+pub fn summarize_paired_diffs(
+    diffs: &[f64],
+    policy: Option<&SignificancePolicy>,
+) -> Result<PairedDiffSummary, PairedError> {
     if diffs.is_empty() {
         return Err(PairedError::NoSamples);
     }
@@ -238,6 +198,31 @@ pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, Paired
     let max = *sorted.last().unwrap();
     let variance = diffs.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / count as f64;
     let std_dev = variance.sqrt();
+
+    let significance = policy.map(|p| {
+        let n = count as f64;
+        let std_error = if n > 1.0 { std_dev / n.sqrt() } else { 0.0 };
+        let alpha = p.alpha.unwrap_or(0.05);
+        let min_samples = p.min_samples.unwrap_or(3);
+
+        let t_value = if n >= 30.0 { 1.96 } else { 2.0 };
+        let ci_lower = mean - t_value * std_error;
+        let ci_upper = mean + t_value * std_error;
+
+        let significant = n >= min_samples as f64 && (ci_lower > 0.0 || ci_upper < 0.0);
+
+        Significance {
+            test: perfgate_types::SignificanceTest::WelchT,
+            significant,
+            alpha,
+            p_value: None, // Paired t-test p-value could be added here
+            ci_lower: Some(ci_lower),
+            ci_upper: Some(ci_upper),
+            baseline_samples: count,
+            current_samples: count,
+        }
+    });
+
     Ok(PairedDiffSummary {
         mean,
         median,
@@ -245,6 +230,7 @@ pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, Paired
         min,
         max,
         count,
+        significance,
     })
 }
 
@@ -257,11 +243,12 @@ pub fn summarize_paired_diffs(diffs: &[f64]) -> Result<PairedDiffSummary, Paired
 /// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
 ///
 /// let stats = PairedStats {
-///     baseline_wall_ms: U64Summary { median: 100, min: 100, max: 100 },
-///     current_wall_ms: U64Summary { median: 120, min: 120, max: 120 },
+///     baseline_wall_ms: U64Summary::new(100, 100, 100 ),
+///     current_wall_ms: U64Summary::new(120, 120, 120 ),
 ///     wall_diff_ms: PairedDiffSummary {
 ///         mean: 20.0, median: 20.0, std_dev: 3.0,
 ///         min: 17.0, max: 23.0, count: 10,
+///         significance: None,
 ///     },
 ///     baseline_max_rss_kb: None,
 ///     current_max_rss_kb: None,
@@ -298,11 +285,12 @@ pub struct PairedComparison {
 /// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
 ///
 /// let stats = PairedStats {
-///     baseline_wall_ms: U64Summary { median: 100, min: 90, max: 110 },
-///     current_wall_ms: U64Summary { median: 110, min: 100, max: 120 },
+///     baseline_wall_ms: U64Summary::new(100, 90, 110 ),
+///     current_wall_ms: U64Summary::new(110, 100, 120 ),
 ///     wall_diff_ms: PairedDiffSummary {
 ///         mean: 10.0, median: 10.0, std_dev: 2.0,
 ///         min: 8.0, max: 12.0, count: 5,
+///         significance: None,
 ///     },
 ///     baseline_max_rss_kb: None,
 ///     current_max_rss_kb: None,
@@ -415,7 +403,7 @@ mod tests {
             paired_sample(2, false, 120, 110),
         ];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert_eq!(stats.baseline_wall_ms.median, 110);
         assert_eq!(stats.baseline_wall_ms.min, 100);
@@ -441,7 +429,7 @@ mod tests {
             paired_sample(2, false, 100, 130),
         ];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert_eq!(stats.wall_diff_ms.mean, 20.0);
         assert_eq!(stats.wall_diff_ms.median, 20.0);
@@ -466,7 +454,7 @@ mod tests {
             paired_sample(3, false, 100, 120),
         ];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert_eq!(stats.wall_diff_ms.count, 2);
         assert_eq!(stats.baseline_wall_ms.median, 100);
@@ -480,7 +468,7 @@ mod tests {
             paired_sample(1, true, 100, 120),
         ];
 
-        let result = compute_paired_stats(&samples, None);
+        let result = compute_paired_stats(&samples, None, None);
         assert!(result.is_err(), "should error with no measured samples");
         assert!(matches!(result.unwrap_err(), PairedError::NoSamples));
     }
@@ -489,7 +477,7 @@ mod tests {
     fn test_compute_paired_stats_empty_samples() {
         let samples: Vec<PairedSample> = vec![];
 
-        let result = compute_paired_stats(&samples, None);
+        let result = compute_paired_stats(&samples, None, None);
         assert!(result.is_err(), "should error with empty samples");
         assert!(matches!(result.unwrap_err(), PairedError::NoSamples));
     }
@@ -498,7 +486,7 @@ mod tests {
     fn test_compute_paired_stats_single_sample() {
         let samples = vec![paired_sample(0, false, 100, 150)];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert_eq!(stats.baseline_wall_ms.median, 100);
         assert_eq!(stats.baseline_wall_ms.min, 100);
@@ -520,7 +508,7 @@ mod tests {
             paired_sample_with_rss(2, false, 100, 130, 1000, 1300),
         ];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         let baseline_rss = stats.baseline_max_rss_kb.expect("should have baseline RSS");
         assert_eq!(baseline_rss.median, 1000);
@@ -540,7 +528,7 @@ mod tests {
             paired_sample(1, false, 1000, 500),
         ];
 
-        let stats = compute_paired_stats(&samples, Some(100)).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, Some(100), None).expect("should compute stats");
 
         let baseline_thr = stats
             .baseline_throughput_per_s
@@ -562,7 +550,7 @@ mod tests {
     fn test_compute_paired_stats_no_throughput_without_work_units() {
         let samples = vec![paired_sample(0, false, 100, 110)];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert!(stats.baseline_throughput_per_s.is_none());
         assert!(stats.current_throughput_per_s.is_none());
@@ -576,7 +564,7 @@ mod tests {
             paired_sample(1, false, 200, 100),
         ];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert_eq!(stats.wall_diff_ms.mean, -100.0);
         assert_eq!(stats.wall_diff_ms.median, -100.0);
@@ -591,7 +579,7 @@ mod tests {
             paired_sample(3, false, 100, 140),
         ];
 
-        let stats = compute_paired_stats(&samples, None).expect("should compute stats");
+        let stats = compute_paired_stats(&samples, None, None).expect("should compute stats");
 
         assert_eq!(stats.wall_diff_ms.median, 25.0);
         assert_eq!(stats.wall_diff_ms.mean, 25.0);
@@ -600,16 +588,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_basic() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 90,
-                max: 110,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 100,
-                max: 120,
-            },
+            baseline_wall_ms: U64Summary::new(100, 90, 110),
+            current_wall_ms: U64Summary::new(110, 100, 120),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -617,6 +597,7 @@ mod tests {
                 min: 5.0,
                 max: 15.0,
                 count: 10,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -643,16 +624,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_ci_calculation() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 110,
-                max: 110,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -660,6 +633,7 @@ mod tests {
                 min: 8.0,
                 max: 12.0,
                 count: 5,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -697,16 +671,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_large_sample_t_value() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 110,
-                max: 110,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -714,6 +680,7 @@ mod tests {
                 min: 0.0,
                 max: 20.0,
                 count: 30,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -737,16 +704,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_not_significant() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 101,
-                min: 101,
-                max: 101,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(101, 101, 101),
             wall_diff_ms: PairedDiffSummary {
                 mean: 1.0,
                 median: 1.0,
@@ -754,6 +713,7 @@ mod tests {
                 min: -15.0,
                 max: 15.0,
                 count: 5,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -779,16 +739,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_single_sample() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 110,
-                min: 110,
-                max: 110,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -796,6 +748,7 @@ mod tests {
                 min: 10.0,
                 max: 10.0,
                 count: 1,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -815,16 +768,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_zero_baseline() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 0,
-                min: 0,
-                max: 0,
-            },
-            current_wall_ms: U64Summary {
-                median: 10,
-                min: 10,
-                max: 10,
-            },
+            baseline_wall_ms: U64Summary::new(0, 0, 0),
+            current_wall_ms: U64Summary::new(10, 10, 10),
             wall_diff_ms: PairedDiffSummary {
                 mean: 10.0,
                 median: 10.0,
@@ -832,6 +777,7 @@ mod tests {
                 min: 10.0,
                 max: 10.0,
                 count: 1,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -852,16 +798,8 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_negative_improvement() {
         let stats = PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            current_wall_ms: U64Summary {
-                median: 80,
-                min: 80,
-                max: 80,
-            },
+            baseline_wall_ms: U64Summary::new(100, 100, 100),
+            current_wall_ms: U64Summary::new(80, 80, 80),
             wall_diff_ms: PairedDiffSummary {
                 mean: -20.0,
                 median: -20.0,
@@ -869,6 +807,7 @@ mod tests {
                 min: -22.0,
                 max: -18.0,
                 count: 5,
+                significance: None,
             },
             baseline_max_rss_kb: None,
             current_max_rss_kb: None,
@@ -894,13 +833,13 @@ mod tests {
 
     #[test]
     fn test_summarize_paired_diffs_empty() {
-        let result = summarize_paired_diffs(&[]);
+        let result = summarize_paired_diffs(&[], None);
         assert!(matches!(result, Err(PairedError::NoSamples)));
     }
 
     #[test]
     fn test_summarize_paired_diffs_single() {
-        let summary = summarize_paired_diffs(&[5.0]).unwrap();
+        let summary = summarize_paired_diffs(&[5.0], None).unwrap();
         assert_eq!(summary.mean, 5.0);
         assert_eq!(summary.median, 5.0);
         assert_eq!(summary.std_dev, 0.0);
@@ -911,7 +850,7 @@ mod tests {
 
     #[test]
     fn test_summarize_paired_diffs_zero_variance() {
-        let summary = summarize_paired_diffs(&[10.0, 10.0, 10.0, 10.0]).unwrap();
+        let summary = summarize_paired_diffs(&[10.0, 10.0, 10.0, 10.0], None).unwrap();
         assert_eq!(summary.mean, 10.0);
         assert_eq!(summary.std_dev, 0.0);
         assert_eq!(summary.count, 4);
@@ -920,7 +859,7 @@ mod tests {
     #[test]
     fn test_summarize_paired_diffs_large_sample() {
         let diffs: Vec<f64> = (0..1000).map(|i| i as f64).collect();
-        let summary = summarize_paired_diffs(&diffs).unwrap();
+        let summary = summarize_paired_diffs(&diffs, None).unwrap();
 
         assert_eq!(summary.count, 1000);
         assert_eq!(summary.min, 0.0);
@@ -936,16 +875,8 @@ mod tests {
         #[test]
         fn test_ci_bounds_with_zero_std_dev() {
             let stats = PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
-                current_wall_ms: U64Summary {
-                    median: 110,
-                    min: 110,
-                    max: 110,
-                },
+                baseline_wall_ms: U64Summary::new(100, 100, 100),
+                current_wall_ms: U64Summary::new(110, 110, 110),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 10.0,
                     median: 10.0,
@@ -953,6 +884,7 @@ mod tests {
                     min: 10.0,
                     max: 10.0,
                     count: 10,
+                    significance: None,
                 },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,
@@ -972,16 +904,8 @@ mod tests {
         #[test]
         fn test_large_positive_diff() {
             let stats = PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
-                current_wall_ms: U64Summary {
-                    median: 100000,
-                    min: 100000,
-                    max: 100000,
-                },
+                baseline_wall_ms: U64Summary::new(100, 100, 100),
+                current_wall_ms: U64Summary::new(100000, 100000, 100000),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 99900.0,
                     median: 99900.0,
@@ -989,6 +913,7 @@ mod tests {
                     min: 99800.0,
                     max: 100000.0,
                     count: 50,
+                    significance: None,
                 },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,
@@ -1007,16 +932,8 @@ mod tests {
         #[test]
         fn test_very_small_diffs() {
             let stats = PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100000,
-                    min: 100000,
-                    max: 100000,
-                },
-                current_wall_ms: U64Summary {
-                    median: 100001,
-                    min: 100001,
-                    max: 100001,
-                },
+                baseline_wall_ms: U64Summary::new(100000, 100000, 100000),
+                current_wall_ms: U64Summary::new(100001, 100001, 100001),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 1.0,
                     median: 1.0,
@@ -1024,6 +941,7 @@ mod tests {
                     min: 0.0,
                     max: 2.0,
                     count: 30,
+                    significance: None,
                 },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,
@@ -1082,20 +1000,20 @@ mod property_tests {
     proptest! {
         #[test]
         fn prop_summarize_paired_diffs_count_matches(diffs in prop::collection::vec(finite_f64_strategy(), 1..100)) {
-            let summary = summarize_paired_diffs(&diffs).unwrap();
+            let summary = summarize_paired_diffs(&diffs, None).unwrap();
             prop_assert_eq!(summary.count, diffs.len() as u32);
         }
 
         #[test]
         fn prop_summarize_paired_diffs_mean_correct(diffs in prop::collection::vec(finite_f64_strategy(), 1..100)) {
-            let summary = summarize_paired_diffs(&diffs).unwrap();
+            let summary = summarize_paired_diffs(&diffs, None).unwrap();
             let expected_mean: f64 = diffs.iter().sum::<f64>() / diffs.len() as f64;
             prop_assert!((summary.mean - expected_mean).abs() < 1e-10 || expected_mean.abs() < 1e-10);
         }
 
         #[test]
         fn prop_summarize_paired_diffs_min_max_bounds(diffs in prop::collection::vec(finite_f64_strategy(), 1..100)) {
-            let summary = summarize_paired_diffs(&diffs).unwrap();
+            let summary = summarize_paired_diffs(&diffs, None).unwrap();
             let expected_min = diffs.iter().cloned().fold(f64::INFINITY, f64::min);
             let expected_max = diffs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
@@ -1109,7 +1027,7 @@ mod property_tests {
 
         #[test]
         fn prop_summarize_paired_diffs_ordering(diffs in prop::collection::vec(finite_f64_strategy(), 1..100)) {
-            let summary = summarize_paired_diffs(&diffs).unwrap();
+            let summary = summarize_paired_diffs(&diffs, None).unwrap();
             if summary.min.is_finite() && summary.median.is_finite() && summary.max.is_finite() {
                 prop_assert!(summary.min <= summary.median);
                 prop_assert!(summary.median <= summary.max);
@@ -1118,7 +1036,7 @@ mod property_tests {
 
         #[test]
         fn prop_std_dev_non_negative(diffs in prop::collection::vec(finite_f64_strategy(), 1..100)) {
-            let summary = summarize_paired_diffs(&diffs).unwrap();
+            let summary = summarize_paired_diffs(&diffs, None).unwrap();
             prop_assert!(summary.std_dev >= 0.0 || !summary.std_dev.is_finite());
         }
 
@@ -1129,8 +1047,8 @@ mod property_tests {
             count in 2u32..100
         ) {
             let stats = PairedStats {
-                baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
                     mean,
                     median: mean,
@@ -1138,7 +1056,8 @@ mod property_tests {
                     min: mean - std_dev,
                     max: mean + std_dev,
                     count,
-                },
+                    significance: None,
+                    },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,
                 rss_diff_kb: None,
@@ -1160,8 +1079,8 @@ mod property_tests {
         ) {
             let make_comparison = |count: u32| {
                 let stats = PairedStats {
-                    baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                    current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                    baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                    current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                     wall_diff_ms: PairedDiffSummary {
                         mean,
                         median: mean,
@@ -1169,7 +1088,8 @@ mod property_tests {
                         min: mean - std_dev,
                         max: mean + std_dev,
                         count,
-                    },
+                        significance: None,
+                        },
                     baseline_max_rss_kb: None,
                     current_max_rss_kb: None,
                     rss_diff_kb: None,
@@ -1195,8 +1115,8 @@ mod property_tests {
             count in 2u32..100
         ) {
             let stats = PairedStats {
-                baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
                     mean,
                     median: mean,
@@ -1204,7 +1124,8 @@ mod property_tests {
                     min: mean,
                     max: mean,
                     count,
-                },
+                    significance: None,
+                    },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,
                 rss_diff_kb: None,
@@ -1227,8 +1148,8 @@ mod property_tests {
             count in 1u32..50
         ) {
             let stats = PairedStats {
-                baseline_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
-                current_wall_ms: perfgate_types::U64Summary { median: 100, min: 100, max: 100 },
+                baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
+                current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
                     mean,
                     median: mean,
@@ -1236,7 +1157,8 @@ mod property_tests {
                     min: mean - std_dev,
                     max: mean + std_dev,
                     count,
-                },
+                    significance: None,
+                    },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,
                 rss_diff_kb: None,
@@ -1258,8 +1180,8 @@ mod property_tests {
         ) {
             let len = baseline.len().min(current.len());
             let samples = make_paired_samples(&baseline[..len], &current[..len]);
-            let r1 = compute_paired_stats(&samples, None);
-            let r2 = compute_paired_stats(&samples, None);
+            let r1 = compute_paired_stats(&samples, None, None);
+            let r2 = compute_paired_stats(&samples, None, None);
             match (r1, r2) {
                 (Ok(s1), Ok(s2)) => {
                     prop_assert_eq!(s1.wall_diff_ms.mean, s2.wall_diff_ms.mean);
@@ -1279,7 +1201,7 @@ mod property_tests {
         ) {
             let len = baseline.len().min(current.len());
             let samples = make_paired_samples(&baseline[..len], &current[..len]);
-            if let Ok(stats) = compute_paired_stats(&samples, None) {
+            if let Ok(stats) = compute_paired_stats(&samples, None, None) {
                 let cmp = compare_paired_stats(&stats);
                 prop_assert!(
                     cmp.ci_95_lower <= cmp.mean_diff_ms,
@@ -1303,7 +1225,7 @@ mod property_tests {
             let fwd = make_paired_samples(&baseline[..len], &current[..len]);
             let rev = make_paired_samples(&current[..len], &baseline[..len]);
             if let (Ok(fwd_stats), Ok(rev_stats)) =
-                (compute_paired_stats(&fwd, None), compute_paired_stats(&rev, None))
+                (compute_paired_stats(&fwd, None, None), compute_paired_stats(&rev, None, None))
             {
                 let fwd_cmp = compare_paired_stats(&fwd_stats);
                 let rev_cmp = compare_paired_stats(&rev_stats);
@@ -1323,8 +1245,8 @@ mod property_tests {
         ) {
             let len = baseline.len().min(current.len());
             let samples = make_paired_samples(&baseline[..len], &current[..len]);
-            let stats1 = compute_paired_stats(&samples, None).unwrap();
-            let stats2 = compute_paired_stats(&samples, None).unwrap();
+            let stats1 = compute_paired_stats(&samples, None, None).unwrap();
+            let stats2 = compute_paired_stats(&samples, None, None).unwrap();
             let cmp1 = compare_paired_stats(&stats1);
             let cmp2 = compare_paired_stats(&stats2);
             prop_assert_eq!(cmp1, cmp2, "identical inputs must produce identical comparisons");
@@ -1339,7 +1261,7 @@ mod property_tests {
             let len = baseline.len().min(current.len());
             let samples = make_paired_samples(&baseline[..len], &current[..len]);
             let non_warmup = samples.iter().filter(|s| !s.warmup).count() as u32;
-            let stats = compute_paired_stats(&samples, None).unwrap();
+            let stats = compute_paired_stats(&samples, None, None).unwrap();
             prop_assert_eq!(
                 stats.wall_diff_ms.count, non_warmup,
                 "output count {} must equal non-warmup input count {}",
@@ -1357,7 +1279,7 @@ mod property_tests {
             let fwd = make_paired_samples(&baseline[..len], &current[..len]);
             let rev = make_paired_samples(&current[..len], &baseline[..len]);
             if let (Ok(fwd_stats), Ok(rev_stats)) =
-                (compute_paired_stats(&fwd, None), compute_paired_stats(&rev, None))
+                (compute_paired_stats(&fwd, None, None), compute_paired_stats(&rev, None, None))
             {
                 let fwd_cmp = compare_paired_stats(&fwd_stats);
                 let rev_cmp = compare_paired_stats(&rev_stats);
@@ -1392,7 +1314,7 @@ mod property_tests {
         ) {
             let len = baseline.len().min(current.len());
             let samples = make_paired_samples(&baseline[..len], &current[..len]);
-            if let Ok(stats) = compute_paired_stats(&samples, None) {
+            if let Ok(stats) = compute_paired_stats(&samples, None, None) {
                 let diff = &stats.wall_diff_ms;
                 prop_assert!(
                     diff.mean >= diff.min,

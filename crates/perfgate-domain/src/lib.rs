@@ -2,8 +2,12 @@
 //!
 //! This crate is intentionally I/O-free: it does math and policy.
 
+mod blame;
 mod paired;
 
+pub use blame::{
+    BinaryBlame, DependencyChange, DependencyChangeType, compare_lockfiles, parse_lockfile,
+};
 pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
 
 pub use perfgate_host_detect::detect_host_mismatch;
@@ -14,21 +18,24 @@ pub use perfgate_budget::{
 };
 
 pub use perfgate_significance::{compute_significance, mean_and_variance};
+pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, summarize_u64};
 
 use perfgate_types::{
-    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, F64Summary, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, U64Summary,
-    Verdict, VerdictCounts, VerdictStatus,
+    Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, FINDING_CODE_METRIC_FAIL,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
+
+pub use perfgate_error::StatsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DomainError {
     #[error("no samples to summarize")]
     NoSamples,
 
-    #[error("baseline value for {0:?} must be > 0")]
-    InvalidBaseline(Metric),
+    #[error(transparent)]
+    Stats(#[from] StatsError),
 
     #[error("significance alpha must be between 0.0 and 1.0, got {0}")]
     InvalidAlpha(f64),
@@ -51,6 +58,10 @@ mod advanced_analytics_tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -96,6 +107,8 @@ mod advanced_analytics_tests {
         budgets.insert(
             Metric::WallMs,
             Budget {
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
                 threshold,
                 warn_threshold: threshold * 0.9,
                 direction: Direction::Lower,
@@ -172,65 +185,6 @@ mod advanced_analytics_tests {
     }
 }
 
-/// Compute median/min/max summary from a slice of `u64` values.
-///
-/// # Examples
-///
-/// ```
-/// use perfgate_domain::summarize_u64;
-///
-/// let summary = summarize_u64(&[120, 100, 110, 105, 115]).unwrap();
-/// assert_eq!(summary.median, 110);
-/// assert_eq!(summary.min, 100);
-/// assert_eq!(summary.max, 120);
-/// ```
-pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, DomainError> {
-    if values.is_empty() {
-        return Err(DomainError::NoSamples);
-    }
-    let mut v = values.to_vec();
-    v.sort_unstable();
-    let min = *v.first().unwrap();
-    let max = *v.last().unwrap();
-    let median = median_u64_sorted(&v);
-    Ok(U64Summary { median, min, max })
-}
-
-pub fn summarize_f64(values: &[f64]) -> Result<F64Summary, DomainError> {
-    if values.is_empty() {
-        return Err(DomainError::NoSamples);
-    }
-    let mut v = values.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let min = *v.first().unwrap();
-    let max = *v.last().unwrap();
-    let median = median_f64_sorted(&v);
-    Ok(F64Summary { median, min, max })
-}
-
-fn median_u64_sorted(sorted: &[u64]) -> u64 {
-    debug_assert!(!sorted.is_empty());
-    let n = sorted.len();
-    let mid = n / 2;
-    if n % 2 == 1 {
-        sorted[mid]
-    } else {
-        // average, rounding down
-        (sorted[mid - 1] / 2) + (sorted[mid] / 2) + ((sorted[mid - 1] % 2 + sorted[mid] % 2) / 2)
-    }
-}
-
-fn median_f64_sorted(sorted: &[f64]) -> f64 {
-    debug_assert!(!sorted.is_empty());
-    let n = sorted.len();
-    let mid = n / 2;
-    if n % 2 == 1 {
-        sorted[mid]
-    } else {
-        (sorted[mid - 1] + sorted[mid]) / 2.0
-    }
-}
-
 /// Compute perfgate stats from samples.
 ///
 /// Warmup samples (`sample.warmup == true`) are excluded.
@@ -245,12 +199,14 @@ fn median_f64_sorted(sorted: &[f64]) -> f64 {
 ///     Sample {
 ///         wall_ms: 100, exit_code: 0, warmup: false, timed_out: false,
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+///         network_packets: None, energy_uj: None, binary_bytes: None, stdout: None, stderr: None,
 ///     },
 ///     Sample {
 ///         wall_ms: 120, exit_code: 0, warmup: false, timed_out: false,
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+///         network_packets: None, energy_uj: None, binary_bytes: None, stdout: None, stderr: None,
 ///     },
 /// ];
 ///
@@ -298,6 +254,34 @@ pub fn compute_stats(
         Some(summarize_u64(&rss_vals)?)
     };
 
+    let io_read_vals: Vec<u64> = measured.iter().filter_map(|s| s.io_read_bytes).collect();
+    let io_read_bytes = if io_read_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&io_read_vals)?)
+    };
+
+    let io_write_vals: Vec<u64> = measured.iter().filter_map(|s| s.io_write_bytes).collect();
+    let io_write_bytes = if io_write_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&io_write_vals)?)
+    };
+
+    let network_vals: Vec<u64> = measured.iter().filter_map(|s| s.network_packets).collect();
+    let network_packets = if network_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&network_vals)?)
+    };
+
+    let energy_vals: Vec<u64> = measured.iter().filter_map(|s| s.energy_uj).collect();
+    let energy_uj = if energy_vals.is_empty() {
+        None
+    } else {
+        Some(summarize_u64(&energy_vals)?)
+    };
+
     let binary_vals: Vec<u64> = measured.iter().filter_map(|s| s.binary_bytes).collect();
     let binary_bytes = if binary_vals.is_empty() {
         None
@@ -329,6 +313,10 @@ pub fn compute_stats(
         page_faults,
         ctx_switches,
         max_rss_kb,
+        io_read_bytes,
+        io_write_bytes,
+        network_packets,
+        energy_uj,
         binary_bytes,
         throughput_per_s,
     })
@@ -369,8 +357,10 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
         VerdictStatus::Fail
     } else if counts.warn > 0 {
         VerdictStatus::Warn
-    } else {
+    } else if counts.pass > 0 {
         VerdictStatus::Pass
+    } else {
+        VerdictStatus::Skip
     };
 
     Verdict {
@@ -392,18 +382,26 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// use std::collections::BTreeMap;
 ///
 /// let baseline = Stats {
-///     wall_ms: U64Summary { median: 100, min: 90, max: 110 },
+///     wall_ms: U64Summary::new(100, 90, 110 ),
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
-///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///     max_rss_kb: None,
+///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
+///     energy_uj: None,
+///     binary_bytes: None, throughput_per_s: None,
 /// };
 /// let current = Stats {
-///     wall_ms: U64Summary { median: 105, min: 95, max: 115 },
+///     wall_ms: U64Summary::new(105, 95, 115 ),
 ///     cpu_ms: None, page_faults: None, ctx_switches: None,
-///     max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///     max_rss_kb: None,
+///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
+///     energy_uj: None,
+///     binary_bytes: None, throughput_per_s: None,
 /// };
 ///
 /// let mut budgets = BTreeMap::new();
 /// budgets.insert(Metric::WallMs, Budget {
+///     noise_threshold: None,
+///     noise_policy: perfgate_types::NoisePolicy::Ignore,
 ///     threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower,
 /// });
 ///
@@ -422,18 +420,40 @@ pub fn compare_stats(
         pass: 0,
         warn: 0,
         fail: 0,
+        skip: 0,
     };
 
     for (metric, budget) in budgets {
         let b = metric_value(baseline, *metric);
         let c = metric_value(current, *metric);
+        let current_cv = metric_cv(current, *metric);
 
         let (Some(bv), Some(cv)) = (b, c) else {
             continue;
         };
 
-        let result =
-            evaluate_budget(bv, cv, budget).map_err(|_| DomainError::InvalidBaseline(*metric))?;
+        if bv <= 0.0 {
+            deltas.insert(
+                *metric,
+                Delta {
+                    baseline: bv,
+                    current: cv,
+                    ratio: 1.0,
+                    pct: 0.0,
+                    regression: 0.0,
+                    status: MetricStatus::Skip,
+                    significance: None,
+                    cv: current_cv,
+                    noise_threshold: budget.noise_threshold,
+                    statistic: MetricStatistic::Median,
+                },
+            );
+            counts.skip += 1;
+            continue;
+        }
+
+        let result = evaluate_budget(bv, cv, budget, current_cv)
+            .expect("evaluate_budget is infallible for bv > 0");
 
         match result.status {
             MetricStatus::Pass => counts.pass += 1,
@@ -445,6 +465,10 @@ pub fn compare_stats(
                 counts.fail += 1;
                 reasons.push(reason_token(*metric, MetricStatus::Fail));
             }
+            MetricStatus::Skip => {
+                counts.skip += 1;
+                reasons.push(reason_token(*metric, MetricStatus::Skip));
+            }
         }
 
         deltas.insert(
@@ -455,6 +479,8 @@ pub fn compare_stats(
                 ratio: result.ratio,
                 pct: result.pct,
                 regression: result.regression,
+                cv: result.cv,
+                noise_threshold: result.noise_threshold,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: result.status,
@@ -486,6 +512,7 @@ pub fn compare_runs(
         pass: 0,
         warn: 0,
         fail: 0,
+        skip: 0,
     };
 
     for (metric, budget) in budgets {
@@ -496,13 +523,34 @@ pub fn compare_runs(
 
         let b = metric_value_from_run(baseline, *metric, statistic);
         let c = metric_value_from_run(current, *metric, statistic);
+        let current_cv = metric_cv(&current.stats, *metric);
 
         let (Some(bv), Some(cv)) = (b, c) else {
             continue;
         };
 
-        let result =
-            evaluate_budget(bv, cv, budget).map_err(|_| DomainError::InvalidBaseline(*metric))?;
+        if bv <= 0.0 {
+            deltas.insert(
+                *metric,
+                Delta {
+                    baseline: bv,
+                    current: cv,
+                    ratio: 1.0,
+                    pct: 0.0,
+                    regression: 0.0,
+                    status: MetricStatus::Skip,
+                    significance: None,
+                    cv: current_cv,
+                    noise_threshold: budget.noise_threshold,
+                    statistic,
+                },
+            );
+            counts.skip += 1;
+            continue;
+        }
+
+        let result = evaluate_budget(bv, cv, budget, current_cv)
+            .expect("evaluate_budget is infallible for bv > 0");
 
         let mut status = result.status;
 
@@ -540,6 +588,10 @@ pub fn compare_runs(
                 counts.fail += 1;
                 reasons.push(reason_token(*metric, MetricStatus::Fail));
             }
+            MetricStatus::Skip => {
+                counts.skip += 1;
+                reasons.push(reason_token(*metric, MetricStatus::Skip));
+            }
         }
 
         deltas.insert(
@@ -550,6 +602,8 @@ pub fn compare_runs(
                 ratio: result.ratio,
                 pct: result.pct,
                 regression: result.regression,
+                cv: result.cv,
+                noise_threshold: result.noise_threshold,
                 statistic,
                 significance,
                 status,
@@ -637,7 +691,7 @@ pub struct Report {
 ///     deltas: BTreeMap::new(),
 ///     verdict: Verdict {
 ///         status: VerdictStatus::Pass,
-///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0, skip: 0 },
 ///         reasons: vec![],
 ///     },
 /// };
@@ -652,12 +706,12 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
     // Iterate over deltas in deterministic order (BTreeMap is sorted by key)
     for (metric, delta) in &receipt.deltas {
         match delta.status {
-            MetricStatus::Pass => continue,
+            MetricStatus::Pass | MetricStatus::Skip => continue,
             MetricStatus::Warn | MetricStatus::Fail => {
                 let code = match delta.status {
                     MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
                     MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
-                    MetricStatus::Pass => unreachable!(),
+                    _ => unreachable!(),
                 };
 
                 // Get the threshold from budgets if available
@@ -693,6 +747,22 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
     }
 }
 
+fn metric_cv(stats: &Stats, metric: Metric) -> Option<f64> {
+    match metric {
+        Metric::BinaryBytes => stats.binary_bytes.as_ref().and_then(|s| s.cv()),
+        Metric::CpuMs => stats.cpu_ms.as_ref().and_then(|s| s.cv()),
+        Metric::CtxSwitches => stats.ctx_switches.as_ref().and_then(|s| s.cv()),
+        Metric::EnergyUj => stats.energy_uj.as_ref().and_then(|s| s.cv()),
+        Metric::IoReadBytes => stats.io_read_bytes.as_ref().and_then(|s| s.cv()),
+        Metric::IoWriteBytes => stats.io_write_bytes.as_ref().and_then(|s| s.cv()),
+        Metric::MaxRssKb => stats.max_rss_kb.as_ref().and_then(|s| s.cv()),
+        Metric::NetworkPackets => stats.network_packets.as_ref().and_then(|s| s.cv()),
+        Metric::PageFaults => stats.page_faults.as_ref().and_then(|s| s.cv()),
+        Metric::ThroughputPerS => stats.throughput_per_s.as_ref().and_then(|s| s.cv()),
+        Metric::WallMs => stats.wall_ms.cv(),
+    }
+}
+
 /// Converts a Metric enum to its string representation.
 fn metric_to_string(metric: Metric) -> String {
     metric.as_str().to_string()
@@ -703,7 +773,11 @@ fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().map(|s| s.median as f64),
         Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),
         Metric::CtxSwitches => stats.ctx_switches.as_ref().map(|s| s.median as f64),
+        Metric::EnergyUj => stats.energy_uj.as_ref().map(|s| s.median as f64),
+        Metric::IoReadBytes => stats.io_read_bytes.as_ref().map(|s| s.median as f64),
+        Metric::IoWriteBytes => stats.io_write_bytes.as_ref().map(|s| s.median as f64),
         Metric::MaxRssKb => stats.max_rss_kb.as_ref().map(|s| s.median as f64),
+        Metric::NetworkPackets => stats.network_packets.as_ref().map(|s| s.median as f64),
         Metric::PageFaults => stats.page_faults.as_ref().map(|s| s.median as f64),
         Metric::ThroughputPerS => stats.throughput_per_s.as_ref().map(|s| s.median),
         Metric::WallMs => Some(stats.wall_ms.median as f64),
@@ -741,8 +815,20 @@ fn metric_series_from_run(run: &RunReceipt, metric: Metric) -> Vec<f64> {
         Metric::CtxSwitches => measured
             .filter_map(|s| s.ctx_switches.map(|v| v as f64))
             .collect(),
+        Metric::EnergyUj => measured
+            .filter_map(|s| s.energy_uj.map(|v| v as f64))
+            .collect(),
+        Metric::IoReadBytes => measured
+            .filter_map(|s| s.io_read_bytes.map(|v| v as f64))
+            .collect(),
+        Metric::IoWriteBytes => measured
+            .filter_map(|s| s.io_write_bytes.map(|v| v as f64))
+            .collect(),
         Metric::MaxRssKb => measured
             .filter_map(|s| s.max_rss_kb.map(|v| v as f64))
+            .collect(),
+        Metric::NetworkPackets => measured
+            .filter_map(|s| s.network_packets.map(|v| v as f64))
             .collect(),
         Metric::PageFaults => measured
             .filter_map(|s| s.page_faults.map(|v| v as f64))
@@ -1378,6 +1464,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -1395,6 +1485,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -1609,29 +1703,29 @@ mod tests {
 
                 // Create stats for baseline and current
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline as u64,
-                        min: baseline as u64,
-                        max: baseline as u64,
-                    },
+                    wall_ms: U64Summary::new(baseline as u64, baseline as u64, baseline as u64),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: current as u64,
-                        min: current as u64,
-                        max: current as u64,
-                    },
+                    wall_ms: U64Summary::new(current as u64, current as u64, current as u64),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -1641,6 +1735,8 @@ mod tests {
                 budgets.insert(
                     Metric::WallMs,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction,
@@ -1687,46 +1783,38 @@ mod tests {
 
                 // Create stats for baseline and current using throughput
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: 1000,
-                        min: 1000,
-                        max: 1000,
-                    },
+                    wall_ms: U64Summary::new(1000, 1000, 1000),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
-                };
+                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                };
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: 1000,
-                        min: 1000,
-                        max: 1000,
-                    },
+                    wall_ms: U64Summary::new(1000, 1000, 1000),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: current,
-                        min: current,
-                        max: current,
-                    }),
-                };
+                    throughput_per_s: Some(F64Summary::new(current, current, current)),                };
 
                 // Create budget with the generated thresholds
                 let mut budgets = BTreeMap::new();
                 budgets.insert(
                     Metric::ThroughputPerS,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction,
@@ -1770,63 +1858,63 @@ mod tests {
                 // Create appropriate stats based on direction
                 let (baseline_stats, current_stats, metric, budgets) = if direction_lower {
                     let bs = Stats {
-                        wall_ms: U64Summary {
-                            median: baseline as u64,
-                            min: baseline as u64,
-                            max: baseline as u64,
-                        },
+                        wall_ms: U64Summary::new(baseline as u64, baseline as u64, baseline as u64),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: None,
-                    };
-                    let cs = Stats {
-                        wall_ms: U64Summary {
-                            median: current as u64,
-                            min: current as u64,
-                            max: current as u64,
-                        },
+                        };                    let cs = Stats {
+                        wall_ms: U64Summary::new(current as u64, current as u64, current as u64),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: None,
-                    };
-                    let mut b = BTreeMap::new();
-                    b.insert(Metric::WallMs, Budget { threshold, warn_threshold, direction });
+                        };                    let mut b = BTreeMap::new();
+                    b.insert(Metric::WallMs, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,  threshold, warn_threshold, direction });
                     (bs, cs, Metric::WallMs, b)
                 } else {
                     let bs = Stats {
-                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary {
-                            median: baseline,
-                            min: baseline,
-                            max: baseline,
-                        }),
-                    };
+                        throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                    };
                     let cs = Stats {
-                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary {
-                            median: current,
-                            min: current,
-                            max: current,
-                        }),
-                    };
+                        throughput_per_s: Some(F64Summary::new(current, current, current)),                    };
                     let mut b = BTreeMap::new();
-                    b.insert(Metric::ThroughputPerS, Budget { threshold, warn_threshold, direction });
+                    b.insert(Metric::ThroughputPerS, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,  threshold, warn_threshold, direction });
                     (bs, cs, Metric::ThroughputPerS, b)
                 };
 
@@ -1859,18 +1947,17 @@ mod tests {
                 (threshold, warn_threshold) in threshold_pair_strategy(),
             ) {
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                    wall_ms: U64Summary::new(1000, 1000, 1000),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
-                };
+                    throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                };
 
                 // For Direction::Higher, regression = max(0, (baseline - current) / baseline)
                 // To get regression = threshold, we need: (baseline - current) / baseline = threshold
@@ -1880,23 +1967,25 @@ mod tests {
                 // Only test if current would be positive
                 if current_at_threshold_higher > 0.0 {
                     let current_stats = Stats {
-                        wall_ms: U64Summary { median: 1000, min: 1000, max: 1000 },
+                        wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
                         page_faults: None,
                         ctx_switches: None,
                         max_rss_kb: None,
+                        io_read_bytes: None,
+                        io_write_bytes: None,
+                        network_packets: None,
+                        energy_uj: None,
                         binary_bytes: None,
-                        throughput_per_s: Some(F64Summary {
-                            median: current_at_threshold_higher,
-                            min: current_at_threshold_higher,
-                            max: current_at_threshold_higher,
-                        }),
+                        throughput_per_s: Some(F64Summary::new(current_at_threshold_higher, current_at_threshold_higher, current_at_threshold_higher)),
                     };
 
                     let mut budgets = BTreeMap::new();
                     budgets.insert(
                         Metric::ThroughputPerS,
                         Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                             threshold,
                             warn_threshold,
                             direction: Direction::Higher,
@@ -1930,6 +2019,7 @@ mod tests {
                 Just(MetricStatus::Pass),
                 Just(MetricStatus::Warn),
                 Just(MetricStatus::Fail),
+                Just(MetricStatus::Skip),
             ]
         }
 
@@ -1943,26 +2033,58 @@ mod tests {
                 VerdictStatus::Fail
             } else if statuses.contains(&MetricStatus::Warn) {
                 VerdictStatus::Warn
-            } else {
+            } else if statuses.contains(&MetricStatus::Pass) {
                 VerdictStatus::Pass
+            } else {
+                VerdictStatus::Skip
             }
         }
 
-        /// Helper to create Stats with a specific wall_ms median value.
-        fn make_stats_with_wall_ms(median: u64) -> Stats {
+        /// Helper to create Stats with a specific wall_ms median value and optional CV.
+        fn make_stats_with_wall_ms_and_cv(median: u64, cv: Option<f64>) -> Stats {
+            let (mean, stddev) = if let Some(cv_val) = cv {
+                let mean = median as f64;
+                let stddev = mean * cv_val;
+                (Some(mean), Some(stddev))
+            } else {
+                (None, None)
+            };
+
             Stats {
                 wall_ms: U64Summary {
                     median,
                     min: median,
                     max: median,
+                    mean,
+                    stddev,
                 },
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: None,
+                max_rss_kb: Some(U64Summary {
+                    median,
+                    min: median,
+                    max: median,
+                    mean,
+                    stddev,
+                }),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
-                throughput_per_s: None,
+                throughput_per_s: Some(F64Summary {
+                    median: median as f64,
+                    min: median as f64,
+                    max: median as f64,
+                    mean,
+                    stddev,
+                }),
             }
+        }
+
+        fn make_stats_with_wall_ms(median: u64) -> Stats {
+            make_stats_with_wall_ms_and_cv(median, None)
         }
 
         /// Helper to compute the current value needed to achieve a specific status.
@@ -1996,6 +2118,9 @@ mod tests {
                     let regression = threshold + 0.1;
                     (baseline_f * (1.0 + regression)).ceil() as u64
                 }
+
+                // For Skip: return baseline (same as Pass for this helper)
+                MetricStatus::Skip => baseline,
             }
         }
 
@@ -2019,17 +2144,24 @@ mod tests {
 
                 let baseline_stats = make_stats_with_wall_ms(baseline);
                 let current_value = current_for_status(baseline, threshold, warn_threshold, status);
-                let current_stats = make_stats_with_wall_ms(current_value);
+                let current_cv = if status == MetricStatus::Skip { Some(0.5) } else { None };
+                let current_stats = make_stats_with_wall_ms_and_cv(current_value, current_cv);
+
+                let mut budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+
+                if status == MetricStatus::Skip {
+                    budget.noise_threshold = Some(0.1);
+                    budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
 
                 let mut budgets = BTreeMap::new();
-                budgets.insert(
-                    Metric::WallMs,
-                    Budget {
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
+                budgets.insert(Metric::WallMs, budget);
 
                 let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
                     .expect("compare_stats should succeed");
@@ -2060,32 +2192,32 @@ mod tests {
 
                 // Create baseline stats with both wall_ms and max_rss_kb
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: None,
-                };
+                    throughput_per_s: None,                };
 
                 // Compute current values to achieve desired statuses
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
+
+                let wall_cv = if wall_ms_status == MetricStatus::Skip { Some(0.5) } else { None };
+                let rss_cv = if max_rss_status == MetricStatus::Skip { Some(0.5) } else { None };
 
                 let current_stats = Stats {
                     wall_ms: U64Summary {
                         median: wall_ms_current,
                         min: wall_ms_current,
                         max: wall_ms_current,
+                        mean: wall_cv.map(|_cv| wall_ms_current as f64),
+                        stddev: wall_cv.map(|cv| (wall_ms_current as f64) * cv),
                     },
                     cpu_ms: None,
                     page_faults: None,
@@ -2094,28 +2226,44 @@ mod tests {
                         median: max_rss_current,
                         min: max_rss_current,
                         max: max_rss_current,
+                        mean: rss_cv.map(|_cv| max_rss_current as f64),
+                        stddev: rss_cv.map(|cv| (max_rss_current as f64) * cv),
                     }),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
 
+                let mut wall_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if wall_ms_status == MetricStatus::Skip {
+                    wall_budget.noise_threshold = Some(0.1);
+                    wall_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
+                let mut rss_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if max_rss_status == MetricStatus::Skip {
+                    rss_budget.noise_threshold = Some(0.1);
+                    rss_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
                 let mut budgets = BTreeMap::new();
-                budgets.insert(
-                    Metric::WallMs,
-                    Budget {
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
-                budgets.insert(
-                    Metric::MaxRssKb,
-                    Budget {
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
+                budgets.insert(Metric::WallMs, wall_budget);
+                budgets.insert(Metric::MaxRssKb, rss_budget);
 
                 let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
                     .expect("compare_stats should succeed");
@@ -2148,30 +2296,25 @@ mod tests {
 
                 // Create baseline stats with all three metrics
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: Some(F64Summary {
-                        median: baseline_throughput,
-                        min: baseline_throughput,
-                        max: baseline_throughput,
-                    }),
-                };
+                    throughput_per_s: Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput)),                };
 
                 // Compute current values to achieve desired statuses
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, max_rss_status);
+
+                let wall_cv = if wall_ms_status == MetricStatus::Skip { Some(0.5) } else { None };
+                let rss_cv = if max_rss_status == MetricStatus::Skip { Some(0.5) } else { None };
+                let throughput_cv = if throughput_status == MetricStatus::Skip { Some(0.5) } else { None };
 
                 // For throughput (higher is better), we need to invert the logic
                 // Pass: current >= baseline (no regression)
@@ -2187,6 +2330,7 @@ mod tests {
                         let regression = threshold + 0.1;
                         baseline_throughput * (1.0 - regression)
                     }
+                    MetricStatus::Skip => baseline_throughput,
                 };
 
                 let current_stats = Stats {
@@ -2194,6 +2338,8 @@ mod tests {
                         median: wall_ms_current,
                         min: wall_ms_current,
                         max: wall_ms_current,
+                        mean: wall_cv.map(|_cv| wall_ms_current as f64),
+                        stddev: wall_cv.map(|cv| (wall_ms_current as f64) * cv),
                     },
                     cpu_ms: None,
                     page_faults: None,
@@ -2202,40 +2348,63 @@ mod tests {
                         median: max_rss_current,
                         min: max_rss_current,
                         max: max_rss_current,
+                        mean: rss_cv.map(|_cv| max_rss_current as f64),
+                        stddev: rss_cv.map(|cv| (max_rss_current as f64) * cv),
                     }),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
                         median: throughput_current,
                         min: throughput_current,
                         max: throughput_current,
+                        mean: throughput_cv.map(|_cv| throughput_current),
+                        stddev: throughput_cv.map(|cv| (throughput_current) * cv),
                     }),
                 };
 
+                let mut wall_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if wall_ms_status == MetricStatus::Skip {
+                    wall_budget.noise_threshold = Some(0.1);
+                    wall_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
+                let mut rss_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Lower,
+                };
+                if max_rss_status == MetricStatus::Skip {
+                    rss_budget.noise_threshold = Some(0.1);
+                    rss_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
+                let mut throughput_budget = Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
+                    threshold,
+                    warn_threshold,
+                    direction: Direction::Higher,
+                };
+                if throughput_status == MetricStatus::Skip {
+                    throughput_budget.noise_threshold = Some(0.1);
+                    throughput_budget.noise_policy = perfgate_types::NoisePolicy::Skip;
+                }
+
                 let mut budgets = BTreeMap::new();
-                budgets.insert(
-                    Metric::WallMs,
-                    Budget {
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
-                budgets.insert(
-                    Metric::MaxRssKb,
-                    Budget {
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Lower,
-                    },
-                );
-                budgets.insert(
-                    Metric::ThroughputPerS,
-                    Budget {
-                        threshold,
-                        warn_threshold,
-                        direction: Direction::Higher,
-                    },
-                );
+                budgets.insert(Metric::WallMs, wall_budget);
+                budgets.insert(Metric::MaxRssKb, rss_budget);
+                budgets.insert(Metric::ThroughputPerS, throughput_budget);
 
                 let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
                     .expect("compare_stats should succeed");
@@ -2266,41 +2435,32 @@ mod tests {
 
                 // Create baseline stats with both wall_ms and max_rss_kb
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: None,
-                };
+                    throughput_per_s: None,                };
 
                 // wall_ms will be Fail, max_rss will be the random status
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Fail);
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, other_status);
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: wall_ms_current,
-                        min: wall_ms_current,
-                        max: wall_ms_current,
-                    },
+                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: max_rss_current,
-                        min: max_rss_current,
-                        max: max_rss_current,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2309,6 +2469,8 @@ mod tests {
                 budgets.insert(
                     Metric::WallMs,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2317,6 +2479,8 @@ mod tests {
                 budgets.insert(
                     Metric::MaxRssKb,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2352,41 +2516,32 @@ mod tests {
 
                 // Create baseline stats with both wall_ms and max_rss_kb
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(baseline, baseline, baseline)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
-                    throughput_per_s: None,
-                };
+                    throughput_per_s: None,                };
 
                 // wall_ms will be Warn, max_rss will be Pass or Warn
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Warn);
                 let max_rss_current = current_for_status(baseline, threshold, warn_threshold, other_status);
 
                 let current_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: wall_ms_current,
-                        min: wall_ms_current,
-                        max: wall_ms_current,
-                    },
+                    wall_ms: U64Summary::new(wall_ms_current, wall_ms_current, wall_ms_current),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
-                    max_rss_kb: Some(U64Summary {
-                        median: max_rss_current,
-                        min: max_rss_current,
-                        max: max_rss_current,
-                    }),
+                    max_rss_kb: Some(U64Summary::new(max_rss_current, max_rss_current, max_rss_current)),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 };
@@ -2395,6 +2550,8 @@ mod tests {
                 budgets.insert(
                     Metric::WallMs,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2403,6 +2560,8 @@ mod tests {
                 budgets.insert(
                     Metric::MaxRssKb,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2438,30 +2597,22 @@ mod tests {
 
                 // All metrics will be Pass (current == baseline, no regression)
                 let baseline_stats = Stats {
-                    wall_ms: U64Summary {
-                        median: baseline,
-                        min: baseline,
-                        max: baseline,
-                    },
+                    wall_ms: U64Summary::new(baseline, baseline, baseline),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: if num_metrics >= 2 {
-                        Some(U64Summary {
-                            median: baseline,
-                            min: baseline,
-                            max: baseline,
-                        })
+                        Some(U64Summary::new(baseline, baseline, baseline))
                     } else {
                         None
                     },
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: if num_metrics >= 3 {
-                        Some(F64Summary {
-                            median: baseline_throughput,
-                            min: baseline_throughput,
-                            max: baseline_throughput,
-                        })
+                        Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput))
                     } else {
                         None
                     },
@@ -2474,6 +2625,8 @@ mod tests {
                 budgets.insert(
                     Metric::WallMs,
                     Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                         threshold,
                         warn_threshold,
                         direction: Direction::Lower,
@@ -2483,16 +2636,19 @@ mod tests {
                     budgets.insert(
                         Metric::MaxRssKb,
                         Budget {
+                            noise_threshold: None,
+                            noise_policy: perfgate_types::NoisePolicy::Ignore,
                             threshold,
                             warn_threshold,
                             direction: Direction::Lower,
-                        },
-                    );
+                        },                    );
                 }
                 if num_metrics >= 3 {
                     budgets.insert(
                         Metric::ThroughputPerS,
                         Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                             threshold,
                             warn_threshold,
                             direction: Direction::Higher,
@@ -2537,18 +2693,36 @@ mod tests {
                 current_wall in 1u64..10000,
                 (threshold, warn_threshold) in threshold_pair_strategy(),
             ) {
-                let baseline = Stats {
-                    wall_ms: U64Summary { median: baseline_wall, min: baseline_wall, max: baseline_wall },
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
-                };
-                let current = Stats {
-                    wall_ms: U64Summary { median: current_wall, min: current_wall, max: current_wall },
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
-                };
+            let baseline = Stats {
+                wall_ms: U64Summary::new(baseline_wall, baseline_wall, baseline_wall),
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
+            let current = Stats {
+                wall_ms: U64Summary::new(current_wall, current_wall, current_wall),
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
 
@@ -2609,6 +2783,8 @@ mod tests {
                 let current = make_run_receipt_for_prop("cur", current_wall);
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, Budget {
+                        noise_threshold: None,
+                        noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
                 let stats_map = BTreeMap::new();
@@ -2663,6 +2839,7 @@ mod tests {
                 Just(MetricStatus::Pass),
                 Just(MetricStatus::Warn),
                 Just(MetricStatus::Fail),
+                Just(MetricStatus::Skip),
             ]
         }
 
@@ -2673,6 +2850,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status,
@@ -2702,13 +2881,14 @@ mod tests {
                         MetricStatus::Pass => pass_count += 1,
                         MetricStatus::Warn => warn_count += 1,
                         MetricStatus::Fail => fail_count += 1,
+                        MetricStatus::Skip => {}
                     }
                 }
                 let verdict = Verdict {
                     status: if fail_count > 0 { VerdictStatus::Fail }
                             else if warn_count > 0 { VerdictStatus::Warn }
                             else { VerdictStatus::Pass },
-                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count },
+                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count, skip: 0 },
                     reasons: vec![],
                 };
                 let receipt = make_compare_receipt(deltas, budgets, verdict.clone());
@@ -2741,6 +2921,7 @@ mod tests {
                         MetricStatus::Pass => pass_count += 1,
                         MetricStatus::Warn => warn_count += 1,
                         MetricStatus::Fail => fail_count += 1,
+                        MetricStatus::Skip => {}
                     }
                 }
                 let expected_status = if fail_count > 0 { VerdictStatus::Fail }
@@ -2748,7 +2929,7 @@ mod tests {
                     else { VerdictStatus::Pass };
                 let verdict = Verdict {
                     status: expected_status,
-                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count },
+                    counts: VerdictCounts { pass: pass_count, warn: warn_count, fail: fail_count, skip: 0 },
                     reasons: vec![],
                 };
                 let receipt = make_compare_receipt(deltas, budgets, verdict);
@@ -2829,16 +3010,20 @@ mod tests {
                 a in 1u64..10000,
                 b in 1u64..10000,
             ) {
-                let budget = Budget {
-                    threshold: 1.0,
-                    warn_threshold: 0.5,
-                    direction: Direction::Lower,
-                };
+                let budget = Budget::new(1.0, 0.5, Direction::Lower);
 
                 let mk = |median: u64| Stats {
-                    wall_ms: U64Summary { median, min: median, max: median },
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                    wall_ms: U64Summary::new(median, median, median),
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
                 };
 
                 let mut budgets = BTreeMap::new();
@@ -2878,15 +3063,19 @@ mod tests {
                 delta in 1u64..5000,
             ) {
                 let current = baseline + delta; // strictly worse (Direction::Lower)
-                let budget = Budget {
-                    threshold: 0.0,
-                    warn_threshold: 0.0,
-                    direction: Direction::Lower,
-                };
+                let budget = Budget::new(0.0, 0.0, Direction::Lower);
                 let mk = |v: u64| Stats {
-                    wall_ms: U64Summary { median: v, min: v, max: v },
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                    wall_ms: U64Summary::new(v, v, v),
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
                 };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
@@ -2910,15 +3099,19 @@ mod tests {
             ) {
                 // current = baseline * (1 + factor/100)
                 let current = baseline + (baseline * factor) / 100;
-                let budget = Budget {
-                    threshold: 1.0,
-                    warn_threshold: 0.5,
-                    direction: Direction::Lower,
-                };
+                let budget = Budget::new(1.0, 0.5, Direction::Lower);
                 let mk = |v: u64| Stats {
-                    wall_ms: U64Summary { median: v, min: v, max: v },
-                    cpu_ms: None, page_faults: None, ctx_switches: None,
-                    max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+                    wall_ms: U64Summary::new(v, v, v),
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
+                    binary_bytes: None,
+                    throughput_per_s: None,
                 };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
@@ -2946,6 +3139,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2959,6 +3156,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -2966,14 +3167,14 @@ mod tests {
         ];
 
         let stats = compute_stats(&samples, None).unwrap();
-        assert_eq!(
-            stats.wall_ms,
-            U64Summary {
-                median: 200,
-                min: 200,
-                max: 200
-            }
-        );
+        let expected = U64Summary {
+            median: 200,
+            min: 200,
+            max: 200,
+            mean: Some(200.0),
+            stddev: Some(0.0),
+        };
+        assert_eq!(stats.wall_ms, expected);
     }
 
     // =========================================================================
@@ -2993,6 +3194,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3006,6 +3211,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3019,6 +3228,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3048,6 +3261,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1024),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3061,6 +3278,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1028),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3094,6 +3315,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3107,6 +3332,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3120,6 +3349,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3144,51 +3377,34 @@ mod tests {
     #[test]
     fn compare_stats_cpu_ms_regression_detection() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         // Current has 100% increase in cpu_ms (50 -> 100)
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(100, 100, 100)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20, // 20% threshold
-                warn_threshold: 0.10,
-                direction: Direction::Lower, // Lower cpu_ms is better
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3216,51 +3432,34 @@ mod tests {
     #[test]
     fn compare_stats_cpu_ms_improvement_passes() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(100, 100, 100)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         // Current has 50% decrease in cpu_ms (100 -> 50) - improvement!
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3285,46 +3484,33 @@ mod tests {
     #[test]
     fn compare_stats_skips_cpu_ms_when_only_baseline_has_it() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None, // No cpu_ms in current
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3339,46 +3525,33 @@ mod tests {
     #[test]
     fn compare_stats_skips_cpu_ms_when_only_current_has_it() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None, // No cpu_ms in baseline
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 50,
-                max: 50,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(50, 50, 50)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3393,51 +3566,34 @@ mod tests {
     #[test]
     fn compare_stats_cpu_ms_warns_within_threshold() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(100, 100, 100)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         // Current has 15% increase in cpu_ms (100 -> 115)
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 115,
-                min: 115,
-                max: 115,
-            }),
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: Some(U64Summary::new(115, 115, 115)),
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::CpuMs,
-            Budget {
-                threshold: 0.20,      // 20% fail threshold
-                warn_threshold: 0.10, // 10% warn threshold
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
         let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
 
@@ -3457,41 +3613,33 @@ mod tests {
     #[test]
     fn compare_lower_is_worse_regression_is_positive_pct() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 1000,
-                min: 1000,
-                max: 1000,
-            },
+            wall_ms: U64Summary::new(1000, 1000, 1000),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 1100,
-                min: 1100,
-                max: 1100,
-            },
+            wall_ms: U64Summary::new(1100, 1100, 1100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         };
-
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
 
         let c = compare_stats(&baseline, &current, &budgets).unwrap();
         let d = c.deltas.get(&Metric::WallMs).unwrap();
@@ -3502,48 +3650,35 @@ mod tests {
     #[test]
     fn compare_higher_is_better_regression_is_negative_pct() {
         let baseline = Stats {
-            wall_ms: U64Summary {
-                median: 1000,
-                min: 1000,
-                max: 1000,
-            },
+            wall_ms: U64Summary::new(1000, 1000, 1000),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary {
-                median: 100.0,
-                min: 100.0,
-                max: 100.0,
-            }),
+            throughput_per_s: Some(F64Summary::new(110.0, 110.0, 110.0)),
         };
         let current = Stats {
-            wall_ms: U64Summary {
-                median: 1000,
-                min: 1000,
-                max: 1000,
-            },
+            wall_ms: U64Summary::new(1000, 1000, 1000),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary {
-                median: 92.0,
-                min: 92.0,
-                max: 92.0,
-            }),
+            throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
         };
-
         let mut budgets = BTreeMap::new();
         budgets.insert(
             Metric::ThroughputPerS,
-            Budget {
-                threshold: 0.15,
-                warn_threshold: 0.135,
-                direction: Direction::Higher,
-            },
+            Budget::new(0.15, 0.135, Direction::Higher),
         );
 
         let c = compare_stats(&baseline, &current, &budgets).unwrap();
@@ -3575,8 +3710,7 @@ mod tests {
                 "summarize_u64 should return error for empty input"
             );
             match result {
-                Err(DomainError::NoSamples) => { /* expected */ }
-                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Err(StatsError::NoSamples) => { /* expected */ }
                 Ok(_) => panic!("expected error, got Ok"),
             }
         }
@@ -3592,8 +3726,7 @@ mod tests {
                 "summarize_f64 should return error for empty input"
             );
             match result {
-                Err(DomainError::NoSamples) => { /* expected */ }
-                Err(other) => panic!("expected NoSamples error, got: {:?}", other),
+                Err(StatsError::NoSamples) => { /* expected */ }
                 Ok(_) => panic!("expected error, got Ok"),
             }
         }
@@ -3631,6 +3764,10 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(1024),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3644,6 +3781,10 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(2048),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3657,6 +3798,10 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(1536),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -3689,6 +3834,10 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -3712,274 +3861,188 @@ mod tests {
         // DomainError::InvalidBaseline Tests
         // ---------------------------------------------------------------------
 
-        /// Test that compare_stats returns DomainError::InvalidBaseline when baseline value is 0.
+        /// Test that compare_stats returns Skip when baseline value is 0.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_zero_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_zero_baseline_returns_skip() {
             // Create baseline stats with wall_ms median of 0
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 0,
-                    min: 0,
-                    max: 0,
-                },
+                wall_ms: U64Summary::new(0, 0, 0),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
+                wall_ms: U64Summary::new(100, 100, 100),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
 
             let mut budgets = BTreeMap::new();
-            budgets.insert(
-                Metric::WallMs,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Lower,
-                },
-            );
+            budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when baseline value is 0"
+            assert_eq!(
+                result.deltas.get(&Metric::WallMs).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when baseline value is 0"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::WallMs,
-                        "error should indicate WallMs metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
-        /// Test that compare_stats returns InvalidBaseline for zero throughput baseline.
+        /// Test that compare_stats returns Skip for zero throughput baseline.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_zero_throughput_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_zero_throughput_baseline_returns_skip() {
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: 0.0,
-                    min: 0.0,
-                    max: 0.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: 100.0,
-                    min: 100.0,
-                    max: 100.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };
 
             let mut budgets = BTreeMap::new();
             budgets.insert(
                 Metric::ThroughputPerS,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Higher,
-                },
+                Budget::new(0.20, 0.10, Direction::Higher),
             );
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when throughput baseline is 0"
+            assert_eq!(
+                result.deltas.get(&Metric::ThroughputPerS).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when throughput baseline is 0"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::ThroughputPerS,
-                        "error should indicate ThroughputPerS metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
-        /// Test that compare_stats returns InvalidBaseline for zero max_rss_kb baseline.
+        /// Test that compare_stats returns Skip for zero max_rss_kb baseline.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_zero_max_rss_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_zero_max_rss_baseline_returns_skip() {
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 0,
-                    min: 0,
-                    max: 0,
-                }),
+                max_rss_kb: Some(U64Summary::new(0, 0, 0)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1024,
-                    max: 1024,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1024, 1024)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             };
 
             let mut budgets = BTreeMap::new();
-            budgets.insert(
-                Metric::MaxRssKb,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Lower,
-                },
-            );
+            budgets.insert(Metric::MaxRssKb, Budget::new(0.20, 0.10, Direction::Lower));
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when max_rss_kb baseline is 0"
+            assert_eq!(
+                result.deltas.get(&Metric::MaxRssKb).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when max_rss_kb baseline is 0"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::MaxRssKb,
-                        "error should indicate MaxRssKb metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
-        /// Test that compare_stats returns InvalidBaseline for negative throughput baseline.
+        /// Test that compare_stats returns Skip for negative throughput baseline.
         /// Note: While negative throughput is unusual, the check is for <= 0.
         /// **Validates: Requirements 11.2**
         #[test]
-        fn compare_stats_negative_throughput_baseline_returns_invalid_baseline_error() {
+        fn compare_stats_negative_throughput_baseline_returns_skip() {
             let baseline = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: -10.0,
-                    min: -10.0,
-                    max: -10.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(-10.0, -10.0, -10.0)),
             };
 
             let current = Stats {
-                wall_ms: U64Summary {
-                    median: 1000,
-                    min: 1000,
-                    max: 1000,
-                },
+                wall_ms: U64Summary::new(1000, 1000, 1000),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: 100.0,
-                    min: 100.0,
-                    max: 100.0,
-                }),
+                throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
             };
 
             let mut budgets = BTreeMap::new();
             budgets.insert(
                 Metric::ThroughputPerS,
-                Budget {
-                    threshold: 0.20,
-                    warn_threshold: 0.10,
-                    direction: Direction::Higher,
-                },
+                Budget::new(0.20, 0.10, Direction::Higher),
             );
 
-            let result = compare_stats(&baseline, &current, &budgets);
+            let result = compare_stats(&baseline, &current, &budgets).unwrap();
 
-            assert!(
-                result.is_err(),
-                "compare_stats should return error when throughput baseline is negative"
+            assert_eq!(
+                result.deltas.get(&Metric::ThroughputPerS).unwrap().status,
+                MetricStatus::Skip,
+                "compare_stats should return Skip status when throughput baseline is negative"
             );
-            match result {
-                Err(DomainError::InvalidBaseline(metric)) => {
-                    assert_eq!(
-                        metric,
-                        Metric::ThroughputPerS,
-                        "error should indicate ThroughputPerS metric"
-                    );
-                }
-                Err(other) => panic!("expected InvalidBaseline error, got: {:?}", other),
-                Ok(_) => panic!("expected error, got Ok"),
-            }
         }
 
         /// Test that DomainError::NoSamples has the expected error message.
@@ -3989,23 +4052,6 @@ mod tests {
             let error = DomainError::NoSamples;
             let message = format!("{}", error);
             assert_eq!(message, "no samples to summarize");
-        }
-
-        /// Test that DomainError::InvalidBaseline has the expected error message.
-        /// **Validates: Requirements 11.2**
-        #[test]
-        fn invalid_baseline_error_has_descriptive_message() {
-            let error = DomainError::InvalidBaseline(Metric::WallMs);
-            let message = format!("{}", error);
-            assert_eq!(message, "baseline value for WallMs must be > 0");
-
-            let error2 = DomainError::InvalidBaseline(Metric::ThroughputPerS);
-            let message2 = format!("{}", error2);
-            assert_eq!(message2, "baseline value for ThroughputPerS must be > 0");
-
-            let error3 = DomainError::InvalidBaseline(Metric::MaxRssKb);
-            let message3 = format!("{}", error3);
-            assert_eq!(message3, "baseline value for MaxRssKb must be > 0");
         }
 
         /// Test that DomainError::InvalidAlpha has the expected error message.
@@ -4107,6 +4153,8 @@ mod tests {
                 ratio,
                 pct,
                 regression,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status,
@@ -4115,11 +4163,7 @@ mod tests {
 
         /// Helper to create a Budget with given threshold.
         fn make_budget(threshold: f64) -> Budget {
-            Budget {
-                threshold,
-                warn_threshold: threshold * 0.9,
-                direction: Direction::Lower,
-            }
+            Budget::new(threshold, threshold * 0.9, Direction::Lower)
         }
 
         /// Test: Empty deltas produces no findings.
@@ -4130,9 +4174,10 @@ mod tests {
                 BTreeMap::new(),
                 VerdictStatus::Pass,
                 VerdictCounts {
-                    pass: 0,
+                    pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -4161,9 +4206,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Pass,
                 VerdictCounts {
-                    pass: 2,
+                    pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -4198,8 +4244,9 @@ mod tests {
                 VerdictStatus::Fail,
                 VerdictCounts {
                     pass: 1,
-                    warn: 1,
-                    fail: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -4249,6 +4296,7 @@ mod tests {
                     pass: 0,
                     warn: 1,
                     fail: 2,
+                    skip: 0,
                 },
             );
 
@@ -4274,9 +4322,10 @@ mod tests {
                 budgets.clone(),
                 VerdictStatus::Warn,
                 VerdictCounts {
-                    pass: 0,
-                    warn: 1,
+                    pass: 1,
+                    warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -4292,9 +4341,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Fail,
                 VerdictCounts {
-                    pass: 0,
+                    pass: 1,
                     warn: 0,
-                    fail: 1,
+                    fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -4327,9 +4377,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Fail,
                 VerdictCounts {
-                    pass: 0,
-                    warn: 1,
-                    fail: 2,
+                    pass: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
                 },
             );
 
@@ -4368,9 +4419,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Fail,
                 VerdictCounts {
-                    pass: 0,
+                    pass: 1,
                     warn: 0,
-                    fail: 1,
+                    fail: 0,
+                    skip: 0,
                 },
             );
             receipt.bench.name = "my_benchmark".to_string();
@@ -4404,9 +4456,10 @@ mod tests {
                 budgets,
                 VerdictStatus::Warn,
                 VerdictCounts {
-                    pass: 0,
-                    warn: 1,
+                    pass: 1,
+                    warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
             );
 

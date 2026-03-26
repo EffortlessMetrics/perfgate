@@ -9,6 +9,7 @@
 //! - **JSONL**: JSON Lines format (one JSON object per line)
 //! - **HTML**: HTML summary table
 //! - **Prometheus**: Prometheus text exposition format
+//! - **JUnit**: JUnit XML format (for legacy CI/Jenkins)
 //!
 //! # Example
 //!
@@ -35,12 +36,14 @@
 //!     samples: vec![Sample {
 //!         wall_ms: 42, exit_code: 0, warmup: false, timed_out: false,
 //!         cpu_ms: None, page_faults: None, ctx_switches: None,
-//!         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+//!         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+//!         network_packets: None, energy_uj: None, binary_bytes: None, stdout: None, stderr: None,
 //!     }],
 //!     stats: Stats {
-//!         wall_ms: U64Summary { median: 42, min: 42, max: 42 },
+//!         wall_ms: U64Summary::new(42, 42, 42 ),
 //!         cpu_ms: None, page_faults: None, ctx_switches: None,
-//!         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+//!         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+//!         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
 //!     },
 //! };
 //!
@@ -72,6 +75,8 @@ pub enum ExportFormat {
     Html,
     /// Prometheus text exposition format.
     Prometheus,
+    /// JUnit XML format (for legacy CI/Jenkins).
+    JUnit,
 }
 
 impl ExportFormat {
@@ -100,8 +105,8 @@ impl std::str::FromStr for ExportFormat {
     /// ```
     /// use perfgate_export::ExportFormat;
     ///
-    /// let fmt: ExportFormat = "jsonl".parse().unwrap();
-    /// assert_eq!(fmt, ExportFormat::Jsonl);
+    /// let fmt: ExportFormat = "junit".parse().unwrap();
+    /// assert_eq!(fmt, ExportFormat::JUnit);
     ///
     /// let bad: Result<ExportFormat, _> = "nope".parse();
     /// assert!(bad.is_err());
@@ -112,6 +117,7 @@ impl std::str::FromStr for ExportFormat {
             "jsonl" => Ok(ExportFormat::Jsonl),
             "html" => Ok(ExportFormat::Html),
             "prometheus" | "prom" => Ok(ExportFormat::Prometheus),
+            "junit" | "xml" => Ok(ExportFormat::JUnit),
             _ => Err(()),
         }
     }
@@ -133,7 +139,11 @@ impl std::str::FromStr for ExportFormat {
 ///     cpu_ms_median: Some(20),
 ///     ctx_switches_median: None,
 ///     max_rss_kb_median: None,
+///     energy_uj_median: None,
 ///     page_faults_median: None,
+///     io_read_bytes_median: None,
+///     io_write_bytes_median: None,
+///     network_packets_median: None,
 ///     throughput_median: None,
 ///     sample_count: 5,
 ///     timestamp: "2024-01-01T00:00:00Z".into(),
@@ -150,8 +160,12 @@ pub struct RunExportRow {
     pub binary_bytes_median: Option<u64>,
     pub cpu_ms_median: Option<u64>,
     pub ctx_switches_median: Option<u64>,
+    pub energy_uj_median: Option<u64>,
     pub max_rss_kb_median: Option<u64>,
     pub page_faults_median: Option<u64>,
+    pub io_read_bytes_median: Option<u64>,
+    pub io_write_bytes_median: Option<u64>,
+    pub network_packets_median: Option<u64>,
     pub throughput_median: Option<f64>,
     pub sample_count: usize,
     pub timestamp: String,
@@ -165,13 +179,16 @@ pub struct RunExportRow {
 /// use perfgate_export::CompareExportRow;
 ///
 /// let row = CompareExportRow {
-///     bench_name: "my-bench".into(),
-///     metric: "wall_ms".into(),
+///     bench_name: "my-bench".to_string(),
+///     metric: "wall_ms".to_string(),
 ///     baseline_value: 100.0,
 ///     current_value: 110.0,
 ///     regression_pct: 10.0,
-///     status: "pass".into(),
+///     status: "pass".to_string(),
 ///     threshold: 20.0,
+///     warn_threshold: Some(18.0),
+///     cv: None,
+///     noise_threshold: None,
 /// };
 /// assert_eq!(row.metric, "wall_ms");
 /// assert_eq!(row.status, "pass");
@@ -185,6 +202,9 @@ pub struct CompareExportRow {
     pub regression_pct: f64,
     pub status: String,
     pub threshold: f64,
+    pub warn_threshold: Option<f64>,
+    pub cv: Option<f64>,
+    pub noise_threshold: Option<f64>,
 }
 
 /// Use case for exporting receipts to different formats.
@@ -215,12 +235,14 @@ impl ExportUseCase {
     ///     samples: vec![Sample {
     ///         wall_ms: 42, exit_code: 0, warmup: false, timed_out: false,
     ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-    ///         max_rss_kb: None, binary_bytes: None, stdout: None, stderr: None,
+    ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+    ///         network_packets: None, energy_uj: None, binary_bytes: None, stdout: None, stderr: None,
     ///     }],
     ///     stats: Stats {
-    ///         wall_ms: U64Summary { median: 42, min: 42, max: 42 },
+    ///         wall_ms: U64Summary::new(42, 42, 42 ),
     ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-    ///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+    ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+    ///         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
     ///     },
     /// };
     /// let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
@@ -235,7 +257,27 @@ impl ExportUseCase {
             ExportFormat::Jsonl => Self::run_row_to_jsonl(&row),
             ExportFormat::Html => Self::run_row_to_html(&row),
             ExportFormat::Prometheus => Self::run_row_to_prometheus(&row),
+            ExportFormat::JUnit => Self::run_row_to_junit_run(receipt, &row),
         }
+    }
+
+    fn run_row_to_junit_run(receipt: &RunReceipt, _row: &RunExportRow) -> anyhow::Result<String> {
+        let mut out = String::new();
+        out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        out.push_str("<testsuites name=\"perfgate\">\n");
+        out.push_str(&format!(
+            "  <testsuite name=\"{}\" tests=\"1\" failures=\"0\" errors=\"0\">\n",
+            html_escape(&receipt.bench.name)
+        ));
+        out.push_str(&format!(
+            "    <testcase name=\"execution\" classname=\"perfgate.{}\" time=\"{}\">\n",
+            html_escape(&receipt.bench.name),
+            receipt.stats.wall_ms.median as f64 / 1000.0
+        ));
+        out.push_str("    </testcase>\n");
+        out.push_str("  </testsuite>\n");
+        out.push_str("</testsuites>\n");
+        Ok(out)
     }
 
     /// Export a [`CompareReceipt`] to the specified format.
@@ -256,13 +298,13 @@ impl ExportUseCase {
     ///     current_ref: CompareRef { path: None, run_id: None },
     ///     budgets: BTreeMap::new(),
     ///     deltas: BTreeMap::from([(Metric::WallMs, Delta {
-    ///         baseline: 100.0, current: 105.0, ratio: 1.05, pct: 0.05,
-    ///         regression: 0.05, statistic: MetricStatistic::Median,
-    ///         significance: None, status: MetricStatus::Pass,
+    ///         baseline: 100.0, current: 110.0, ratio: 1.1, pct: 0.1, regression: 0.1,
+    ///         cv: None, noise_threshold: None,
+    ///         statistic: MetricStatistic::Median, significance: None, status: MetricStatus::Pass
     ///     })]),
     ///     verdict: Verdict {
     ///         status: VerdictStatus::Pass,
-    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0 },
+    ///         counts: VerdictCounts { pass: 1, warn: 0, fail: 0, skip: 0 },
     ///         reasons: vec![],
     ///     },
     /// };
@@ -281,6 +323,7 @@ impl ExportUseCase {
             ExportFormat::Jsonl => Self::compare_rows_to_jsonl(&rows),
             ExportFormat::Html => Self::compare_rows_to_html(&rows),
             ExportFormat::Prometheus => Self::compare_rows_to_prometheus(&rows),
+            ExportFormat::JUnit => Self::compare_rows_to_junit(receipt, &rows),
         }
     }
 
@@ -296,8 +339,12 @@ impl ExportUseCase {
             binary_bytes_median: receipt.stats.binary_bytes.as_ref().map(|s| s.median),
             cpu_ms_median: receipt.stats.cpu_ms.as_ref().map(|s| s.median),
             ctx_switches_median: receipt.stats.ctx_switches.as_ref().map(|s| s.median),
+            energy_uj_median: receipt.stats.energy_uj.as_ref().map(|s| s.median),
             max_rss_kb_median: receipt.stats.max_rss_kb.as_ref().map(|s| s.median),
             page_faults_median: receipt.stats.page_faults.as_ref().map(|s| s.median),
+            io_read_bytes_median: receipt.stats.io_read_bytes.as_ref().map(|s| s.median),
+            io_write_bytes_median: receipt.stats.io_write_bytes.as_ref().map(|s| s.median),
+            network_packets_median: receipt.stats.network_packets.as_ref().map(|s| s.median),
             throughput_median: receipt.stats.throughput_per_s.as_ref().map(|s| s.median),
             sample_count,
             timestamp: receipt.run.started_at.clone(),
@@ -310,11 +357,9 @@ impl ExportUseCase {
             .deltas
             .iter()
             .map(|(metric, delta)| {
-                let threshold = receipt
-                    .budgets
-                    .get(metric)
-                    .map(|b| b.threshold)
-                    .unwrap_or(0.0);
+                let budget = receipt.budgets.get(metric);
+                let threshold = budget.map(|b| b.threshold).unwrap_or(0.0);
+                let warn_threshold = budget.map(|b| b.warn_threshold);
 
                 CompareExportRow {
                     bench_name: receipt.bench.name.clone(),
@@ -324,6 +369,9 @@ impl ExportUseCase {
                     regression_pct: delta.pct * 100.0,
                     status: status_to_string(delta.status),
                     threshold: threshold * 100.0,
+                    warn_threshold: warn_threshold.map(|t| t * 100.0),
+                    cv: delta.cv.map(|cv| cv * 100.0),
+                    noise_threshold: delta.noise_threshold.map(|t| t * 100.0),
                 }
             })
             .collect();
@@ -332,11 +380,10 @@ impl ExportUseCase {
         rows
     }
 
-    /// Format RunExportRow as CSV (RFC 4180).
     fn run_row_to_csv(row: &RunExportRow) -> anyhow::Result<String> {
         let mut output = String::new();
 
-        output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp\n");
+        output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,io_read_bytes_median,io_write_bytes_median,network_packets_median,energy_uj_median,throughput_median,sample_count,timestamp\n");
 
         output.push_str(&csv_escape(&row.bench_name));
         output.push(',');
@@ -365,6 +412,26 @@ impl ExportUseCase {
         output.push(',');
         output.push_str(
             &row.page_faults_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
+        output.push_str(
+            &row.io_read_bytes_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
+        output.push_str(
+            &row.io_write_bytes_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
+        output.push_str(
+            &row.network_packets_median
+                .map_or(String::new(), |v| v.to_string()),
+        );
+        output.push(',');
+        output.push_str(
+            &row.energy_uj_median
                 .map_or(String::new(), |v| v.to_string()),
         );
         output.push(',');
@@ -433,8 +500,8 @@ impl ExportUseCase {
             "<!doctype html><html><head><meta charset=\"utf-8\"><title>perfgate run export</title></head><body>\
              <h1>perfgate run export</h1>\
              <table border=\"1\">\
-             <thead><tr><th>bench_name</th><th>wall_ms_median</th><th>wall_ms_min</th><th>wall_ms_max</th><th>binary_bytes_median</th><th>cpu_ms_median</th><th>ctx_switches_median</th><th>max_rss_kb_median</th><th>page_faults_median</th><th>throughput_median</th><th>sample_count</th><th>timestamp</th></tr></thead>\
-             <tbody><tr><td>{bench}</td><td>{wall_med}</td><td>{wall_min}</td><td>{wall_max}</td><td>{binary}</td><td>{cpu}</td><td>{ctx}</td><td>{rss}</td><td>{pf}</td><td>{throughput}</td><td>{sample_count}</td><td>{timestamp}</td></tr></tbody>\
+             <thead><tr><th>bench_name</th><th>wall_ms_median</th><th>wall_ms_min</th><th>wall_ms_max</th><th>binary_bytes_median</th><th>cpu_ms_median</th><th>ctx_switches_median</th><th>max_rss_kb_median</th><th>page_faults_median</th><th>io_read_bytes_median</th><th>io_write_bytes_median</th><th>network_packets_median</th><th>energy_uj_median</th><th>throughput_median</th><th>sample_count</th><th>timestamp</th></tr></thead>\
+             <tbody><tr><td>{bench}</td><td>{wall_med}</td><td>{wall_min}</td><td>{wall_max}</td><td>{binary}</td><td>{cpu}</td><td>{ctx}</td><td>{rss}</td><td>{pf}</td><td>{io_read}</td><td>{io_write}</td><td>{net}</td><td>{energy}</td><td>{throughput}</td><td>{sample_count}</td><td>{timestamp}</td></tr></tbody>\
              </table></body></html>\n",
             bench = html_escape(&row.bench_name),
             wall_med = row.wall_ms_median,
@@ -452,6 +519,18 @@ impl ExportUseCase {
                 .map_or(String::new(), |v| v.to_string()),
             pf = row
                 .page_faults_median
+                .map_or(String::new(), |v| v.to_string()),
+            io_read = row
+                .io_read_bytes_median
+                .map_or(String::new(), |v| v.to_string()),
+            io_write = row
+                .io_write_bytes_median
+                .map_or(String::new(), |v| v.to_string()),
+            net = row
+                .network_packets_median
+                .map_or(String::new(), |v| v.to_string()),
+            energy = row
+                .energy_uj_median
                 .map_or(String::new(), |v| v.to_string()),
             throughput = row
                 .throughput_median
@@ -529,6 +608,30 @@ impl ExportUseCase {
                 bench, v
             ));
         }
+        if let Some(v) = row.io_read_bytes_median {
+            out.push_str(&format!(
+                "perfgate_run_io_read_bytes_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.io_write_bytes_median {
+            out.push_str(&format!(
+                "perfgate_run_io_write_bytes_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.network_packets_median {
+            out.push_str(&format!(
+                "perfgate_run_network_packets_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
+        if let Some(v) = row.energy_uj_median {
+            out.push_str(&format!(
+                "perfgate_run_energy_uj_median{{bench=\"{}\"}} {}\n",
+                bench, v
+            ));
+        }
         if let Some(v) = row.throughput_median {
             out.push_str(&format!(
                 "perfgate_run_throughput_per_s_median{{bench=\"{}\"}} {:.6}\n",
@@ -539,6 +642,64 @@ impl ExportUseCase {
             "perfgate_run_sample_count{{bench=\"{}\"}} {}\n",
             bench, row.sample_count
         ));
+        Ok(out)
+    }
+
+    fn compare_rows_to_junit(
+        receipt: &CompareReceipt,
+        rows: &[CompareExportRow],
+    ) -> anyhow::Result<String> {
+        let mut out = String::new();
+        let total = rows.len();
+        let failures = rows.iter().filter(|r| r.status == "fail").count();
+        let errors = rows.iter().filter(|r| r.status == "error").count();
+
+        out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        out.push_str(&format!(
+            "<testsuites name=\"perfgate\" tests=\"{}\" failures=\"{}\" errors=\"{}\">\n",
+            total, failures, errors
+        ));
+
+        out.push_str(&format!(
+            "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" errors=\"{}\">\n",
+            html_escape(&receipt.bench.name),
+            total,
+            failures,
+            errors
+        ));
+
+        for row in rows {
+            let classname = format!("perfgate.{}", html_escape(&receipt.bench.name));
+            out.push_str(&format!(
+                "    <testcase name=\"{}\" classname=\"{}\" time=\"0.0\">\n",
+                html_escape(&row.metric),
+                classname
+            ));
+
+            if row.status == "fail" {
+                out.push_str(&format!(
+                    "      <failure message=\"Performance regression detected for {}\">",
+                    html_escape(&row.metric)
+                ));
+                out.push_str(&format!(
+                    "Metric: {}\nBaseline: {:.6}\nCurrent: {:.6}\nRegression: {:.2}%\nThreshold: {:.2}%",
+                    row.metric, row.baseline_value, row.current_value, row.regression_pct, row.threshold
+                ));
+                out.push_str("</failure>\n");
+            } else if row.status == "error" {
+                out.push_str(&format!(
+                    "      <error message=\"Error occurred during performance check for {}\">",
+                    html_escape(&row.metric)
+                ));
+                out.push_str("</error>\n");
+            }
+
+            out.push_str("    </testcase>\n");
+        }
+
+        out.push_str("  </testsuite>\n");
+        out.push_str("</testsuites>\n");
+
         Ok(out)
     }
 
@@ -593,6 +754,7 @@ fn status_to_string(status: MetricStatus) -> String {
         MetricStatus::Pass => "pass".to_string(),
         MetricStatus::Warn => "warn".to_string(),
         MetricStatus::Fail => "fail".to_string(),
+        MetricStatus::Skip => "skip".to_string(),
     }
 }
 
@@ -675,6 +837,10 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(1024),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -688,29 +854,25 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(1028),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
                 },
             ],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 100,
-                    min: 98,
-                    max: 102,
-                },
-                cpu_ms: Some(U64Summary {
-                    median: 50,
-                    min: 48,
-                    max: 52,
-                }),
+                wall_ms: U64Summary::new(100, 98, 102),
+                cpu_ms: Some(U64Summary::new(50, 48, 52)),
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1020,
-                    max: 1028,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1020, 1028)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -719,22 +881,8 @@ mod tests {
 
     fn create_test_compare_receipt() -> CompareReceipt {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
-        budgets.insert(
-            Metric::MaxRssKb,
-            Budget {
-                threshold: 0.15,
-                warn_threshold: 0.135,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.15, 0.135, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -745,6 +893,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -758,6 +908,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -794,7 +946,8 @@ mod tests {
                 counts: VerdictCounts {
                     pass: 1,
                     warn: 0,
-                    fail: 1,
+                    fail: 0,
+                    skip: 0,
                 },
                 reasons: vec!["max_rss_kb_fail".to_string()],
             },
@@ -902,16 +1055,28 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_export_html_and_prometheus() {
+    fn test_compare_export_prometheus() {
         let receipt = create_test_compare_receipt();
-
-        let html = ExportUseCase::export_compare(&receipt, ExportFormat::Html).unwrap();
-        assert!(html.contains("<table"), "html output should contain table");
-        assert!(html.contains("max_rss_kb"));
-
         let prom = ExportUseCase::export_compare(&receipt, ExportFormat::Prometheus).unwrap();
         assert!(prom.contains("perfgate_compare_regression_pct"));
         assert!(prom.contains("metric=\"max_rss_kb\""));
+    }
+
+    #[test]
+    fn test_compare_export_junit() {
+        let receipt = create_test_compare_receipt();
+        let junit = ExportUseCase::export_compare(&receipt, ExportFormat::JUnit).unwrap();
+
+        assert!(junit.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(junit.contains("<testsuites name=\"perfgate\""));
+        assert!(junit.contains("testsuite name=\"alpha-bench\""));
+        assert!(junit.contains("testcase name=\"wall_ms\""));
+        assert!(junit.contains("testcase name=\"max_rss_kb\""));
+        assert!(
+            junit.contains("<failure message=\"Performance regression detected for max_rss_kb\">")
+        );
+        assert!(junit.contains("Baseline: 1024.000000"));
+        assert!(junit.contains("Current: 1280.000000"));
     }
 
     #[test]
@@ -998,15 +1163,15 @@ mod tests {
                 },
                 samples: vec![],
                 stats: Stats {
-                    wall_ms: U64Summary {
-                        median: 0,
-                        min: 0,
-                        max: 0,
-                    },
+                    wall_ms: U64Summary::new(0, 0, 0),
                     cpu_ms: None,
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
                 },
@@ -1042,9 +1207,10 @@ mod tests {
                 verdict: Verdict {
                     status: VerdictStatus::Pass,
                     counts: VerdictCounts {
-                        pass: 0,
+                        pass: 1,
                         warn: 0,
                         fail: 0,
+                        skip: 0,
                     },
                     reasons: vec![],
                 },
@@ -1063,15 +1229,15 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
             });
-            receipt.stats.wall_ms = U64Summary {
-                median: 42,
-                min: 42,
-                max: 42,
-            };
+            receipt.stats.wall_ms = U64Summary::new(42, 42, 42);
             receipt
         }
 
@@ -1278,10 +1444,12 @@ mod tests {
                 Metric::WallMs,
                 Delta {
                     baseline: 100.0,
-                    current: 110.0,
-                    ratio: 1.1,
-                    pct: 0.1,
-                    regression: 0.1,
+                    current: 105.0,
+                    ratio: 1.05,
+                    pct: 0.05,
+                    regression: 0.05,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status: MetricStatus::Pass,
@@ -1290,11 +1458,13 @@ mod tests {
             receipt.deltas.insert(
                 Metric::MaxRssKb,
                 Delta {
-                    baseline: 1024.0,
-                    current: 1024.0,
-                    ratio: 1.0,
-                    pct: 0.0,
-                    regression: 0.0,
+                    baseline: 100.0,
+                    current: 105.0,
+                    ratio: 1.05,
+                    pct: 0.05,
+                    regression: 0.05,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status: MetricStatus::Pass,
@@ -1335,16 +1505,9 @@ mod tests {
         fn huge_values_run_receipt() {
             let mut receipt = create_empty_run_receipt();
             receipt.bench.name = "huge".to_string();
-            receipt.stats.wall_ms = U64Summary {
-                median: u64::MAX,
-                min: u64::MAX - 1,
-                max: u64::MAX,
-            };
-            receipt.stats.max_rss_kb = Some(U64Summary {
-                median: u64::MAX,
-                min: u64::MAX,
-                max: u64::MAX,
-            });
+            receipt.stats.wall_ms = U64Summary::new(u64::MAX, u64::MAX - 1, u64::MAX);
+            receipt.stats.max_rss_kb = Some(U64Summary::new(u64::MAX, u64::MAX, u64::MAX));
+            receipt.stats.io_read_bytes = Some(U64Summary::new(u64::MAX, u64::MAX, u64::MAX));
 
             let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
             assert!(csv.contains(&u64::MAX.to_string()));
@@ -1375,6 +1538,10 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -1388,6 +1555,10 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: None,
@@ -1433,6 +1604,8 @@ mod tests {
                     ratio: 1.05,
                     pct: 0.05,
                     regression: 0.05,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status: MetricStatus::Pass,
@@ -1483,6 +1656,8 @@ mod tests {
                         ratio: 1.2,
                         pct: 0.2,
                         regression: 0.2,
+                        cv: None,
+                        noise_threshold: None,
                         statistic: MetricStatistic::Median,
                         significance: None,
                         status,
@@ -1513,42 +1688,26 @@ mod tests {
         fn prometheus_run_all_optional_metrics_present() {
             let mut receipt = create_empty_run_receipt();
             receipt.bench.name = "full".to_string();
-            receipt.stats.cpu_ms = Some(U64Summary {
-                median: 50,
-                min: 48,
-                max: 52,
-            });
-            receipt.stats.page_faults = Some(U64Summary {
-                median: 10,
-                min: 8,
-                max: 12,
-            });
-            receipt.stats.ctx_switches = Some(U64Summary {
-                median: 5,
-                min: 3,
-                max: 7,
-            });
-            receipt.stats.max_rss_kb = Some(U64Summary {
-                median: 2048,
-                min: 2000,
-                max: 2100,
-            });
-            receipt.stats.binary_bytes = Some(U64Summary {
-                median: 100000,
-                min: 99000,
-                max: 101000,
-            });
-            receipt.stats.throughput_per_s = Some(F64Summary {
-                median: 1234.567890,
-                min: 1200.0,
-                max: 1300.0,
-            });
+            receipt.stats.cpu_ms = Some(U64Summary::new(50, 48, 52));
+            receipt.stats.page_faults = Some(U64Summary::new(10, 8, 12));
+            receipt.stats.ctx_switches = Some(U64Summary::new(5, 3, 7));
+            receipt.stats.max_rss_kb = Some(U64Summary::new(2048, 2000, 2100));
+            receipt.stats.io_read_bytes = Some(U64Summary::new(1000, 900, 1100));
+            receipt.stats.io_write_bytes = Some(U64Summary::new(500, 400, 600));
+            receipt.stats.network_packets = Some(U64Summary::new(10, 8, 12));
+            receipt.stats.energy_uj = Some(U64Summary::new(1000, 900, 1100));
+            receipt.stats.binary_bytes = Some(U64Summary::new(100000, 99000, 101000));
+            receipt.stats.throughput_per_s = Some(F64Summary::new(1234.567890, 1200.0, 1300.0));
 
             let prom = ExportUseCase::export_run(&receipt, ExportFormat::Prometheus).unwrap();
             assert!(prom.contains("perfgate_run_cpu_ms_median{bench=\"full\"} 50"));
             assert!(prom.contains("perfgate_run_page_faults_median{bench=\"full\"} 10"));
             assert!(prom.contains("perfgate_run_ctx_switches_median{bench=\"full\"} 5"));
             assert!(prom.contains("perfgate_run_max_rss_kb_median{bench=\"full\"} 2048"));
+            assert!(prom.contains("perfgate_run_io_read_bytes_median{bench=\"full\"} 1000"));
+            assert!(prom.contains("perfgate_run_io_write_bytes_median{bench=\"full\"} 500"));
+            assert!(prom.contains("perfgate_run_network_packets_median{bench=\"full\"} 10"));
+            assert!(prom.contains("perfgate_run_energy_uj_median{bench=\"full\"} 1000"));
             assert!(prom.contains("perfgate_run_binary_bytes_median{bench=\"full\"} 100000"));
             assert!(
                 prom.contains("perfgate_run_throughput_per_s_median{bench=\"full\"} 1234.567890")
@@ -1574,19 +1733,16 @@ mod tests {
                         ratio: 1.1,
                         pct: 0.1,
                         regression: 0.1,
+                        cv: None,
+                        noise_threshold: None,
                         statistic: MetricStatistic::Median,
                         significance: None,
                         status,
                     },
                 );
-                receipt.budgets.insert(
-                    metric,
-                    Budget {
-                        threshold: 0.2,
-                        warn_threshold: 0.15,
-                        direction: Direction::Lower,
-                    },
-                );
+                receipt
+                    .budgets
+                    .insert(metric, Budget::new(0.2, 0.15, Direction::Lower));
                 let _ = expected_code; // used below
             }
 
@@ -1659,19 +1815,13 @@ mod tests {
         fn html_run_all_optional_metrics_present() {
             let mut receipt = create_empty_run_receipt();
             receipt.bench.name = "full-html".to_string();
-            receipt.stats.cpu_ms = Some(U64Summary {
-                median: 50,
-                min: 48,
-                max: 52,
-            });
-            receipt.stats.throughput_per_s = Some(F64Summary {
-                median: 999.123456,
-                min: 900.0,
-                max: 1100.0,
-            });
+            receipt.stats.cpu_ms = Some(U64Summary::new(50, 48, 52));
+            receipt.stats.io_read_bytes = Some(U64Summary::new(1000, 900, 1100));
+            receipt.stats.throughput_per_s = Some(F64Summary::new(999.123456, 900.0, 1100.0));
 
             let html = ExportUseCase::export_run(&receipt, ExportFormat::Html).unwrap();
             assert!(html.contains("<td>50</td>"));
+            assert!(html.contains("<td>1000</td>"));
             assert!(html.contains("999.123456"));
             assert!(html.contains("full-html"));
         }
@@ -1866,11 +2016,19 @@ mod property_tests {
             -128i32..128,
             any::<bool>(),
             any::<bool>(),
-            proptest::option::of(0u64..1000000),
-            proptest::option::of(0u64..1000000),
-            proptest::option::of(0u64..1000000),
-            proptest::option::of(0u64..1000000),
-            proptest::option::of(0u64..100000000),
+            (
+                proptest::option::of(0u64..1000000), // cpu_ms
+                proptest::option::of(0u64..1000000), // page_faults
+                proptest::option::of(0u64..1000000), // ctx_switches
+                proptest::option::of(0u64..1000000), // max_rss_kb
+            ),
+            (
+                proptest::option::of(0u64..1000000),   // io_read_bytes
+                proptest::option::of(0u64..1000000),   // io_write_bytes
+                proptest::option::of(0u64..1000000),   // network_packets
+                proptest::option::of(0u64..1000000),   // energy_uj
+                proptest::option::of(0u64..100000000), // binary_bytes
+            ),
         )
             .prop_map(
                 |(
@@ -1878,11 +2036,8 @@ mod property_tests {
                     exit_code,
                     warmup,
                     timed_out,
-                    cpu_ms,
-                    page_faults,
-                    ctx_switches,
-                    max_rss_kb,
-                    binary_bytes,
+                    (cpu_ms, page_faults, ctx_switches, max_rss_kb),
+                    (io_read_bytes, io_write_bytes, network_packets, energy_uj, binary_bytes),
                 )| Sample {
                     wall_ms,
                     exit_code,
@@ -1892,6 +2047,10 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes,
+                    io_write_bytes,
+                    network_packets,
+                    energy_uj,
                     binary_bytes,
                     stdout: None,
                     stderr: None,
@@ -1903,11 +2062,7 @@ mod property_tests {
         (0u64..1000000, 0u64..1000000, 0u64..1000000).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort();
-            U64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            U64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 
@@ -1915,32 +2070,33 @@ mod property_tests {
         (0.0f64..1000000.0, 0.0f64..1000000.0, 0.0f64..1000000.0).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort_by(|x, y| x.partial_cmp(y).unwrap());
-            F64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            F64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 
     fn stats_strategy() -> impl Strategy<Value = Stats> {
         (
             u64_summary_strategy(),
-            proptest::option::of(u64_summary_strategy()),
-            proptest::option::of(u64_summary_strategy()),
-            proptest::option::of(u64_summary_strategy()),
-            proptest::option::of(u64_summary_strategy()),
-            proptest::option::of(u64_summary_strategy()),
+            (
+                proptest::option::of(u64_summary_strategy()), // cpu_ms
+                proptest::option::of(u64_summary_strategy()), // page_faults
+                proptest::option::of(u64_summary_strategy()), // ctx_switches
+                proptest::option::of(u64_summary_strategy()), // max_rss_kb
+            ),
+            (
+                proptest::option::of(u64_summary_strategy()), // io_read_bytes
+                proptest::option::of(u64_summary_strategy()), // io_write_bytes
+                proptest::option::of(u64_summary_strategy()), // network_packets
+                proptest::option::of(u64_summary_strategy()), // energy_uj
+                proptest::option::of(u64_summary_strategy()), // binary_bytes
+            ),
             proptest::option::of(f64_summary_strategy()),
         )
             .prop_map(
                 |(
                     wall_ms,
-                    cpu_ms,
-                    page_faults,
-                    ctx_switches,
-                    max_rss_kb,
-                    binary_bytes,
+                    (cpu_ms, page_faults, ctx_switches, max_rss_kb),
+                    (io_read_bytes, io_write_bytes, network_packets, energy_uj, binary_bytes),
                     throughput_per_s,
                 )| Stats {
                     wall_ms,
@@ -1948,6 +2104,10 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes,
+                    io_write_bytes,
+                    network_packets,
+                    energy_uj,
                     binary_bytes,
                     throughput_per_s,
                 },
@@ -1981,6 +2141,8 @@ mod property_tests {
             |(threshold, warn_factor, direction)| {
                 let warn_threshold = threshold * warn_factor;
                 Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -1994,6 +2156,7 @@ mod property_tests {
             Just(MetricStatus::Pass),
             Just(MetricStatus::Warn),
             Just(MetricStatus::Fail),
+            Just(MetricStatus::Skip),
         ]
     }
 
@@ -2009,6 +2172,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -2022,14 +2187,18 @@ mod property_tests {
             Just(VerdictStatus::Pass),
             Just(VerdictStatus::Warn),
             Just(VerdictStatus::Fail),
+            Just(VerdictStatus::Skip),
         ]
     }
 
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 
@@ -2051,7 +2220,10 @@ mod property_tests {
             Just(Metric::BinaryBytes),
             Just(Metric::CpuMs),
             Just(Metric::CtxSwitches),
+            Just(Metric::IoReadBytes),
+            Just(Metric::IoWriteBytes),
             Just(Metric::MaxRssKb),
+            Just(Metric::NetworkPackets),
             Just(Metric::PageFaults),
             Just(Metric::ThroughputPerS),
             Just(Metric::WallMs),
@@ -2107,7 +2279,7 @@ mod property_tests {
         fn run_export_csv_has_header_and_data(receipt in run_receipt_strategy()) {
             let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
 
-            prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,throughput_median,sample_count,timestamp\n"));
+            prop_assert!(csv.starts_with("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,io_read_bytes_median,io_write_bytes_median,network_packets_median,energy_uj_median,throughput_median,sample_count,timestamp\n"));
 
             let lines: Vec<&str> = csv.trim().split('\n').collect();
             prop_assert_eq!(lines.len(), 2);

@@ -9,7 +9,7 @@ use super::{BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     BaselineRecord, BaselineSummary, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
-    PaginationInfo,
+    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
 
 /// In-memory storage backend for baselines.
@@ -17,6 +17,7 @@ use crate::models::{
 pub struct InMemoryStore {
     #[allow(clippy::type_complexity)]
     baselines: Arc<RwLock<BTreeMap<(String, String, String), BaselineRecord>>>,
+    verdicts: Arc<RwLock<Vec<VerdictRecord>>>,
 }
 
 impl InMemoryStore {
@@ -24,6 +25,7 @@ impl InMemoryStore {
     pub fn new() -> Self {
         Self {
             baselines: Arc::new(RwLock::new(BTreeMap::new())),
+            verdicts: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -137,8 +139,8 @@ impl BaselineStore for InMemoryStore {
                 }
 
                 // Filter by tags (AND logic: all required tags must be present)
-                if let Some(ref required_tags) = parsed_tags {
-                    for tag in required_tags {
+                if !parsed_tags.is_empty() {
+                    for tag in &parsed_tags {
                         if !r.tags.contains(tag) {
                             return false;
                         }
@@ -263,5 +265,75 @@ impl BaselineStore for InMemoryStore {
 
     fn backend_type(&self) -> &'static str {
         "memory"
+    }
+
+    async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError> {
+        let mut verdicts = self.verdicts.write().await;
+        verdicts.push(record.clone());
+        Ok(())
+    }
+
+    async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, StoreError> {
+        let verdicts = self.verdicts.read().await;
+
+        let mut filtered: Vec<_> = verdicts
+            .iter()
+            .filter(|r| {
+                if r.project != project {
+                    return false;
+                }
+
+                if let Some(ref b) = query.benchmark
+                    && &r.benchmark != b
+                {
+                    return false;
+                }
+
+                if let Some(ref s) = query.status
+                    && &r.status != s
+                {
+                    return false;
+                }
+
+                if let Some(since) = query.since
+                    && r.created_at < since
+                {
+                    return false;
+                }
+
+                if let Some(until) = query.until
+                    && r.created_at > until
+                {
+                    return false;
+                }
+
+                true
+            })
+            .cloned()
+            .collect();
+
+        filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        let total = filtered.len() as u64;
+        let offset = query.offset as usize;
+        let limit = query.limit as usize;
+
+        let paginated: Vec<_> = filtered.into_iter().skip(offset).take(limit).collect();
+
+        let has_more = (offset + paginated.len()) < total as usize;
+
+        Ok(ListVerdictsResponse {
+            verdicts: paginated,
+            pagination: PaginationInfo {
+                total,
+                limit: query.limit,
+                offset: query.offset,
+                has_more,
+            },
+        })
     }
 }

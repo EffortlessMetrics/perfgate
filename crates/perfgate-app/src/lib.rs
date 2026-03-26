@@ -3,15 +3,23 @@
 //! The app layer coordinates adapters and domain logic.
 //! It does not parse CLI flags and it does not do filesystem I/O.
 
+mod aggregate;
 pub mod baseline_resolve;
+pub mod bisect;
+pub mod blame;
 mod check;
 pub mod comparison_logic;
+mod explain;
 mod paired;
 mod promote;
 mod report;
 mod sensor_report;
 
+pub use aggregate::{AggregateOutcome, AggregateRequest, AggregateUseCase};
+pub use bisect::{BisectRequest, BisectUseCase};
+pub use blame::{BlameOutcome, BlameRequest, BlameUseCase};
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
+pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
@@ -135,6 +143,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
             let is_warmup = i < req.warmup;
 
             let spec = CommandSpec {
+                name: req.name.clone(),
                 argv: req.command.clone(),
                 cwd: req.cwd.clone(),
                 env: req.env.clone(),
@@ -205,6 +214,10 @@ fn sample_from_run(run: RunResult, warmup: bool) -> Sample {
         page_faults: run.page_faults,
         ctx_switches: run.ctx_switches,
         max_rss_kb: run.max_rss_kb,
+        io_read_bytes: run.io_read_bytes,
+        io_write_bytes: run.io_write_bytes,
+        network_packets: run.network_packets,
+        energy_uj: run.energy_uj,
         binary_bytes: run.binary_bytes,
         stdout: if run.stdout.is_empty() {
             None
@@ -305,6 +318,8 @@ mod tests {
             Budget {
                 threshold: 0.2,
                 warn_threshold: 0.1,
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
                 direction: Direction::Lower,
             },
         );
@@ -318,6 +333,8 @@ mod tests {
                 ratio: 1.15,
                 pct: 0.15,
                 regression: 0.15,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status,
@@ -352,9 +369,10 @@ mod tests {
             verdict: Verdict {
                 status: VerdictStatus::Warn,
                 counts: VerdictCounts {
-                    pass: 0,
-                    warn: 1,
-                    fail: 0,
+                    pass: if status == MetricStatus::Pass { 1 } else { 0 },
+                    warn: if status == MetricStatus::Warn { 1 } else { 0 },
+                    fail: if status == MetricStatus::Fail { 1 } else { 0 },
+                    skip: if status == MetricStatus::Skip { 1 } else { 0 },
                 },
                 reasons: vec!["wall_ms_warn".to_string()],
             },
@@ -385,15 +403,15 @@ mod tests {
             },
             samples: Vec::new(),
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms,
-                    min: wall_ms,
-                    max: wall_ms,
-                },
+                wall_ms: U64Summary::new(wall_ms, wall_ms, wall_ms),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -408,6 +426,8 @@ mod tests {
             Budget {
                 threshold: 0.2,
                 warn_threshold: 0.18,
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
                 direction: Direction::Lower,
             },
         );
@@ -421,6 +441,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -458,6 +480,7 @@ mod tests {
                     pass: 1,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -539,6 +562,8 @@ mod tests {
                 ratio: 1.5,
                 pct: 0.5,
                 regression: 0.5,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -552,6 +577,8 @@ mod tests {
                 ratio: 0.9,
                 pct: -0.1,
                 regression: 0.0,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -568,16 +595,20 @@ mod tests {
     #[test]
     fn sample_from_run_sets_optional_stdout_stderr() {
         let run = RunResult {
-            wall_ms: 10,
+            wall_ms: 100,
             exit_code: 0,
             timed_out: false,
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: b"ok".to_vec(),
-            stderr: Vec::new(),
+            stderr: vec![],
         };
 
         let sample = sample_from_run(run, false);
@@ -614,6 +645,8 @@ mod tests {
             Budget {
                 threshold: 0.2,
                 warn_threshold: 0.1,
+                noise_threshold: None,
+                noise_policy: perfgate_types::NoisePolicy::Ignore,
                 direction: Direction::Lower,
             },
         );
@@ -756,6 +789,8 @@ mod property_tests {
                 // warn_threshold should be <= threshold
                 let warn_threshold = threshold * warn_factor;
                 Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -770,6 +805,7 @@ mod property_tests {
             Just(MetricStatus::Pass),
             Just(MetricStatus::Warn),
             Just(MetricStatus::Fail),
+            Just(MetricStatus::Skip),
         ]
     }
 
@@ -790,6 +826,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -803,15 +841,19 @@ mod property_tests {
             Just(VerdictStatus::Pass),
             Just(VerdictStatus::Warn),
             Just(VerdictStatus::Fail),
+            Just(VerdictStatus::Skip),
         ]
     }
 
     // Strategy for VerdictCounts
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 
@@ -835,8 +877,11 @@ mod property_tests {
             Just(Metric::BinaryBytes),
             Just(Metric::CpuMs),
             Just(Metric::CtxSwitches),
+            Just(Metric::IoReadBytes),
+            Just(Metric::IoWriteBytes),
             Just(Metric::WallMs),
             Just(Metric::MaxRssKb),
+            Just(Metric::NetworkPackets),
             Just(Metric::PageFaults),
             Just(Metric::ThroughputPerS),
         ]
@@ -900,6 +945,7 @@ mod property_tests {
                 VerdictStatus::Pass => "✅",
                 VerdictStatus::Warn => "⚠️",
                 VerdictStatus::Fail => "❌",
+                VerdictStatus::Skip => "⏭️",
             };
             prop_assert!(
                 md.contains(expected_emoji),
@@ -914,6 +960,7 @@ mod property_tests {
                 VerdictStatus::Pass => "pass",
                 VerdictStatus::Warn => "warn",
                 VerdictStatus::Fail => "fail",
+                VerdictStatus::Skip => "skip",
             };
             prop_assert!(
                 md.contains(expected_status_word),
@@ -1044,7 +1091,7 @@ mod property_tests {
 
             // Requirement 8.5: Each annotation contains bench name, metric name, and delta percentage
             for (metric, delta) in &receipt.deltas {
-                if delta.status == MetricStatus::Pass {
+                if delta.status == MetricStatus::Pass || delta.status == MetricStatus::Skip {
                     continue; // Pass metrics don't produce annotations
                 }
 
@@ -1105,7 +1152,7 @@ mod property_tests {
                             annotation
                         );
                     }
-                    MetricStatus::Pass => unreachable!(),
+                    MetricStatus::Pass | MetricStatus::Skip => unreachable!(),
                 }
             }
         }

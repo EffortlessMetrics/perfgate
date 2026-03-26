@@ -17,6 +17,10 @@ fn main() {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: None,
             stderr: None,
@@ -25,15 +29,15 @@ fn main() {
 
     // Summary statistics for wall_ms
     let stats = Stats {
-        wall_ms: U64Summary {
-            median: 118,
-            min: 115,
-            max: 122,
-        },
+        wall_ms: U64Summary::new(118, 115, 122),
         cpu_ms: None,
         page_faults: None,
         ctx_switches: None,
         max_rss_kb: None,
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
+        energy_uj: None,
         binary_bytes: None,
         throughput_per_s: None,
     };

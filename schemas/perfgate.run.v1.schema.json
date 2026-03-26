@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "RunReceipt",
-  "description": "A versioned receipt from a single benchmark run (`perfgate.run.v1`).\n\n# Examples\n\n```\nuse perfgate_types::*;\n\nlet receipt = RunReceipt {\n    schema: RUN_SCHEMA_V1.to_string(),\n    tool: ToolInfo { name: \"perfgate\".into(), version: \"0.1.0\".into() },\n    run: RunMeta {\n        id: \"run-1\".into(),\n        started_at: \"2024-01-01T00:00:00Z\".into(),\n        ended_at: \"2024-01-01T00:00:01Z\".into(),\n        host: HostInfo {\n            os: \"linux\".into(), arch: \"x86_64\".into(),\n            cpu_count: None, memory_bytes: None, hostname_hash: None,\n        },\n    },\n    bench: BenchMeta {\n        name: \"my-bench\".into(), cwd: None,\n        command: vec![\"echo\".into(), \"hello\".into()],\n        repeat: 3, warmup: 0, work_units: None, timeout_ms: None,\n    },\n    samples: vec![],\n    stats: Stats {\n        wall_ms: U64Summary { median: 100, min: 90, max: 120 },\n        cpu_ms: None, page_faults: None, ctx_switches: None,\n        max_rss_kb: None, binary_bytes: None, throughput_per_s: None,\n    },\n};\n\n// Serialize to JSON\nlet json = serde_json::to_string(&receipt).unwrap();\nassert!(json.contains(\"perfgate.run.v1\"));\n```",
+  "description": "A versioned receipt from a single benchmark run (`perfgate.run.v1`).\n\n# Examples\n\n```\nuse perfgate_types::*;\n\nlet receipt = RunReceipt {\n    schema: RUN_SCHEMA_V1.to_string(),\n    tool: ToolInfo { name: \"perfgate\".into(), version: \"0.1.0\".into() },\n    run: RunMeta {\n        id: \"run-1\".into(),\n        started_at: \"2024-01-01T00:00:00Z\".into(),\n        ended_at: \"2024-01-01T00:00:01Z\".into(),\n        host: HostInfo {\n            os: \"linux\".into(), arch: \"x86_64\".into(),\n            cpu_count: None, memory_bytes: None, hostname_hash: None,\n        },\n    },\n    bench: BenchMeta {\n        name: \"my-bench\".into(), cwd: None,\n        command: vec![\"echo\".into(), \"hello\".into()],\n        repeat: 3, warmup: 0, work_units: None, timeout_ms: None,\n    },\n    samples: vec![],\n    stats: Stats {\n        wall_ms: U64Summary::new(100, 90, 120 ),\n        cpu_ms: None, page_faults: None, ctx_switches: None,\n        max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,\n        network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,\n    },\n};\n\n// Serialize to JSON\nlet json = serde_json::to_string(&receipt).unwrap();\nassert!(json.contains(\"perfgate.run.v1\"));\n```",
   "type": "object",
   "properties": {
     "bench": {
@@ -96,12 +96,26 @@
           "type": "number",
           "format": "double"
         },
+        "mean": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "median": {
           "type": "number",
           "format": "double"
         },
         "min": {
           "type": "number",
+          "format": "double"
+        },
+        "stddev": {
+          "type": [
+            "number",
+            "null"
+          ],
           "format": "double"
         }
       },
@@ -206,11 +220,48 @@
           "format": "uint64",
           "minimum": 0
         },
+        "energy_uj": {
+          "description": "CPU energy used in microjoules (RAPL on Linux).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
         "exit_code": {
           "type": "integer",
           "format": "int32"
         },
+        "io_read_bytes": {
+          "description": "Bytes read from disk (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "io_write_bytes": {
+          "description": "Bytes written to disk (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
         "max_rss_kb": {
+          "description": "Peak resident set size in KB.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "network_packets": {
+          "description": "Total network packets (best-effort).",
           "type": [
             "integer",
             "null"
@@ -261,7 +312,7 @@
       ]
     },
     "Stats": {
-      "description": "Aggregated statistics for a benchmark run.\n\n# Examples\n\n```\nuse perfgate_types::{Stats, U64Summary};\n\nlet stats = Stats {\n    wall_ms: U64Summary { median: 100, min: 90, max: 120 },\n    cpu_ms: None,\n    page_faults: None,\n    ctx_switches: None,\n    max_rss_kb: Some(U64Summary { median: 4096, min: 4000, max: 4200 }),\n    binary_bytes: None,\n    throughput_per_s: None,\n};\nassert_eq!(stats.wall_ms.median, 100);\nassert_eq!(stats.max_rss_kb.unwrap().median, 4096);\n```",
+      "description": "Aggregated statistics for a benchmark run.\n\n# Examples\n\n```\nuse perfgate_types::{Stats, U64Summary};\n\nlet stats = Stats {\n    wall_ms: U64Summary::new(100, 90, 120 ),\n    cpu_ms: None,\n    page_faults: None,\n    ctx_switches: None,\n    max_rss_kb: Some(U64Summary::new(4096, 4000, 4200 )),\n    io_read_bytes: None,\n    io_write_bytes: None,\n    network_packets: None,\n    energy_uj: None,\n    binary_bytes: None,\n    throughput_per_s: None,\n};\nassert_eq!(stats.wall_ms.median, 100);\nassert_eq!(stats.max_rss_kb.unwrap().median, 4096);\n```",
       "type": "object",
       "properties": {
         "binary_bytes": {
@@ -297,7 +348,51 @@
             }
           ]
         },
+        "energy_uj": {
+          "description": "CPU energy used summary in microjoules (RAPL on Linux).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "io_read_bytes": {
+          "description": "Bytes read from disk summary (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "io_write_bytes": {
+          "description": "Bytes written to disk summary (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "max_rss_kb": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "network_packets": {
+          "description": "Total network packets summary (best-effort).",
           "anyOf": [
             {
               "$ref": "#/$defs/U64Summary"
@@ -359,6 +454,13 @@
           "format": "uint64",
           "minimum": 0
         },
+        "mean": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "median": {
           "type": "integer",
           "format": "uint64",
@@ -368,6 +470,13 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0
+        },
+        "stddev": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         }
       },
       "required": [

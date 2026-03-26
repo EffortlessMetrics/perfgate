@@ -83,7 +83,7 @@ use statrs::distribution::{ContinuousCDF, StudentsT};
 ///
 /// let sig = result.unwrap();
 /// assert!(sig.significant); // Clear performance regression
-/// assert!(sig.p_value < 0.05);
+/// assert!(sig.p_value.unwrap() < 0.05);
 /// ```
 pub fn compute_significance(
     baseline: &[f64],
@@ -130,11 +130,13 @@ pub fn compute_significance(
 
     Some(Significance {
         test: SignificanceTest::WelchT,
-        p_value,
+        p_value: Some(p_value),
         alpha,
         significant: p_value <= alpha,
         baseline_samples: baseline.len() as u32,
         current_samples: current.len() as u32,
+        ci_lower: None, // Could be calculated here if needed
+        ci_upper: None, // Could be calculated here if needed
     })
 }
 
@@ -208,7 +210,7 @@ mod tests {
         let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
         assert!(result.significant);
-        assert!(result.p_value < 0.001);
+        assert!(result.p_value.unwrap() < 0.001);
         assert_eq!(result.test, SignificanceTest::WelchT);
     }
 
@@ -240,7 +242,7 @@ mod tests {
         let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
         assert!(!result.significant);
-        assert_relative_eq!(result.p_value, 1.0);
+        assert_relative_eq!(result.p_value.unwrap(), 1.0);
     }
 
     #[test]
@@ -251,7 +253,7 @@ mod tests {
         let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
         assert!(result.significant);
-        assert_relative_eq!(result.p_value, 0.0);
+        assert_relative_eq!(result.p_value.unwrap(), 0.0);
     }
 
     #[test]
@@ -338,7 +340,7 @@ mod tests {
 
         let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
-        assert_relative_eq!(result.p_value, 1.0, epsilon = 1e-10);
+        assert_relative_eq!(result.p_value.unwrap(), 1.0, epsilon = 1e-10);
         assert!(!result.significant);
     }
 
@@ -349,7 +351,7 @@ mod tests {
 
         let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
-        assert!(result.p_value >= 0.0 && result.p_value <= 1.0);
+        assert!(result.p_value.unwrap() >= 0.0 && result.p_value.unwrap() <= 1.0);
     }
 
     fn rand_normal(_mean: f64, _std: f64) -> f64 {
@@ -374,11 +376,11 @@ mod tests {
                 let result = compute_significance(&baseline, &current, alpha, 8);
 
                 if let Some(sig) = result {
-                    prop_assert!(sig.p_value >= 0.0, "p-value must be >= 0");
-                    prop_assert!(sig.p_value <= 1.0, "p-value must be <= 1");
+                    prop_assert!(sig.p_value.unwrap() >= 0.0, "p-value must be >= 0");
+                    prop_assert!(sig.p_value.unwrap() <= 1.0, "p-value must be <= 1");
                     prop_assert_eq!(sig.baseline_samples, baseline.len() as u32);
                     prop_assert_eq!(sig.current_samples, current.len() as u32);
-                    prop_assert_eq!(sig.significant, sig.p_value <= sig.alpha);
+                    prop_assert_eq!(sig.significant, sig.p_value.unwrap() <= sig.alpha);
                 }
             }
 
@@ -403,9 +405,9 @@ mod tests {
 
                 if let Some(sig) = result {
                     prop_assert!(
-                        (sig.p_value - 1.0).abs() < 1e-10,
+                        (sig.p_value.unwrap() - 1.0).abs() < 1e-10,
                         "identical samples should have p-value ≈ 1, got {}",
-                        sig.p_value
+                        sig.p_value.unwrap()
                     );
                     prop_assert!(!sig.significant, "identical samples should not be significant");
                 }
@@ -427,7 +429,7 @@ mod tests {
 
                 if let Some(sig) = result {
                     prop_assert!(sig.significant, "large shift should be significant");
-                    prop_assert!(sig.p_value < 0.001, "large shift should have small p-value");
+                    prop_assert!(sig.p_value.unwrap() < 0.001, "large shift should have small p-value");
                 }
             }
 
@@ -450,8 +452,8 @@ mod tests {
                 let baseline_f64: Vec<f64> = baseline.iter().map(|&v| v as f64).collect();
                 let current_f64: Vec<f64> = current.iter().map(|&v| v as f64).collect();
                 if let Some(sig) = compute_significance(&baseline_f64, &current_f64, 0.05, 5) {
-                    prop_assert!(sig.p_value >= 0.0, "p-value must be >= 0");
-                    prop_assert!(sig.p_value <= 1.0, "p-value must be <= 1");
+                    prop_assert!(sig.p_value.unwrap() >= 0.0, "p-value must be >= 0");
+                    prop_assert!(sig.p_value.unwrap() <= 1.0, "p-value must be <= 1");
                 }
             }
 
@@ -613,7 +615,7 @@ mod tests {
 
             let result = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
-            assert_eq!(result.p_value, 1.0);
+            assert_eq!(result.p_value.unwrap(), 1.0);
             assert!(!result.significant);
         }
 
@@ -622,7 +624,7 @@ mod tests {
             let samples = vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
             let result = compute_significance(&samples, &samples, 0.05, 8).unwrap();
 
-            assert_relative_eq!(result.p_value, 1.0, epsilon = 1e-10);
+            assert_relative_eq!(result.p_value.unwrap(), 1.0, epsilon = 1e-10);
             assert!(!result.significant);
         }
 
@@ -640,7 +642,7 @@ mod tests {
 
             let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
 
-            assert_relative_eq!(sig.p_value, 1.0);
+            assert_relative_eq!(sig.p_value.unwrap(), 1.0);
             assert!(!sig.significant);
         }
 
@@ -651,7 +653,7 @@ mod tests {
 
             let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
 
-            assert_relative_eq!(sig.p_value, 0.0);
+            assert_relative_eq!(sig.p_value.unwrap(), 0.0);
             assert!(sig.significant);
         }
 
@@ -660,7 +662,7 @@ mod tests {
             let samples: Vec<f64> = (0..2000).map(|i| (i as f64).sin() * 100.0).collect();
             let result = compute_significance(&samples, &samples, 0.05, 8).unwrap();
 
-            assert_relative_eq!(result.p_value, 1.0, epsilon = 1e-10);
+            assert_relative_eq!(result.p_value.unwrap(), 1.0, epsilon = 1e-10);
             assert!(!result.significant);
             assert_eq!(result.baseline_samples, 2000);
             assert_eq!(result.current_samples, 2000);
@@ -684,7 +686,7 @@ mod tests {
             let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
 
             assert!(sig.significant);
-            assert_relative_eq!(sig.p_value, 0.0);
+            assert_relative_eq!(sig.p_value.unwrap(), 0.0);
         }
 
         #[test]
@@ -695,7 +697,7 @@ mod tests {
             let sig = compute_significance(&baseline, &current, 0.05, 8).unwrap();
 
             assert!(sig.significant);
-            assert!(sig.p_value < 0.001);
+            assert!(sig.p_value.unwrap() < 0.001);
         }
 
         #[test]
@@ -705,7 +707,7 @@ mod tests {
 
             let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
 
-            assert_relative_eq!(sig.p_value, 1.0);
+            assert_relative_eq!(sig.p_value.unwrap(), 1.0);
             assert!(!sig.significant);
         }
 
@@ -716,7 +718,7 @@ mod tests {
 
             let sig = compute_significance(&baseline, &current, 0.05, 2).unwrap();
 
-            assert_relative_eq!(sig.p_value, 0.0);
+            assert_relative_eq!(sig.p_value.unwrap(), 0.0);
             assert!(sig.significant);
         }
     }

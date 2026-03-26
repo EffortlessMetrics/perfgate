@@ -34,6 +34,10 @@ use std::sync::{Arc, Mutex};
 ///         page_faults: None,
 ///         ctx_switches: None,
 ///         max_rss_kb: Some(1024),
+///         io_read_bytes: None,
+///         io_write_bytes: None,
+///         network_packets: None,
+///         energy_uj: None,
 ///         binary_bytes: None,
 ///         stdout: b"hello\n".to_vec(),
 ///         stderr: vec![],
@@ -123,7 +127,7 @@ impl ProcessRunner for FakeProcessRunner {
             return Ok(res.clone());
         }
 
-        Err(AdapterError::Other(anyhow::anyhow!(
+        Err(AdapterError::Other(format!(
             "FakeProcessRunner: no result configured for command: {:?}",
             spec.argv
         )))
@@ -143,6 +147,10 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: vec![],
             stderr: vec![],
@@ -151,6 +159,7 @@ mod tests {
 
     fn make_spec(argv: Vec<&str>) -> CommandSpec {
         CommandSpec {
+            name: argv.first().unwrap_or(&"unknown").to_string(),
             argv: argv.into_iter().map(String::from).collect(),
             cwd: None,
             env: vec![],

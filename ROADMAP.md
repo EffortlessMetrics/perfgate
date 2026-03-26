@@ -32,49 +32,57 @@ This document outlines the planned evolution of `perfgate`. We are currently in 
 
 
 ### 0.8.0: Security & Identity
-- [ ] **OIDC Integration**: Support for GitHub/GitLab identity providers in the server.
-- [ ] **Service Accounts**: Scoped API keys for CI runners with "contributor" only permissions.
-- [ ] **RBAC Hardening**: Fine-grained permissions for promoting baselines vs. just viewing them.
+- [x] **OIDC Integration**: Support for GitHub/GitLab identity providers in the server. [DONE]
+- [x] **Service Accounts**: Scoped API keys for CI runners with "contributor" only permissions. [DONE]
+- [x] **RBAC Hardening**: Fine-grained permissions for project isolation and benchmark-level regex scoping. [DONE]
 
 ### 0.9.0: Visual Insights
-- [ ] **Server Web UI**: A minimal Read-only dashboard to view performance trends and baseline history.
-- [ ] **Metric Graphing**: Plotting wall time and RSS trends directly in the server UI.
-- [ ] **Verdict History**: Tracking how often a benchmark fails vs. passes over time.
+- [x] **Server Web UI**: A minimal Read-only dashboard to view performance trends and baseline history. [DONE]
+- [x] **Metric Graphing**: Plotting wall time and RSS trends directly in the server UI. [DONE]
+- [x] **Verdict History**: Tracking how often a benchmark fails vs. passes over time. [DONE]
 
 ### 0.10.0: Noise & Flakiness Detection
-- [ ] **Noise Detection**: Automatically identify "unstable" benchmarks with high coefficient of variation.
-- [ ] **Auto-Skipping**: Option to skip/warn instead of fail for benchmarks identified as flaky.
-- [ ] **Retry Logic**: Built-in `paired` retry support when significance is not reached.
+- [x] **Noise Detection**: Automatically identify "unstable" benchmarks with high coefficient of variation. [DONE]
+- [x] **Auto-Skipping**: Option to skip/warn instead of fail for benchmarks identified as flaky. [DONE]
+- [x] **Retry Logic**: Built-in `paired` retry support when significance is not reached. [DONE]
 
 ### 0.11.0: Deep Observability
-- [ ] **IO & Network Metrics**: Track disk bytes read/written and network packets via `rusage` extensions.
-- [ ] **Power/Energy Metrics**: Experimental support for tracking CPU energy usage (RAPL on Linux).
-- [ ] **Binary Delta Blame**: Map `binary_bytes` changes to specific dependency updates in `Cargo.lock`.
+- [x] **IO & Network Metrics**: Track disk bytes read/written and network packets via `rusage` extensions. [DONE]
+- [x] **Power/Energy Metrics**: Experimental support for tracking CPU energy usage (RAPL on Linux). [DONE]
+- [x] **Binary Delta Blame**: Map `binary_bytes` changes to specific dependency updates in `Cargo.lock`. [DONE]
 
 ### 0.12.0: Ecosystem Expansion
-- [ ] **GitLab CI Integration**: Official templates and documentation for GitLab environments.
-- [ ] **Jenkins/Generic Plugin**: A stable JSON-to-JUnit or similar adapter for legacy CI systems.
-- [ ] **Liquid Template Hub**: A repository of community-contributed Markdown templates for PR comments.
+- [x] **GitLab CI Integration**: Official templates and documentation for GitLab environments. [DONE]
+- [x] **Jenkins/Generic Plugin**: A stable JSON-to-JUnit or similar adapter for legacy CI systems. [DONE]
+- [x] **Liquid Template Hub**: A repository of community-contributed Markdown templates for PR comments. [DONE]
 
 ### 0.13.0: Automated Bisection
-- [ ] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression.
-- [ ] **Regression Blame**: Automatically identifying the likely author of a performance dip.
+- [x] **Performance Bisection**: A CLI tool that uses `git bisect` combined with `perfgate paired` to find the exact commit that introduced a regression. [DONE]
+- [x] **Regression Blame**: Automatically identifying the likely author of a performance dip. [DONE]
 
 ### 0.14.0: Distributed Gating
-- [ ] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict.
-- [ ] **Matrix Gating**: Support for gating across a matrix of OS/Arch combinations before merging to main.
+- [x] **Fleet Aggregation**: Ability to run benchmarks on multiple machines and aggregate results into a single "weighted" verdict. [DONE]
+- [x] **Matrix Gating**: Support for gating across a matrix of OS/Arch combinations before merging to main. [DONE]
 
 ### 0.15.0: The Intelligent Gater (AI Alpha)
-- [ ] **LLM Regression Explainer**: Integration with LLMs to analyze code diffs + performance deltas to provide a "likely cause" explanation in PRs.
-- [ ] **Automated Playbooks**: Suggesting specific optimization strategies based on the metric that regressed.
+- [x] **LLM Regression Explainer**: Integration with LLMs to analyze code diffs + performance deltas to provide a "likely cause" explanation in PRs. [DONE]
+- [x] **Automated Playbooks**: Suggesting specific optimization strategies based on the metric that regressed. [DONE]
 
 ---
 
-## Current Status (v0.7.x)
+## Current Status (v0.15.0)
+- [x] **v0.15.0 The Intelligent Gater**: AI-ready regression explainers and automated playbooks. [DONE]
+- [x] **v0.14.0 Distributed Gating**: Fleet aggregation and matrix gating status evaluation. [DONE]
+- [x] **v0.13.0 Automated Bisection**: Performance bisection and regression author blame. [DONE]
+- [x] **v0.12.0 Ecosystem Expansion**: GitLab CI, JUnit/Jenkins, and Template Hub. [DONE]
+- [x] **v0.11.0 Deep Observability**: IO, Network, and Energy metrics with native Windows support. [DONE]
+- [x] **v0.10.0 Noise Detection**: Flakiness mitigation and significance-based retries. [DONE]
+- [x] **v0.9.0 Visual Insights**: Server dashboard, metric graphing, and verdict history. [DONE]
+- [x] **v0.8.0 Security & Identity**: OIDC, service accounts, and RBAC hardening. [DONE]
 - [x] **v0.7.0 Production Storage**: PostgreSQL backend, S3 offloading, and migration tooling. [DONE]
-- [x] **v0.6.0 The Learning Loop**: Automated variance summaries, threshold recommendations, and git-based trend persistence. [DONE]
-- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops, multi-lane CI gating, and bot-driven baseline refreshes. [DONE]
+- [x] **v0.6.0 The Learning Loop**: Automated variance summaries and threshold recommendations. [DONE]
+- [x] **v0.5.0 Self-Dogfooding**: Continuous performance learning loops and multi-lane CI gating. [DONE]
 - [x] **v0.4.0 Baseline Server**: Centralized baseline management with RBAC and REST API. [DONE]
-- [x] **Micro-crate Architecture**: Full decomposition into 20 specialized crates. [DONE]
+- [x] **Micro-crate Architecture**: Full decomposition into 25 specialized crates. [DONE]
 - [x] **Contract Hardening**: Locked `v1` schemas and deterministic reporting. [DONE]
 

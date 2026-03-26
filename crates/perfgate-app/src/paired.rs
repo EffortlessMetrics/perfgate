@@ -4,7 +4,7 @@ use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner}
 use perfgate_domain::compute_paired_stats;
 use perfgate_types::{
     PAIRED_SCHEMA_V1, PairedBenchMeta, PairedRunReceipt, PairedSample, PairedSampleHalf, RunMeta,
-    ToolInfo,
+    SignificancePolicy, ToolInfo,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -25,6 +25,11 @@ pub struct PairedRunRequest {
     pub output_cap_bytes: usize,
     pub allow_nonzero: bool,
     pub include_hostname_hash: bool,
+    pub significance_alpha: Option<f64>,
+    pub significance_min_samples: Option<u32>,
+    pub require_significance: bool,
+    pub max_retries: u32,
+    pub fail_on_regression: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +63,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             include_hostname_hash: req.include_hostname_hash,
         });
 
-        let bench = PairedBenchMeta {
+        let mut bench = PairedBenchMeta {
             name: req.name.clone(),
             cwd: req.cwd.as_ref().map(|p| p.to_string_lossy().to_string()),
             baseline_command: req.baseline_command.clone(),
@@ -71,88 +76,62 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
 
         let mut samples = Vec::new();
         let mut reasons = Vec::new();
-        let total = req.warmup + req.repeat;
 
-        for i in 0..total {
-            let is_warmup = i < req.warmup;
-
-            let baseline_spec = CommandSpec {
-                argv: req.baseline_command.clone(),
-                cwd: req.cwd.clone(),
-                env: req.env.clone(),
-                timeout: req.timeout,
-                output_cap_bytes: req.output_cap_bytes,
-            };
-            let baseline_run = self.runner.run(&baseline_spec).map_err(|e| match e {
-                perfgate_adapters::AdapterError::RunCommand { command, reason } => {
-                    anyhow::anyhow!(
-                        "failed to run baseline pair {}: {}: {}",
-                        i + 1,
-                        command,
-                        reason
-                    )
-                }
-                _ => anyhow::anyhow!("failed to run baseline pair {}: {}", i + 1, e),
-            })?;
-
-            let current_spec = CommandSpec {
-                argv: req.current_command.clone(),
-                cwd: req.cwd.clone(),
-                env: req.env.clone(),
-                timeout: req.timeout,
-                output_cap_bytes: req.output_cap_bytes,
-            };
-            let current_run = self.runner.run(&current_spec).map_err(|e| match e {
-                perfgate_adapters::AdapterError::RunCommand { command, reason } => {
-                    anyhow::anyhow!(
-                        "failed to run current pair {}: {}: {}",
-                        i + 1,
-                        command,
-                        reason
-                    )
-                }
-                _ => anyhow::anyhow!("failed to run current pair {}: {}", i + 1, e),
-            })?;
-
-            let baseline = sample_half(&baseline_run);
-            let current = sample_half(&current_run);
-
-            let wall_diff_ms = current.wall_ms as i64 - baseline.wall_ms as i64;
-            let rss_diff_kb = match (baseline.max_rss_kb, current.max_rss_kb) {
-                (Some(b), Some(c)) => Some(c as i64 - b as i64),
-                _ => None,
-            };
-
-            if !is_warmup {
-                if baseline.timed_out {
-                    reasons.push(format!("pair {} baseline timed out", i + 1));
-                }
-                if baseline.exit_code != 0 {
-                    reasons.push(format!(
-                        "pair {} baseline exit {}",
-                        i + 1,
-                        baseline.exit_code
-                    ));
-                }
-                if current.timed_out {
-                    reasons.push(format!("pair {} current timed out", i + 1));
-                }
-                if current.exit_code != 0 {
-                    reasons.push(format!("pair {} current exit {}", i + 1, current.exit_code));
-                }
-            }
-
-            samples.push(PairedSample {
-                pair_index: i,
-                warmup: is_warmup,
-                baseline,
-                current,
-                wall_diff_ms,
-                rss_diff_kb,
-            });
+        // Run warmups first
+        for i in 0..req.warmup {
+            self.run_pair(i, true, &req, &mut samples, &mut reasons)?;
         }
 
-        let stats = compute_paired_stats(&samples, req.work_units)?;
+        // Initial measurement run
+        let mut pairs_collected = 0;
+        for _ in 0..req.repeat {
+            self.run_pair(
+                req.warmup + pairs_collected,
+                false,
+                &req,
+                &mut samples,
+                &mut reasons,
+            )?;
+            pairs_collected += 1;
+        }
+
+        let significance_policy = SignificancePolicy {
+            alpha: req.significance_alpha,
+            min_samples: req.significance_min_samples,
+        };
+
+        // Retry logic for significance
+        let mut retries_done = 0;
+        loop {
+            let stats = compute_paired_stats(&samples, req.work_units, Some(&significance_policy))?;
+            let significance_reached = stats
+                .wall_diff_ms
+                .significance
+                .as_ref()
+                .map(|s| s.significant)
+                .unwrap_or(true);
+
+            if !req.require_significance || significance_reached || retries_done >= req.max_retries
+            {
+                break;
+            }
+
+            // Not significant, and we have retries left - run one more pair
+            retries_done += 1;
+            self.run_pair(
+                req.warmup + pairs_collected,
+                false,
+                &req,
+                &mut samples,
+                &mut reasons,
+            )?;
+            pairs_collected += 1;
+        }
+
+        // Update bench metadata if we collected more samples than originally requested
+        bench.repeat = pairs_collected;
+
+        let stats = compute_paired_stats(&samples, req.work_units, Some(&significance_policy))?;
         let ended_at = self.clock.now_rfc3339();
 
         let receipt = PairedRunReceipt {
@@ -169,12 +148,116 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             stats,
         };
 
+        if let Some(threshold_pct) = req.fail_on_regression {
+            let comparison = perfgate_domain::compare_paired_stats(&receipt.stats);
+            let threshold_fraction = threshold_pct / 100.0;
+            if comparison.pct_change > threshold_fraction && comparison.is_significant {
+                reasons.push(format!(
+                    "wall time regression ({:.2}%) exceeded threshold ({:.2}%)",
+                    comparison.pct_change * 100.0,
+                    threshold_pct
+                ));
+            }
+        }
+
         let failed = !reasons.is_empty();
         Ok(PairedRunOutcome {
             receipt,
             failed,
             reasons,
         })
+    }
+
+    fn run_pair(
+        &self,
+        pair_index: u32,
+        is_warmup: bool,
+        req: &PairedRunRequest,
+        samples: &mut Vec<PairedSample>,
+        reasons: &mut Vec<String>,
+    ) -> anyhow::Result<()> {
+        let baseline_spec = CommandSpec {
+            name: format!("{}-baseline", req.name),
+            argv: req.baseline_command.clone(),
+            cwd: req.cwd.clone(),
+            env: req.env.clone(),
+            timeout: req.timeout,
+            output_cap_bytes: req.output_cap_bytes,
+        };
+        let baseline_run = self.runner.run(&baseline_spec).map_err(|e| match e {
+            perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+                anyhow::anyhow!(
+                    "failed to run baseline pair {}: {}: {}",
+                    pair_index + 1,
+                    command,
+                    reason
+                )
+            }
+            _ => anyhow::anyhow!("failed to run baseline pair {}: {}", pair_index + 1, e),
+        })?;
+
+        let current_spec = CommandSpec {
+            name: format!("{}-current", req.name),
+            argv: req.current_command.clone(),
+            cwd: req.cwd.clone(),
+            env: req.env.clone(),
+            timeout: req.timeout,
+            output_cap_bytes: req.output_cap_bytes,
+        };
+        let current_run = self.runner.run(&current_spec).map_err(|e| match e {
+            perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+                anyhow::anyhow!(
+                    "failed to run current pair {}: {}: {}",
+                    pair_index + 1,
+                    command,
+                    reason
+                )
+            }
+            _ => anyhow::anyhow!("failed to run current pair {}: {}", pair_index + 1, e),
+        })?;
+
+        let baseline = sample_half(&baseline_run);
+        let current = sample_half(&current_run);
+
+        let wall_diff_ms = current.wall_ms as i64 - baseline.wall_ms as i64;
+        let rss_diff_kb = match (baseline.max_rss_kb, current.max_rss_kb) {
+            (Some(b), Some(c)) => Some(c as i64 - b as i64),
+            _ => None,
+        };
+
+        if !is_warmup {
+            if baseline.timed_out {
+                reasons.push(format!("pair {} baseline timed out", pair_index + 1));
+            }
+            if baseline.exit_code != 0 && !req.allow_nonzero {
+                reasons.push(format!(
+                    "pair {} baseline exit {}",
+                    pair_index + 1,
+                    baseline.exit_code
+                ));
+            }
+            if current.timed_out {
+                reasons.push(format!("pair {} current timed out", pair_index + 1));
+            }
+            if current.exit_code != 0 && !req.allow_nonzero {
+                reasons.push(format!(
+                    "pair {} current exit {}",
+                    pair_index + 1,
+                    current.exit_code
+                ));
+            }
+        }
+
+        samples.push(PairedSample {
+            pair_index,
+            warmup: is_warmup,
+            baseline,
+            current,
+            wall_diff_ms,
+            rss_diff_kb,
+        });
+
+        Ok(())
     }
 }
 
@@ -221,7 +304,7 @@ mod tests {
         fn run(&self, _spec: &CommandSpec) -> Result<RunResult, AdapterError> {
             let mut runs = self.runs.lock().expect("lock runs");
             if runs.is_empty() {
-                return Err(AdapterError::Other(anyhow::anyhow!("no more queued runs")));
+                return Err(AdapterError::Other("no more queued runs".to_string()));
             }
             Ok(runs.remove(0))
         }
@@ -287,6 +370,10 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: stdout.to_vec(),
             stderr: stderr.to_vec(),
@@ -352,6 +439,11 @@ mod tests {
                 output_cap_bytes: 1024,
                 allow_nonzero: false,
                 include_hostname_hash: true,
+                significance_alpha: None,
+                significance_min_samples: None,
+                require_significance: false,
+                max_retries: 0,
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 
@@ -434,6 +526,11 @@ mod tests {
                 output_cap_bytes: 1024,
                 allow_nonzero: false,
                 include_hostname_hash: false,
+                significance_alpha: None,
+                significance_min_samples: None,
+                require_significance: false,
+                max_retries: 0,
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 
@@ -481,6 +578,11 @@ mod tests {
                 output_cap_bytes: 1024,
                 allow_nonzero: false,
                 include_hostname_hash: false,
+                significance_alpha: None,
+                significance_min_samples: None,
+                require_significance: false,
+                max_retries: 0,
+                fail_on_regression: None,
             })
             .unwrap_err();
 
@@ -535,6 +637,11 @@ mod tests {
                 output_cap_bytes: 1024,
                 allow_nonzero: false,
                 include_hostname_hash: false,
+                significance_alpha: None,
+                significance_min_samples: None,
+                require_significance: false,
+                max_retries: 0,
+                fail_on_regression: None,
             })
             .expect("paired run should succeed");
 
@@ -543,5 +650,82 @@ mod tests {
         assert_eq!(sample.wall_diff_ms, -50);
         assert_eq!(sample.rss_diff_kb, Some(-200));
         assert!(!outcome.failed);
+    }
+
+    #[test]
+    fn paired_run_retries_until_significance() {
+        // We want to simulate:
+        // Initial run (2 pairs): not significant
+        // Retry 1 (1 pair): now significant (or reached max retries)
+
+        // Wall diffs:
+        // Pair 1: 100 - 100 = 0
+        // Pair 2: 100 - 100 = 0
+        // (Mean = 0, StdDev = 0 -> not significant if alpha is tight or we need more samples)
+        // Wait, if StdDev is 0 it MIGHT be significant depending on the test.
+        // Actually compute_paired_stats uses Welch's t-test on the diffs.
+
+        // Let's just use a large enough StdDev to ensure not significant initially.
+        let runs = vec![
+            // Pair 1 (diff 0)
+            run_result(100, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            // Pair 2 (diff 10)
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            // Pair 3 (diff 10) - Should be collected because of retry
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+        ];
+
+        let runner = TestRunner::new(runs);
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host);
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe,
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let outcome = usecase
+            .execute(PairedRunRequest {
+                name: "retry-bench".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 2, // Initial 2 pairs
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: false,
+                significance_alpha: Some(0.05),
+                significance_min_samples: Some(2),
+                require_significance: true,
+                max_retries: 5, // Allow up to 5 retries
+                fail_on_regression: None,
+            })
+            .expect("paired run should succeed");
+
+        // It should have at least 3 samples because it retried
+        assert!(outcome.receipt.samples.len() > 2);
+        assert_eq!(
+            outcome.receipt.bench.repeat,
+            outcome.receipt.samples.len() as u32
+        );
     }
 }

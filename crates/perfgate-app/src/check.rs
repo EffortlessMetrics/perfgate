@@ -50,6 +50,12 @@ pub struct CheckRequest {
     /// If true, treat warn verdict as failure.
     pub fail_on_warn: bool,
 
+    /// Optional noise threshold (coefficient of variation).
+    pub noise_threshold: Option<f64>,
+
+    /// Optional noise policy.
+    pub noise_policy: Option<perfgate_types::NoisePolicy>,
+
     /// Tool info for receipts.
     pub tool: ToolInfo,
 
@@ -165,8 +171,14 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let report_path = req.out_dir.join("report.json");
         let (compare_receipt, compare_path, report) = if let Some(baseline) = &req.baseline {
             // Build budgets from config
-            let (budgets, metric_statistics) =
-                self.build_budgets(bench_config, &req.config, baseline, &run_receipt)?;
+            let (budgets, metric_statistics) = self.build_budgets(
+                bench_config,
+                &req.config,
+                baseline,
+                &run_receipt,
+                req.noise_threshold,
+                req.noise_policy,
+            )?;
 
             // Compare
             let compare_req = CompareRequest {
@@ -214,9 +226,10 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         } else {
             // No baseline
             if req.require_baseline {
-                return Err(PerfgateError::BaselineNotFound {
+                use perfgate_error::IoError;
+                return Err(PerfgateError::Io(IoError::BaselineNotFound {
                     path: format!("bench '{}'", req.bench_name),
-                }
+                })
                 .into());
             }
             warnings.push(format!(
@@ -242,7 +255,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         // 7. Determine exit code
         let (failed, exit_code) = if let Some(compare) = &compare_receipt {
             match compare.verdict.status {
-                VerdictStatus::Pass => (false, 0),
+                VerdictStatus::Pass | VerdictStatus::Skip => (false, 0),
                 VerdictStatus::Warn => {
                     if req.fail_on_warn {
                         (true, 3)
@@ -319,6 +332,8 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         config: &ConfigFile,
         baseline: &RunReceipt,
         current: &RunReceipt,
+        cli_noise_threshold: Option<f64>,
+        cli_noise_policy: Option<perfgate_types::NoisePolicy>,
     ) -> anyhow::Result<(BTreeMap<Metric, Budget>, BTreeMap<Metric, MetricStatistic>)> {
         let defaults = &config.defaults;
 
@@ -367,6 +382,19 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
 
             let warn_threshold = threshold * warn_factor;
 
+            let noise_threshold = override_opt
+                .as_ref()
+                .and_then(|o| o.noise_threshold)
+                .or(cli_noise_threshold)
+                .or(defaults.noise_threshold);
+
+            let noise_policy = override_opt
+                .as_ref()
+                .and_then(|o| o.noise_policy)
+                .or(cli_noise_policy)
+                .or(defaults.noise_policy)
+                .unwrap_or(perfgate_types::NoisePolicy::Warn);
+
             let direction = override_opt
                 .as_ref()
                 .and_then(|o| o.direction)
@@ -382,9 +410,12 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                 Budget {
                     threshold,
                     warn_threshold,
+                    noise_threshold,
+                    noise_policy,
                     direction,
                 },
             );
+
             metric_statistics.insert(metric, statistic);
         }
 
@@ -398,7 +429,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
 
     for (metric, delta) in &compare.deltas {
         let severity = match delta.status {
-            MetricStatus::Pass => continue,
+            MetricStatus::Pass | MetricStatus::Skip => continue,
             MetricStatus::Warn => Severity::Warn,
             MetricStatus::Fail => Severity::Fail,
         };
@@ -411,7 +442,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
         let code = match delta.status {
             MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
             MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
-            MetricStatus::Pass => unreachable!(),
+            MetricStatus::Pass | MetricStatus::Skip => unreachable!(),
         };
 
         let metric_name = format_metric(*metric).to_string();
@@ -442,9 +473,11 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
         pass_count: compare.verdict.counts.pass,
         warn_count: compare.verdict.counts.warn,
         fail_count: compare.verdict.counts.fail,
+        skip_count: compare.verdict.counts.skip,
         total_count: compare.verdict.counts.pass
             + compare.verdict.counts.warn
-            + compare.verdict.counts.fail,
+            + compare.verdict.counts.fail
+            + compare.verdict.counts.skip,
     };
 
     PerfgateReport {
@@ -470,6 +503,7 @@ fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
             pass: 0,
             warn: 1,
             fail: 0,
+            skip: 0,
         },
         reasons: vec![VERDICT_REASON_NO_BASELINE.to_string()],
     };
@@ -495,6 +529,7 @@ fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
             pass_count: 0,
             warn_count: 1,
             fail_count: 0,
+            skip_count: 0,
             total_count: 1,
         },
     }
@@ -611,24 +646,28 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1024),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms_median,
-                    min: wall_ms_median.saturating_sub(10),
-                    max: wall_ms_median.saturating_add(10),
-                },
+                wall_ms: U64Summary::new(
+                    wall_ms_median,
+                    wall_ms_median.saturating_sub(10),
+                    wall_ms_median.saturating_add(10),
+                ),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: Some(U64Summary {
-                    median: 1024,
-                    min: 1000,
-                    max: 1100,
-                }),
+                max_rss_kb: Some(U64Summary::new(1024, 1000, 1100)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -652,7 +691,7 @@ mod tests {
         fn run(&self, _spec: &CommandSpec) -> Result<RunResult, AdapterError> {
             let mut runs = self.runs.lock().expect("lock runs");
             if runs.is_empty() {
-                return Err(AdapterError::Other(anyhow::anyhow!("no more queued runs")));
+                return Err(AdapterError::Other("no more queued runs".to_string()));
             }
             Ok(runs.remove(0))
         }
@@ -703,6 +742,10 @@ mod tests {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: Vec::new(),
             stderr: Vec::new(),
@@ -733,19 +776,15 @@ mod tests {
             },
             samples: Vec::new(),
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms,
-                    min: wall_ms,
-                    max: wall_ms,
-                },
+                wall_ms: U64Summary::new(wall_ms, wall_ms, wall_ms),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
-                max_rss_kb: max_rss_kb.map(|v| U64Summary {
-                    median: v,
-                    min: v,
-                    max: v,
-                }),
+                max_rss_kb: max_rss_kb.map(|v| U64Summary::new(v, v, v)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -759,6 +798,8 @@ mod tests {
         fail_on_warn: bool,
     ) -> CheckRequest {
         CheckRequest {
+            noise_threshold: None,
+            noise_policy: None,
             config,
             bench_name: "bench".to_string(),
             out_dir: PathBuf::from("out"),
@@ -783,14 +824,7 @@ mod tests {
     #[test]
     fn test_build_report_from_compare() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -801,6 +835,8 @@ mod tests {
                 ratio: 1.25,
                 pct: 0.25,
                 regression: 0.25,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -838,6 +874,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 1,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_fail".to_string()],
             },
@@ -920,6 +957,8 @@ mod tests {
 
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
+                noise_policy: None,
                 repeat: Some(7),
                 warmup: Some(2),
                 threshold: None,
@@ -934,6 +973,8 @@ mod tests {
         };
 
         let req = CheckRequest {
+            noise_threshold: None,
+            noise_policy: None,
             config: config.clone(),
             bench_name: "bench".to_string(),
             out_dir: PathBuf::from("out"),
@@ -1019,6 +1060,8 @@ mod tests {
         overrides.insert(
             Metric::WallMs,
             BudgetOverride {
+                noise_threshold: None,
+                noise_policy: None,
                 threshold: Some(0.3),
                 direction: Some(Direction::Higher),
                 warn_factor: Some(0.8),
@@ -1040,6 +1083,8 @@ mod tests {
 
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
+                noise_policy: None,
                 repeat: None,
                 warmup: None,
                 threshold: Some(0.2),
@@ -1089,7 +1134,7 @@ mod tests {
         );
 
         let (budgets, statistics) = usecase
-            .build_budgets(&bench, &config, &baseline, &current)
+            .build_budgets(&bench, &config, &baseline, &current, None, None)
             .expect("build budgets");
 
         let wall = budgets.get(&Metric::WallMs).expect("wall budget");
@@ -1234,6 +1279,8 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
+                noise_policy: None,
                 repeat: None,
                 warmup: None,
                 threshold: Some(0.2),
@@ -1367,6 +1414,8 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
+                noise_policy: None,
                 repeat: None,
                 warmup: None,
                 threshold: Some(0.5),

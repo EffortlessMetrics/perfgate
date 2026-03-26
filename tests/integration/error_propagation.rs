@@ -62,7 +62,7 @@ fn paired_error_converts_to_perfgate_error() {
 #[test]
 fn std_io_error_converts_to_perfgate_error() {
     let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-    let err: PerfgateError = std_err.into();
+    let err = PerfgateError::Io(IoError::from(std_err));
     assert!(matches!(err, PerfgateError::Io(IoError::Other(_))));
 }
 
@@ -222,7 +222,7 @@ fn validation_error_name_accessor() {
 #[test]
 fn perfgate_error_from_std_io_error() {
     let std_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
-    let err: PerfgateError = std_err.into();
+    let err = PerfgateError::Io(IoError::from(std_err));
 
     assert!(matches!(err, PerfgateError::Io(IoError::Other(_))));
 }
@@ -230,7 +230,7 @@ fn perfgate_error_from_std_io_error() {
 #[test]
 fn io_error_from_std_io_error() {
     let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-    let err: IoError = std_err.into();
+    let err = IoError::from(std_err);
 
     assert!(matches!(err, IoError::Other(_)));
 }

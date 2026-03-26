@@ -1,6 +1,6 @@
 //! Paired mode types for perfgate.
 
-use crate::{F64Summary, RunMeta, ToolInfo, U64Summary};
+use crate::{F64Summary, RunMeta, Significance, ToolInfo, U64Summary};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +58,8 @@ pub struct PairedDiffSummary {
     pub min: f64,
     pub max: f64,
     pub count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub significance: Option<Significance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -148,16 +150,8 @@ mod tests {
                 rss_diff_kb: None,
             }],
             stats: PairedStats {
-                baseline_wall_ms: U64Summary {
-                    median: 100,
-                    min: 100,
-                    max: 100,
-                },
-                current_wall_ms: U64Summary {
-                    median: 110,
-                    min: 110,
-                    max: 110,
-                },
+                baseline_wall_ms: U64Summary::new(100, 100, 100),
+                current_wall_ms: U64Summary::new(110, 110, 110),
                 wall_diff_ms: PairedDiffSummary {
                     mean: 10.0,
                     median: 10.0,
@@ -165,6 +159,7 @@ mod tests {
                     min: 10.0,
                     max: 10.0,
                     count: 1,
+                    significance: None,
                 },
                 baseline_max_rss_kb: None,
                 current_max_rss_kb: None,

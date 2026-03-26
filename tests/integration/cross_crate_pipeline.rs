@@ -27,10 +27,14 @@ fn sample(wall_ms: u64) -> Sample {
         exit_code: 0,
         warmup: false,
         timed_out: false,
-        cpu_ms: Some(wall_ms / 2),
+        cpu_ms: None,
         page_faults: None,
         ctx_switches: None,
-        max_rss_kb: Some(1024),
+        max_rss_kb: None,
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
+        energy_uj: None,
         binary_bytes: None,
         stdout: None,
         stderr: None,
@@ -73,14 +77,7 @@ fn run_receipt(name: &str, samples: Vec<Sample>) -> RunReceipt {
 
 fn default_budgets() -> BTreeMap<Metric, Budget> {
     let mut m = BTreeMap::new();
-    m.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    m.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
     m
 }
 
@@ -133,6 +130,10 @@ fn types_to_domain_all_optional_metrics_preserved() {
         page_faults: Some(10),
         ctx_switches: Some(5),
         max_rss_kb: Some(2048),
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
+        energy_uj: None,
         binary_bytes: Some(4096),
         stdout: None,
         stderr: None,
@@ -151,14 +152,7 @@ fn types_to_domain_all_optional_metrics_preserved() {
         Metric::CtxSwitches,
         Metric::BinaryBytes,
     ] {
-        budgets.insert(
-            metric,
-            Budget {
-                threshold: 0.20,
-                warn_threshold: 0.10,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(metric, Budget::new(0.20, 0.10, Direction::Lower));
     }
 
     let comparison = compare_runs(&baseline, &current, &budgets, &BTreeMap::new(), None).unwrap();
@@ -490,41 +484,27 @@ fn paired_receipt_json_roundtrip() {
             },
         ],
         stats: PairedStats {
-            baseline_wall_ms: U64Summary {
-                median: 101,
-                min: 100,
-                max: 102,
-            },
-            current_wall_ms: U64Summary {
-                median: 92,
-                min: 90,
-                max: 95,
-            },
+            baseline_wall_ms: U64Summary::new(101, 100, 102),
+            current_wall_ms: U64Summary::new(92, 90, 95),
             wall_diff_ms: PairedDiffSummary {
-                mean: -8.5,
-                median: -8.5,
-                std_dev: 2.12,
-                min: -10.0,
-                max: -7.0,
-                count: 2,
+                mean: 10.0,
+                median: 10.0,
+                std_dev: 0.0,
+                min: 10.0,
+                max: 10.0,
+                count: 1,
+                significance: None,
             },
-            baseline_max_rss_kb: Some(U64Summary {
-                median: 1026,
-                min: 1024,
-                max: 1028,
-            }),
-            current_max_rss_kb: Some(U64Summary {
-                median: 1022,
-                min: 1020,
-                max: 1024,
-            }),
+            baseline_max_rss_kb: Some(U64Summary::new(1026, 1024, 1028)),
+            current_max_rss_kb: Some(U64Summary::new(1022, 1020, 1024)),
             rss_diff_kb: Some(PairedDiffSummary {
                 mean: -4.0,
                 median: -4.0,
-                std_dev: 5.66,
-                min: -8.0,
-                max: 0.0,
-                count: 2,
+                std_dev: 0.0,
+                min: -4.0,
+                max: -4.0,
+                count: 1,
+                significance: None,
             }),
             baseline_throughput_per_s: None,
             current_throughput_per_s: None,
@@ -674,6 +654,8 @@ direction = "lower"
             budgets.insert(
                 *metric,
                 Budget {
+                    noise_threshold: None,
+                    noise_policy: perfgate_types::NoisePolicy::Ignore,
                     threshold,
                     warn_threshold: threshold * warn_factor,
                     direction,
@@ -726,11 +708,11 @@ command = ["echo"]
     let mut budgets = BTreeMap::new();
     budgets.insert(
         Metric::WallMs,
-        Budget {
-            threshold: global_threshold,
-            warn_threshold: global_threshold * global_warn_factor,
-            direction: Direction::Lower,
-        },
+        Budget::new(
+            global_threshold,
+            global_threshold * global_warn_factor,
+            Direction::Lower,
+        ),
     );
 
     assert!((budgets[&Metric::WallMs].threshold - 0.20).abs() < f64::EPSILON);
@@ -827,11 +809,7 @@ threshold = 0.30
     let mut budgets_a = BTreeMap::new();
     budgets_a.insert(
         Metric::WallMs,
-        Budget {
-            threshold: threshold_a,
-            warn_threshold: threshold_a * global_wf,
-            direction: Direction::Lower,
-        },
+        Budget::new(threshold_a, threshold_a * global_wf, Direction::Lower),
     );
 
     let cmp_a = compare_runs(&baseline, &current, &budgets_a, &BTreeMap::new(), None).unwrap();
@@ -840,11 +818,7 @@ threshold = 0.30
     let mut budgets_b = BTreeMap::new();
     budgets_b.insert(
         Metric::WallMs,
-        Budget {
-            threshold: threshold_b,
-            warn_threshold: threshold_b * global_wf,
-            direction: Direction::Lower,
-        },
+        Budget::new(threshold_b, threshold_b * global_wf, Direction::Lower),
     );
 
     let cmp_b = compare_runs(&baseline, &current, &budgets_b, &BTreeMap::new(), None).unwrap();

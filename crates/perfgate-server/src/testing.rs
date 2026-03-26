@@ -25,7 +25,7 @@ pub async fn spawn_test_server(config: ServerConfig) -> TestServer {
     let key_store = create_key_store(&config)
         .await
         .expect("failed to create key store");
-    let auth_state = AuthState::new(key_store, config.jwt.clone());
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), None);
     let app = create_router(store, auth_state, &config);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

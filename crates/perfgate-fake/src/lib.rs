@@ -30,6 +30,7 @@
 //!
 //! // Now when we run the command, we get our configured result
 //! let spec = CommandSpec {
+//!     name: "echo test".to_string(),
 //!     argv: vec!["echo".to_string(), "hello".to_string()],
 //!     cwd: None,
 //!     env: vec![],

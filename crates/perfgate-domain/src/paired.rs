@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn test_compute_paired_stats_empty_samples_returns_domain_error() {
         let samples: Vec<PairedSample> = vec![];
-        let result = compute_paired_stats(&samples, None);
+        let result = compute_paired_stats(&samples, None, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         let domain_err: DomainError = err.into();
@@ -72,7 +72,7 @@ mod tests {
             paired_sample(1, false, 100, 120),
         ];
 
-        let stats = compute_paired_stats(&samples, None).unwrap();
+        let stats = compute_paired_stats(&samples, None, None).unwrap();
         let comparison = compare_paired_stats(&stats);
 
         assert_eq!(stats.wall_diff_ms.mean, 15.0);

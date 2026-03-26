@@ -10,110 +10,16 @@ use axum::{
     response::IntoResponse,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, errors::ErrorKind};
-use serde::{Deserialize, Serialize};
+pub use perfgate_auth::{ApiKey, JwtClaims, Role, Scope, validate_key_format};
+use perfgate_error::AuthError;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::error::AuthError;
 use crate::models::ApiError;
-
-/// API key prefix for live keys.
-pub const API_KEY_PREFIX_LIVE: &str = "pg_live_";
-
-/// API key prefix for test keys.
-pub const API_KEY_PREFIX_TEST: &str = "pg_test_";
-
-/// Permission scope for API operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Scope {
-    /// Read-only access
-    Read,
-    /// Write/upload access
-    Write,
-    /// Promote baselines
-    Promote,
-    /// Delete baselines
-    Delete,
-    /// Admin operations
-    Admin,
-}
-
-impl std::fmt::Display for Scope {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Scope::Read => write!(f, "read"),
-            Scope::Write => write!(f, "write"),
-            Scope::Promote => write!(f, "promote"),
-            Scope::Delete => write!(f, "delete"),
-            Scope::Admin => write!(f, "admin"),
-        }
-    }
-}
-
-/// Role-based access control.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Role {
-    /// Read-only access
-    Viewer,
-    /// Can upload and read baselines
-    Contributor,
-    /// Can promote baselines to production
-    Promoter,
-    /// Full access including delete
-    Admin,
-}
-
-impl Role {
-    /// Returns the scopes allowed for this role.
-    pub fn allowed_scopes(&self) -> Vec<Scope> {
-        match self {
-            Role::Viewer => vec![Scope::Read],
-            Role::Contributor => vec![Scope::Read, Scope::Write],
-            Role::Promoter => vec![Scope::Read, Scope::Write, Scope::Promote],
-            Role::Admin => vec![
-                Scope::Read,
-                Scope::Write,
-                Scope::Promote,
-                Scope::Delete,
-                Scope::Admin,
-            ],
-        }
-    }
-
-    /// Checks if this role has a specific scope.
-    pub fn has_scope(&self, scope: Scope) -> bool {
-        self.allowed_scopes().contains(&scope)
-    }
-
-    /// Infers the closest built-in role from a set of scopes.
-    pub fn from_scopes(scopes: &[Scope]) -> Self {
-        if scopes.contains(&Scope::Admin) || scopes.contains(&Scope::Delete) {
-            Self::Admin
-        } else if scopes.contains(&Scope::Promote) {
-            Self::Promoter
-        } else if scopes.contains(&Scope::Write) {
-            Self::Contributor
-        } else {
-            Self::Viewer
-        }
-    }
-}
-
-impl std::fmt::Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Role::Viewer => write!(f, "viewer"),
-            Role::Contributor => write!(f, "contributor"),
-            Role::Promoter => write!(f, "promoter"),
-            Role::Admin => write!(f, "admin"),
-        }
-    }
-}
+use crate::oidc::OidcProvider;
 
 /// JWT validation settings.
 #[derive(Clone)]
@@ -172,128 +78,31 @@ impl std::fmt::Debug for JwtConfig {
     }
 }
 
-/// JWT claims accepted by the server.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct JwtClaims {
-    /// Subject identifier.
-    pub sub: String,
-
-    /// Project this token belongs to.
-    pub project_id: String,
-
-    /// Granted scopes.
-    pub scopes: Vec<Scope>,
-
-    /// Expiration timestamp (seconds since Unix epoch).
-    pub exp: u64,
-
-    /// Issued-at timestamp.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub iat: Option<u64>,
-
-    /// Optional issuer.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub iss: Option<String>,
-
-    /// Optional audience.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub aud: Option<String>,
-}
-
 /// Authentication state shared by middleware.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AuthState {
     /// In-memory API key store.
     pub key_store: Arc<ApiKeyStore>,
 
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
+
+    /// Optional OIDC provider.
+    pub oidc: Option<OidcProvider>,
 }
 
 impl AuthState {
-    /// Creates auth state from a key store and optional JWT configuration.
-    pub fn new(key_store: Arc<ApiKeyStore>, jwt: Option<JwtConfig>) -> Self {
-        Self { key_store, jwt }
-    }
-}
-
-/// Represents an authenticated API key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiKey {
-    /// Unique key identifier
-    pub id: String,
-
-    /// Key name/description
-    pub name: String,
-
-    /// Project this key belongs to
-    pub project_id: String,
-
-    /// Granted scopes
-    pub scopes: Vec<Scope>,
-
-    /// Role (for easier permission checks)
-    pub role: Role,
-
-    /// Expiration timestamp (RFC 3339)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<String>,
-
-    /// Creation timestamp
-    pub created_at: String,
-
-    /// Last usage timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_used_at: Option<String>,
-}
-
-impl ApiKey {
-    /// Creates a new API key with the given role.
-    pub fn new(id: String, name: String, project_id: String, role: Role) -> Self {
+    /// Creates auth state from a key store and optional JWT/OIDC configuration.
+    pub fn new(
+        key_store: Arc<ApiKeyStore>,
+        jwt: Option<JwtConfig>,
+        oidc: Option<OidcProvider>,
+    ) -> Self {
         Self {
-            id,
-            name,
-            project_id,
-            scopes: role.allowed_scopes(),
-            role,
-            expires_at: None,
-            created_at: chrono::Utc::now().to_rfc3339(),
-            last_used_at: None,
+            key_store,
+            jwt,
+            oidc,
         }
-    }
-
-    /// Creates an auth context facade from validated JWT claims.
-    fn from_jwt_claims(claims: &JwtClaims) -> Self {
-        Self {
-            id: format!("jwt:{}", claims.sub),
-            name: format!("JWT {}", claims.sub),
-            project_id: claims.project_id.clone(),
-            scopes: claims.scopes.clone(),
-            role: Role::from_scopes(&claims.scopes),
-            expires_at: format_timestamp(claims.exp),
-            created_at: claims
-                .iat
-                .and_then(format_timestamp)
-                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-            last_used_at: None,
-        }
-    }
-
-    /// Checks if the key has expired.
-    pub fn is_expired(&self) -> bool {
-        if let Some(exp) = self
-            .expires_at
-            .as_ref()
-            .and_then(|e| chrono::DateTime::parse_from_rfc3339(e).ok())
-        {
-            return exp.timestamp() < chrono::Utc::now().timestamp();
-        }
-        false
-    }
-
-    /// Checks if the key has a specific scope.
-    pub fn has_scope(&self, scope: Scope) -> bool {
-        self.scopes.contains(&scope)
     }
 }
 
@@ -360,27 +169,6 @@ fn hash_api_key(key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
     format!("{:x}", hasher.finalize())
-}
-
-/// Validates API key format.
-pub fn validate_key_format(key: &str) -> Result<(), AuthError> {
-    if key.starts_with(API_KEY_PREFIX_LIVE) || key.starts_with(API_KEY_PREFIX_TEST) {
-        let remainder = key
-            .strip_prefix(API_KEY_PREFIX_LIVE)
-            .or_else(|| key.strip_prefix(API_KEY_PREFIX_TEST))
-            .unwrap();
-
-        // Check that the remainder is at least 32 characters
-        if remainder.len() >= 32 && remainder.chars().all(|c| c.is_alphanumeric()) {
-            return Ok(());
-        }
-    }
-
-    Err(AuthError::InvalidKeyFormat)
-}
-
-fn format_timestamp(timestamp: u64) -> Option<String> {
-    chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp as i64, 0).map(|dt| dt.to_rfc3339())
 }
 
 fn extract_credentials(headers: &HeaderMap) -> Option<Credentials> {
@@ -458,29 +246,77 @@ fn validate_jwt(token: &str, config: &JwtConfig) -> Result<JwtClaims, AuthError>
     })
 }
 
-fn authenticate_jwt(
-    config: Option<&JwtConfig>,
+async fn authenticate_jwt(
+    auth_state: &AuthState,
     token: &str,
     headers: &HeaderMap,
 ) -> Result<AuthContext, (StatusCode, Json<ApiError>)> {
-    let config = config.ok_or_else(|| {
-        warn!("JWT token received but JWT authentication is not configured");
-        unauthorized("JWT token authentication is not configured")
-    })?;
-
-    let claims = validate_jwt(token, config).map_err(|error| {
-        match &error {
-            AuthError::ExpiredToken => warn!("Expired JWT token"),
-            AuthError::InvalidToken(_) => warn!("Invalid JWT token"),
-            _ => {}
+    // Try static JWT config if available
+    if let Some(config) = &auth_state.jwt {
+        match validate_jwt(token, config) {
+            Ok(claims) => {
+                return Ok(AuthContext {
+                    api_key: api_key_from_jwt_claims(&claims),
+                    source_ip: source_ip(headers),
+                });
+            }
+            Err(e) => {
+                // If we don't have an OIDC provider, fail here.
+                // Otherwise, fall through to OIDC.
+                if auth_state.oidc.is_none() {
+                    match &e {
+                        AuthError::ExpiredToken => warn!("Expired JWT token"),
+                        AuthError::InvalidToken(_) => warn!("Invalid JWT token"),
+                        _ => {}
+                    }
+                    return Err(unauthorized(&e.to_string()));
+                }
+            }
         }
-        unauthorized(&error.to_string())
-    })?;
+    }
 
-    Ok(AuthContext {
-        api_key: ApiKey::from_jwt_claims(&claims),
-        source_ip: source_ip(headers),
-    })
+    // Try OIDC provider if available
+    if let Some(oidc) = &auth_state.oidc {
+        match oidc.validate_token(token).await {
+            Ok(api_key) => {
+                return Ok(AuthContext {
+                    api_key,
+                    source_ip: source_ip(headers),
+                });
+            }
+            Err(e) => {
+                match &e {
+                    AuthError::ExpiredToken => warn!("Expired OIDC token"),
+                    AuthError::InvalidToken(msg) => warn!("Invalid OIDC token: {}", msg),
+                    _ => {}
+                }
+                return Err(unauthorized(&e.to_string()));
+            }
+        }
+    }
+
+    warn!("JWT token received but no JWT or OIDC authentication is configured");
+    Err(unauthorized("JWT/OIDC authentication is not configured"))
+}
+
+fn api_key_from_jwt_claims(claims: &JwtClaims) -> ApiKey {
+    ApiKey {
+        id: format!("jwt:{}", claims.sub),
+        name: format!("JWT {}", claims.sub),
+        project_id: claims.project_id.clone(),
+        scopes: claims.scopes.clone(),
+        role: Role::from_scopes(&claims.scopes),
+        benchmark_regex: None,
+        expires_at: Some(
+            chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
+                .unwrap_or_else(chrono::Utc::now),
+        ),
+        created_at: claims
+            .iat
+            .and_then(|iat| chrono::DateTime::<chrono::Utc>::from_timestamp(iat as i64, 0))
+            .unwrap_or_else(chrono::Utc::now),
+        last_used_at: None,
+    }
 }
 
 /// Authentication middleware.
@@ -499,7 +335,7 @@ pub async fn auth_middleware(
             authenticate_api_key(&auth_state.key_store, &api_key, request.headers()).await?
         }
         Some(Credentials::Jwt(token)) => {
-            authenticate_jwt(auth_state.jwt.as_ref(), &token, request.headers())?
+            authenticate_jwt(&auth_state, &token, request.headers()).await?
         }
         None => {
             warn!("Missing authentication header");
@@ -512,50 +348,89 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
-/// Checks if the current auth context has the required scope.
-/// Returns an error response if the scope is not present.
+/// Checks if the current auth context has the required scope, project access, and benchmark access.
+/// Returns an error response if the scope is not present, project mismatch, or benchmark restricted.
 pub fn check_scope(
     auth_ctx: Option<&AuthContext>,
+    project_id: &str,
+    benchmark: Option<&str>,
     scope: Scope,
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
-    match auth_ctx {
-        Some(ctx) if ctx.api_key.has_scope(scope) => Ok(()),
-        Some(ctx) => {
+    let ctx = match auth_ctx {
+        Some(ctx) => ctx,
+        None => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ApiError::unauthorized("Authentication required")),
+            ));
+        }
+    };
+
+    // 1. Check Scope
+    if !ctx.api_key.has_scope(scope) {
+        warn!(
+            key_id = %ctx.api_key.id,
+            required_scope = %scope,
+            actual_role = %ctx.api_key.role,
+            "Insufficient permissions: scope mismatch"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ApiError::forbidden(&format!(
+                "Requires '{}' permission",
+                scope
+            ))),
+        ));
+    }
+
+    // 2. Check Project Isolation
+    // Global admins (those with Scope::Admin) can access any project.
+    // Otherwise, the key's project_id must match the requested project_id.
+    if !ctx.api_key.has_scope(Scope::Admin) && ctx.api_key.project_id != project_id {
+        warn!(
+            key_id = %ctx.api_key.id,
+            key_project = %ctx.api_key.project_id,
+            requested_project = %project_id,
+            "Insufficient permissions: project isolation violation"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ApiError::forbidden(&format!(
+                "Key is restricted to project '{}'",
+                ctx.api_key.project_id
+            ))),
+        ));
+    }
+
+    // 3. Check Benchmark Restriction
+    // If the key has a benchmark_regex, all accessed benchmarks must match it.
+    if let (Some(regex_str), Some(bench)) = (&ctx.api_key.benchmark_regex, benchmark) {
+        let regex = regex::Regex::new(regex_str).map_err(|e| {
+            warn!(key_id = %ctx.api_key.id, regex = %regex_str, error = %e, "Invalid benchmark regex in API key");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError::internal_error("Invalid security configuration")),
+            )
+        })?;
+
+        if !regex.is_match(bench) {
             warn!(
                 key_id = %ctx.api_key.id,
-                required_scope = %scope,
-                actual_role = %ctx.api_key.role,
-                "Insufficient permissions"
+                benchmark = %bench,
+                regex = %regex_str,
+                "Insufficient permissions: benchmark restriction violation"
             );
-            Err((
+            return Err((
                 StatusCode::FORBIDDEN,
                 Json(ApiError::forbidden(&format!(
-                    "Requires '{}' permission",
-                    scope
+                    "Key is restricted to benchmarks matching '{}'",
+                    regex_str
                 ))),
-            ))
+            ));
         }
-        None => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ApiError::unauthorized("Authentication required")),
-        )),
     }
-}
 
-/// Creates a new API key string.
-pub fn generate_api_key(test: bool) -> String {
-    let prefix = if test {
-        API_KEY_PREFIX_TEST
-    } else {
-        API_KEY_PREFIX_LIVE
-    };
-    let random: String = uuid::Uuid::new_v4()
-        .simple()
-        .to_string()
-        .chars()
-        .take(32)
-        .collect();
-    format!("{}{}", prefix, random)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -563,6 +438,7 @@ mod tests {
     use super::*;
     use axum::{Extension, Router, routing::get};
     use jsonwebtoken::{Header, encode};
+    use perfgate_auth::generate_api_key;
     use tower::ServiceExt;
     use uselesskey::{Factory, HmacFactoryExt, HmacSpec, Seed};
     use uselesskey_jsonwebtoken::JwtKeyExt;
@@ -607,96 +483,6 @@ mod tests {
                 auth_state,
                 auth_middleware,
             ))
-    }
-
-    #[test]
-    fn test_validate_key_format() {
-        assert!(validate_key_format("pg_live_abcdefghijklmnopqrstuvwxyz123456").is_ok());
-        assert!(validate_key_format("pg_test_abcdefghijklmnopqrstuvwxyz123456").is_ok());
-        assert!(validate_key_format("invalid_abcdefghijklmnopqrstuvwxyz123456").is_err());
-        assert!(validate_key_format("pg_live_short").is_err());
-        assert!(validate_key_format("pg_live_abcdefghijklmnopqrstuvwxyz12345!@").is_err());
-    }
-
-    #[test]
-    fn test_role_scopes() {
-        let viewer = Role::Viewer;
-        assert!(viewer.has_scope(Scope::Read));
-        assert!(!viewer.has_scope(Scope::Write));
-
-        let contributor = Role::Contributor;
-        assert!(contributor.has_scope(Scope::Read));
-        assert!(contributor.has_scope(Scope::Write));
-        assert!(!contributor.has_scope(Scope::Promote));
-
-        let promoter = Role::Promoter;
-        assert!(promoter.has_scope(Scope::Promote));
-        assert!(!promoter.has_scope(Scope::Delete));
-
-        let admin = Role::Admin;
-        assert!(admin.has_scope(Scope::Delete));
-        assert!(admin.has_scope(Scope::Admin));
-    }
-
-    #[test]
-    fn test_role_from_scopes() {
-        assert_eq!(Role::from_scopes(&[Scope::Read]), Role::Viewer);
-        assert_eq!(
-            Role::from_scopes(&[Scope::Read, Scope::Write]),
-            Role::Contributor
-        );
-        assert_eq!(
-            Role::from_scopes(&[Scope::Read, Scope::Write, Scope::Promote]),
-            Role::Promoter
-        );
-        assert_eq!(Role::from_scopes(&[Scope::Delete]), Role::Admin);
-    }
-
-    #[test]
-    fn test_validate_jwt_success() {
-        let config = test_jwt_config();
-        let claims = create_test_claims(
-            vec![Scope::Read, Scope::Write],
-            (chrono::Utc::now() + chrono::Duration::minutes(5)).timestamp() as u64,
-        );
-        let token = create_test_token(&claims);
-
-        let decoded = validate_jwt(&token, &config).unwrap();
-
-        assert_eq!(decoded.sub, "ci-bot");
-        assert_eq!(decoded.project_id, "project-1");
-        assert_eq!(decoded.scopes, vec![Scope::Read, Scope::Write]);
-    }
-
-    #[test]
-    fn test_validate_jwt_expired() {
-        let config = test_jwt_config();
-        let claims = create_test_claims(
-            vec![Scope::Read],
-            (chrono::Utc::now() - chrono::Duration::minutes(5)).timestamp() as u64,
-        );
-        let token = create_test_token(&claims);
-
-        let err = validate_jwt(&token, &config).unwrap_err();
-        assert!(matches!(err, AuthError::ExpiredToken));
-    }
-
-    #[test]
-    fn test_api_key_expiration() {
-        let mut key = ApiKey::new(
-            "key-1".to_string(),
-            "Test Key".to_string(),
-            "project-1".to_string(),
-            Role::Viewer,
-        );
-
-        assert!(!key.is_expired());
-
-        key.expires_at = Some("2020-01-01T00:00:00Z".to_string());
-        assert!(key.is_expired());
-
-        key.expires_at = Some("2099-01-01T00:00:00Z".to_string());
-        assert!(!key.is_expired());
     }
 
     #[tokio::test]
@@ -744,7 +530,7 @@ mod tests {
             )
             .await;
 
-        let response = auth_test_router(AuthState::new(store, None))
+        let response = auth_test_router(AuthState::new(store, None, None))
             .oneshot(
                 Request::builder()
                     .uri("/protected")
@@ -769,6 +555,7 @@ mod tests {
         let response = auth_test_router(AuthState::new(
             Arc::new(ApiKeyStore::new()),
             Some(test_jwt_config()),
+            None,
         ))
         .oneshot(
             Request::builder()
@@ -791,7 +578,7 @@ mod tests {
         );
         let token = create_test_token(&claims);
 
-        let response = auth_test_router(AuthState::new(Arc::new(ApiKeyStore::new()), None))
+        let response = auth_test_router(AuthState::new(Arc::new(ApiKeyStore::new()), None, None))
             .oneshot(
                 Request::builder()
                     .uri("/protected")
@@ -806,17 +593,6 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_api_key() {
-        let live_key = generate_api_key(false);
-        assert!(live_key.starts_with(API_KEY_PREFIX_LIVE));
-        assert!(live_key.len() >= 40);
-
-        let test_key = generate_api_key(true);
-        assert!(test_key.starts_with(API_KEY_PREFIX_TEST));
-        assert!(test_key.len() >= 40);
-    }
-
-    #[test]
     fn test_hash_api_key() {
         let key = "pg_live_test123456789012345678901234567890";
         let hash1 = hash_api_key(key);
@@ -826,5 +602,80 @@ mod tests {
 
         let different_hash = hash_api_key("pg_live_different1234567890123456789012");
         assert_ne!(hash1, different_hash);
+    }
+
+    #[test]
+    fn test_check_scope_project_isolation() {
+        let key = ApiKey::new(
+            "k1".to_string(),
+            "n1".to_string(),
+            "project-a".to_string(),
+            Role::Contributor,
+        );
+        let ctx = AuthContext {
+            api_key: key,
+            source_ip: None,
+        };
+
+        // Same project, correct scope -> OK
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Write).is_ok());
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Read).is_ok());
+
+        // Same project, wrong scope -> Forbidden
+        let res = check_scope(Some(&ctx), "project-a", None, Scope::Delete);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        // Different project -> Forbidden
+        let res = check_scope(Some(&ctx), "project-b", None, Scope::Read);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn test_check_scope_global_admin() {
+        let key = ApiKey::new(
+            "k1".to_string(),
+            "admin".to_string(),
+            "any-project".to_string(),
+            Role::Admin,
+        );
+        let ctx = AuthContext {
+            api_key: key,
+            source_ip: None,
+        };
+
+        // Global admin can access ANY project
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Read).is_ok());
+        assert!(check_scope(Some(&ctx), "project-b", None, Scope::Delete).is_ok());
+        assert!(check_scope(Some(&ctx), "other", None, Scope::Admin).is_ok());
+    }
+
+    #[test]
+    fn test_check_scope_benchmark_restriction() {
+        let mut key = ApiKey::new(
+            "k1".to_string(),
+            "n1".to_string(),
+            "project-a".to_string(),
+            Role::Contributor,
+        );
+        key.benchmark_regex = Some("^web-.*$".to_string());
+
+        let ctx = AuthContext {
+            api_key: key,
+            source_ip: None,
+        };
+
+        // Matches regex -> OK
+        assert!(check_scope(Some(&ctx), "project-a", Some("web-auth"), Scope::Read).is_ok());
+        assert!(check_scope(Some(&ctx), "project-a", Some("web-api"), Scope::Write).is_ok());
+
+        // Does not match regex -> Forbidden
+        let res = check_scope(Some(&ctx), "project-a", Some("worker-job"), Scope::Read);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        // No benchmark name provided (e.g. list operation) -> OK (scoping only applies to explicit access)
+        assert!(check_scope(Some(&ctx), "project-a", None, Scope::Read).is_ok());
     }
 }

@@ -2,7 +2,6 @@
 //!
 //! **Validates: Requirements 7.1, 7.6**
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::tempdir;
@@ -32,7 +31,7 @@ fn test_md_pass_verdict_stdout() {
     );
 
     // Run perfgate md command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md").arg("--compare").arg(&compare_receipt_path);
 
     cmd.assert()
@@ -74,7 +73,7 @@ fn test_md_warn_verdict_stdout() {
     );
 
     // Run perfgate md command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md").arg("--compare").arg(&compare_receipt_path);
 
     cmd.assert()
@@ -109,7 +108,7 @@ fn test_md_fail_verdict_stdout() {
     );
 
     // Run perfgate md command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md").arg("--compare").arg(&compare_receipt_path);
 
     cmd.assert()
@@ -145,7 +144,7 @@ fn test_md_output_to_file() {
     );
 
     // Run perfgate md command with --out flag
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md")
         .arg("--compare")
         .arg(&compare_receipt_path)
@@ -211,7 +210,7 @@ fn test_md_missing_compare_file() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let nonexistent_path = temp_dir.path().join("nonexistent.json");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md").arg("--compare").arg(&nonexistent_path);
 
     cmd.assert()
@@ -225,7 +224,7 @@ fn test_md_missing_compare_file() {
 /// **Validates: Requirements 7.1**
 #[test]
 fn test_md_missing_compare_argument() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md");
 
     cmd.assert()
@@ -261,14 +260,15 @@ fn test_md_contains_verdict_reasons() {
         serde_json::from_str(&content).expect("compare receipt should be valid JSON");
 
     // Run perfgate md command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md").arg("--compare").arg(&compare_receipt_path);
 
     let output = cmd.assert().success();
 
     // If the receipt has reasons, verify they appear in the markdown
-    if let Some(reasons) = receipt["verdict"]["reasons"].as_array()
-        && !reasons.is_empty()
+    if receipt["verdict"]["reasons"]
+        .as_array()
+        .is_some_and(|reasons| !reasons.is_empty())
     {
         output.stdout(predicate::str::contains("Notes:"));
     }
@@ -297,7 +297,7 @@ bench={{bench.name}}
     )
     .expect("write template");
 
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md")
         .arg("--compare")
         .arg(&compare_receipt_path)
@@ -327,7 +327,7 @@ fn test_md_contains_all_metrics() {
         .expect("failed to generate compare receipt");
 
     // Run perfgate md command
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let mut cmd = perfgate_cmd();
     cmd.arg("md").arg("--compare").arg(&compare_receipt_path);
 
     cmd.assert()

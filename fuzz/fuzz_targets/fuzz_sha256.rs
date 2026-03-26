@@ -17,3 +17,11 @@ fuzz_target!(|data: &[u8]| {
     assert_eq!(hash1.len(), 64);
     assert!(hash1.chars().all(|c| c.is_ascii_hexdigit()));
 });
+
+
+
+
+
+
+
+

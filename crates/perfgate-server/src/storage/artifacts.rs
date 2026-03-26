@@ -32,16 +32,17 @@ impl ArtifactStore for ObjectArtifactStore {
 
     async fn get(&self, path: &str) -> Result<Vec<u8>, StoreError> {
         let path = Path::from(path);
-        let result = self.inner
+        let result = self
+            .inner
             .get(&path)
             .await
             .map_err(|e| StoreError::Other(format!("ObjectStore get failed: {}", e)))?;
-        
+
         let bytes = result
             .bytes()
             .await
             .map_err(|e| StoreError::Other(format!("ObjectStore bytes failed: {}", e)))?;
-        
+
         Ok(bytes.to_vec())
     }
 

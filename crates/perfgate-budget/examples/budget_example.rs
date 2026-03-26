@@ -5,13 +5,15 @@ use perfgate_types::{Budget, Direction, MetricStatus};
 
 fn main() {
     let budget = Budget {
+        noise_threshold: None,
+        noise_policy: perfgate_types::NoisePolicy::Ignore,
         threshold: 0.20,      // 20% regression = fail
         warn_threshold: 0.10, // 10% regression = warn
         direction: Direction::Lower,
     };
 
     // Scenario 1: 5% regression → Pass
-    let result = evaluate_budget(100.0, 105.0, &budget).expect("evaluate");
+    let result = evaluate_budget(100.0, 105.0, &budget, None).expect("evaluate");
     println!(
         "5% regression:  status={:?}, regression={:.1}%",
         result.status,
@@ -20,7 +22,7 @@ fn main() {
     assert_eq!(result.status, MetricStatus::Pass);
 
     // Scenario 2: 15% regression → Warn
-    let result = evaluate_budget(100.0, 115.0, &budget).expect("evaluate");
+    let result = evaluate_budget(100.0, 115.0, &budget, None).expect("evaluate");
     println!(
         "15% regression: status={:?}, regression={:.1}%",
         result.status,
@@ -29,7 +31,7 @@ fn main() {
     assert_eq!(result.status, MetricStatus::Warn);
 
     // Scenario 3: 25% regression → Fail
-    let result = evaluate_budget(100.0, 125.0, &budget).expect("evaluate");
+    let result = evaluate_budget(100.0, 125.0, &budget, None).expect("evaluate");
     println!(
         "25% regression: status={:?}, regression={:.1}%",
         result.status,

@@ -74,7 +74,19 @@
             "ctx_switches": {
               "$ref": "#/$defs/BudgetOverride"
             },
+            "energy_uj": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "io_read_bytes": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "io_write_bytes": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
             "max_rss_kb": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "network_packets": {
               "$ref": "#/$defs/BudgetOverride"
             },
             "page_faults": {
@@ -166,6 +178,23 @@
             }
           ]
         },
+        "noise_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoisePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "statistic": {
           "anyOf": [
             {
@@ -215,6 +244,23 @@
             "string",
             "null"
           ]
+        },
+        "noise_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoisePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "out_dir": {
           "type": [
@@ -267,7 +313,11 @@
         "binary_bytes",
         "cpu_ms",
         "ctx_switches",
+        "energy_uj",
+        "io_read_bytes",
+        "io_write_bytes",
         "max_rss_kb",
+        "network_packets",
         "page_faults",
         "throughput_per_s",
         "wall_ms"
@@ -278,6 +328,25 @@
       "enum": [
         "median",
         "p95"
+      ]
+    },
+    "NoisePolicy": {
+      "oneOf": [
+        {
+          "description": "No change to status based on noise.",
+          "type": "string",
+          "const": "ignore"
+        },
+        {
+          "description": "Escalate Pass to Warn, and demote Fail to Warn.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "Demote Pass and Fail to Skip.",
+          "type": "string",
+          "const": "skip"
+        }
       ]
     }
   }

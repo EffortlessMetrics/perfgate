@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 234
 expression: "help_output(&[\"run\", \"--help\"])"
 ---
 Run a command repeatedly and emit a run receipt (JSON)
@@ -20,10 +19,10 @@ Options:
       --env <ENV> Environment variable (KEY=VALUE). Repeatable
       --output-cap-bytes <OUTPUT_CAP_BYTES> Max bytes captured from stdout/stderr per run [default: 8192]
       --allow-nonzero Do not fail the tool when the command returns nonzero
-      --include-hostname-hash Include a hashed hostname in the host fingerprint for noise mitigation. The hostname is SHA-256 hashed for privacy
+      --include-hostname-hash Include a hashed hostname in the host fingerprint for noise mitigation
       --out <OUT> Output file path [default: perfgate.json]
       --pretty Pretty-print JSON
-      --upload Upload the run result to the baseline server. Requires --baseline-server to be configured
+      --upload Upload the run result to the baseline server
       --upload-project <UPLOAD_PROJECT> Project name for upload (overrides global --project flag)
   -h, --help Print help
 

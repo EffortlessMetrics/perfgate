@@ -20,6 +20,7 @@
 //!
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
+mod defaults_config;
 mod paired;
 
 pub use paired::{
@@ -27,12 +28,14 @@ pub use paired::{
     PairedSampleHalf, PairedStats,
 };
 
+pub use defaults_config::*;
+
 pub use perfgate_validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
     validate_bench_name,
 };
 
-pub use perfgate_error::{ConfigValidationError, IoError as PerfgateError};
+pub use perfgate_error::{ConfigValidationError, PerfgateError};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -336,9 +339,25 @@ pub struct Sample {
     /// Voluntary + involuntary context switches (Unix only).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ctx_switches: Option<u64>,
-
+    /// Peak resident set size in KB.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_rss_kb: Option<u64>,
+
+    /// Bytes read from disk (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_read_bytes: Option<u64>,
+
+    /// Bytes written to disk (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_write_bytes: Option<u64>,
+
+    /// Total network packets (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub network_packets: Option<u64>,
+
+    /// CPU energy used in microjoules (RAPL on Linux).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub energy_uj: Option<u64>,
 
     /// Size of executed binary in bytes (best-effort).
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -353,12 +372,37 @@ pub struct Sample {
     pub stderr: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct U64Summary {
     pub median: u64,
     pub min: u64,
     pub max: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mean: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stddev: Option<f64>,
+}
+
+impl U64Summary {
+    pub fn new(median: u64, min: u64, max: u64) -> Self {
+        Self {
+            median,
+            min,
+            max,
+            mean: None,
+            stddev: None,
+        }
+    }
+
+    /// Returns the coefficient of variation (stddev / mean).
+    /// Returns None if mean is 0 or stddev/mean are not present.
+    pub fn cv(&self) -> Option<f64> {
+        match (self.mean, self.stddev) {
+            (Some(mean), Some(stddev)) if mean > 0.0 => Some(stddev / mean),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -367,6 +411,31 @@ pub struct F64Summary {
     pub median: f64,
     pub min: f64,
     pub max: f64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mean: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stddev: Option<f64>,
+}
+
+impl F64Summary {
+    pub fn new(median: f64, min: f64, max: f64) -> Self {
+        Self {
+            median,
+            min,
+            max,
+            mean: None,
+            stddev: None,
+        }
+    }
+
+    /// Returns the coefficient of variation (stddev / mean).
+    /// Returns None if mean is 0 or stddev/mean are not present.
+    pub fn cv(&self) -> Option<f64> {
+        match (self.mean, self.stddev) {
+            (Some(mean), Some(stddev)) if mean > 0.0 => Some(stddev / mean),
+            _ => None,
+        }
+    }
 }
 
 /// Aggregated statistics for a benchmark run.
@@ -377,11 +446,15 @@ pub struct F64Summary {
 /// use perfgate_types::{Stats, U64Summary};
 ///
 /// let stats = Stats {
-///     wall_ms: U64Summary { median: 100, min: 90, max: 120 },
+///     wall_ms: U64Summary::new(100, 90, 120 ),
 ///     cpu_ms: None,
 ///     page_faults: None,
 ///     ctx_switches: None,
-///     max_rss_kb: Some(U64Summary { median: 4096, min: 4000, max: 4200 }),
+///     max_rss_kb: Some(U64Summary::new(4096, 4000, 4200 )),
+///     io_read_bytes: None,
+///     io_write_bytes: None,
+///     network_packets: None,
+///     energy_uj: None,
 ///     binary_bytes: None,
 ///     throughput_per_s: None,
 /// };
@@ -407,6 +480,22 @@ pub struct Stats {
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub max_rss_kb: Option<U64Summary>,
+
+    /// Bytes read from disk summary (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_read_bytes: Option<U64Summary>,
+
+    /// Bytes written to disk summary (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub io_write_bytes: Option<U64Summary>,
+
+    /// Total network packets summary (best-effort).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub network_packets: Option<U64Summary>,
+
+    /// CPU energy used summary in microjoules (RAPL on Linux).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub energy_uj: Option<U64Summary>,
 
     /// Size of executed binary in bytes (best-effort).
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -442,9 +531,10 @@ pub struct Stats {
 ///     },
 ///     samples: vec![],
 ///     stats: Stats {
-///         wall_ms: U64Summary { median: 100, min: 90, max: 120 },
+///         wall_ms: U64Summary::new(100, 90, 120 ),
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
-///         max_rss_kb: None, binary_bytes: None, throughput_per_s: None,
+///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
+///         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
 ///     },
 /// };
 ///
@@ -472,7 +562,11 @@ pub enum Metric {
     BinaryBytes,
     CpuMs,
     CtxSwitches,
+    EnergyUj,
+    IoReadBytes,
+    IoWriteBytes,
     MaxRssKb,
+    NetworkPackets,
     PageFaults,
     ThroughputPerS,
     WallMs,
@@ -494,7 +588,11 @@ impl Metric {
             Metric::BinaryBytes => "binary_bytes",
             Metric::CpuMs => "cpu_ms",
             Metric::CtxSwitches => "ctx_switches",
+            Metric::EnergyUj => "energy_uj",
+            Metric::IoReadBytes => "io_read_bytes",
+            Metric::IoWriteBytes => "io_write_bytes",
             Metric::MaxRssKb => "max_rss_kb",
+            Metric::NetworkPackets => "network_packets",
             Metric::PageFaults => "page_faults",
             Metric::ThroughputPerS => "throughput_per_s",
             Metric::WallMs => "wall_ms",
@@ -517,7 +615,11 @@ impl Metric {
             "binary_bytes" => Some(Metric::BinaryBytes),
             "cpu_ms" => Some(Metric::CpuMs),
             "ctx_switches" => Some(Metric::CtxSwitches),
+            "energy_uj" => Some(Metric::EnergyUj),
+            "io_read_bytes" => Some(Metric::IoReadBytes),
+            "io_write_bytes" => Some(Metric::IoWriteBytes),
             "max_rss_kb" => Some(Metric::MaxRssKb),
+            "network_packets" => Some(Metric::NetworkPackets),
             "page_faults" => Some(Metric::PageFaults),
             "throughput_per_s" => Some(Metric::ThroughputPerS),
             "wall_ms" => Some(Metric::WallMs),
@@ -543,7 +645,11 @@ impl Metric {
             Metric::BinaryBytes => Direction::Lower,
             Metric::CpuMs => Direction::Lower,
             Metric::CtxSwitches => Direction::Lower,
+            Metric::EnergyUj => Direction::Lower,
+            Metric::IoReadBytes => Direction::Lower,
+            Metric::IoWriteBytes => Direction::Lower,
             Metric::MaxRssKb => Direction::Lower,
+            Metric::NetworkPackets => Direction::Lower,
             Metric::PageFaults => Direction::Lower,
             Metric::ThroughputPerS => Direction::Higher,
             Metric::WallMs => Direction::Lower,
@@ -571,7 +677,11 @@ impl Metric {
             Metric::BinaryBytes => "bytes",
             Metric::CpuMs => "ms",
             Metric::CtxSwitches => "count",
+            Metric::EnergyUj => "uj",
+            Metric::IoReadBytes => "bytes",
+            Metric::IoWriteBytes => "bytes",
             Metric::MaxRssKb => "KB",
+            Metric::NetworkPackets => "count",
             Metric::PageFaults => "count",
             Metric::ThroughputPerS => "/s",
             Metric::WallMs => "ms",
@@ -627,8 +737,34 @@ pub struct Budget {
 
     /// Warn threshold, as a fraction.
     pub warn_threshold: f64,
+    /// Noise threshold (coefficient of variation).
+    /// If CV exceeds this, the metric is considered flaky/noisy.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub noise_threshold: Option<f64>,
 
+    /// Policy for handling noisy metrics.
+    #[serde(default, skip_serializing_if = "is_default_noise_policy")]
+    pub noise_policy: NoisePolicy,
+
+    /// Regression direction.
     pub direction: Direction,
+}
+
+fn is_default_noise_policy(policy: &NoisePolicy) -> bool {
+    *policy == NoisePolicy::Ignore
+}
+
+impl Budget {
+    /// Creates a new budget with defaults for noise_threshold.
+    pub fn new(threshold: f64, warn_threshold: f64, direction: Direction) -> Self {
+        Self {
+            threshold,
+            warn_threshold,
+            noise_threshold: None,
+            noise_policy: NoisePolicy::Ignore,
+            direction,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -642,11 +778,48 @@ pub enum SignificanceTest {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Significance {
     pub test: SignificanceTest,
-    pub p_value: f64,
+    pub p_value: Option<f64>,
     pub alpha: f64,
     pub significant: bool,
     pub baseline_samples: u32,
     pub current_samples: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ci_lower: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ci_upper: Option<f64>,
+}
+
+/// Policy for statistical significance testing.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct SignificancePolicy {
+    /// Significance level (e.g. 0.05).
+    pub alpha: Option<f64>,
+    /// Minimum number of samples required for a significant result.
+    pub min_samples: Option<u32>,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum NoisePolicy {
+    /// No change to status based on noise.
+    #[default]
+    Ignore,
+    /// Escalate Pass to Warn, and demote Fail to Warn.
+    Warn,
+    /// Demote Pass and Fail to Skip.
+    Skip,
+}
+
+impl NoisePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            NoisePolicy::Ignore => "ignore",
+            NoisePolicy::Warn => "warn",
+            NoisePolicy::Skip => "skip",
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -656,6 +829,7 @@ pub enum MetricStatus {
     Pass,
     Warn,
     Fail,
+    Skip,
 }
 
 impl MetricStatus {
@@ -675,6 +849,7 @@ impl MetricStatus {
             MetricStatus::Pass => "pass",
             MetricStatus::Warn => "warn",
             MetricStatus::Fail => "fail",
+            MetricStatus::Skip => "skip",
         }
     }
 }
@@ -693,6 +868,14 @@ pub struct Delta {
 
     /// Positive regression amount, normalized as a fraction.
     pub regression: f64,
+
+    /// Coefficient of variation for the current run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cv: Option<f64>,
+
+    /// Noise threshold used for this comparison.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_threshold: Option<f64>,
 
     #[serde(default, skip_serializing_if = "is_default_metric_statistic")]
     pub statistic: MetricStatistic,
@@ -720,6 +903,18 @@ pub enum VerdictStatus {
     Pass,
     Warn,
     Fail,
+    Skip,
+}
+
+impl VerdictStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VerdictStatus::Pass => "pass",
+            VerdictStatus::Warn => "warn",
+            VerdictStatus::Fail => "fail",
+            VerdictStatus::Skip => "skip",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -728,6 +923,7 @@ pub struct VerdictCounts {
     pub pass: u32,
     pub warn: u32,
     pub fail: u32,
+    pub skip: u32,
 }
 
 /// Overall verdict for a comparison, with pass/warn/fail counts.
@@ -739,14 +935,14 @@ pub struct VerdictCounts {
 ///
 /// let verdict = Verdict {
 ///     status: VerdictStatus::Pass,
-///     counts: VerdictCounts { pass: 2, warn: 0, fail: 0 },
+///     counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },
 ///     reasons: vec![],
 /// };
 /// assert_eq!(verdict.status, VerdictStatus::Pass);
 ///
 /// let failing = Verdict {
 ///     status: VerdictStatus::Fail,
-///     counts: VerdictCounts { pass: 1, warn: 0, fail: 1 },
+///     counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },
 ///     reasons: vec!["wall_ms.fail".into()],
 /// };
 /// assert_eq!(failing.status, VerdictStatus::Fail);
@@ -782,7 +978,7 @@ pub struct Verdict {
 ///     deltas: BTreeMap::new(),
 ///     verdict: Verdict {
 ///         status: VerdictStatus::Pass,
-///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0 },
+///         counts: VerdictCounts { pass: 0, warn: 0, fail: 0, skip: 0 },
 ///         reasons: vec![],
 ///     },
 /// };
@@ -881,9 +1077,17 @@ pub struct ReportSummary {
     #[serde(rename = "fail_count")]
     pub fail_count: u32,
 
+    /// Number of metrics that were skipped.
+    #[serde(rename = "skip_count", default, skip_serializing_if = "is_zero_u32")]
+    pub skip_count: u32,
+
     /// Total number of metrics checked.
     #[serde(rename = "total_count")]
     pub total_count: u32,
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 /// A performance report wrapping compare results in a cockpit-compatible envelope.
@@ -976,37 +1180,6 @@ impl ConfigFile {
         }
         Ok(())
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct DefaultsConfig {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub repeat: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub warmup: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub threshold: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub warn_factor: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub out_dir: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub baseline_dir: Option<String>,
-
-    /// Optional baseline discovery pattern. Supports `{bench}` placeholder.
-    /// Example: `baselines/{bench}.json`.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub baseline_pattern: Option<String>,
-
-    /// Optional Handlebars template path for markdown comments.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub markdown_template: Option<String>,
 }
 
 /// Configuration for the baseline server connection.
@@ -1122,6 +1295,12 @@ pub struct BudgetOverride {
     pub warn_factor: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_threshold: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_policy: Option<NoisePolicy>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub statistic: Option<MetricStatistic>,
 }
 
@@ -1132,14 +1311,7 @@ mod tests {
     #[test]
     fn metric_serde_keys_are_snake_case() {
         let mut m = BTreeMap::new();
-        m.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
+        m.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
         let json = serde_json::to_string(&m).unwrap();
         assert!(json.contains("\"wall_ms\""));
     }
@@ -1355,22 +1527,25 @@ mod tests {
 
     #[test]
     fn perfgate_error_display_baseline_resolve() {
-        let err = PerfgateError::BaselineResolve("file not found".to_string());
+        use perfgate_error::IoError;
+        let err = PerfgateError::Io(IoError::BaselineResolve("file not found".to_string()));
         assert_eq!(format!("{}", err), "baseline resolve: file not found");
     }
 
     #[test]
     fn perfgate_error_display_artifact_write() {
-        let err = PerfgateError::ArtifactWrite("permission denied".to_string());
+        use perfgate_error::IoError;
+        let err = PerfgateError::Io(IoError::ArtifactWrite("permission denied".to_string()));
         assert_eq!(format!("{}", err), "write artifacts: permission denied");
     }
 
     #[test]
     fn perfgate_error_display_run_command() {
-        let err = PerfgateError::RunCommand {
+        use perfgate_error::IoError;
+        let err = PerfgateError::Io(IoError::RunCommand {
             command: "echo".to_string(),
             reason: "spawn failed".to_string(),
-        };
+        });
         assert_eq!(
             format!("{}", err),
             "failed to execute command \"echo\": spawn failed"
@@ -1478,6 +1653,10 @@ mod tests {
                     page_faults: Some(10),
                     ctx_switches: Some(5),
                     max_rss_kb: Some(2048),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: Some(4096),
                     stdout: Some("ok".into()),
                     stderr: None,
@@ -1491,47 +1670,27 @@ mod tests {
                     page_faults: None,
                     ctx_switches: None,
                     max_rss_kb: Some(2000),
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
                     binary_bytes: None,
                     stdout: None,
                     stderr: Some("warn".into()),
                 },
             ],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 95,
-                    min: 90,
-                    max: 100,
-                },
-                cpu_ms: Some(U64Summary {
-                    median: 75,
-                    min: 70,
-                    max: 80,
-                }),
-                page_faults: Some(U64Summary {
-                    median: 10,
-                    min: 10,
-                    max: 10,
-                }),
-                ctx_switches: Some(U64Summary {
-                    median: 5,
-                    min: 5,
-                    max: 5,
-                }),
-                max_rss_kb: Some(U64Summary {
-                    median: 2048,
-                    min: 2000,
-                    max: 2100,
-                }),
-                binary_bytes: Some(U64Summary {
-                    median: 4096,
-                    min: 4096,
-                    max: 4096,
-                }),
-                throughput_per_s: Some(F64Summary {
-                    median: 10.526,
-                    min: 10.0,
-                    max: 11.111,
-                }),
+                wall_ms: U64Summary::new(95, 90, 100),
+                cpu_ms: Some(U64Summary::new(75, 70, 80)),
+                page_faults: Some(U64Summary::new(10, 10, 10)),
+                ctx_switches: Some(U64Summary::new(5, 5, 5)),
+                max_rss_kb: Some(U64Summary::new(2048, 2000, 2100)),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: Some(U64Summary::new(4096, 4096, 4096)),
+                throughput_per_s: Some(F64Summary::new(10.526, 10.0, 11.111)),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -1570,15 +1729,15 @@ mod tests {
             },
             samples: vec![],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 0,
-                    min: 0,
-                    max: 0,
-                },
+                wall_ms: U64Summary::new(0, 0, 0),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -1626,26 +1785,26 @@ mod tests {
                 page_faults: Some(u64::MAX),
                 ctx_switches: Some(u64::MAX),
                 max_rss_kb: Some(u64::MAX),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: Some(u64::MAX),
                 stdout: None,
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: u64::MAX,
-                    min: 0,
-                    max: u64::MAX,
-                },
+                wall_ms: U64Summary::new(u64::MAX, 0, u64::MAX),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
-                throughput_per_s: Some(F64Summary {
-                    median: f64::MAX,
-                    min: 0.0,
-                    max: f64::MAX,
-                }),
+                throughput_per_s: Some(F64Summary::new(f64::MAX, 0.0, f64::MAX)),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -1656,22 +1815,8 @@ mod tests {
     #[test]
     fn compare_receipt_serde_roundtrip_typical() {
         let mut budgets = BTreeMap::new();
-        budgets.insert(
-            Metric::WallMs,
-            Budget {
-                threshold: 0.2,
-                warn_threshold: 0.18,
-                direction: Direction::Lower,
-            },
-        );
-        budgets.insert(
-            Metric::MaxRssKb,
-            Budget {
-                threshold: 0.15,
-                warn_threshold: 0.1,
-                direction: Direction::Lower,
-            },
-        );
+        budgets.insert(Metric::WallMs, Budget::new(0.2, 0.18, Direction::Lower));
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower));
 
         let mut deltas = BTreeMap::new();
         deltas.insert(
@@ -1682,6 +1827,8 @@ mod tests {
                 ratio: 1.1,
                 pct: 0.1,
                 regression: 0.1,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Pass,
@@ -1695,6 +1842,8 @@ mod tests {
                 ratio: 1.2207,
                 pct: 0.2207,
                 regression: 0.2207,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: MetricStatus::Fail,
@@ -1732,6 +1881,7 @@ mod tests {
                     pass: 1,
                     warn: 0,
                     fail: 1,
+                    skip: 0,
                 },
                 reasons: vec!["max_rss_kb_fail".into()],
             },
@@ -1774,6 +1924,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -1793,6 +1944,7 @@ mod tests {
                     pass: 1,
                     warn: 1,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec!["wall_ms_warn".into()],
             },
@@ -1815,6 +1967,7 @@ mod tests {
                 pass_count: 1,
                 warn_count: 1,
                 fail_count: 0,
+                skip_count: 0,
                 total_count: 2,
             },
         };
@@ -1827,6 +1980,8 @@ mod tests {
     fn config_file_serde_roundtrip_typical() {
         let config = ConfigFile {
             defaults: DefaultsConfig {
+                noise_threshold: None,
+                noise_policy: None,
                 repeat: Some(10),
                 warmup: Some(2),
                 threshold: Some(0.2),
@@ -1851,6 +2006,8 @@ mod tests {
                     m.insert(
                         Metric::WallMs,
                         BudgetOverride {
+                            noise_threshold: None,
+                            noise_policy: None,
                             threshold: Some(0.15),
                             direction: Some(Direction::Lower),
                             warn_factor: Some(0.85),
@@ -1881,41 +2038,17 @@ mod tests {
     #[test]
     fn stats_serde_roundtrip_all_fields() {
         let stats = Stats {
-            wall_ms: U64Summary {
-                median: 500,
-                min: 100,
-                max: 900,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 400,
-                min: 80,
-                max: 800,
-            }),
-            page_faults: Some(U64Summary {
-                median: 50,
-                min: 10,
-                max: 100,
-            }),
-            ctx_switches: Some(U64Summary {
-                median: 20,
-                min: 5,
-                max: 40,
-            }),
-            max_rss_kb: Some(U64Summary {
-                median: 4096,
-                min: 2048,
-                max: 8192,
-            }),
-            binary_bytes: Some(U64Summary {
-                median: 1024,
-                min: 1024,
-                max: 1024,
-            }),
-            throughput_per_s: Some(F64Summary {
-                median: 2.0,
-                min: 1.111,
-                max: 10.0,
-            }),
+            wall_ms: U64Summary::new(500, 100, 900),
+            cpu_ms: Some(U64Summary::new(400, 80, 800)),
+            page_faults: Some(U64Summary::new(50, 10, 100)),
+            ctx_switches: Some(U64Summary::new(20, 5, 40)),
+            max_rss_kb: Some(U64Summary::new(4096, 2048, 8192)),
+            io_read_bytes: Some(U64Summary::new(1000, 500, 1500)),
+            io_write_bytes: Some(U64Summary::new(500, 200, 800)),
+            network_packets: Some(U64Summary::new(10, 5, 15)),
+            energy_uj: None,
+            binary_bytes: Some(U64Summary::new(1024, 1024, 1024)),
+            throughput_per_s: Some(F64Summary::new(2.0, 1.111, 10.0)),
         };
         let json = serde_json::to_string(&stats).unwrap();
         let back: Stats = serde_json::from_str(&json).unwrap();
@@ -1925,21 +2058,17 @@ mod tests {
     #[test]
     fn stats_serde_roundtrip_edge_zeros() {
         let stats = Stats {
-            wall_ms: U64Summary {
-                median: 0,
-                min: 0,
-                max: 0,
-            },
+            wall_ms: U64Summary::new(0, 0, 0),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
-            throughput_per_s: Some(F64Summary {
-                median: 0.0,
-                min: 0.0,
-                max: 0.0,
-            }),
+            throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
         };
         let json = serde_json::to_string(&stats).unwrap();
         let back: Stats = serde_json::from_str(&json).unwrap();
@@ -2011,7 +2140,7 @@ mod tests {
             },
             "verdict": {
                 "status": "pass",
-                "counts": {"pass": 1, "warn": 0, "fail": 0},
+                "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
                 "reasons": []
             }
         }"#;
@@ -2095,20 +2224,24 @@ mod tests {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: 1,
-                    min: 1,
-                    max: 1,
-                },
+                wall_ms: U64Summary::new(1, 1, 1),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -2159,6 +2292,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: vec![],
             },
@@ -2307,6 +2441,7 @@ mod property_tests {
             proptest::option::of(0u64..1000000),   // page_faults
             proptest::option::of(0u64..1000000),   // ctx_switches
             proptest::option::of(0u64..1000000),   // max_rss_kb
+            proptest::option::of(0u64..1000000),   // energy_uj
             proptest::option::of(0u64..100000000), // binary_bytes
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
             proptest::option::of("[a-zA-Z0-9 ]{0,50}"),
@@ -2321,6 +2456,7 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    energy_uj,
                     binary_bytes,
                     stdout,
                     stderr,
@@ -2333,6 +2469,10 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj,
                     binary_bytes,
                     stdout,
                     stderr,
@@ -2345,11 +2485,7 @@ mod property_tests {
         (0u64..1000000, 0u64..1000000, 0u64..1000000).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort();
-            U64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            U64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 
@@ -2358,11 +2494,7 @@ mod property_tests {
         (0.0f64..1000000.0, 0.0f64..1000000.0, 0.0f64..1000000.0).prop_map(|(a, b, c)| {
             let mut vals = [a, b, c];
             vals.sort_by(|x, y| x.partial_cmp(y).unwrap());
-            F64Summary {
-                min: vals[0],
-                median: vals[1],
-                max: vals[2],
-            }
+            F64Summary::new(vals[1], vals[0], vals[2])
         })
     }
 
@@ -2374,6 +2506,10 @@ mod property_tests {
             proptest::option::of(u64_summary_strategy()), // page_faults
             proptest::option::of(u64_summary_strategy()), // ctx_switches
             proptest::option::of(u64_summary_strategy()), // max_rss_kb
+            proptest::option::of(u64_summary_strategy()), // io_read_bytes
+            proptest::option::of(u64_summary_strategy()), // io_write_bytes
+            proptest::option::of(u64_summary_strategy()), // network_packets
+            proptest::option::of(u64_summary_strategy()), // energy_uj
             proptest::option::of(u64_summary_strategy()), // binary_bytes
             proptest::option::of(f64_summary_strategy()),
         )
@@ -2384,6 +2520,10 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes,
+                    io_write_bytes,
+                    network_packets,
+                    energy_uj,
                     binary_bytes,
                     throughput_per_s,
                 )| Stats {
@@ -2392,6 +2532,10 @@ mod property_tests {
                     page_faults,
                     ctx_switches,
                     max_rss_kb,
+                    io_read_bytes,
+                    io_write_bytes,
+                    network_packets,
+                    energy_uj,
                     binary_bytes,
                     throughput_per_s,
                 },
@@ -2512,6 +2656,8 @@ mod property_tests {
                 // warn_threshold should be <= threshold
                 let warn_threshold = threshold * warn_factor;
                 Budget {
+                    noise_threshold: None,
+                    noise_policy: NoisePolicy::Ignore,
                     threshold,
                     warn_threshold,
                     direction,
@@ -2546,6 +2692,8 @@ mod property_tests {
                     ratio,
                     pct,
                     regression,
+                    cv: None,
+                    noise_threshold: None,
                     statistic: MetricStatistic::Median,
                     significance: None,
                     status,
@@ -2564,10 +2712,13 @@ mod property_tests {
 
     // Strategy for VerdictCounts
     fn verdict_counts_strategy() -> impl Strategy<Value = VerdictCounts> {
-        (0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail)| VerdictCounts {
-            pass,
-            warn,
-            fail,
+        (0u32..10, 0u32..10, 0u32..10, 0u32..10).prop_map(|(pass, warn, fail, skip)| {
+            VerdictCounts {
+                pass,
+                warn,
+                fail,
+                skip,
+            }
         })
     }
 
@@ -2739,6 +2890,8 @@ mod property_tests {
             proptest::option::of(0.5f64..1.0),
         )
             .prop_map(|(threshold, direction, warn_factor)| BudgetOverride {
+                noise_threshold: None,
+                noise_policy: None,
                 threshold,
                 direction,
                 warn_factor,
@@ -2804,6 +2957,8 @@ mod property_tests {
                     baseline_pattern,
                     markdown_template,
                 )| DefaultsConfig {
+                    noise_threshold: None,
+                    noise_policy: None,
                     repeat,
                     warmup,
                     threshold,
@@ -3462,14 +3617,15 @@ mod property_tests {
     }
 
     fn report_summary_strategy() -> impl Strategy<Value = ReportSummary> {
-        (0u32..100, 0u32..100, 0u32..100).prop_map(|(pass_count, warn_count, fail_count)| {
-            ReportSummary {
+        (0u32..100, 0u32..100, 0u32..100, 0u32..100).prop_map(
+            |(pass_count, warn_count, fail_count, skip_count)| ReportSummary {
                 pass_count,
                 warn_count,
                 fail_count,
-                total_count: pass_count + warn_count + fail_count,
-            }
-        })
+                skip_count,
+                total_count: pass_count + warn_count + fail_count + skip_count,
+            },
+        )
     }
 
     fn perfgate_report_strategy() -> impl Strategy<Value = PerfgateReport> {

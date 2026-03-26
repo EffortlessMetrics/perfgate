@@ -15,10 +15,16 @@ categories = ["development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true
+perfgate-error.workspace = true
 perfgate-sha256.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 hostname = "0.4"
+num_cpus = "1"
+which = "7"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

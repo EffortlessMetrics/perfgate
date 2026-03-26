@@ -1,5 +1,6 @@
 //! Error types for the perfgate server.
 
+pub use perfgate_error::AuthError;
 use thiserror::Error;
 
 /// Storage-related errors.
@@ -58,38 +59,6 @@ impl StoreError {
             project, benchmark, version
         ))
     }
-}
-
-/// Authentication-related errors.
-#[derive(Debug, Error)]
-pub enum AuthError {
-    /// Missing authentication header
-    #[error("Missing authentication header")]
-    MissingAuth,
-
-    /// Invalid API key format
-    #[error("Invalid API key format")]
-    InvalidKeyFormat,
-
-    /// Invalid API key
-    #[error("Invalid API key")]
-    InvalidKey,
-
-    /// Expired API key
-    #[error("API key has expired")]
-    ExpiredKey,
-
-    /// Invalid JWT token
-    #[error("Invalid JWT token: {0}")]
-    InvalidToken(String),
-
-    /// Expired JWT token
-    #[error("JWT token has expired")]
-    ExpiredToken,
-
-    /// Insufficient permissions
-    #[error("Insufficient permissions: required {required}, has {actual}")]
-    InsufficientPermissions { required: String, actual: String },
 }
 
 /// Server configuration errors.

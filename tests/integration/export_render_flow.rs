@@ -50,6 +50,10 @@ fn make_run_receipt() -> RunReceipt {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1024),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -63,6 +67,10 @@ fn make_run_receipt() -> RunReceipt {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1028),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -76,29 +84,25 @@ fn make_run_receipt() -> RunReceipt {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: Some(1020),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
             },
         ],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 98,
-                max: 102,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 50,
-                min: 48,
-                max: 52,
-            }),
+            wall_ms: U64Summary::new(100, 98, 102),
+            cpu_ms: Some(U64Summary::new(50, 48, 52)),
             page_faults: None,
             ctx_switches: None,
-            max_rss_kb: Some(U64Summary {
-                median: 1024,
-                min: 1020,
-                max: 1028,
-            }),
+            max_rss_kb: Some(U64Summary::new(1024, 1020, 1028)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         },
@@ -107,14 +111,7 @@ fn make_run_receipt() -> RunReceipt {
 
 fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let mut deltas = BTreeMap::new();
     deltas.insert(
@@ -125,22 +122,28 @@ fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
                 MetricStatus::Pass => 105.0,
                 MetricStatus::Warn => 115.0,
                 MetricStatus::Fail => 130.0,
+                MetricStatus::Skip => 100.0,
             },
             ratio: match status {
                 MetricStatus::Pass => 1.05,
                 MetricStatus::Warn => 1.15,
                 MetricStatus::Fail => 1.30,
+                MetricStatus::Skip => 1.0,
             },
             pct: match status {
                 MetricStatus::Pass => 0.05,
                 MetricStatus::Warn => 0.15,
                 MetricStatus::Fail => 0.30,
+                MetricStatus::Skip => 0.0,
             },
             regression: match status {
                 MetricStatus::Pass => 0.05,
                 MetricStatus::Warn => 0.15,
                 MetricStatus::Fail => 0.30,
+                MetricStatus::Skip => 0.0,
             },
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status,
@@ -151,6 +154,7 @@ fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
         MetricStatus::Pass => VerdictStatus::Pass,
         MetricStatus::Warn => VerdictStatus::Warn,
         MetricStatus::Fail => VerdictStatus::Fail,
+        MetricStatus::Skip => VerdictStatus::Skip,
     };
 
     CompareReceipt {
@@ -184,9 +188,10 @@ fn make_compare_receipt(status: MetricStatus) -> CompareReceipt {
                 pass: if status == MetricStatus::Pass { 1 } else { 0 },
                 warn: if status == MetricStatus::Warn { 1 } else { 0 },
                 fail: if status == MetricStatus::Fail { 1 } else { 0 },
+                skip: if status == MetricStatus::Skip { 1 } else { 0 },
             },
             reasons: match status {
-                MetricStatus::Pass => vec![],
+                MetricStatus::Pass | MetricStatus::Skip => vec![],
                 MetricStatus::Warn => vec!["wall_ms_warn".to_string()],
                 MetricStatus::Fail => vec!["wall_ms_fail".to_string()],
             },
@@ -345,22 +350,8 @@ fn run_export_to_prometheus() {
 #[test]
 fn multiple_metrics_in_compare_flow() {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.30,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.30, 0.15, Direction::Lower));
 
     let mut deltas = BTreeMap::new();
     deltas.insert(
@@ -371,6 +362,8 @@ fn multiple_metrics_in_compare_flow() {
             ratio: 1.15,
             pct: 0.15,
             regression: 0.15,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status: MetricStatus::Warn,
@@ -379,11 +372,13 @@ fn multiple_metrics_in_compare_flow() {
     deltas.insert(
         Metric::MaxRssKb,
         Delta {
-            baseline: 1000.0,
-            current: 1500.0,
-            ratio: 1.50,
-            pct: 0.50,
-            regression: 0.50,
+            baseline: 100.0,
+            current: 135.0,
+            ratio: 1.35,
+            pct: 0.35,
+            regression: 0.35,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status: MetricStatus::Fail,
@@ -421,6 +416,7 @@ fn multiple_metrics_in_compare_flow() {
                 pass: 0,
                 warn: 1,
                 fail: 1,
+                skip: 0,
             },
             reasons: vec!["wall_ms_warn".to_string(), "max_rss_kb_fail".to_string()],
         },

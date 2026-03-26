@@ -21,6 +21,7 @@ jobs:
         with:
           config: .ci/perfgate-pr.toml
           all: "true"
+          mode: cockpit
           out_dir: artifacts/perfgate-smoke
           artifact_name: perfgate-artifacts-smoke
       - name: Verify artifacts

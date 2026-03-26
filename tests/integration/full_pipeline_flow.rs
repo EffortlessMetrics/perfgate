@@ -26,6 +26,10 @@ fn make_sample(wall_ms: u64) -> Sample {
         page_faults: None,
         ctx_switches: None,
         max_rss_kb: Some(1024),
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
+        energy_uj: None,
         binary_bytes: None,
         stdout: None,
         stderr: None,
@@ -89,14 +93,7 @@ fn full_pipeline_pass_verdict() {
 
     // 3. Compare stats with budgets
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -122,14 +119,7 @@ fn full_pipeline_warn_verdict() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -150,14 +140,7 @@ fn full_pipeline_fail_verdict() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -187,6 +170,10 @@ fn full_pipeline_multiple_metrics() {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: Some(1000),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: None,
             stderr: None,
@@ -200,6 +187,10 @@ fn full_pipeline_multiple_metrics() {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: Some(1000),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: None,
             stderr: None,
@@ -215,6 +206,10 @@ fn full_pipeline_multiple_metrics() {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: Some(1500),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: None,
             stderr: None,
@@ -228,6 +223,10 @@ fn full_pipeline_multiple_metrics() {
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: Some(1500),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: None,
             stderr: None,
@@ -238,22 +237,8 @@ fn full_pipeline_multiple_metrics() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.30,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.30, 0.15, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -274,19 +259,15 @@ fn full_pipeline_multiple_metrics() {
 #[test]
 fn full_pipeline_evaluate_budget_directly() {
     // Test the individual budget evaluation step
-    let budget = Budget {
-        threshold: 0.20,
-        warn_threshold: 0.10,
-        direction: Direction::Lower,
-    };
+    let budget = Budget::new(0.20, 0.10, Direction::Lower);
 
-    let pass = evaluate_budget(100.0, 105.0, &budget).unwrap();
+    let pass = evaluate_budget(100.0, 105.0, &budget, None).unwrap();
     assert_eq!(pass.status, MetricStatus::Pass);
 
-    let warn = evaluate_budget(100.0, 115.0, &budget).unwrap();
+    let warn = evaluate_budget(100.0, 115.0, &budget, None).unwrap();
     assert_eq!(warn.status, MetricStatus::Warn);
 
-    let fail = evaluate_budget(100.0, 125.0, &budget).unwrap();
+    let fail = evaluate_budget(100.0, 125.0, &budget, None).unwrap();
     assert_eq!(fail.status, MetricStatus::Fail);
 }
 
@@ -299,14 +280,7 @@ fn full_pipeline_improvement_is_pass() {
     let current_stats = compute_stats(&current_samples, None).unwrap();
 
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.05,
-            warn_threshold: 0.03,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.05, 0.03, Direction::Lower));
 
     let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).unwrap();
 
@@ -331,6 +305,7 @@ fn sensor_report_from_run_receipt_pass() {
                 pass: 1,
                 warn: 0,
                 fail: 0,
+                skip: 0,
             },
             reasons: vec![],
         },
@@ -340,6 +315,7 @@ fn sensor_report_from_run_receipt_pass() {
             pass_count: 1,
             warn_count: 0,
             fail_count: 0,
+            skip_count: 0,
             total_count: 1,
         },
     };
@@ -376,6 +352,7 @@ fn sensor_report_serializes_to_valid_json() {
                 pass: 1,
                 warn: 0,
                 fail: 0,
+                skip: 0,
             },
             reasons: vec![],
         },
@@ -385,6 +362,7 @@ fn sensor_report_serializes_to_valid_json() {
             pass_count: 1,
             warn_count: 0,
             fail_count: 0,
+            skip_count: 0,
             total_count: 1,
         },
     };
@@ -468,6 +446,10 @@ fn export_run_receipt_csv_optional_metrics_present() {
         page_faults: None,
         ctx_switches: None,
         max_rss_kb: Some(2048),
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
+        energy_uj: None,
         binary_bytes: None,
         stdout: None,
         stderr: None,

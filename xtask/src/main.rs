@@ -1130,9 +1130,13 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             }
 
             // Group by bench name
-            let mut by_bench: std::collections::BTreeMap<String, Vec<f64>> = std::collections::BTreeMap::new();
+            let mut by_bench: std::collections::BTreeMap<String, Vec<f64>> =
+                std::collections::BTreeMap::new();
             for row in all_rows {
-                by_bench.entry(row.bench_name).or_default().push(row.wall_ms_median as f64);
+                by_bench
+                    .entry(row.bench_name)
+                    .or_default()
+                    .push(row.wall_ms_median as f64);
             }
 
             println!("\n## Weekly Variance Summary");
@@ -1148,10 +1152,15 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
                     continue;
                 }
 
-                let (mean, variance) = perfgate_stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
+                let (mean, variance) =
+                    perfgate_stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
                 let stddev = variance.sqrt();
-                let cv = if mean > 0.0 { (stddev / mean) * 100.0 } else { 0.0 };
-                
+                let cv = if mean > 0.0 {
+                    (stddev / mean) * 100.0
+                } else {
+                    0.0
+                };
+
                 // Recommended Threshold: usually 3x CV + small buffer
                 let rec_thresh = (cv * 3.0).max(5.0); // minimum 5% threshold
 

@@ -109,8 +109,9 @@ pub use error::ClientError;
 pub use fallback::FallbackClient;
 pub use types::{
     BaselineRecord, BaselineSource, BaselineSummary, DeleteBaselineResponse, HealthResponse,
-    ListBaselinesQuery, ListBaselinesResponse, PaginationInfo, PromoteBaselineRequest,
-    PromoteBaselineResponse, StorageHealth, UploadBaselineRequest, UploadBaselineResponse,
+    ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery, ListVerdictsResponse,
+    PaginationInfo, PromoteBaselineRequest, PromoteBaselineResponse, StorageHealth,
+    SubmitVerdictRequest, UploadBaselineRequest, UploadBaselineResponse, VerdictRecord,
 };
 
 #[cfg(test)]

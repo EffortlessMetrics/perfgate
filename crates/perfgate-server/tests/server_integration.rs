@@ -48,7 +48,7 @@ async fn test_health_check_mock() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .and(path("/health"))
+        .and(path("/api/v1/health"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "status": "healthy",
             "version": "0.0.0",
@@ -60,7 +60,7 @@ async fn test_health_check_mock() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri());
+    let config = ClientConfig::new(format!("{}/api/v1", mock_server.uri()));
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client.health_check().await;
@@ -76,7 +76,7 @@ async fn test_upload_baseline_mock() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path("/projects/test-project/baselines"))
+        .and(path("/api/v1/projects/test-project/baselines"))
         .and(header(
             "Authorization",
             format!("Bearer {}", CONTRIBUTOR_KEY),
@@ -91,12 +91,16 @@ async fn test_upload_baseline_mock() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri()).with_api_key(CONTRIBUTOR_KEY);
+    let config =
+        ClientConfig::new(format!("{}/api/v1", mock_server.uri())).with_api_key(CONTRIBUTOR_KEY);
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let request = create_test_upload_request("test-bench");
     let result = client.upload_baseline("test-project", &request).await;
 
+    if let Err(ref e) = result {
+        println!("ERROR upload: {:?}", e);
+    }
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response.benchmark, "test-bench");
@@ -110,7 +114,9 @@ async fn test_get_latest_baseline_mock() {
     let receipt = common::create_test_receipt("my-benchmark");
 
     Mock::given(method("GET"))
-        .and(path("/projects/my-project/baselines/my-benchmark/latest"))
+        .and(path(
+            "/api/v1/projects/my-project/baselines/my-benchmark/latest",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "schema": "perfgate.baseline.v1",
             "id": "perfgate_xyz789",
@@ -131,13 +137,16 @@ async fn test_get_latest_baseline_mock() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri());
+    let config = ClientConfig::new(format!("{}/api/v1", mock_server.uri()));
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client
         .get_latest_baseline("my-project", "my-benchmark")
         .await;
 
+    if let Err(ref e) = result {
+        println!("ERROR get_latest: {:?}", e);
+    }
     assert!(result.is_ok());
     let baseline = result.unwrap();
     assert_eq!(baseline.benchmark, "my-benchmark");
@@ -150,14 +159,15 @@ async fn test_list_baselines_mock() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .and(path("/projects/list-project/baselines"))
+        .and(path("/api/v1/projects/list-project/baselines"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "baselines": [
                 {
                     "id": "perfgate_1",
                     "benchmark": "bench-1",
                     "version": "v1",
-                    "created_at": "2024-01-15T10:00:00Z"
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "tags": []
                 }
             ],
             "pagination": {
@@ -170,12 +180,15 @@ async fn test_list_baselines_mock() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri());
+    let config = ClientConfig::new(format!("{}/api/v1", mock_server.uri()));
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let query = ListBaselinesQuery::new();
     let result = client.list_baselines("list-project", &query).await;
 
+    if let Err(ref e) = result {
+        println!("ERROR list: {:?}", e);
+    }
     assert!(result.is_ok());
     let response = result.unwrap();
     assert!(!response.baselines.is_empty());
@@ -188,24 +201,28 @@ async fn test_delete_baseline_mock() {
 
     Mock::given(method("DELETE"))
         .and(path(
-            "/projects/del-project/baselines/del-bench/versions/v1",
+            "/api/v1/projects/del-project/baselines/del-bench/versions/v1",
         ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "deleted": true,
             "id": "perfgate_del",
             "benchmark": "del-bench",
-            "version": "v1"
+            "version": "v1",
+            "deleted_at": "2024-01-15T10:00:00Z"
         })))
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri()).with_api_key(ADMIN_KEY);
+    let config = ClientConfig::new(format!("{}/api/v1", mock_server.uri())).with_api_key(ADMIN_KEY);
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client
         .delete_baseline("del-project", "del-bench", "v1")
         .await;
 
+    if let Err(ref e) = result {
+        println!("ERROR delete: {:?}", e);
+    }
     assert!(result.is_ok());
 }
 
@@ -215,18 +232,22 @@ async fn test_promote_baseline_mock() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path("/projects/prom-project/baselines/prom-bench/promote"))
+        .and(path(
+            "/api/v1/projects/prom-project/baselines/prom-bench/promote",
+        ))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "id": "perfgate_promoted",
             "benchmark": "prom-bench",
             "version": "production",
             "promoted_from": "v1",
+            "promoted_at": "2024-01-15T10:00:00Z",
             "created_at": "2024-01-15T10:00:00Z"
         })))
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri()).with_api_key(PROMOTER_KEY);
+    let config =
+        ClientConfig::new(format!("{}/api/v1", mock_server.uri())).with_api_key(PROMOTER_KEY);
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let request = perfgate_client::types::PromoteBaselineRequest {
@@ -234,6 +255,7 @@ async fn test_promote_baseline_mock() {
         to_version: "production".to_string(),
         git_ref: Some("main".to_string()),
         git_sha: Some("def456".to_string()),
+        tags: vec![],
         normalize: false,
     };
 
@@ -241,6 +263,9 @@ async fn test_promote_baseline_mock() {
         .promote_baseline("prom-project", "prom-bench", &request)
         .await;
 
+    if let Err(ref e) = result {
+        println!("ERROR promote: {:?}", e);
+    }
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response.version, "production");
@@ -252,7 +277,9 @@ async fn test_not_found_error() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .and(path("/projects/my-project/baselines/nonexistent/latest"))
+        .and(path(
+            "/api/v1/projects/my-project/baselines/nonexistent/latest",
+        ))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
             "error": {
                 "code": "NOT_FOUND",
@@ -262,7 +289,7 @@ async fn test_not_found_error() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri());
+    let config = ClientConfig::new(format!("{}/api/v1", mock_server.uri()));
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client
@@ -280,7 +307,7 @@ async fn test_auth_error() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .and(path("/projects/my-project/baselines/bench/latest"))
+        .and(path("/api/v1/projects/my-project/baselines/bench/latest"))
         .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
             "error": {
                 "code": "UNAUTHORIZED",
@@ -290,8 +317,8 @@ async fn test_auth_error() {
         .mount(&mock_server)
         .await;
 
-    let config =
-        ClientConfig::new(mock_server.uri()).with_api_key("pg_test_invalid_0000000000000000000000");
+    let config = ClientConfig::new(format!("{}/api/v1", mock_server.uri()))
+        .with_api_key("pg_test_invalid_0000000000000000000000");
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client.get_latest_baseline("my-project", "bench").await;
@@ -307,7 +334,9 @@ async fn test_forbidden_error() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("DELETE"))
-        .and(path("/projects/my-project/baselines/bench/versions/v1"))
+        .and(path(
+            "/api/v1/projects/my-project/baselines/bench/versions/v1",
+        ))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
             "error": {
                 "code": "FORBIDDEN",
@@ -317,7 +346,8 @@ async fn test_forbidden_error() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri()).with_api_key(VIEWER_KEY);
+    let config =
+        ClientConfig::new(format!("{}/api/v1", mock_server.uri())).with_api_key(VIEWER_KEY);
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let result = client.delete_baseline("my-project", "bench", "v1").await;
@@ -334,7 +364,7 @@ async fn test_conflict_error() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path("/projects/my-project/baselines"))
+        .and(path("/api/v1/projects/my-project/baselines"))
         .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
             "error": {
                 "code": "ALREADY_EXISTS",
@@ -344,7 +374,8 @@ async fn test_conflict_error() {
         .mount(&mock_server)
         .await;
 
-    let config = ClientConfig::new(mock_server.uri()).with_api_key(CONTRIBUTOR_KEY);
+    let config =
+        ClientConfig::new(format!("{}/api/v1", mock_server.uri())).with_api_key(CONTRIBUTOR_KEY);
     let client = BaselineClient::new(config).expect("Failed to create client");
 
     let request = create_test_upload_request("test-bench");

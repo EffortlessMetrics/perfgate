@@ -4,12 +4,16 @@ use perfgate_types::{Budget, Metric, MetricStatistic, RunReceipt};
 use std::collections::BTreeMap;
 
 /// Build budgets for comparing two receipts.
+#[allow(clippy::too_many_arguments)]
 pub fn build_budgets(
     baseline: &RunReceipt,
     current: &RunReceipt,
     global_threshold: f64,
     global_warn_factor: f64,
+    global_noise_threshold: Option<f64>,
+    global_noise_policy: Option<perfgate_types::NoisePolicy>,
     metric_thresholds: Vec<(String, f64)>,
+    noise_thresholds: Vec<(String, f64)>,
     direction_overrides: Vec<(String, String)>,
 ) -> anyhow::Result<BTreeMap<Metric, Budget>> {
     // Determine candidate metrics: those present in both baseline+current.
@@ -35,6 +39,7 @@ pub fn build_budgets(
     }
 
     let mut thresholds: BTreeMap<String, f64> = metric_thresholds.into_iter().collect();
+    let mut noise_limits: BTreeMap<String, f64> = noise_thresholds.into_iter().collect();
     let mut dirs: BTreeMap<String, String> = direction_overrides.into_iter().collect();
 
     let mut budgets = BTreeMap::new();
@@ -43,6 +48,9 @@ pub fn build_budgets(
         let key = metric.as_str();
         let threshold = thresholds.remove(key).unwrap_or(global_threshold);
         let warn_threshold = threshold * global_warn_factor;
+        let noise_threshold = noise_limits.remove(key).or(global_noise_threshold);
+        let noise_policy = global_noise_policy.unwrap_or(perfgate_types::NoisePolicy::Warn);
+
         let dir = match dirs.remove(key).as_deref() {
             Some("lower") => perfgate_types::Direction::Lower,
             Some("higher") => perfgate_types::Direction::Higher,
@@ -57,6 +65,8 @@ pub fn build_budgets(
             Budget {
                 threshold,
                 warn_threshold,
+                noise_threshold,
+                noise_policy,
                 direction: dir,
             },
         );

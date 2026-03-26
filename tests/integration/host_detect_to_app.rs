@@ -36,15 +36,15 @@ fn make_run_receipt(host: HostInfo) -> RunReceipt {
         },
         samples: vec![],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         },
@@ -53,14 +53,7 @@ fn make_run_receipt(host: HostInfo) -> RunReceipt {
 
 fn make_budgets() -> BTreeMap<Metric, Budget> {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.20,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
     budgets
 }
 

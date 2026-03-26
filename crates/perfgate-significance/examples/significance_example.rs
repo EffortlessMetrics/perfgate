@@ -14,7 +14,7 @@ fn main() {
     match result {
         Some(sig) => {
             println!("Welch's t-test results:");
-            println!("  p-value:    {:.6}", sig.p_value);
+            println!("  p-value:    {:.6}", sig.p_value.unwrap_or(1.0));
             println!("  alpha:      {}", sig.alpha);
             println!("  significant: {}", sig.significant);
             println!("  baseline_n: {}", sig.baseline_samples);
@@ -32,7 +32,7 @@ fn main() {
     match result2 {
         Some(sig) => {
             println!("\nIdentical distributions:");
-            println!("  p-value:     {:.6}", sig.p_value);
+            println!("  p-value:     {:.6}", sig.p_value.unwrap_or(1.0));
             println!("  significant: {}", sig.significant);
             assert!(!sig.significant, "Expected no significant difference");
         }

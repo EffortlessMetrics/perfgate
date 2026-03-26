@@ -8,3 +8,11 @@ fuzz_target!(|data: &[u8]| {
         let _ = toml::from_str::<perfgate_types::ConfigFile>(s);
     }
 });
+
+
+
+
+
+
+
+

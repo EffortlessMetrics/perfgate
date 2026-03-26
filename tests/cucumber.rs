@@ -9,6 +9,7 @@
 //! - Then steps: exit code and output assertions
 
 use assert_cmd::Command;
+use cucumber::gherkin::Step;
 use cucumber::{World, given, then, when};
 use std::collections::BTreeMap;
 use std::fs;
@@ -27,7 +28,8 @@ use perfgate_types::{
 // Microcrate imports for direct testing
 use perfgate_budget::{aggregate_verdict, evaluate_budget, reason_token as budget_reason_token};
 use perfgate_error::{
-    AdapterError, ConfigValidationError, IoError, PairedError, StatsError, ValidationError,
+    AdapterError, ConfigValidationError, IoError, PairedError, PerfgateError, StatsError,
+    ValidationError,
 };
 use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_host_detect::detect_host_mismatch;
@@ -141,6 +143,16 @@ pub struct PerfgateWorld {
     significance_result: Option<perfgate_types::Significance>,
     /// Mock server for baseline service tests
     server: Option<wiremock::MockServer>,
+    /// Role for auth tests
+    current_role: Option<perfgate_auth::Role>,
+    /// Generated API key
+    last_api_key: Option<String>,
+    /// Microcrate test state: baseline Cargo.lock
+    baseline_lockfile: Option<String>,
+    /// Microcrate test state: current Cargo.lock
+    current_lockfile: Option<String>,
+    /// Microcrate test state: binary blame result
+    binary_blame: Option<perfgate_domain::BinaryBlame>,
 }
 
 impl PerfgateWorld {
@@ -198,20 +210,28 @@ impl PerfgateWorld {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
             }],
             stats: Stats {
-                wall_ms: U64Summary {
-                    median: wall_ms_median,
-                    min: wall_ms_median.saturating_sub(10),
-                    max: wall_ms_median.saturating_add(10),
-                },
+                wall_ms: U64Summary::new(
+                    wall_ms_median,
+                    wall_ms_median.saturating_sub(10),
+                    wall_ms_median.saturating_add(10),
+                ),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -237,6 +257,10 @@ impl PerfgateWorld {
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 stdout: None,
                 stderr: None,
@@ -272,11 +296,15 @@ impl PerfgateWorld {
             },
             samples,
             stats: Stats {
-                wall_ms: U64Summary { median, min, max },
+                wall_ms: U64Summary::new(median, min, max),
                 cpu_ms: None,
                 page_faults: None,
                 ctx_switches: None,
                 max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
             },
@@ -296,6 +324,7 @@ impl PerfgateWorld {
             VerdictStatus::Pass => MetricStatus::Pass,
             VerdictStatus::Warn => MetricStatus::Warn,
             VerdictStatus::Fail => MetricStatus::Fail,
+            VerdictStatus::Skip => MetricStatus::Skip,
         };
 
         let mut deltas = BTreeMap::new();
@@ -307,6 +336,8 @@ impl PerfgateWorld {
                 ratio,
                 pct,
                 regression,
+                cv: None,
+                noise_threshold: None,
                 statistic: MetricStatistic::Median,
                 significance: None,
                 status: metric_status,
@@ -314,7 +345,7 @@ impl PerfgateWorld {
         );
 
         let reasons = match verdict_status {
-            VerdictStatus::Pass => vec![],
+            VerdictStatus::Pass | VerdictStatus::Skip => vec![],
             VerdictStatus::Warn => vec!["wall_ms_warn".to_string()],
             VerdictStatus::Fail => vec!["wall_ms_fail".to_string()],
         };
@@ -324,16 +355,25 @@ impl PerfgateWorld {
                 pass: 1,
                 warn: 0,
                 fail: 0,
+                skip: 0,
             },
             VerdictStatus::Warn => VerdictCounts {
                 pass: 0,
                 warn: 1,
                 fail: 0,
+                skip: 0,
             },
             VerdictStatus::Fail => VerdictCounts {
                 pass: 0,
                 warn: 0,
                 fail: 1,
+                skip: 0,
+            },
+            VerdictStatus::Skip => VerdictCounts {
+                pass: 0,
+                warn: 0,
+                fail: 0,
+                skip: 1,
             },
         };
 
@@ -541,11 +581,11 @@ async fn given_markdown_template_file(world: &mut PerfgateWorld, content: String
 async fn given_baseline_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u64) {
     world.ensure_temp_dir();
     let mut receipt = world.create_run_receipt(world.baseline_wall_ms.unwrap_or(1000));
-    receipt.stats.max_rss_kb = Some(U64Summary {
-        median: max_rss_kb,
-        min: max_rss_kb.saturating_sub(100),
-        max: max_rss_kb.saturating_add(100),
-    });
+    receipt.stats.max_rss_kb = Some(U64Summary::new(
+        max_rss_kb,
+        max_rss_kb.saturating_sub(100),
+        max_rss_kb.saturating_add(100),
+    ));
     let baseline_path = world.temp_path().join("baseline.json");
 
     let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize baseline");
@@ -558,11 +598,11 @@ async fn given_baseline_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: 
 async fn given_current_receipt_with_rss(world: &mut PerfgateWorld, max_rss_kb: u64) {
     world.ensure_temp_dir();
     let mut receipt = world.create_run_receipt(world.current_wall_ms.unwrap_or(1000));
-    receipt.stats.max_rss_kb = Some(U64Summary {
-        median: max_rss_kb,
-        min: max_rss_kb.saturating_sub(100),
-        max: max_rss_kb.saturating_add(100),
-    });
+    receipt.stats.max_rss_kb = Some(U64Summary::new(
+        max_rss_kb,
+        max_rss_kb.saturating_sub(100),
+        max_rss_kb.saturating_add(100),
+    ));
     let current_path = world.temp_path().join("current.json");
 
     let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize current");
@@ -1409,6 +1449,7 @@ async fn then_verdict(world: &mut PerfgateWorld, expected: String) {
         VerdictStatus::Pass => "pass",
         VerdictStatus::Warn => "warn",
         VerdictStatus::Fail => "fail",
+        VerdictStatus::Skip => "skip",
     };
 
     assert_eq!(
@@ -2695,6 +2736,7 @@ async fn then_report_verdict(world: &mut PerfgateWorld, expected: String) {
         VerdictStatus::Pass => "pass",
         VerdictStatus::Warn => "warn",
         VerdictStatus::Fail => "fail",
+        VerdictStatus::Skip => "skip",
     };
 
     assert_eq!(
@@ -2859,6 +2901,8 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -2909,6 +2953,8 @@ async fn given_config_file_with_bench_threshold(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(threshold),
@@ -2960,6 +3006,8 @@ async fn given_config_file_with_bench_threshold_warn(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(threshold),
@@ -3008,6 +3056,8 @@ async fn given_config_file_with_defaults_repeat_warmup(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(repeat),
             warmup: Some(warmup),
             threshold: Some(0.20),
@@ -3042,6 +3092,8 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(repeat),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3126,6 +3178,8 @@ async fn given_config_file_with_bench_baseline_dir(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3175,6 +3229,8 @@ async fn given_config_file_with_bench_baseline_pattern(
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3369,6 +3425,8 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.20),
@@ -3419,6 +3477,8 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
 
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.0),
@@ -3473,6 +3533,8 @@ async fn given_config_file_with_benches_lenient(
     // threshold=100000.0 (very lenient, no fail), warn_factor=0.0 (warn at any regression)
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(100_000.0),
@@ -3532,6 +3594,8 @@ async fn given_config_file_with_mixed_thresholds(
     lenient_budgets.insert(
         Metric::WallMs,
         BudgetOverride {
+            noise_threshold: None,
+            noise_policy: None,
             threshold: Some(100_000.0),
             direction: None,
             warn_factor: Some(0.0),
@@ -3553,6 +3617,8 @@ async fn given_config_file_with_mixed_thresholds(
     // Default threshold=0.0 makes regressions fail unless overridden
     let config = ConfigFile {
         defaults: DefaultsConfig {
+            noise_threshold: None,
+            noise_policy: None,
             repeat: Some(1),
             warmup: Some(0),
             threshold: Some(0.0),
@@ -4253,20 +4319,24 @@ async fn given_run_receipt_for_export(world: &mut PerfgateWorld, bench_name: Str
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             stdout: None,
             stderr: None,
         }],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 100,
-                min: 100,
-                max: 100,
-            },
+            wall_ms: U64Summary::new(100, 100, 100),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         },
@@ -4320,6 +4390,7 @@ async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: Str
         VerdictStatus::Pass => MetricStatus::Pass,
         VerdictStatus::Warn => MetricStatus::Warn,
         VerdictStatus::Fail => MetricStatus::Fail,
+        VerdictStatus::Skip => MetricStatus::Skip,
     };
 
     let mut deltas = BTreeMap::new();
@@ -4331,6 +4402,8 @@ async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: Str
             ratio: 1.5,
             pct: 0.5,
             regression: 0.5,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status: metric_status,
@@ -4376,6 +4449,11 @@ async fn given_compare_receipt_for_render(world: &mut PerfgateWorld, status: Str
                     0
                 },
                 fail: if verdict_status == VerdictStatus::Fail {
+                    1
+                } else {
+                    0
+                },
+                skip: if verdict_status == VerdictStatus::Skip {
                     1
                 } else {
                     0
@@ -4453,6 +4531,11 @@ async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
                 } else {
                     0
                 },
+                skip: if verdict_status == VerdictStatus::Skip {
+                    1
+                } else {
+                    0
+                },
             },
             reasons: vec![],
         },
@@ -4474,7 +4557,12 @@ async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
             } else {
                 0
             },
-            total_count: 2,
+            skip_count: if verdict_status == VerdictStatus::Skip {
+                1
+            } else {
+                0
+            },
+            total_count: 4,
         },
     }));
 }
@@ -4566,7 +4654,7 @@ async fn when_convert_paired_error_no_samples(world: &mut PerfgateWorld) {
 #[when("I convert std::io::Error to PerfgateError")]
 async fn when_convert_std_io_error(world: &mut PerfgateWorld) {
     let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-    world.perfgate_error = Some(std_err.into());
+    world.perfgate_error = Some(PerfgateError::Io(perfgate_error::IoError::from(std_err)));
 }
 
 #[then(expr = "the error category should be {string}")]
@@ -4633,6 +4721,8 @@ async fn given_budget_direction_lower(
     warn_threshold: f64,
 ) {
     world.test_budget = Some(perfgate_types::Budget {
+        noise_threshold: None,
+        noise_policy: perfgate_types::NoisePolicy::Ignore,
         threshold,
         warn_threshold,
         direction: perfgate_types::Direction::Lower,
@@ -4646,6 +4736,8 @@ async fn given_budget_direction_higher(
     warn_threshold: f64,
 ) {
     world.test_budget = Some(perfgate_types::Budget {
+        noise_threshold: None,
+        noise_policy: perfgate_types::NoisePolicy::Ignore,
         threshold,
         warn_threshold,
         direction: perfgate_types::Direction::Higher,
@@ -4655,7 +4747,7 @@ async fn given_budget_direction_higher(
 #[when(expr = "I evaluate budget with baseline {float} and current {float}")]
 async fn when_evaluate_budget(world: &mut PerfgateWorld, baseline: f64, current: f64) {
     let budget = world.test_budget.as_ref().expect("Budget not set");
-    match evaluate_budget(baseline, current, budget) {
+    match evaluate_budget(baseline, current, budget, None) {
         Ok(result) => {
             world.budget_result = Some(result);
             world.budget_error = None;
@@ -4674,6 +4766,7 @@ async fn then_budget_status_should_be(world: &mut PerfgateWorld, expected: Strin
         perfgate_types::MetricStatus::Pass => "pass",
         perfgate_types::MetricStatus::Warn => "warn",
         perfgate_types::MetricStatus::Fail => "fail",
+        perfgate_types::MetricStatus::Skip => "skip",
     };
     assert_eq!(
         actual, expected,
@@ -4736,6 +4829,7 @@ async fn then_aggregated_verdict_should_be(world: &mut PerfgateWorld, expected: 
         perfgate_types::VerdictStatus::Pass => "pass",
         perfgate_types::VerdictStatus::Warn => "warn",
         perfgate_types::VerdictStatus::Fail => "fail",
+        perfgate_types::VerdictStatus::Skip => "skip",
     };
     assert_eq!(
         actual, expected,
@@ -4827,7 +4921,7 @@ async fn then_result_should_be_significant(world: &mut PerfgateWorld) {
     assert!(
         result.significant,
         "Expected result to be significant, but it is not (p-value: {})",
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4840,7 +4934,7 @@ async fn then_result_should_not_be_significant(world: &mut PerfgateWorld) {
     assert!(
         !result.significant,
         "Expected result to not be significant, but it is (p-value: {})",
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4860,10 +4954,10 @@ async fn then_p_value_should_be_less_than(world: &mut PerfgateWorld, threshold: 
         .as_ref()
         .expect("Significance result not set");
     assert!(
-        result.p_value < threshold,
+        result.p_value.unwrap_or(1.0) < threshold,
         "Expected p-value < {}, got {}",
         threshold,
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4874,10 +4968,10 @@ async fn then_p_value_should_be_approximately(world: &mut PerfgateWorld, expecte
         .as_ref()
         .expect("Significance result not set");
     assert!(
-        (result.p_value - expected).abs() < 0.01,
+        (result.p_value.unwrap_or(1.0) - expected).abs() < 0.01,
         "Expected p-value ≈ {}, got {}",
         expected,
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -4888,10 +4982,10 @@ async fn then_p_value_should_be(world: &mut PerfgateWorld, expected: f64) {
         .as_ref()
         .expect("Significance result not set");
     assert!(
-        (result.p_value - expected).abs() < 1e-10,
+        (result.p_value.unwrap_or(1.0) - expected).abs() < 1e-10,
         "Expected p-value {}, got {}",
         expected,
-        result.p_value
+        result.p_value.unwrap_or(1.0)
     );
 }
 
@@ -5005,8 +5099,6 @@ async fn when_baseline_delete_no_server(world: &mut PerfgateWorld) {
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
 }
 
-use cucumber::gherkin::Step;
-
 #[given(expr = "a compare receipt exists at {string} with:")]
 async fn given_compare_receipt_exists_with(
     world: &mut PerfgateWorld,
@@ -5037,7 +5129,9 @@ async fn given_compare_receipt_exists_with(
 
             let metric = match metric_name.as_str() {
                 "wall_ms" => perfgate_types::Metric::WallMs,
-                _ => panic!("unknown metric"),
+                "binary_bytes" => perfgate_types::Metric::BinaryBytes,
+                _ => perfgate_types::Metric::parse_key(metric_name)
+                    .unwrap_or_else(|| panic!("unknown metric: {}", metric_name)),
             };
 
             receipt.deltas.insert(
@@ -5048,6 +5142,8 @@ async fn given_compare_receipt_exists_with(
                     ratio: 1.0 + pct,
                     pct,
                     regression: if pct > 0.0 { pct } else { 0.0 },
+                    cv: None,
+                    noise_threshold: None,
                     statistic: perfgate_types::MetricStatistic::Median,
                     significance: None,
                     status,
@@ -5084,20 +5180,24 @@ async fn then_command_should_succeed(world: &mut PerfgateWorld) {
 #[given("a mock baseline server is running")]
 async fn given_mock_server(world: &mut PerfgateWorld) {
     let server = wiremock::MockServer::start().await;
-    
+
     // Mock the upload endpoint
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path_regex(r"^/api/v1/projects/[^/]+/baselines$"))
-        .respond_with(wiremock::ResponseTemplate::new(201).set_body_json(serde_json::json!({
-            "id": "new-baseline-id",
-            "benchmark": "bench1",
-            "version": "v1",
-            "created_at": "2026-01-01T00:00:00Z",
-            "etag": "test-etag"
-        })))
+        .and(wiremock::matchers::path_regex(
+            r"^/api/v1/projects/[^/]+/baselines$",
+        ))
+        .respond_with(
+            wiremock::ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": "new-baseline-id",
+                "benchmark": "bench1",
+                "version": "v1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "etag": "test-etag"
+            })),
+        )
         .mount(&server)
         .await;
-        
+
     world.server = Some(server);
 }
 
@@ -5108,7 +5208,7 @@ async fn given_baseline_file_exists_at(world: &mut PerfgateWorld, path_str: Stri
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).unwrap();
     }
-    
+
     // Create a dummy run receipt
     let receipt = world.create_run_receipt(100);
     // Set bench name to match file name if possible
@@ -5116,7 +5216,7 @@ async fn given_baseline_file_exists_at(world: &mut PerfgateWorld, path_str: Stri
     if let Some(stem) = path.file_stem() {
         receipt.bench.name = stem.to_string_lossy().to_string();
     }
-    
+
     let json = serde_json::to_string_pretty(&receipt).unwrap();
     std::fs::write(path, json).unwrap();
 }
@@ -5128,23 +5228,300 @@ async fn when_run_command(world: &mut PerfgateWorld, command: String) {
     if args.is_empty() || args[0] != "perfgate" {
         panic!("Only perfgate commands are supported in this generic step");
     }
-    
+
     let mut cmd = perfgate_cmd();
     cmd.current_dir(world.temp_path());
-    
+
     // Add server URL if mock server is running
     if let Some(ref server) = world.server {
         cmd.arg("--baseline-server").arg(server.uri() + "/api/v1");
     }
-    
+
     for arg in args.iter().skip(1) {
         cmd.arg(arg);
     }
-    
+
     let output = cmd.output().expect("Failed to execute command");
     world.last_exit_code = Some(output.status.code().unwrap_or(-1));
     world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
     world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+// ============================================================================
+// AUTH STEPS
+// ============================================================================
+
+#[then(expr = "API key {string} should be valid")]
+async fn then_api_key_valid(_world: &mut PerfgateWorld, key: String) {
+    use perfgate_auth::validate_key_format;
+    assert!(validate_key_format(&key).is_ok());
+}
+
+#[then(expr = "API key {string} should be invalid")]
+async fn then_api_key_invalid(_world: &mut PerfgateWorld, key: String) {
+    use perfgate_auth::validate_key_format;
+    assert!(validate_key_format(&key).is_err());
+}
+
+#[given(expr = "a role {string}")]
+async fn given_role(world: &mut PerfgateWorld, role_str: String) {
+    use perfgate_auth::Role;
+    let role = match role_str.as_str() {
+        "viewer" => Role::Viewer,
+        "contributor" => Role::Contributor,
+        "promoter" => Role::Promoter,
+        "admin" => Role::Admin,
+        _ => panic!("Unknown role: {}", role_str),
+    };
+    world.current_role = Some(role);
+}
+
+#[then(expr = "it should have scope {string}")]
+async fn then_role_has_scope(world: &mut PerfgateWorld, scope_str: String) {
+    use perfgate_auth::Scope;
+    let scope = match scope_str.as_str() {
+        "read" => Scope::Read,
+        "write" => Scope::Write,
+        "promote" => Scope::Promote,
+        "delete" => Scope::Delete,
+        "admin" => Scope::Admin,
+        _ => panic!("Unknown scope: {}", scope_str),
+    };
+    let role = world.current_role.expect("No role set");
+    assert!(role.has_scope(scope));
+}
+
+#[then(expr = "it should not have scope {string}")]
+async fn then_role_not_has_scope(world: &mut PerfgateWorld, scope_str: String) {
+    use perfgate_auth::Scope;
+    let scope = match scope_str.as_str() {
+        "read" => Scope::Read,
+        "write" => Scope::Write,
+        "promote" => Scope::Promote,
+        "delete" => Scope::Delete,
+        "admin" => Scope::Admin,
+        _ => panic!("Unknown scope: {}", scope_str),
+    };
+    let role = world.current_role.expect("No role set");
+    assert!(!role.has_scope(scope));
+}
+
+#[when("I generate a live API key")]
+async fn when_generate_live_key(world: &mut PerfgateWorld) {
+    use perfgate_auth::generate_api_key;
+    world.last_api_key = Some(generate_api_key(false));
+}
+
+#[when("I generate a test API key")]
+async fn when_generate_test_key(world: &mut PerfgateWorld) {
+    use perfgate_auth::generate_api_key;
+    world.last_api_key = Some(generate_api_key(true));
+}
+
+#[then(expr = "it should start with {string}")]
+async fn then_key_starts_with(world: &mut PerfgateWorld, prefix: String) {
+    let key = world.last_api_key.as_ref().expect("No API key generated");
+    assert!(key.starts_with(&prefix));
+}
+
+#[then(expr = "it should be at least {int} characters long")]
+async fn then_key_length(world: &mut PerfgateWorld, len: usize) {
+    let key = world.last_api_key.as_ref().expect("No API key generated");
+    assert!(key.len() >= len);
+}
+
+// ============================================================================
+// Binary Delta Blame Steps
+// ============================================================================
+
+#[given("a baseline Cargo.lock with:")]
+async fn given_baseline_lockfile(world: &mut PerfgateWorld, step: &cucumber::gherkin::Step) {
+    let content = step.docstring().expect("Docstring required").to_string();
+    world.baseline_lockfile = Some(content.clone());
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("baseline.lock");
+    fs::write(&path, content).expect("Failed to write baseline.lock");
+}
+
+#[given("a current Cargo.lock with:")]
+async fn given_current_lockfile(world: &mut PerfgateWorld, step: &cucumber::gherkin::Step) {
+    let content = step.docstring().expect("Docstring required").to_string();
+    world.current_lockfile = Some(content.clone());
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("current.lock");
+    fs::write(&path, content).expect("Failed to write current.lock");
+}
+
+#[when("I run the binary blame analysis")]
+async fn when_run_binary_blame(world: &mut PerfgateWorld) {
+    world.ensure_temp_dir();
+    let baseline_path = world.temp_path().join("baseline.lock");
+    let current_path = world.temp_path().join("current.lock");
+
+    fs::write(
+        &baseline_path,
+        world
+            .baseline_lockfile
+            .as_ref()
+            .expect("baseline lock missing"),
+    )
+    .expect("Failed to write baseline lock");
+    fs::write(
+        &current_path,
+        world
+            .current_lockfile
+            .as_ref()
+            .expect("current lock missing"),
+    )
+    .expect("Failed to write current lock");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("blame")
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--format")
+        .arg("json");
+
+    let output = cmd.output().expect("Failed to execute perfgate blame");
+    world.last_exit_code = Some(output.status.code().unwrap_or(-1));
+    world.last_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        world.binary_blame = Some(
+            serde_json::from_slice(&output.stdout).expect("Failed to parse blame JSON output"),
+        );
+    }
+}
+
+#[then(expr = "the blame report should show {string} was updated from {string} to {string}")]
+async fn then_blame_report_updated(
+    world: &mut PerfgateWorld,
+    name: String,
+    old: String,
+    new: String,
+) {
+    let blame = world.binary_blame.as_ref().expect("Blame analysis not run");
+    let change = blame
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .expect("Change not found");
+    assert_eq!(
+        change.change_type,
+        perfgate_domain::DependencyChangeType::Updated
+    );
+    assert_eq!(change.old_version.as_ref().unwrap(), &old);
+    assert_eq!(change.new_version.as_ref().unwrap(), &new);
+}
+
+#[then(expr = "the blame report should show {string} was added")]
+async fn then_blame_report_added(world: &mut PerfgateWorld, name: String) {
+    let blame = world.binary_blame.as_ref().expect("Blame analysis not run");
+    let change = blame
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .expect("Change not found");
+    assert_eq!(
+        change.change_type,
+        perfgate_domain::DependencyChangeType::Added
+    );
+}
+
+#[then(expr = "the blame report should show {string} was removed")]
+async fn then_blame_report_removed(world: &mut PerfgateWorld, name: String) {
+    let blame = world.binary_blame.as_ref().expect("Blame analysis not run");
+    let change = blame
+        .changes
+        .iter()
+        .find(|c| c.name == name)
+        .expect("Change not found");
+    assert_eq!(
+        change.change_type,
+        perfgate_domain::DependencyChangeType::Removed
+    );
+}
+
+// ============================================================================
+// General File Steps
+// ============================================================================
+
+#[then(expr = "the file {string} should exist")]
+async fn then_file_exists(world: &mut PerfgateWorld, path_str: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    assert!(path.exists(), "File {} should exist", path.display());
+}
+
+#[then(expr = "the file {string} should contain valid JSON")]
+async fn then_file_valid_json(world: &mut PerfgateWorld, path_str: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let content = fs::read_to_string(&path).expect("Failed to read file");
+    let _: serde_json::Value = serde_json::from_str(&content).expect("Invalid JSON");
+}
+
+#[then(expr = "the file {string} should contain {string}")]
+async fn then_file_contains(world: &mut PerfgateWorld, path_str: String, expected: String) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let content = fs::read_to_string(&path).expect("Failed to read file");
+    assert!(
+        content.contains(&expected),
+        "Expected file to contain '{}', got: '{}'",
+        expected,
+        content
+    );
+}
+
+// ============================================================================
+// Aggregate Steps
+// ============================================================================
+
+#[given(expr = "a template file {string} with:")]
+async fn given_template_file(
+    world: &mut PerfgateWorld,
+    step: &cucumber::gherkin::Step,
+    path_str: String,
+) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let content = step.docstring().expect("Docstring required").to_string();
+    fs::write(path, content).expect("Failed to write template file");
+}
+
+#[given(expr = "a run receipt exists at {string} with wall_ms median {int}")]
+async fn given_run_receipt_exists_with_median(
+    world: &mut PerfgateWorld,
+    path_str: String,
+    wall_ms: u64,
+) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join(path_str);
+    let receipt = world.create_run_receipt(wall_ms);
+    let json = serde_json::to_string(&receipt).unwrap();
+    fs::write(path, json).expect("Failed to write run receipt");
+}
+
+#[then(expr = "the aggregated receipt should have {int} samples")]
+async fn then_aggregated_receipt_sample_count(world: &mut PerfgateWorld, expected: usize) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("aggregated.json");
+    let content = fs::read_to_string(path).expect("Failed to read aggregated receipt");
+    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse receipt");
+    assert_eq!(receipt.samples.len(), expected);
+}
+
+#[then(expr = "the aggregated receipt wall_ms median should be {int}")]
+async fn then_aggregated_receipt_wall_ms_median(world: &mut PerfgateWorld, expected: u64) {
+    world.ensure_temp_dir();
+    let path = world.temp_path().join("aggregated.json");
+    let content = fs::read_to_string(path).expect("Failed to read aggregated receipt");
+    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse receipt");
+    assert_eq!(receipt.stats.wall_ms.median, expected);
 }
 
 // ============================================================================

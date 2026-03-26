@@ -46,6 +46,10 @@ fn create_run_receipt() -> RunReceipt {
                 timed_out: false,
                 cpu_ms: Some(80),
                 max_rss_kb: Some(2048),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 page_faults: None,
                 ctx_switches: None,
                 binary_bytes: None,
@@ -59,6 +63,10 @@ fn create_run_receipt() -> RunReceipt {
                 timed_out: false,
                 cpu_ms: Some(85),
                 max_rss_kb: Some(2100),
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
                 page_faults: None,
                 ctx_switches: None,
                 binary_bytes: None,
@@ -67,21 +75,13 @@ fn create_run_receipt() -> RunReceipt {
             },
         ],
         stats: Stats {
-            wall_ms: U64Summary {
-                median: 102,
-                min: 100,
-                max: 105,
-            },
-            cpu_ms: Some(U64Summary {
-                median: 82,
-                min: 80,
-                max: 85,
-            }),
-            max_rss_kb: Some(U64Summary {
-                median: 2074,
-                min: 2048,
-                max: 2100,
-            }),
+            wall_ms: U64Summary::new(102, 100, 105),
+            cpu_ms: Some(U64Summary::new(82, 80, 85)),
+            max_rss_kb: Some(U64Summary::new(2074, 2048, 2100)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             page_faults: None,
             ctx_switches: None,
             binary_bytes: None,
@@ -92,22 +92,8 @@ fn create_run_receipt() -> RunReceipt {
 
 fn create_compare_receipt() -> CompareReceipt {
     let mut budgets = BTreeMap::new();
-    budgets.insert(
-        Metric::WallMs,
-        Budget {
-            threshold: 0.2,
-            warn_threshold: 0.15,
-            direction: Direction::Lower,
-        },
-    );
-    budgets.insert(
-        Metric::MaxRssKb,
-        Budget {
-            threshold: 0.15,
-            warn_threshold: 0.10,
-            direction: Direction::Lower,
-        },
-    );
+    budgets.insert(Metric::WallMs, Budget::new(0.2, 0.15, Direction::Lower));
+    budgets.insert(Metric::MaxRssKb, Budget::new(0.15, 0.10, Direction::Lower));
 
     let mut deltas = BTreeMap::new();
     deltas.insert(
@@ -118,6 +104,8 @@ fn create_compare_receipt() -> CompareReceipt {
             ratio: 1.1,
             pct: 0.1,
             regression: 0.1,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status: MetricStatus::Pass,
@@ -131,6 +119,8 @@ fn create_compare_receipt() -> CompareReceipt {
             ratio: 1.25,
             pct: 0.25,
             regression: 0.25,
+            cv: None,
+            noise_threshold: None,
             statistic: MetricStatistic::Median,
             significance: None,
             status: MetricStatus::Fail,
@@ -168,6 +158,7 @@ fn create_compare_receipt() -> CompareReceipt {
                 pass: 1,
                 warn: 0,
                 fail: 1,
+                skip: 0,
             },
             reasons: vec!["max_rss_kb_fail".to_string()],
         },

@@ -11,13 +11,17 @@ Commands:
   compare Compare a current receipt against a baseline and emit a compare receipt (JSON)
   md Render a Markdown summary from a compare receipt
   github-annotations Emit GitHub Actions annotations from a compare receipt
-  export Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format
+  export Export a run or compare receipt to CSV, JSONL, HTML, Prometheus, or JUnit format
   promote Promote a run receipt to become the new baseline
   report Generate a cockpit-compatible report from a compare receipt
   check Config-driven one-command workflow
   paired Run paired benchmark: interleave baseline and current commands for reduced noise
   baseline Manage baselines on the baseline server
   summary Summarize one or more compare receipts in a terminal table
+  aggregate Aggregate multiple run receipts (e.g. from a fleet) into a single run receipt
+  bisect Automatically find the commit that introduced a performance regression
+  blame Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions
+  explain Provide AI-ready prompts and automated playbooks for diagnosing performance regressions
   help Print this message or the help of the given subcommand(s)
 
 Options:

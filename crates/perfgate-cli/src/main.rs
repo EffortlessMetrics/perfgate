@@ -1,30 +1,31 @@
+//! perfgate CLI - entry point for all workflows.
+
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
-use perfgate::adapters::{StdHostProbe, StdProcessRunner};
-use perfgate::app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
-use perfgate::app::comparison_logic::{
-    build_budgets, build_metric_statistics, verdict_from_counts,
-};
-use perfgate::app::{
-    BenchOutcome, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase,
-    ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest,
-    PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+use perfgate_adapters::{StdHostProbe, StdProcessRunner};
+use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
+use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
+use perfgate_app::{
+    BenchOutcome, BisectRequest, BisectUseCase, BlameRequest, BlameUseCase, CheckOutcome,
+    CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase, ExplainRequest,
+    ExplainUseCase, ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase,
+    PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
     SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
     render_markdown_template,
 };
-use perfgate::domain::{DomainError, SignificancePolicy};
-use perfgate::types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    ConfigValidationError, HostMismatchPolicy, PerfgateError, RunReceipt, SensorVerdictStatus,
-    ToolInfo,
-};
 use perfgate_client::{
-    BaselineClient, ClientConfig, FallbackClient, FallbackStorage, ListBaselinesQuery,
-    UploadBaselineRequest,
+    ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
 };
+use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
+use perfgate_domain::{DependencyChangeType, SignificancePolicy};
+use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
+use perfgate_types::{
+    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
+    HostMismatchPolicy, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+};
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
@@ -69,129 +70,19 @@ pub struct ServerFlags {
 
 impl ServerFlags {
     /// Resolves server configuration from CLI flags, environment variables, and config file.
-    /// Priority: CLI flags > environment variables > config file.
     pub fn resolve(&self, config: &BaselineServerConfig) -> ResolvedServerConfig {
-        ResolvedServerConfig {
-            url: self
-                .baseline_server
-                .clone()
-                .or_else(|| config.resolved_url()),
-            api_key: self.api_key.clone().or_else(|| config.resolved_api_key()),
-            project: self.project.clone().or_else(|| config.resolved_project()),
-            fallback_to_local: config.fallback_to_local,
-        }
-    }
-}
-
-/// Resolved server configuration with all sources merged.
-#[derive(Debug, Clone)]
-pub struct ResolvedServerConfig {
-    pub url: Option<String>,
-    pub api_key: Option<String>,
-    pub project: Option<String>,
-    pub fallback_to_local: bool,
-}
-
-impl Default for ResolvedServerConfig {
-    fn default() -> Self {
-        Self {
-            url: None,
-            api_key: None,
-            project: None,
-            fallback_to_local: true,
-        }
-    }
-}
-
-impl ResolvedServerConfig {
-    /// Returns true if server is configured (has a URL).
-    pub fn is_configured(&self) -> bool {
-        self.url.is_some() && !self.url.as_ref().unwrap().is_empty()
-    }
-
-    /// Creates a BaselineClient from this configuration.
-    pub fn create_client(&self) -> anyhow::Result<Option<BaselineClient>> {
-        if !self.is_configured() {
-            return Ok(None);
-        }
-
-        let url = self.url.as_ref().unwrap();
-        let mut config = ClientConfig::new(url);
-
-        if let Some(api_key) = &self.api_key {
-            config = config.with_api_key(api_key);
-        }
-
-        let client = BaselineClient::new(config)
-            .with_context(|| format!("Failed to create baseline client for {}", url))?;
-
-        Ok(Some(client))
-    }
-
-    /// Creates a FallbackClient if fallback is enabled and server is configured.
-    pub fn create_fallback_client(
-        &self,
-        fallback_dir: Option<&Path>,
-    ) -> anyhow::Result<Option<FallbackClient>> {
-        let client = match self.create_client()? {
-            Some(c) => c,
-            None => return Ok(None),
-        };
-
-        let fallback = if self.fallback_to_local {
-            fallback_dir.map(|dir| FallbackStorage::local(dir.to_path_buf()))
-        } else {
-            None
-        };
-
-        Ok(Some(FallbackClient::new(client, fallback)))
-    }
-
-    /// Returns a baseline client for server operations, or an error if not configured.
-    pub fn require_fallback_client(
-        &self,
-        fallback_dir: Option<&Path>,
-    ) -> anyhow::Result<FallbackClient> {
-        self.create_fallback_client(fallback_dir)?
-            .ok_or_else(|| anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED))
-    }
-
-    /// Resolve a project for server operations.
-    pub fn resolve_project(&self, project: Option<String>) -> anyhow::Result<String> {
-        project.or_else(|| self.project.clone()).ok_or_else(|| {
-            anyhow::anyhow!(
-                "--project is required (or set --project flag, PERFGATE_PROJECT, or [baseline_server].project in perfgate.toml)"
-            )
-        })
+        resolve_server_config(
+            self.baseline_server.clone(),
+            self.api_key.clone(),
+            self.project.clone(),
+            config,
+        )
     }
 }
 
 enum BaselineSelector {
     Local(PathBuf),
     Server { benchmark: String },
-}
-
-fn resolve_baseline_server_config() -> anyhow::Result<BaselineServerConfig> {
-    let path = Path::new("perfgate.toml");
-    if !path.exists() {
-        return Ok(BaselineServerConfig::default());
-    }
-
-    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-
-    let config_file = if path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext == "json")
-    {
-        serde_json::from_str::<ConfigFile>(&content)
-            .with_context(|| format!("parse {}", path.display()))?
-    } else {
-        toml::from_str::<ConfigFile>(&content)
-            .with_context(|| format!("parse {}", path.display()))?
-    };
-
-    Ok(config_file.baseline_server)
 }
 
 fn parse_baseline_selector(
@@ -245,132 +136,10 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Run a command repeatedly and emit a run receipt (JSON).
-    Run {
-        /// Bench identifier (used for baselines and reporting)
-        #[arg(long)]
-        name: String,
-
-        /// Number of measured samples
-        #[arg(long, default_value_t = 5)]
-        repeat: u32,
-
-        /// Warmup samples (excluded from stats)
-        #[arg(long, default_value_t = 0)]
-        warmup: u32,
-
-        /// Units of work completed per run (enables throughput_per_s)
-        #[arg(long)]
-        work: Option<u64>,
-
-        /// Working directory
-        #[arg(long)]
-        cwd: Option<PathBuf>,
-
-        /// Per-run timeout (e.g. "2s")
-        #[arg(long)]
-        timeout: Option<String>,
-
-        /// Environment variable (KEY=VALUE). Repeatable.
-        #[arg(long, value_parser = parse_key_val_string)]
-        env: Vec<(String, String)>,
-
-        /// Max bytes captured from stdout/stderr per run
-        #[arg(long, default_value_t = 8192)]
-        output_cap_bytes: usize,
-
-        /// Do not fail the tool when the command returns nonzero.
-        #[arg(long, default_value_t = false)]
-        allow_nonzero: bool,
-
-        /// Include a hashed hostname in the host fingerprint for noise mitigation.
-        /// The hostname is SHA-256 hashed for privacy.
-        #[arg(long, default_value_t = false)]
-        include_hostname_hash: bool,
-
-        /// Output file path
-        #[arg(long, default_value = "perfgate.json")]
-        out: PathBuf,
-
-        /// Pretty-print JSON
-        #[arg(long, default_value_t = false)]
-        pretty: bool,
-
-        /// Upload the run result to the baseline server.
-        /// Requires --baseline-server to be configured.
-        #[arg(long, default_value_t = false)]
-        upload: bool,
-
-        /// Project name for upload (overrides global --project flag).
-        #[arg(long)]
-        upload_project: Option<String>,
-
-        /// Command to run (argv) after `--`
-        #[arg(last = true, required = true)]
-        command: Vec<String>,
-    },
+    Run(Box<RunArgs>),
 
     /// Compare a current receipt against a baseline and emit a compare receipt (JSON).
-    Compare {
-        /// Path to baseline receipt, or "@server:benchmark_name" to fetch from server.
-        /// When using "@server:benchmark_name", the baseline is fetched from the
-        /// configured baseline server using the project from --project flag.
-        #[arg(long)]
-        baseline: String,
-
-        #[arg(long)]
-        current: PathBuf,
-
-        /// Global regression threshold (0.20 = 20%)
-        #[arg(long, default_value_t = 0.20)]
-        threshold: f64,
-
-        /// Global warn factor (warn_threshold = threshold * warn_factor)
-        #[arg(long, default_value_t = 0.90)]
-        warn_factor: f64,
-
-        /// Override per-metric threshold, e.g. wall_ms=0.10
-        #[arg(long, value_parser = parse_key_val_f64)]
-        metric_threshold: Vec<(String, f64)>,
-
-        /// Override per-metric direction, e.g. throughput_per_s=higher
-        #[arg(long, value_parser = parse_key_val_string)]
-        direction: Vec<(String, String)>,
-
-        /// Override per-metric statistic, e.g. wall_ms=p95
-        #[arg(long, value_parser = parse_key_val_string)]
-        metric_stat: Vec<(String, String)>,
-
-        /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
-        #[arg(long, value_parser = parse_significance_alpha)]
-        significance_alpha: Option<f64>,
-
-        /// Minimum samples required in each run before significance is computed.
-        #[arg(long, default_value_t = 8)]
-        significance_min_samples: u32,
-
-        /// When set with --significance-alpha, warn/fail statuses require significance.
-        #[arg(long, default_value_t = false)]
-        require_significance: bool,
-
-        /// Treat WARN verdict as a failing exit code
-        #[arg(long, default_value_t = false)]
-        fail_on_warn: bool,
-
-        /// Policy for handling host mismatches between baseline and current runs.
-        /// - warn (default): Warn but continue with comparison
-        /// - error: Exit 1 on mismatch
-        /// - ignore: Suppress warnings
-        #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
-        host_mismatch: HostMismatchPolicy,
-
-        /// Output compare receipt
-        #[arg(long, default_value = "perfgate-compare.json")]
-        out: PathBuf,
-
-        /// Pretty-print JSON
-        #[arg(long, default_value_t = false)]
-        pretty: bool,
-    },
+    Compare(Box<CompareArgs>),
 
     /// Render a Markdown summary from a compare receipt.
     Md {
@@ -392,7 +161,7 @@ enum Command {
         compare: PathBuf,
     },
 
-    /// Export a run or compare receipt to CSV, JSONL, HTML, or Prometheus format.
+    /// Export a run or compare receipt to CSV, JSONL, HTML, Prometheus, or JUnit format.
     Export {
         /// Path to a run receipt (mutually exclusive with --compare)
         #[arg(long, conflicts_with = "compare")]
@@ -402,7 +171,7 @@ enum Command {
         #[arg(long, conflicts_with = "run")]
         compare: Option<PathBuf>,
 
-        /// Output format: csv, jsonl, html, or prometheus
+        /// Output format: csv, jsonl, html, prometheus, or junit
         #[arg(long, default_value = "csv")]
         format: String,
 
@@ -419,41 +188,7 @@ enum Command {
     /// after successful benchmark runs.
     ///
     /// Exit codes: 0 for success, 1 for errors.
-    Promote {
-        /// Path or cloud URI (`s3://...`, `gs://...`) to the current run receipt to promote.
-        #[arg(long)]
-        current: PathBuf,
-
-        /// Path or cloud URI (`s3://...`, `gs://...`) where the baseline should be written.
-        /// Use --to-server to promote to the baseline server instead.
-        #[arg(long, conflicts_with = "to_server")]
-        to: Option<PathBuf>,
-
-        /// Promote to the baseline server instead of a local file.
-        /// Requires --baseline-server to be configured.
-        #[arg(long, conflicts_with = "to")]
-        to_server: bool,
-
-        /// Benchmark name for server promotion (required with --to-server).
-        #[arg(long, requires = "to_server")]
-        benchmark: Option<String>,
-
-        /// Project name for server promotion (overrides global --project flag).
-        #[arg(long, requires = "to_server")]
-        promote_project: Option<String>,
-
-        /// Version identifier for the promoted baseline (server only).
-        #[arg(long, requires = "to_server")]
-        version: Option<String>,
-
-        /// Strip run-specific fields (run_id, timestamps) for stable baselines
-        #[arg(long, default_value_t = false)]
-        normalize: bool,
-
-        /// Pretty-print JSON
-        #[arg(long, default_value_t = false)]
-        pretty: bool,
-    },
+    Promote(Box<PromoteArgs>),
 
     /// Generate a cockpit-compatible report from a compare receipt.
     ///
@@ -461,27 +196,7 @@ enum Command {
     /// verdict, findings, and summary counts.
     ///
     /// Exit codes: 0 for success, 1 for errors.
-    Report {
-        /// Path to the compare receipt
-        #[arg(long)]
-        compare: PathBuf,
-
-        /// Output report JSON path
-        #[arg(long, default_value = "perfgate-report.json")]
-        out: PathBuf,
-
-        /// Also write markdown summary to this path
-        #[arg(long)]
-        md: Option<PathBuf>,
-
-        /// Render markdown with a Handlebars template file (requires --md).
-        #[arg(long, requires = "md")]
-        md_template: Option<PathBuf>,
-
-        /// Pretty-print JSON
-        #[arg(long, default_value_t = false)]
-        pretty: bool,
-    },
+    Report(Box<ReportArgs>),
 
     /// Config-driven one-command workflow.
     ///
@@ -495,95 +210,7 @@ enum Command {
     /// - 1: tool error (I/O, parse, spawn failures)
     /// - 2: fail (budget violated)
     /// - 3: warn treated as failure (with --fail-on-warn)
-    Check {
-        /// Path to the config file (TOML or JSON)
-        #[arg(long, default_value = "perfgate.toml")]
-        config: PathBuf,
-
-        /// Name of the benchmark to run (must match a [[bench]] in config)
-        #[arg(long, conflicts_with = "all")]
-        bench: Option<String>,
-
-        /// Run all benchmarks defined in the config file
-        #[arg(long, default_value_t = false)]
-        all: bool,
-
-        /// Regex to filter benchmark names when used with --all
-        #[arg(long, requires = "all")]
-        bench_regex: Option<String>,
-
-        /// Output directory for artifacts
-        #[arg(long, default_value = "artifacts/perfgate")]
-        out_dir: PathBuf,
-
-        /// Path or cloud URI to the baseline file.
-        /// If not specified, looks in baseline_dir/{bench}.json
-        /// (only valid when --bench is specified, not with --all)
-        #[arg(long, conflicts_with = "all")]
-        baseline: Option<PathBuf>,
-
-        /// Fail if baseline is missing (default: warn and continue)
-        #[arg(long, default_value_t = false)]
-        require_baseline: bool,
-
-        /// Treat WARN verdict as a failing exit code
-        #[arg(long, default_value_t = false)]
-        fail_on_warn: bool,
-
-        /// Environment variable (KEY=VALUE). Repeatable.
-        #[arg(long, value_parser = parse_key_val_string)]
-        env: Vec<(String, String)>,
-
-        /// Max bytes captured from stdout/stderr per run
-        #[arg(long, default_value_t = 8192)]
-        output_cap_bytes: usize,
-
-        /// Do not fail the tool when the command returns nonzero.
-        #[arg(long, default_value_t = false)]
-        allow_nonzero: bool,
-
-        /// Policy for handling host mismatches between baseline and current runs.
-        /// - warn (default): Warn but continue with comparison
-        /// - error: Exit 1 on mismatch
-        /// - ignore: Suppress warnings
-        #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
-        host_mismatch: HostMismatchPolicy,
-
-        /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
-        #[arg(long, value_parser = parse_significance_alpha)]
-        significance_alpha: Option<f64>,
-
-        /// Minimum samples required in each run before significance is computed.
-        #[arg(long, default_value_t = 8)]
-        significance_min_samples: u32,
-
-        /// When set with --significance-alpha, warn/fail statuses require significance.
-        #[arg(long, default_value_t = false)]
-        require_significance: bool,
-
-        /// Pretty-print JSON
-        #[arg(long, default_value_t = false)]
-        pretty: bool,
-
-        /// Output mode (standard or cockpit).
-        ///
-        /// In cockpit mode:
-        /// - Always writes sensor.report.v1 envelope to report.json
-        /// - Writes native artifacts to extras/ subdirectory
-        /// - Exits 0 unless catastrophic failure (cannot write receipt)
-        /// - Errors are captured in the report rather than causing exit 1
-        #[arg(long, default_value = "standard", value_enum)]
-        mode: OutputMode,
-
-        /// Render markdown using a Handlebars template file.
-        /// If omitted, falls back to defaults.markdown_template from config.
-        #[arg(long)]
-        md_template: Option<PathBuf>,
-
-        /// Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT.
-        #[arg(long, default_value_t = false)]
-        output_github: bool,
-    },
+    Check(Box<CheckArgs>),
 
     /// Run paired benchmark: interleave baseline and current commands for reduced noise.
     ///
@@ -591,80 +218,9 @@ enum Command {
     /// environmental variation between measurements.
     ///
     /// Exit codes: 0 for success, 1 for errors.
-    Paired {
-        /// Bench identifier (used for baselines and reporting)
-        #[arg(long)]
-        name: String,
-
-        /// Baseline command as a shell string (parsed using shell-words)
-        #[arg(long, conflicts_with = "baseline_cmd")]
-        baseline: Option<String>,
-
-        /// Current command as a shell string (parsed using shell-words)
-        #[arg(long, conflicts_with = "current_cmd")]
-        current: Option<String>,
-
-        /// Baseline command.
-        /// Accepts either a quoted shell string or raw argv tokens.
-        #[arg(long, num_args = 1.., conflicts_with = "baseline")]
-        baseline_cmd: Option<Vec<String>>,
-
-        /// Current command.
-        /// Accepts either a quoted shell string or raw argv tokens.
-        #[arg(long, num_args = 1.., conflicts_with = "current")]
-        current_cmd: Option<Vec<String>>,
-
-        /// Number of measured pairs
-        #[arg(long, default_value_t = 5)]
-        repeat: u32,
-
-        /// Warmup pairs (excluded from stats)
-        #[arg(long, default_value_t = 0)]
-        warmup: u32,
-
-        /// Units of work completed per run (enables throughput_per_s)
-        #[arg(long)]
-        work: Option<u64>,
-
-        /// Working directory
-        #[arg(long)]
-        cwd: Option<PathBuf>,
-
-        /// Per-run timeout (e.g. "2s")
-        #[arg(long)]
-        timeout: Option<String>,
-
-        /// Environment variable (KEY=VALUE). Repeatable.
-        #[arg(long, value_parser = parse_key_val_string)]
-        env: Vec<(String, String)>,
-
-        /// Max bytes captured from stdout/stderr per run
-        #[arg(long, default_value_t = 8192)]
-        output_cap_bytes: usize,
-
-        /// Do not fail the tool when the command returns nonzero.
-        #[arg(long, default_value_t = false)]
-        allow_nonzero: bool,
-
-        /// Include a hashed hostname in the host fingerprint for noise mitigation.
-        #[arg(long, default_value_t = false)]
-        include_hostname_hash: bool,
-
-        /// Output file path
-        #[arg(long, default_value = "perfgate-paired.json")]
-        out: PathBuf,
-
-        /// Pretty-print JSON
-        #[arg(long, default_value_t = false)]
-        pretty: bool,
-    },
+    Paired(Box<PairedArgs>),
 
     /// Manage baselines on the baseline server.
-    ///
-    /// This command provides subcommands for listing, downloading, uploading,
-    /// and deleting baselines from the configured baseline server.
-    ///
-    /// Requires --baseline-server to be configured.
     Baseline {
         #[command(subcommand)]
         action: BaselineAction,
@@ -673,9 +229,456 @@ enum Command {
     /// Summarize one or more compare receipts in a terminal table.
     Summary {
         /// Paths to compare receipts (glob patterns supported)
-        #[arg(required = true)]
+        #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
+
+        /// If true, do not exit with a non-zero status code when a fail verdict is encountered
+        #[arg(long)]
+        allow_nonzero: bool,
     },
+
+    /// Aggregate multiple run receipts (e.g. from a fleet) into a single run receipt.
+    Aggregate {
+        /// Paths to run receipts (glob patterns supported)
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<String>,
+
+        /// Output file path
+        #[arg(long, default_value = "perfgate-aggregated.json")]
+        out: PathBuf,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
+
+    /// Automatically find the commit that introduced a performance regression.
+    ///
+    /// This is a wrapper around `git bisect` that uses `perfgate paired`
+    /// to determine if a commit is good or bad.
+    Bisect(Box<BisectArgs>),
+
+    /// Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions.
+    Blame(Box<BlameArgs>),
+
+    /// Provide AI-ready prompts and automated playbooks for diagnosing performance regressions.
+    Explain {
+        /// Path to a compare receipt
+        #[arg(long)]
+        compare: PathBuf,
+
+        /// Path to baseline Cargo.lock for binary blame analysis
+        #[arg(long)]
+        baseline_lock: Option<PathBuf>,
+
+        /// Path to current Cargo.lock for binary blame analysis
+        #[arg(long)]
+        current_lock: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct BlameArgs {
+    /// Path to baseline Cargo.lock
+    #[arg(long)]
+    pub baseline: PathBuf,
+
+    /// Path to current Cargo.lock
+    #[arg(long)]
+    pub current: PathBuf,
+
+    /// Output format (text|json)
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Debug, Args)]
+pub struct BisectArgs {
+    /// The known good commit
+    #[arg(long)]
+    pub good: String,
+
+    /// The known bad commit
+    #[arg(long, default_value = "HEAD")]
+    pub bad: String,
+
+    /// Shell command to build the project
+    #[arg(long, default_value = "cargo build --release")]
+    pub build_cmd: String,
+
+    /// Path to the executable to benchmark
+    #[arg(long)]
+    pub executable: PathBuf,
+
+    /// Fail the command if a regression exceeds this percentage (e.g., 5.0 for 5%).
+    #[arg(long, default_value = "5.0")]
+    pub threshold: f64,
+}
+
+#[derive(Debug, Args)]
+pub struct RunArgs {
+    /// Bench identifier (used for baselines and reporting)
+    #[arg(long)]
+    pub name: String,
+
+    /// Number of measured samples
+    #[arg(long, default_value_t = 5)]
+    pub repeat: u32,
+
+    /// Warmup samples (excluded from stats)
+    #[arg(long, default_value_t = 0)]
+    pub warmup: u32,
+
+    /// Units of work completed per run (enables throughput_per_s)
+    #[arg(long)]
+    pub work: Option<u64>,
+
+    /// Working directory
+    #[arg(long)]
+    pub cwd: Option<PathBuf>,
+
+    /// Per-run timeout (e.g. "2s")
+    #[arg(long)]
+    pub timeout: Option<String>,
+
+    /// Environment variable (KEY=VALUE). Repeatable.
+    #[arg(long, value_parser = parse_key_val_string)]
+    pub env: Vec<(String, String)>,
+
+    /// Max bytes captured from stdout/stderr per run
+    #[arg(long, default_value_t = 8192)]
+    pub output_cap_bytes: usize,
+
+    /// Do not fail the tool when the command returns nonzero.
+    #[arg(long, default_value_t = false)]
+    pub allow_nonzero: bool,
+
+    /// Include a hashed hostname in the host fingerprint for noise mitigation.
+    #[arg(long, default_value_t = false)]
+    pub include_hostname_hash: bool,
+
+    /// Output file path
+    #[arg(long, default_value = "perfgate.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+
+    /// Upload the run result to the baseline server.
+    #[arg(long, default_value_t = false)]
+    pub upload: bool,
+
+    /// Project name for upload (overrides global --project flag).
+    #[arg(long)]
+    pub upload_project: Option<String>,
+
+    /// Command to run (argv) after `--`
+    #[arg(last = true, required = true)]
+    pub command: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct CompareArgs {
+    /// Path to baseline receipt, or "@server:benchmark_name" to fetch from server.
+    #[arg(long)]
+    pub baseline: String,
+
+    #[arg(long)]
+    pub current: PathBuf,
+
+    /// Global regression threshold (0.20 = 20%)
+    #[arg(long, default_value_t = 0.20)]
+    pub threshold: f64,
+
+    /// Global warn factor (warn_threshold = threshold * warn_factor)
+    #[arg(long, default_value_t = 0.90)]
+    pub warn_factor: f64,
+
+    /// Global noise threshold (coefficient of variation).
+    /// If CV exceeds this, the metric is considered flaky/noisy.
+    #[arg(long)]
+    pub noise_threshold: Option<f64>,
+
+    /// Global noise policy (warn|skip|ignore)
+    #[arg(long, value_parser = parse_noise_policy)]
+    pub noise_policy: Option<perfgate_types::NoisePolicy>,
+
+    /// Override per-metric threshold, e.g. wall_ms=0.10
+    #[arg(long, value_parser = parse_key_val_f64)]
+    pub metric_threshold: Vec<(String, f64)>,
+
+    /// Override per-metric noise threshold, e.g. wall_ms=0.05
+    #[arg(long, value_parser = parse_key_val_f64)]
+    pub metric_noise_threshold: Vec<(String, f64)>,
+
+    /// Override per-metric direction, e.g. throughput_per_s=higher
+    #[arg(long, value_parser = parse_key_val_string)]
+    pub direction: Vec<(String, String)>,
+
+    /// Override per-metric statistic, e.g. wall_ms=p95
+    #[arg(long, value_parser = parse_key_val_string)]
+    pub metric_stat: Vec<(String, String)>,
+
+    /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
+    #[arg(long, value_parser = parse_significance_alpha)]
+    pub significance_alpha: Option<f64>,
+
+    /// Minimum samples required in each run before significance is computed.
+    #[arg(long, default_value_t = 8)]
+    pub significance_min_samples: u32,
+
+    /// When set with --significance-alpha, warn/fail statuses require significance.
+    #[arg(long, default_value_t = false)]
+    pub require_significance: bool,
+
+    /// Treat WARN verdict as a failing exit code
+    #[arg(long, default_value_t = false)]
+    pub fail_on_warn: bool,
+
+    /// Policy for handling host mismatches between baseline and current runs.
+    #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
+    pub host_mismatch: HostMismatchPolicy,
+
+    /// Output compare receipt
+    #[arg(long, default_value = "perfgate-compare.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PromoteArgs {
+    /// Path or cloud URI to the current run receipt to promote.
+    #[arg(long)]
+    pub current: PathBuf,
+
+    /// Path or cloud URI where the baseline should be written.
+    #[arg(long, conflicts_with = "to_server")]
+    pub to: Option<PathBuf>,
+
+    /// Promote to the baseline server instead of a local file.
+    #[arg(long, conflicts_with = "to")]
+    pub to_server: bool,
+
+    /// Benchmark name for server promotion (required with --to-server).
+    #[arg(long, requires = "to_server")]
+    pub benchmark: Option<String>,
+
+    /// Project name for server promotion (overrides global --project flag).
+    #[arg(long, requires = "to_server")]
+    pub promote_project: Option<String>,
+
+    /// Version identifier for the promoted baseline (server only).
+    #[arg(long, requires = "to_server")]
+    pub version: Option<String>,
+
+    /// Strip run-specific fields (run_id, timestamps) for stable baselines
+    #[arg(long, default_value_t = false)]
+    pub normalize: bool,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ReportArgs {
+    /// Path to the compare receipt
+    #[arg(long)]
+    pub compare: PathBuf,
+
+    /// Output report JSON path
+    #[arg(long, default_value = "perfgate-report.json")]
+    pub out: PathBuf,
+
+    /// Also write markdown summary to this path
+    #[arg(long)]
+    pub md: Option<PathBuf>,
+
+    /// Render markdown with a Handlebars template file (requires --md).
+    #[arg(long, requires = "md")]
+    pub md_template: Option<PathBuf>,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CheckArgs {
+    /// Path to the config file (TOML or JSON)
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Name of the benchmark to run (must match a [[bench]] in config)
+    #[arg(long, conflicts_with = "all")]
+    pub bench: Option<String>,
+
+    /// Run all benchmarks defined in the config file
+    #[arg(long, default_value_t = false)]
+    pub all: bool,
+
+    /// Regex to filter benchmark names when used with --all
+    #[arg(long, requires = "all")]
+    pub bench_regex: Option<String>,
+
+    /// Output directory for artifacts
+    #[arg(long, default_value = "artifacts/perfgate")]
+    pub out_dir: PathBuf,
+
+    /// Path or cloud URI to the baseline file.
+    #[arg(long, conflicts_with = "all")]
+    pub baseline: Option<PathBuf>,
+
+    /// Fail if baseline is missing (default: warn and continue)
+    #[arg(long, default_value_t = false)]
+    pub require_baseline: bool,
+
+    /// Treat WARN verdict as a failing exit code
+    #[arg(long, default_value_t = false)]
+    pub fail_on_warn: bool,
+
+    /// Global noise threshold (coefficient of variation).
+    #[arg(long)]
+    pub noise_threshold: Option<f64>,
+
+    /// Global noise policy (warn|skip|ignore)
+    #[arg(long, value_parser = parse_noise_policy)]
+    pub noise_policy: Option<perfgate_types::NoisePolicy>,
+
+    /// Environment variable (KEY=VALUE). Repeatable.
+    #[arg(long, value_parser = parse_key_val_string)]
+    pub env: Vec<(String, String)>,
+
+    /// Max bytes captured from stdout/stderr per run
+    #[arg(long, default_value_t = 8192)]
+    pub output_cap_bytes: usize,
+
+    /// Do not fail the tool when the command returns nonzero.
+    #[arg(long, default_value_t = false)]
+    pub allow_nonzero: bool,
+
+    /// Policy for handling host mismatches between baseline and current runs.
+    #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
+    pub host_mismatch: HostMismatchPolicy,
+
+    /// Compute per-metric significance metadata using Welch's t-test (p <= alpha).
+    #[arg(long, value_parser = parse_significance_alpha)]
+    pub significance_alpha: Option<f64>,
+
+    /// Minimum samples required in each run before significance is computed.
+    #[arg(long, default_value_t = 8)]
+    pub significance_min_samples: u32,
+
+    /// When set with --significance-alpha, warn/fail statuses require significance.
+    #[arg(long, default_value_t = false)]
+    pub require_significance: bool,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+
+    /// Output mode (standard or cockpit).
+    #[arg(long, default_value = "standard", value_enum)]
+    pub mode: OutputMode,
+
+    /// Render markdown using a Handlebars template file.
+    #[arg(long)]
+    pub md_template: Option<PathBuf>,
+
+    /// Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT.
+    #[arg(long, default_value_t = false)]
+    pub output_github: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PairedArgs {
+    /// Bench identifier (used for baselines and reporting)
+    #[arg(long)]
+    pub name: String,
+
+    /// Baseline command as a shell string (parsed using shell-words)
+    #[arg(long, conflicts_with = "baseline_cmd")]
+    pub baseline: Option<String>,
+
+    /// Current command as a shell string (parsed using shell-words)
+    #[arg(long, conflicts_with = "current_cmd")]
+    pub current: Option<String>,
+
+    /// Baseline command.
+    #[arg(long, num_args = 1.., conflicts_with = "baseline")]
+    pub baseline_cmd: Option<Vec<String>>,
+
+    /// Current command.
+    #[arg(long, num_args = 1.., conflicts_with = "current")]
+    pub current_cmd: Option<Vec<String>>,
+
+    /// Number of measured pairs
+    #[arg(long, default_value_t = 5)]
+    pub repeat: u32,
+
+    /// Warmup pairs (excluded from stats)
+    #[arg(long, default_value_t = 0)]
+    pub warmup: u32,
+
+    /// Units of work completed per run (enables throughput_per_s)
+    #[arg(long)]
+    pub work: Option<u64>,
+
+    /// Working directory
+    #[arg(long)]
+    pub cwd: Option<PathBuf>,
+
+    /// Per-run timeout (e.g. "2s")
+    #[arg(long)]
+    pub timeout: Option<String>,
+
+    /// Environment variable (KEY=VALUE). Repeatable.
+    #[arg(long, value_parser = parse_key_val_string)]
+    pub env: Vec<(String, String)>,
+
+    /// Max bytes captured from stdout/stderr per run
+    #[arg(long, default_value_t = 8192)]
+    pub output_cap_bytes: usize,
+
+    /// Do not fail the tool when the command returns nonzero.
+    #[arg(long, default_value_t = false)]
+    pub allow_nonzero: bool,
+
+    /// Include a hashed hostname in the host fingerprint for noise mitigation.
+    #[arg(long, default_value_t = false)]
+    pub include_hostname_hash: bool,
+
+    /// Require statistical significance for wall time difference.
+    #[arg(long, default_value_t = false)]
+    pub require_significance: bool,
+
+    /// Statistical significance level (alpha).
+    #[arg(long)]
+    pub significance_alpha: Option<f64>,
+
+    /// Minimum samples required for significance testing.
+    #[arg(long)]
+    pub significance_min_samples: Option<u32>,
+
+    /// Maximum number of additional pairs to run if significance is not reached.
+    #[arg(long, default_value_t = 0)]
+    pub max_retries: u32,
+
+    /// Fail the command (exit code 2) if a regression exceeds this percentage (e.g., 5.0 for 5%).
+    #[arg(long)]
+    pub fail_on_regression: Option<f64>,
+
+    /// Output file path
+    #[arg(long, default_value = "perfgate-paired.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
 }
 
 /// Subcommands for baseline management.
@@ -776,6 +779,44 @@ enum BaselineAction {
         limit: u32,
     },
 
+    /// Show execution verdict history.
+    Verdicts {
+        /// Optional benchmark name to filter by
+        #[arg(long)]
+        benchmark: Option<String>,
+
+        /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Maximum number of results
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+
+        /// Optional status to filter by (pass|warn|fail|skip)
+        #[arg(long, value_parser = parse_verdict_status)]
+        status: Option<VerdictStatus>,
+    },
+
+    /// Submit a benchmark verdict to the server.
+    SubmitVerdict {
+        /// Path to a compare receipt
+        #[arg(long)]
+        compare: PathBuf,
+
+        /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Git reference (e.g. branch name or tag)
+        #[arg(long)]
+        git_ref: Option<String>,
+
+        /// Git commit SHA
+        #[arg(long)]
+        git_sha: Option<String>,
+    },
+
     /// Migrate local baselines to the server.
     Migrate {
         /// Directory containing baseline JSON files
@@ -809,40 +850,95 @@ fn render_markdown_with_optional_template(
     }
 }
 
-fn main() -> ExitCode {
-    if let Err(err) = real_main() {
-        eprintln!("{err:#}");
-        return ExitCode::from(1);
+fn resolve_server_config_from_path(
+    flags: &ServerFlags,
+    config_path: Option<&Path>,
+) -> anyhow::Result<(ResolvedServerConfig, ConfigFile)> {
+    let path = config_path.unwrap_or_else(|| Path::new("perfgate.toml"));
+    let config_file = load_config_file(path)?;
+    let resolved = flags.resolve(&config_file.baseline_server);
+    Ok((resolved, config_file))
+}
+
+fn resolve_bench_names(
+    config_file: &ConfigFile,
+    bench: Option<&str>,
+    all: bool,
+    bench_regex: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    if all {
+        if config_file.benches.is_empty() {
+            anyhow::bail!("no benchmarks defined in config file");
+        }
+
+        let mut names: Vec<String> = config_file.benches.iter().map(|b| b.name.clone()).collect();
+
+        if let Some(pattern) = bench_regex {
+            let regex = Regex::new(pattern)
+                .with_context(|| format!("invalid --bench-regex pattern: {}", pattern))?;
+            names.retain(|name| regex.is_match(name));
+
+            if names.is_empty() {
+                anyhow::bail!(
+                    "--bench-regex '{}' did not match any benchmark names in config",
+                    pattern
+                );
+            }
+        }
+
+        return Ok(names);
     }
-    ExitCode::from(0)
+
+    if bench_regex.is_some() {
+        anyhow::bail!("--bench-regex can only be used with --all");
+    }
+
+    if let Some(name) = bench {
+        return Ok(vec![name.to_string()]);
+    }
+
+    anyhow::bail!("either --bench or --all must be specified")
+}
+
+fn main() -> ExitCode {
+    match real_main() {
+        Ok(_) => ExitCode::from(0),
+        Err(err) => {
+            if let Some(clap_err) = err.downcast_ref::<clap::Error>() {
+                clap_err.exit();
+            }
+            eprintln!("error: {:#}", err);
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn real_main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-    let baseline_server_config = resolve_baseline_server_config()?;
-    let server_config = cli.server.resolve(&baseline_server_config);
-    run_command(cli.cmd, server_config)
+    let cli = Cli::try_parse()?;
+    run_command(cli.cmd, cli.server)
 }
 
-fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Result<()> {
+fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
     match cmd {
-        Command::Run {
-            name,
-            repeat,
-            warmup,
-            work,
-            cwd,
-            timeout,
-            env,
-            output_cap_bytes,
-            allow_nonzero,
-            include_hostname_hash,
-            out,
-            pretty,
-            upload,
-            upload_project,
-            command,
-        } => {
+        Command::Run(args) => {
+            let RunArgs {
+                name,
+                repeat,
+                warmup,
+                work,
+                cwd,
+                timeout,
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+                include_hostname_hash,
+                out,
+                pretty,
+                upload,
+                upload_project,
+                command,
+            } = *args;
+
             let timeout = timeout.as_deref().map(parse_duration).transpose()?;
 
             let tool = tool_info();
@@ -869,8 +965,12 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
 
             // Upload to server if requested
             if upload {
-                let client = server_config
-                    .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                let (server_config, _config_file) =
+                    resolve_server_config_from_path(&server_flags, None)?;
+                let client = server_config.require_fallback_client(
+                    Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                    BASELINE_SERVER_NOT_CONFIGURED,
+                )?;
                 let project = server_config.resolve_project(upload_project)?;
 
                 let request = UploadBaselineRequest {
@@ -885,7 +985,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 };
 
                 with_tokio_runtime(async {
-                    let response = client
+                    let response: perfgate_client::types::UploadBaselineResponse = client
                         .upload_baseline(&project, &request)
                         .await
                         .with_context(|| {
@@ -895,7 +995,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                         "Uploaded baseline {} version {} to server",
                         response.benchmark, response.version
                     );
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<(), anyhow::Error>(())
                 })?;
             }
 
@@ -908,35 +1008,45 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             Ok(())
         }
 
-        Command::Compare {
-            baseline,
-            current,
-            threshold,
-            warn_factor,
-            metric_threshold,
-            direction,
-            metric_stat,
-            significance_alpha,
-            significance_min_samples,
-            require_significance,
-            fail_on_warn,
-            host_mismatch,
-            out,
-            pretty,
-        } => {
+        Command::Compare(args) => {
+            let CompareArgs {
+                baseline,
+                current,
+                threshold,
+                warn_factor,
+                noise_threshold,
+                noise_policy,
+                metric_threshold,
+                metric_noise_threshold,
+                direction,
+                metric_stat,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
+                fail_on_warn,
+                host_mismatch,
+                out,
+                pretty,
+            } = *args;
+
+            let (server_config, config_file) =
+                resolve_server_config_from_path(&server_flags, None)?;
             let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
             let (baseline_receipt, baseline_ref) = match baseline_selector {
                 BaselineSelector::Server { benchmark } => {
-                    let client = server_config
-                        .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                    let client = server_config.require_fallback_client(
+                        Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                        BASELINE_SERVER_NOT_CONFIGURED,
+                    )?;
                     let project = server_config.resolve_project(None)?;
                     let record = with_tokio_runtime(async {
-                        client
+                        let record: perfgate_api::BaselineRecord = client
                             .get_latest_baseline(&project, &benchmark)
                             .await
                             .with_context(|| {
                                 format!("Failed to fetch baseline '{benchmark}' from server")
-                            })
+                            })?;
+                        Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
                     })?;
 
                     let receipt = record.receipt;
@@ -963,7 +1073,10 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 &current_receipt,
                 threshold,
                 warn_factor,
+                noise_threshold,
+                noise_policy,
                 metric_threshold,
+                metric_noise_threshold,
                 direction,
             )?;
 
@@ -1002,18 +1115,21 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 }
             }
 
+            // Submit verdict to server if configured
+            submit_verdict_if_possible(&server_flags, &config_file, &compare_result.receipt);
+
             write_json(&out, &compare_result.receipt, pretty)?;
 
             match compare_result.receipt.verdict.status {
-                perfgate::types::VerdictStatus::Pass => Ok(()),
-                perfgate::types::VerdictStatus::Warn => {
+                perfgate_types::VerdictStatus::Pass | perfgate_types::VerdictStatus::Skip => Ok(()),
+                perfgate_types::VerdictStatus::Warn => {
                     if fail_on_warn {
                         exit_with_code(3)
                     } else {
                         Ok(())
                     }
                 }
-                perfgate::types::VerdictStatus::Fail => exit_with_code(2),
+                perfgate_types::VerdictStatus::Fail => exit_with_code(2),
             }
         }
 
@@ -1022,7 +1138,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             out,
             template,
         } => {
-            let compare_receipt: perfgate::types::CompareReceipt = read_json(&compare)?;
+            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
             let md = render_markdown_with_optional_template(&compare_receipt, template.as_deref())?;
 
             match out {
@@ -1038,7 +1154,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
         }
 
         Command::GithubAnnotations { compare } => {
-            let compare_receipt: perfgate::types::CompareReceipt = read_json(&compare)?;
+            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
             for line in github_annotations(&compare_receipt) {
                 println!("{line}");
             }
@@ -1052,29 +1168,35 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             out,
         } => execute_export(run, compare, &format, &out),
 
-        Command::Promote {
-            current,
-            to,
-            to_server,
-            benchmark,
-            promote_project,
-            version,
-            normalize,
-            pretty,
-        } => {
+        Command::Promote(args) => {
+            let PromoteArgs {
+                current,
+                to,
+                to_server,
+                benchmark,
+                promote_project,
+                version,
+                normalize,
+                pretty,
+            } = *args;
+
             let receipt: RunReceipt = read_json_from_location(&current)?;
 
             if to_server {
+                let (server_config, _config_file) =
+                    resolve_server_config_from_path(&server_flags, None)?;
                 // Promote to server
-                let client = server_config
-                    .require_fallback_client(Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)))?;
+                let client = server_config.require_fallback_client(
+                    Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                    BASELINE_SERVER_NOT_CONFIGURED,
+                )?;
                 let project = server_config.resolve_project(promote_project)?;
 
                 let benchmark_name = benchmark.ok_or_else(|| {
                     anyhow::anyhow!("--to-server requires --benchmark to be specified")
                 })?;
 
-                let request = UploadBaselineRequest {
+                let request = perfgate_client::types::UploadBaselineRequest {
                     benchmark: benchmark_name.clone(),
                     version,
                     git_ref: None,
@@ -1086,7 +1208,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 };
 
                 with_tokio_runtime(async {
-                    let response = client
+                    let response: perfgate_client::types::UploadBaselineResponse = client
                         .upload_baseline(&project, &request)
                         .await
                         .with_context(|| {
@@ -1098,7 +1220,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                         "Promoted baseline {} version {} to server",
                         response.benchmark, response.version
                     );
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<(), anyhow::Error>(())
                 })?;
             } else {
                 // Promote to local file
@@ -1113,13 +1235,15 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             Ok(())
         }
 
-        Command::Report {
-            compare,
-            out,
-            md,
-            md_template,
-            pretty,
-        } => {
+        Command::Report(args) => {
+            let ReportArgs {
+                compare,
+                out,
+                md,
+                md_template,
+                pretty,
+            } = *args;
+
             let compare_receipt: CompareReceipt = read_json(&compare)?;
 
             let result = ReportUseCase::execute(ReportRequest {
@@ -1147,27 +1271,31 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             Ok(())
         }
 
-        Command::Check {
-            config,
-            bench,
-            all,
-            bench_regex,
-            out_dir,
-            baseline,
-            require_baseline,
-            fail_on_warn,
-            env,
-            output_cap_bytes,
-            allow_nonzero,
-            host_mismatch,
-            significance_alpha,
-            significance_min_samples,
-            require_significance,
-            pretty,
-            mode,
-            md_template,
-            output_github,
-        } => {
+        Command::Check(args) => {
+            let CheckArgs {
+                config,
+                bench,
+                all,
+                bench_regex,
+                out_dir,
+                baseline,
+                require_baseline,
+                fail_on_warn,
+                noise_threshold,
+                noise_policy,
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+                host_mismatch,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
+                pretty,
+                mode,
+                md_template,
+                output_github,
+            } = *args;
+
             let req = CheckConfig {
                 config_path: config,
                 bench,
@@ -1177,6 +1305,8 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 baseline,
                 require_baseline,
                 fail_on_warn,
+                noise_threshold,
+                noise_policy,
                 env,
                 output_cap_bytes,
                 allow_nonzero,
@@ -1187,6 +1317,7 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 pretty,
                 md_template,
                 output_github,
+                server_flags,
             };
             match mode {
                 OutputMode::Standard => run_check_standard(req),
@@ -1194,24 +1325,31 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             }
         }
 
-        Command::Paired {
-            name,
-            baseline,
-            current,
-            baseline_cmd,
-            current_cmd,
-            repeat,
-            warmup,
-            work,
-            cwd,
-            timeout,
-            env,
-            output_cap_bytes,
-            allow_nonzero,
-            include_hostname_hash,
-            out,
-            pretty,
-        } => {
+        Command::Paired(args) => {
+            let PairedArgs {
+                name,
+                baseline,
+                current,
+                baseline_cmd,
+                current_cmd,
+                repeat,
+                warmup,
+                work,
+                cwd,
+                timeout,
+                env,
+                output_cap_bytes,
+                allow_nonzero,
+                include_hostname_hash,
+                require_significance,
+                significance_alpha,
+                significance_min_samples,
+                max_retries,
+                fail_on_regression,
+                out,
+                pretty,
+            } = *args;
+
             let timeout = timeout.as_deref().map(parse_duration).transpose()?;
 
             let baseline_command = match (baseline, baseline_cmd) {
@@ -1247,6 +1385,11 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
                 output_cap_bytes,
                 allow_nonzero,
                 include_hostname_hash,
+                significance_alpha,
+                significance_min_samples,
+                require_significance,
+                max_retries,
+                fail_on_regression,
             })?;
 
             write_json(&out, &outcome.receipt, pretty)?;
@@ -1258,23 +1401,122 @@ fn run_command(cmd: Command, server_config: ResolvedServerConfig) -> anyhow::Res
             Ok(())
         }
 
-        Command::Baseline { action } => execute_baseline_action(action, &server_config),
+        Command::Baseline { action } => execute_baseline_action(action, &server_flags),
 
-        Command::Summary { files } => {
+        Command::Summary {
+            files,
+            allow_nonzero,
+        } => {
             let usecase = SummaryUseCase;
             let outcome = usecase.execute(SummaryRequest { files })?;
             println!("{}", usecase.render_markdown(&outcome));
+
+            if outcome.failed && !allow_nonzero {
+                anyhow::bail!("Matrix gating failed: at least one benchmark regression detected.");
+            }
+
+            Ok(())
+        }
+
+        Command::Aggregate { files, out, pretty } => {
+            let usecase = perfgate_app::AggregateUseCase;
+            let mut resolved_files = Vec::new();
+            for pattern in files {
+                for entry in glob(&pattern).map_err(|e| anyhow::anyhow!("invalid glob: {}", e))? {
+                    resolved_files.push(entry?);
+                }
+            }
+            let outcome = usecase.execute(perfgate_app::AggregateRequest {
+                files: resolved_files,
+            })?;
+            write_json(&out, &outcome.receipt, pretty)?;
+            Ok(())
+        }
+
+        Command::Bisect(args) => {
+            let usecase = BisectUseCase::default();
+            usecase.execute(BisectRequest {
+                good: args.good.clone(),
+                bad: args.bad.clone(),
+                build_cmd: args.build_cmd.clone(),
+                executable: args.executable.clone(),
+                threshold: args.threshold,
+            })?;
+            Ok(())
+        }
+
+        Command::Blame(args) => execute_blame(*args),
+
+        Command::Explain {
+            compare,
+            baseline_lock,
+            current_lock,
+        } => {
+            let usecase = ExplainUseCase;
+            let outcome = usecase.execute(ExplainRequest {
+                compare,
+                baseline_lock,
+                current_lock,
+            })?;
+            println!("{}", outcome.markdown);
             Ok(())
         }
     }
 }
 
+fn execute_blame(args: BlameArgs) -> anyhow::Result<()> {
+    let usecase = BlameUseCase;
+    let outcome = usecase.execute(BlameRequest {
+        baseline_lock: args.baseline,
+        current_lock: args.current,
+    })?;
+
+    if args.format == "json" {
+        println!("{}", serde_json::to_string_pretty(&outcome.blame)?);
+    } else {
+        println!("# Binary Blame: Dependency Changes\n");
+        if outcome.blame.changes.is_empty() {
+            println!("No dependency changes detected.");
+        } else {
+            for change in outcome.blame.changes {
+                match change.change_type {
+                    DependencyChangeType::Added => {
+                        println!(
+                            "- Added: {} v{}",
+                            change.name,
+                            change.new_version.as_deref().unwrap_or("?")
+                        );
+                    }
+                    DependencyChangeType::Removed => {
+                        println!(
+                            "- Removed: {} v{}",
+                            change.name,
+                            change.old_version.as_deref().unwrap_or("?")
+                        );
+                    }
+                    DependencyChangeType::Updated => {
+                        println!(
+                            "- Updated: {} ({} -> {})",
+                            change.name,
+                            change.old_version.as_deref().unwrap_or("?"),
+                            change.new_version.as_deref().unwrap_or("?")
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Execute baseline management actions.
 fn execute_baseline_action(
     action: BaselineAction,
-    server_config: &ResolvedServerConfig,
+    server_flags: &ServerFlags,
 ) -> anyhow::Result<()> {
-    let client = server_config.require_fallback_client(None)?;
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
 
     let rt = tokio::runtime::Runtime::new()?;
 
@@ -1320,7 +1562,7 @@ fn execute_baseline_action(
                     }
                 }
 
-                Ok::<_, anyhow::Error>(())
+                Ok::<(), anyhow::Error>(())
             })?;
         }
 
@@ -1360,7 +1602,7 @@ fn execute_baseline_action(
                     output.display()
                 );
 
-                Ok::<_, anyhow::Error>(())
+                Ok::<(), anyhow::Error>(())
             })?;
         }
 
@@ -1402,7 +1644,7 @@ fn execute_baseline_action(
                     response.benchmark, response.version
                 );
 
-                Ok::<_, anyhow::Error>(())
+                Ok::<(), anyhow::Error>(())
             })?;
         }
 
@@ -1441,7 +1683,7 @@ fn execute_baseline_action(
                     benchmark, version_str
                 );
 
-                Ok::<_, anyhow::Error>(())
+                Ok::<(), anyhow::Error>(())
             })?;
         }
 
@@ -1479,7 +1721,90 @@ fn execute_baseline_action(
                     }
                 }
 
-                Ok::<_, anyhow::Error>(())
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
+        BaselineAction::Verdicts {
+            benchmark,
+            project,
+            limit,
+            status,
+        } => {
+            let project = server_config.resolve_project(project)?;
+
+            let mut query = ListVerdictsQuery::new().with_limit(limit);
+            if let Some(bench) = benchmark {
+                query = query.with_benchmark(bench);
+            }
+            if let Some(s) = status {
+                query = query.with_status(s);
+            }
+
+            rt.block_on(async {
+                let response = client
+                    .list_verdicts(&project, &query)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to get verdict history for project {}", project)
+                    })?;
+
+                if response.verdicts.is_empty() {
+                    println!("No verdicts found for project '{}'.", project);
+                } else {
+                    println!(
+                        "Verdict history for {} ({} results):",
+                        project,
+                        response.verdicts.len()
+                    );
+                    for record in &response.verdicts {
+                        let git_ref = record.git_ref.as_deref().unwrap_or("unknown");
+                        println!(
+                            "  [{:?}] {} - {} ({})",
+                            record.status, record.benchmark, record.created_at, git_ref
+                        );
+                    }
+                }
+
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
+        BaselineAction::SubmitVerdict {
+            compare,
+            project,
+            git_ref,
+            git_sha,
+        } => {
+            let project = server_config.resolve_project(project)?;
+            let compare_receipt: CompareReceipt = read_json(&compare)?;
+
+            let request = SubmitVerdictRequest {
+                benchmark: compare_receipt.bench.name.clone(),
+                run_id: compare_receipt
+                    .current_ref
+                    .run_id
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                status: compare_receipt.verdict.status,
+                counts: compare_receipt.verdict.counts.clone(),
+                reasons: compare_receipt.verdict.reasons.clone(),
+                git_ref,
+                git_sha,
+            };
+
+            rt.block_on(async {
+                client
+                    .submit_verdict(&project, &request)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to submit verdict for benchmark '{}'",
+                            request.benchmark
+                        )
+                    })?;
+                println!("Verdict submitted for benchmark '{}'", request.benchmark);
+                Ok::<(), anyhow::Error>(())
             })?;
         }
 
@@ -1609,6 +1934,8 @@ struct CheckConfig {
     baseline: Option<PathBuf>,
     require_baseline: bool,
     fail_on_warn: bool,
+    noise_threshold: Option<f64>,
+    noise_policy: Option<perfgate_types::NoisePolicy>,
     env: Vec<(String, String)>,
     output_cap_bytes: usize,
     allow_nonzero: bool,
@@ -1619,6 +1946,47 @@ struct CheckConfig {
     pretty: bool,
     md_template: Option<PathBuf>,
     output_github: bool,
+    server_flags: ServerFlags,
+}
+
+fn submit_verdict_if_possible(
+    server_flags: &ServerFlags,
+    config_file: &ConfigFile,
+    compare_receipt: &CompareReceipt,
+) {
+    let server_config = resolve_server_config(
+        server_flags.baseline_server.clone(),
+        server_flags.api_key.clone(),
+        server_flags.project.clone(),
+        &config_file.baseline_server,
+    );
+
+    if server_config.url.is_some()
+        && let Ok(client) = server_config.require_fallback_client(
+            Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+            BASELINE_SERVER_NOT_CONFIGURED,
+        )
+        && let Ok(project) = server_config.resolve_project(None)
+    {
+        let request = SubmitVerdictRequest {
+            benchmark: compare_receipt.bench.name.clone(),
+            run_id: compare_receipt
+                .current_ref
+                .run_id
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            status: compare_receipt.verdict.status,
+            counts: compare_receipt.verdict.counts.clone(),
+            reasons: compare_receipt.verdict.reasons.clone(),
+            git_ref: None, // Could be extracted if needed
+            git_sha: None,
+        };
+
+        let _ = with_tokio_runtime(async {
+            let _ = client.submit_verdict(&project, &request).await;
+            Ok::<(), anyhow::Error>(())
+        });
+    }
 }
 
 /// Run check in standard mode (exit codes reflect verdict).
@@ -1681,15 +2049,15 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Resolve baseline path (--baseline flag only valid for single bench mode)
         let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
         let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
-            .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
+            .map_err(|e| PerfgateError::Io(IoError::BaselineResolve(e.to_string())))?;
 
         // Create output directory
         fs::create_dir_all(&bench_out_dir).map_err(|e| {
-            PerfgateError::ArtifactWrite(format!(
+            PerfgateError::Io(IoError::ArtifactWrite(format!(
                 "create output dir {}: {}",
                 bench_out_dir.display(),
                 e
-            ))
+            )))
         })?;
 
         // Execute check
@@ -1706,6 +2074,8 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             baseline_path: Some(baseline_path.clone()),
             require_baseline: req.require_baseline,
             fail_on_warn: req.fail_on_warn,
+            noise_threshold: req.noise_threshold,
+            noise_policy: req.noise_policy,
             tool: tool_info(),
             env: req.env.clone(),
             output_cap_bytes: req.output_cap_bytes,
@@ -1716,15 +2086,20 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             require_significance: req.require_significance,
         })?;
 
+        // Submit verdict to server if configured
+        if let Some(compare) = &outcome.compare_receipt {
+            submit_verdict_if_possible(&req.server_flags, &config_file, compare);
+        }
+
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
-            .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+            .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
         if let Some(compare) = &outcome.compare_receipt {
             let markdown =
                 render_markdown_with_optional_template(compare, markdown_template_path.as_deref())?;
             atomic_write(&outcome.markdown_path, markdown.as_bytes())
-                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
         } else {
             let msg = "markdown template ignored for no-baseline bench".to_string();
             if req.all {
@@ -1777,48 +2152,9 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn resolve_bench_names(
-    config_file: &ConfigFile,
-    bench: Option<&str>,
-    all: bool,
-    bench_regex: Option<&str>,
-) -> anyhow::Result<Vec<String>> {
-    if all {
-        if config_file.benches.is_empty() {
-            anyhow::bail!("no benchmarks defined in config file");
-        }
-
-        let mut names: Vec<String> = config_file.benches.iter().map(|b| b.name.clone()).collect();
-
-        if let Some(pattern) = bench_regex {
-            let regex = Regex::new(pattern)
-                .with_context(|| format!("invalid --bench-regex pattern: {}", pattern))?;
-            names.retain(|name| regex.is_match(name));
-
-            if names.is_empty() {
-                anyhow::bail!(
-                    "--bench-regex '{}' did not match any benchmark names in config",
-                    pattern
-                );
-            }
-        }
-
-        return Ok(names);
-    }
-
-    if bench_regex.is_some() {
-        anyhow::bail!("--bench-regex can only be used with --all");
-    }
-
-    if let Some(name) = bench {
-        return Ok(vec![name.to_string()]);
-    }
-
-    anyhow::bail!("either --bench or --all must be specified")
-}
-
 /// Run check in cockpit mode (always write receipt, exit 0 unless catastrophic).
 fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
+    eprintln!("DEBUG: run_check_cockpit entered");
     let clock = SystemClock;
     let started_at = clock.now_rfc3339();
     let start_instant = Instant::now();
@@ -1855,7 +2191,7 @@ fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
                 .ended_at(ended_at, duration_ms)
                 .baseline(baseline_available, None);
 
-            let error_report = builder.build_error(&format!("{:#}", err), stage, error_kind);
+            let error_report = builder.build_error(&err.to_string(), stage, error_kind);
 
             // Try to write the error report
             let report_path = req.out_dir.join("report.json");
@@ -1875,7 +2211,7 @@ fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
                 }
 
                 // Report written successfully - exit 0 per cockpit contract
-                eprintln!("error: {:#}", err);
+                eprintln!("error: {}", err);
                 eprintln!("note: error recorded in {}", report_path.display());
                 Ok(())
             } else {
@@ -1946,18 +2282,17 @@ fn run_check_cockpit_inner(
                 req.out_dir.join("extras")
             };
             fs::create_dir_all(&extras_dir).map_err(|e| {
-                PerfgateError::ArtifactWrite(format!(
+                PerfgateError::Io(IoError::ArtifactWrite(format!(
                     "create extras dir {}: {}",
                     extras_dir.display(),
                     e
-                ))
+                )))
             })?;
 
             // Resolve baseline path
             let baseline_path = resolve_baseline_path(&req.baseline, bench_name, &config_file);
             let baseline_receipt = load_optional_baseline_receipt(&baseline_path)
-                .map_err(|e| PerfgateError::BaselineResolve(format!("{:#}", e)))?;
-            let baseline_available = baseline_receipt.is_some();
+                .map_err(|e| PerfgateError::Io(IoError::BaselineResolve(e.to_string())))?;
 
             // Execute check
             let runner = StdProcessRunner;
@@ -1972,6 +2307,8 @@ fn run_check_cockpit_inner(
                 baseline_path: Some(baseline_path.clone()),
                 require_baseline: req.require_baseline,
                 fail_on_warn: req.fail_on_warn,
+                noise_threshold: req.noise_threshold,
+                noise_policy: req.noise_policy,
                 tool: tool_info(),
                 env: req.env.clone(),
                 output_cap_bytes: req.output_cap_bytes,
@@ -1982,9 +2319,14 @@ fn run_check_cockpit_inner(
                 require_significance: req.require_significance,
             })?;
 
+            // Submit verdict to server if configured
+            if let Some(compare) = &check_outcome.compare_receipt {
+                submit_verdict_if_possible(&req.server_flags, &config_file, compare);
+            }
+
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
-                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
             let final_markdown = if let Some(compare) = &check_outcome.compare_receipt {
                 let rendered = render_markdown_with_optional_template(
@@ -1992,7 +2334,7 @@ fn run_check_cockpit_inner(
                     markdown_template_path.as_deref(),
                 )?;
                 atomic_write(&check_outcome.markdown_path, rendered.as_bytes())
-                    .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                    .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
                 rendered
             } else {
                 eprintln!(
@@ -2004,7 +2346,7 @@ fn run_check_cockpit_inner(
 
             // Rename extras files to versioned names
             rename_extras_to_versioned(&extras_dir)
-                .map_err(|e| PerfgateError::ArtifactWrite(format!("{:#}", e)))?;
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
             // Print warnings (CLI concern, not part of aggregation)
             for warning in &check_outcome.warnings {
@@ -2019,11 +2361,9 @@ fn run_check_cockpit_inner(
 
             Ok(BenchOutcome::Success {
                 bench_name: bench_name.clone(),
-                has_compare: check_outcome.compare_receipt.is_some(),
-                baseline_available,
                 markdown: final_markdown,
-                extras_prefix,
-                report: check_outcome.report,
+                extras_prefix: Some(extras_prefix),
+                report: Box::new(check_outcome.report),
             })
         })()
         .unwrap_or_else(|err| {
@@ -2031,9 +2371,9 @@ fn run_check_cockpit_inner(
             eprintln!("error: bench '{}': {:#}", bench_name, err);
             BenchOutcome::Error {
                 bench_name: bench_name.clone(),
-                error_message: format!("{:#}", err),
-                stage,
-                error_kind,
+                error: err.to_string(),
+                stage: stage.to_string(),
+                kind: error_kind.to_string(),
             }
         });
         bench_outcomes.push(outcome);
@@ -2043,14 +2383,9 @@ fn run_check_cockpit_inner(
     let ended_at = clock.now_rfc3339();
     let duration_ms = start_instant.elapsed().as_millis() as u64;
 
-    let any_baseline_available = bench_outcomes.iter().any(|o| {
-        matches!(
-            o,
-            BenchOutcome::Success {
-                baseline_available: true,
-                ..
-            }
-        )
+    let any_baseline_available = bench_outcomes.iter().any(|o| match o {
+        BenchOutcome::Success { report, .. } => report.compare.is_some(),
+        _ => false,
     });
 
     let baseline_reason = if !any_baseline_available {
@@ -2059,14 +2394,9 @@ fn run_check_cockpit_inner(
         None
     };
 
-    let all_baseline_available = bench_outcomes.iter().all(|o| {
-        matches!(
-            o,
-            BenchOutcome::Success {
-                baseline_available: true,
-                ..
-            }
-        )
+    let all_baseline_available = bench_outcomes.iter().all(|o| match o {
+        BenchOutcome::Success { report, .. } => report.compare.is_some(),
+        _ => false,
     });
 
     let builder = SensorReportBuilder::new(tool_info(), started_at.to_string())
@@ -2286,7 +2616,7 @@ fn execute_export(
             ExportUseCase::export_run(&run_receipt, export_format)?
         }
         (None, Some(compare_path)) => {
-            let compare_receipt: perfgate::types::CompareReceipt = read_json(&compare_path)?;
+            let compare_receipt: CompareReceipt = read_json(&compare_path)?;
             ExportUseCase::export_compare(&compare_receipt, export_format)?
         }
         (None, None) => {
@@ -2309,10 +2639,6 @@ fn tool_info() -> ToolInfo {
 }
 
 fn map_domain_err(err: anyhow::Error) -> anyhow::Error {
-    // Keep it easy to read in CI logs.
-    if let Some(DomainError::InvalidBaseline(m)) = err.downcast_ref::<DomainError>() {
-        return anyhow::anyhow!("invalid baseline for {m:?}");
-    }
     err
 }
 
@@ -2334,6 +2660,29 @@ fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
         .ok_or_else(|| "expected KEY=VALUE".to_string())?;
     let f: f64 = v.parse().map_err(|_| format!("invalid float value: {v}"))?;
     Ok((k.to_string(), f))
+}
+
+fn parse_noise_policy(s: &str) -> Result<perfgate_types::NoisePolicy, String> {
+    match s.to_lowercase().as_str() {
+        "warn" => Ok(perfgate_types::NoisePolicy::Warn),
+        "skip" => Ok(perfgate_types::NoisePolicy::Skip),
+        "ignore" => Ok(perfgate_types::NoisePolicy::Ignore),
+        _ => Err(format!(
+            "invalid noise policy: {s} (expected warn|skip|ignore)"
+        )),
+    }
+}
+
+fn parse_verdict_status(s: &str) -> Result<VerdictStatus, String> {
+    match s.to_lowercase().as_str() {
+        "pass" => Ok(VerdictStatus::Pass),
+        "warn" => Ok(VerdictStatus::Warn),
+        "fail" => Ok(VerdictStatus::Fail),
+        "skip" => Ok(VerdictStatus::Skip),
+        _ => Err(format!(
+            "invalid verdict status: {s} (expected pass|warn|fail|skip)"
+        )),
+    }
 }
 
 fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
@@ -2377,7 +2726,7 @@ fn normalize_paired_cli_command(args: Vec<String>, flag_name: &str) -> anyhow::R
 }
 
 struct RemoteLocation {
-    store: Arc<dyn object_store::ObjectStore>,
+    store: Arc<dyn ObjectStore>,
     object_path: ObjectPath,
 }
 
@@ -2409,12 +2758,6 @@ where
 }
 
 fn is_object_not_found(err: &object_store::Error) -> bool {
-    // Different cloud providers (S3, GCS, Azure) wrap their NotFound errors
-    // differently and don't always expose a structured `NotFound` variant.
-    // For example, some drivers surface a generic/opaque error whose message
-    // contains "not found" rather than the typed enum variant.  We match the
-    // structured variant first, then fall back to case-insensitive string
-    // matching as a last resort.
     matches!(err, object_store::Error::NotFound { .. })
         || err.to_string().to_ascii_lowercase().contains("not found")
 }
@@ -2544,9 +2887,9 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate::types::{
-        BenchMeta, HostInfo, Metric, PerfgateReport, RUN_SCHEMA_V1, ReportSummary, RunMeta,
-        RunReceipt, Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
+    use perfgate_types::{
+        BenchMeta, HostInfo, PerfgateReport, RUN_SCHEMA_V1, ReportSummary, RunMeta, RunReceipt,
+        Stats, U64Summary, Verdict, VerdictCounts, VerdictStatus,
     };
 
     use serde_json::json;
@@ -2587,15 +2930,15 @@ mod tests {
 
     fn make_stats_with_wall(wall_ms: u64) -> Stats {
         Stats {
-            wall_ms: U64Summary {
-                median: wall_ms,
-                min: wall_ms,
-                max: wall_ms,
-            },
+            wall_ms: U64Summary::new(wall_ms, wall_ms, wall_ms),
             cpu_ms: None,
             page_faults: None,
             ctx_switches: None,
             max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
         }
@@ -2611,7 +2954,7 @@ mod tests {
   "current_ref": {{"path": "current.json", "run_id": "c456"}},
   "budgets": {{"wall_ms": {{"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}}}},
   "deltas": {{"wall_ms": {{"baseline": 100.0, "current": 150.0, "ratio": 1.5, "pct": 0.5, "regression": 0.5, "status": "{}"}}}},
-  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1}}, "reasons": ["wall_ms_fail"]}}
+  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1, "skip": 0}}, "reasons": ["wall_ms_fail"]}}
 }}"#,
             metric_status, verdict_status
         )
@@ -2819,13 +3162,6 @@ mod tests {
     }
 
     #[test]
-    fn map_domain_err_rewrites_invalid_baseline() {
-        let err = anyhow::Error::new(DomainError::InvalidBaseline(Metric::WallMs));
-        let mapped = map_domain_err(err);
-        assert_eq!(mapped.to_string(), "invalid baseline for WallMs");
-    }
-
-    #[test]
     fn rename_if_exists_reports_error_on_invalid_target() {
         let dir = tempdir().unwrap();
         let old_path = dir.path().join("run.json");
@@ -2902,6 +3238,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: Vec::new(),
             },
@@ -2911,6 +3248,7 @@ mod tests {
                 pass_count: 0,
                 warn_count: 0,
                 fail_count: 0,
+                skip_count: 0,
                 total_count: 0,
             },
         };
@@ -2958,6 +3296,7 @@ mod tests {
                     pass: 0,
                     warn: 0,
                     fail: 0,
+                    skip: 0,
                 },
                 reasons: Vec::new(),
             },
@@ -2967,6 +3306,7 @@ mod tests {
                 pass_count: 0,
                 warn_count: 0,
                 fail_count: 0,
+                skip_count: 0,
                 total_count: 0,
             },
         };
@@ -2990,6 +3330,12 @@ mod tests {
         assert!(run_path.exists());
         assert!(report_path.exists());
         assert!(markdown_path.exists());
+    }
+
+    #[test]
+    fn print_cli_size() {
+        println!("Size of Cli: {}", std::mem::size_of::<Cli>());
+        println!("Size of Command: {}", std::mem::size_of::<Command>());
     }
 
     #[test]

@@ -4,9 +4,15 @@ use assert_cmd::Command;
 use std::env;
 use std::path::{Path, PathBuf};
 
+use std::sync::OnceLock;
+
+static PERFGATE_BIN: OnceLock<std::path::PathBuf> = OnceLock::new();
+
 /// Build a perfgate command with coverage passthrough when available.
 pub fn perfgate_cmd() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("perfgate"));
+    let bin_path =
+        PERFGATE_BIN.get_or_init(|| assert_cmd::cargo::cargo_bin!("perfgate").to_path_buf());
+    let mut cmd = Command::new(bin_path);
     if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
         cmd.env("LLVM_PROFILE_FILE", profile);
     }

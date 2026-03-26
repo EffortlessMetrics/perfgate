@@ -25,6 +25,7 @@ pub struct SummaryRow {
 #[derive(Debug, Clone)]
 pub struct SummaryOutcome {
     pub rows: Vec<SummaryRow>,
+    pub failed: bool,
 }
 
 /// Use case for summarizing comparison receipts.
@@ -33,9 +34,13 @@ pub struct SummaryUseCase;
 impl SummaryUseCase {
     /// Executes the summary use case.
     pub fn execute(&self, req: SummaryRequest) -> anyhow::Result<SummaryOutcome> {
+        println!("DEBUG: SummaryUseCase::execute");
         let mut paths = Vec::new();
         for pattern in req.files {
-            for entry in glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))? {
+            println!("DEBUG: matching glob {}", pattern);
+            for entry in
+                glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))?
+            {
                 paths.push(entry?);
             }
         }
@@ -44,15 +49,23 @@ impl SummaryUseCase {
             anyhow::bail!("no comparison receipts found");
         }
 
+        let mut failed = false;
         let mut rows = Vec::new();
         for path in paths {
+            println!("DEBUG: processing {}", path.display());
             let content =
                 fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+            println!("DEBUG: content read ({} bytes)", content.len());
             let compare: CompareReceipt = serde_json::from_str(&content)
                 .with_context(|| format!("parse JSON from {}", path.display()))?;
+            println!("DEBUG: JSON parsed");
 
             let benchmark = compare.bench.name.clone();
             let status = format!("{:?}", compare.verdict.status).to_lowercase();
+            if status == "fail" {
+                failed = true;
+            }
+            println!("DEBUG: benchmark={}, status={}", benchmark, status);
 
             let wall = compare.deltas.get(&Metric::WallMs);
             let (wall_ms, change_pct) = if let Some(d) = wall {
@@ -72,7 +85,7 @@ impl SummaryUseCase {
             });
         }
 
-        Ok(SummaryOutcome { rows })
+        Ok(SummaryOutcome { rows, failed })
     }
 
     /// Renders the summary outcome as a Markdown table.
@@ -94,7 +107,9 @@ impl SummaryUseCase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{BenchMeta, RunMeta, ToolInfo, Verdict, VerdictCounts, VerdictStatus};
+    use perfgate_types::{
+        BenchMeta, CompareReceipt, CompareRef, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
+    };
     use std::collections::BTreeMap;
     use tempfile::tempdir;
 
@@ -102,25 +117,53 @@ mod tests {
     fn test_summary_execution() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("run1.json");
-        
+
         let receipt = CompareReceipt {
             schema: "perfgate.compare.v1".to_string(),
-            tool: ToolInfo { name: "test".into(), version: "0".into() },
-            run: RunMeta::default(),
-            bench: BenchMeta { name: "bench1".into(), ..Default::default() },
-            baseline_ref: None,
-            current_ref: None,
+            tool: ToolInfo {
+                name: "test".into(),
+                version: "0".into(),
+            },
+            bench: BenchMeta {
+                name: "bench1".into(),
+                cwd: None,
+                command: vec![],
+                repeat: 0,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: None,
+                run_id: None,
+            },
+            budgets: BTreeMap::new(),
             deltas: BTreeMap::new(),
-            verdict: Verdict { status: VerdictStatus::Pass, counts: VerdictCounts::default() },
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: vec![],
+            },
         };
-        
+
         fs::write(&path, serde_json::to_string(&receipt).unwrap()).unwrap();
-        
+
         let usecase = SummaryUseCase;
-        let outcome = usecase.execute(SummaryRequest {
-            files: vec![path.to_str().unwrap().to_string()],
-        }).unwrap();
-        
+        let outcome = usecase
+            .execute(SummaryRequest {
+                files: vec![path.to_str().unwrap().to_string()],
+            })
+            .unwrap();
+
         assert_eq!(outcome.rows.len(), 1);
         assert_eq!(outcome.rows[0].benchmark, "bench1");
         assert_eq!(outcome.rows[0].status, "pass");

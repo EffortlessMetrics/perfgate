@@ -22,9 +22,10 @@ use tracing::info;
 use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware};
 use crate::error::ConfigError;
 use crate::handlers::{
-    delete_baseline, get_baseline, get_latest_baseline, health_check, list_baselines,
-    promote_baseline, upload_baseline,
+    dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
+    list_baselines, list_verdicts, promote_baseline, static_asset, submit_verdict, upload_baseline,
 };
+use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
     ArtifactStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore, SqliteStore,
 };
@@ -54,6 +55,19 @@ impl std::str::FromStr for StorageBackend {
     }
 }
 
+/// API key configuration.
+#[derive(Debug, Clone)]
+pub struct ApiKeyConfig {
+    /// The actual API key string
+    pub key: String,
+    /// Assigned role
+    pub role: Role,
+    /// Project identifier the key is restricted to
+    pub project: String,
+    /// Optional regex to restrict access to specific benchmarks
+    pub benchmark_regex: Option<String>,
+}
+
 /// Server configuration.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -72,11 +86,14 @@ pub struct ServerConfig {
     /// Artifact storage URL (e.g., s3://bucket/prefix)
     pub artifacts_url: Option<String>,
 
-    /// API keys for authentication (key -> role mapping)
-    pub api_keys: Vec<(String, Role)>,
+    /// API keys for authentication
+    pub api_keys: Vec<ApiKeyConfig>,
 
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
+
+    /// Optional OIDC configuration.
+    pub oidc: Option<OidcConfig>,
 
     /// Enable CORS for all origins
     pub cors: bool,
@@ -95,6 +112,7 @@ impl Default for ServerConfig {
             artifacts_url: None,
             api_keys: vec![],
             jwt: None,
+            oidc: None,
             cors: true,
             timeout_seconds: 30,
         }
@@ -141,14 +159,36 @@ impl ServerConfig {
     }
 
     /// Adds an API key with a specific role.
-    pub fn api_key(mut self, key: impl Into<String>, role: Role) -> Self {
-        self.api_keys.push((key.into(), role));
+    pub fn api_key(self, key: impl Into<String>, role: Role) -> Self {
+        self.scoped_api_key(key, role, "default", None)
+    }
+
+    /// Adds a scoped API key restricted to a project and optional benchmark regex.
+    pub fn scoped_api_key(
+        mut self,
+        key: impl Into<String>,
+        role: Role,
+        project: impl Into<String>,
+        benchmark_regex: Option<String>,
+    ) -> Self {
+        self.api_keys.push(ApiKeyConfig {
+            key: key.into(),
+            role,
+            project: project.into(),
+            benchmark_regex,
+        });
         self
     }
 
     /// Enables JWT token authentication.
     pub fn jwt(mut self, jwt: JwtConfig) -> Self {
         self.jwt = Some(jwt);
+        self
+    }
+
+    /// Configures OIDC authentication.
+    pub fn oidc(mut self, config: OidcConfig) -> Self {
+        self.oidc = Some(config);
         self
     }
 
@@ -165,9 +205,10 @@ pub(crate) async fn create_artifacts(
 ) -> Result<Option<Arc<dyn ArtifactStore>>, ConfigError> {
     if let Some(url) = &config.artifacts_url {
         info!(url = %url, "Using object storage for artifacts");
-        let (store, _path) = object_store::parse_url(&url.parse().map_err(|e| {
-            ConfigError::InvalidValue(format!("Invalid artifacts URL: {}", e))
-        })?)
+        let (store, _path) = object_store::parse_url(
+            &url.parse()
+                .map_err(|e| ConfigError::InvalidValue(format!("Invalid artifacts URL: {}", e)))?,
+        )
         .map_err(|e| ConfigError::InvalidValue(format!("Failed to parse artifacts URL: {}", e)))?;
 
         Ok(Some(Arc::new(ObjectArtifactStore::new(Arc::from(store)))))
@@ -203,8 +244,9 @@ pub(crate) async fn create_storage(
                 .clone()
                 .unwrap_or_else(|| "postgres://localhost:5432/perfgate".to_string());
             info!(url = %url, "Using PostgreSQL storage");
-            let store = PostgresStore::new(&url, artifacts).await
-                .map_err(|e| ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e)))?;
+            let store = PostgresStore::new(&url, artifacts).await.map_err(|e| {
+                ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e))
+            })?;
             Ok(Arc::new(store))
         }
     }
@@ -217,15 +259,17 @@ pub(crate) async fn create_key_store(
     let store = ApiKeyStore::new();
 
     // Add configured API keys
-    for (key, role) in &config.api_keys {
-        let api_key = ApiKey::new(
+    for cfg in &config.api_keys {
+        let mut api_key = ApiKey::new(
             uuid::Uuid::new_v4().to_string(),
-            format!("{:?} key", role),
-            "default".to_string(),
-            *role,
+            format!("{:?} key for {}", cfg.role, cfg.project),
+            cfg.project.clone(),
+            cfg.role,
         );
-        store.add_key(api_key, key).await;
-        info!(role = ?role, "Added API key");
+        api_key.benchmark_regex = cfg.benchmark_regex.clone();
+
+        store.add_key(api_key, &cfg.key).await;
+        info!(role = ?cfg.role, project = %cfg.project, "Added API key");
     }
 
     Ok(Arc::new(store))
@@ -239,6 +283,12 @@ pub(crate) fn create_router(
 ) -> Router {
     // Health check (no auth required)
     let health_routes = Router::new().route("/health", get(health_check));
+
+    // Dashboard routes (no auth required for read-only view)
+    let dashboard_routes = Router::new()
+        .route("/", get(dashboard_index))
+        .route("/index.html", get(dashboard_index))
+        .route("/assets/{*path}", get(static_asset));
 
     // API routes that require authentication
     let api_routes = Router::new()
@@ -257,14 +307,17 @@ pub(crate) fn create_router(
             delete(delete_baseline),
         )
         .route("/projects/{project}/baselines", get(list_baselines))
+        .route("/projects/{project}/verdicts", post(submit_verdict))
+        .route("/projects/{project}/verdicts", get(list_verdicts))
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),
         )
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
 
-    // Combine routes under /api/v1, plus root /health
+    // Combine routes under /api/v1, plus root /health and dashboard
     let mut app = Router::new()
+        .merge(dashboard_routes)
         .merge(health_routes.clone())
         .nest("/api/v1", health_routes.merge(api_routes));
 
@@ -296,7 +349,16 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     // Create key store
     let key_store = create_key_store(&config).await?;
-    let auth_state = AuthState::new(key_store, config.jwt.clone());
+
+    let mut oidc_provider = None;
+    if let Some(oidc_cfg) = config.oidc.clone() {
+        let provider = OidcProvider::new(oidc_cfg)
+            .await
+            .map_err(|e| e.to_string())?;
+        oidc_provider = Some(provider);
+    }
+
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider);
 
     // Create router
     let app = create_router(store.clone(), auth_state, &config);
@@ -371,13 +433,24 @@ mod tests {
             .storage_backend(StorageBackend::Sqlite)
             .sqlite_path("/tmp/test.db")
             .api_key("test-key", Role::Admin)
+            .scoped_api_key(
+                "scoped-key",
+                Role::Contributor,
+                "my-proj",
+                Some("^bench-.*$".to_string()),
+            )
             .jwt(JwtConfig::hs256(b"test-secret".to_vec()).issuer("perfgate"))
             .cors(false);
 
         assert_eq!(config.bind.to_string(), "127.0.0.1:3000");
         assert_eq!(config.storage_backend, StorageBackend::Sqlite);
         assert_eq!(config.sqlite_path, Some(PathBuf::from("/tmp/test.db")));
-        assert_eq!(config.api_keys.len(), 1);
+        assert_eq!(config.api_keys.len(), 2);
+        assert_eq!(config.api_keys[1].project, "my-proj");
+        assert_eq!(
+            config.api_keys[1].benchmark_regex,
+            Some("^bench-.*$".to_string())
+        );
         assert!(config.jwt.is_some());
         assert!(!config.cors);
     }
@@ -429,18 +502,25 @@ mod tests {
     async fn test_create_key_store() {
         let config = ServerConfig::new()
             .api_key("pg_live_test123456789012345678901234567890", Role::Admin)
-            .api_key("pg_live_viewer123456789012345678901234567", Role::Viewer);
+            .scoped_api_key(
+                "pg_live_viewer123456789012345678901234567",
+                Role::Viewer,
+                "project-1",
+                None,
+            );
 
         let key_store = create_key_store(&config).await.unwrap();
         let keys = key_store.list_keys().await;
 
         assert_eq!(keys.len(), 2);
+        let viewer_key = keys.iter().find(|k| k.role == Role::Viewer).unwrap();
+        assert_eq!(viewer_key.project_id, "project-1");
     }
 
     #[tokio::test]
     async fn test_router_creation() {
         let store = Arc::new(InMemoryStore::new());
-        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None);
+        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
         let config = ServerConfig::new();
 
         let _router = create_router(store, auth_state, &config);

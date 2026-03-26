@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-app/src/report.rs
-assertion_line: 394
 expression: "serde_json::to_value(&result.report).unwrap()"
 ---
 {
@@ -48,6 +47,7 @@ expression: "serde_json::to_value(&result.report).unwrap()"
       "counts": {
         "fail": 0,
         "pass": 1,
+        "skip": 0,
         "warn": 0
       },
       "reasons": [],
@@ -66,6 +66,7 @@ expression: "serde_json::to_value(&result.report).unwrap()"
     "counts": {
       "fail": 0,
       "pass": 1,
+      "skip": 0,
       "warn": 0
     },
     "reasons": [],
