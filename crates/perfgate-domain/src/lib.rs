@@ -432,8 +432,28 @@ pub fn compare_stats(
             continue;
         };
 
+        if bv <= 0.0 {
+            deltas.insert(
+                *metric,
+                Delta {
+                    baseline: bv,
+                    current: cv,
+                    ratio: 1.0,
+                    pct: 0.0,
+                    regression: 0.0,
+                    status: MetricStatus::Skip,
+                    significance: None,
+                    cv: current_cv,
+                    noise_threshold: budget.noise_threshold,
+                    statistic: MetricStatistic::Median,
+                },
+            );
+            counts.skip += 1;
+            continue;
+        }
+
         let result = evaluate_budget(bv, cv, budget, current_cv)
-            .expect("evaluate_budget is now infallible for finite inputs");
+            .expect("evaluate_budget is infallible for bv > 0");
 
         match result.status {
             MetricStatus::Pass => counts.pass += 1,
@@ -509,8 +529,28 @@ pub fn compare_runs(
             continue;
         };
 
+        if bv <= 0.0 {
+            deltas.insert(
+                *metric,
+                Delta {
+                    baseline: bv,
+                    current: cv,
+                    ratio: 1.0,
+                    pct: 0.0,
+                    regression: 0.0,
+                    status: MetricStatus::Skip,
+                    significance: None,
+                    cv: current_cv,
+                    noise_threshold: budget.noise_threshold,
+                    statistic,
+                },
+            );
+            counts.skip += 1;
+            continue;
+        }
+
         let result = evaluate_budget(bv, cv, budget, current_cv)
-            .expect("evaluate_budget is now infallible for finite inputs");
+            .expect("evaluate_budget is infallible for bv > 0");
 
         let mut status = result.status;
 
