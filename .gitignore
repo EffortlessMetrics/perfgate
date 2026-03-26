@@ -13,3 +13,9 @@ mutants.out.old/
 test_output/
 test_run.json
 *.pending-snap
+tmp-*/
+tmp*/
+test_output.txt
+commit_msg.txt
+perfgate-*.json
+bad.toml
