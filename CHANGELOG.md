@@ -5,9 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.15.0] - 2026-03-26
 
 ### Added
+- **The Intelligent Gater (0.15.0)** — Implemented automated performance verdicts, regression blame analysis, and AI-ready explanation prompts.
+- **LLM Regression Explainer** — Integration with LLMs to analyze code diffs and performance deltas to provide diagnostic explanations in PRs.
+- **Regression Blame** — Automated identification of dependency updates in `Cargo.lock` that contribute to performance regressions.
+- **Automated Performance Bisection** — New `perfgate bisect` command that uses `git bisect` and `paired` benchmarking to pinpoint the exact commit introducing a regression.
+- **Distributed Gating (0.14.0)** — Introduced `perfgate aggregate` for merging multiple run receipts (e.g., from a fleet of runners) into a single weighted verdict.
 - **Deep Observability (0.11.0)** — Expanded metric collection to include `io_read_bytes`, `io_write_bytes`, `network_packets`, and `energy_uj`.
 - **Windows IO Metrics** — Implemented native IO counter collection on Windows via `GetProcessIoCounters`.
 - **Noise & Flakiness Detection (0.10.0)** — Introduced `NoisePolicy` (`ignore`, `warn`, `skip`) for CV-based escalation and automated skipping of unstable benchmarks.
@@ -25,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **perfgate-stats computation** — Statistical summarization now uses Welford's online one-pass algorithm for improved numerical stability when computing mean and variance.
 - **Schema Update** — `perfgate.run.v1` and related schemas updated to include new statistical fields.
+- **Edition 2024** — Migrated the entire workspace to Rust 2024 edition and Rust 1.92 toolchain.
+- **Micro-crate Architecture** — Completed the modularization into 25 specialized crates for improved compilation speed and encapsulation.
+
+### Fixed
+- **Unix rusage math** — Improved `timeval` delta calculation to correctly handle microsecond rollovers.
+- **Smoke Lane Contracts** — Aligned cockpit mode artifacts with dogfooding verification requirements.
+- **Baseline Handling** — Ensured non-positive baselines are handled gracefully by skipping instead of panicking.
 
 ## [0.5.0] - 2026-03-16
 
