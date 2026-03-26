@@ -14,7 +14,7 @@ This file provides comprehensive context for AI interactions within the `perfgat
 - **System Metrics**: Unix `rusage` (`wait4`), Windows `GlobalMemoryStatusEx`
 
 ### Architecture
-The perfgate v2.x architecture is modularized into 19 specialized crates:
+The perfgate v2.x architecture is modularized into 25 specialized crates:
 
 | Crate | Responsibility |
 |-------|----------------|
