@@ -8,6 +8,17 @@ A small Rust CLI for **performance budgets** and **baseline diffs**.
 - can output **GitHub Actions annotations**
 - uses boring policy defaults (median-based, thresholded)
 
+## What's New in v0.15.0 (Intelligent Gater)
+
+v0.15.0 is a major stabilization release focusing on **Intelligent Gating** and **Automated Diagnostics**.
+
+- **🤖 LLM Regression Explainer**: Integration with Large Language Models to analyze code diffs and performance deltas, providing human-readable explanations for regressions directly in PRs (`perfgate explain`).
+- **🔍 Regression Blame**: Automated dependency change analysis. Mapping binary size and performance regressions to specific dependency updates in `Cargo.lock` (`perfgate blame`).
+- **🎯 Automated Performance Bisection**: New `perfgate bisect` command that orchestrates `git bisect` combined with `paired` benchmarking to find the exact commit that introduced a regression.
+- **🌐 Distributed Fleet Gating**: Support for aggregating results from multiple heterogeneous runners into a single weighted verdict (`perfgate aggregate`), enabling robust gating across large runner fleets.
+- **🛡️ Rust 2024 & Edition 1.92**: Fully migrated to the latest Rust edition and toolchain for improved performance and modern language features.
+- **📈 Deep Observability**: Expanded metric collection including native Windows IO counters, network packet tracking, and experimental energy usage (RAPL).
+
 ## Install
 
 From source:
@@ -32,10 +43,15 @@ cargo run -p perfgate -- --help
 | `github-annotations` | Emit GitHub Actions annotations |
 | `report` | Generate cockpit-compatible report from comparison |
 | `promote` | Promote a run receipt to become the new baseline |
-| `export` | Export data to CSV/JSONL/HTML/Prometheus for trend analysis |
+| `export` | Export data to CSV/JSONL/HTML/Prometheus/JUnit for trend analysis |
 | `check` | Config-driven one-command workflow |
 | `paired` | Paired benchmarking with interleaved baseline/current runs |
+| `baseline` | Manage baselines on the baseline server (REST API) |
 | `summary` | Summarize one or more compare receipts in a terminal table |
+| `aggregate` | Aggregate multiple run receipts (fleet) into one |
+| `bisect` | Automatically find the commit introducing a regression |
+| `blame` | Analyze dependency changes causing regressions |
+| `explain` | AI-ready regression explainers and playbooks |
 
 ## Exit Codes
 
