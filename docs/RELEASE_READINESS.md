@@ -17,22 +17,26 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 | `export --format csv` | **Works** | Correct CSV with headers |
 | `export --format jsonl` | **Works** | Valid JSON per line |
 | `export --format junit` | **Works** | Valid XML |
-| `export --format html` | **Not tested** | Listed in code, should work |
-| `export --format prometheus` | **Not tested** | Listed in code, should work |
+| `export --format html` | **Works** | Valid HTML table |
+| `export --format prometheus` | **Works** | Valid text exposition format |
 | `check` | **Works** | Config-driven, finds baselines via `baseline_pattern` |
 | `paired` | **Works** | Interleaved execution, produces compare receipt |
 | `summary` | **Works** | Terminal table from compare receipts |
 | `aggregate` | **Works** | Merges run receipts |
 | `explain` | **Works** | Generates diagnostic text |
 | `blame` | **Works** | Diff two Cargo.lock files |
-| `bisect` | **Not tested** | Requires git repo with history, wraps git bisect |
-| `baseline list/upload/download/delete/history/verdicts` | **Not tested** | Requires running server |
-| `check --mode cockpit` | **Not tested** | Cockpit mode, tested via CI suite |
+| `bisect` | **Not tested** | Wraps git bisect, requires repo with history |
+| `baseline upload` | **Works** | Requires `pg_live_` key with 32+ char suffix |
+| `baseline list` | **Works** | Lists uploaded baselines correctly |
+| `baseline download` | **Works** | Note: uses `--output` not `--out` |
+| `baseline delete/history/verdicts` | **Not tested** | Server is functional, these likely work |
+| `check --mode cockpit` | **Works** | Produces sensor.report.v1 envelope + extras |
 
 ## Known Bugs
 
 - [#55](https://github.com/EffortlessMetrics/perfgate/issues/55) ~~Leftover DEBUG prints~~ — **Fixed** (committed)
 - [#56](https://github.com/EffortlessMetrics/perfgate/issues/56) ~~CLI examples in docs use wrong flags~~ — **Fixed** (committed)
+- [#58](https://github.com/EffortlessMetrics/perfgate/issues/58) Server `--api-keys` glob `*` pattern causes 500 errors (use `.*` as workaround)
 
 ## Doc/Flag Mismatches Found During Testing (all fixed)
 
@@ -45,6 +49,9 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 
 ### `bisect` command
 - Docs say `--bench my-bench --config perfgate.toml` — **wrong**. Actual: `--good <COMMIT> --executable <PATH>`
+
+### `baseline download` command
+- Docs say `--out` — **wrong**, actual flag is `--output`
 
 ### `check` with `baseline_dir`
 - `baseline_dir` may have path resolution issues in mixed Unix/Windows environments (MSYS2). `baseline_pattern` with absolute path works reliably.
