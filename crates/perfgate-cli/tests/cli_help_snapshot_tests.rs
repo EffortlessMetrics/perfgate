@@ -137,6 +137,18 @@ fn cli_help_github_annotations() {
         .stdout(predicate::str::contains("--compare"));
 }
 
+#[test]
+fn cli_help_cargo_bench() {
+    perfgate_cmd()
+        .args(["cargo-bench", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("cargo bench"))
+        .stdout(predicate::str::contains("--out"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--compare"));
+}
+
 // ── insta full-output snapshot tests ─────────────────────────────────
 
 fn help_output(args: &[&str]) -> String {

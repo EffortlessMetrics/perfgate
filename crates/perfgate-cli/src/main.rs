@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
-use perfgate_adapters::{StdHostProbe, StdProcessRunner};
+use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::{
@@ -259,6 +259,14 @@ enum Command {
     /// to determine if a commit is good or bad.
     Bisect(Box<BisectArgs>),
 
+    /// Wrap `cargo bench` and produce perfgate run receipts.
+    ///
+    /// Auto-detects Criterion or libtest bench output. Scans `target/criterion/`
+    /// for Criterion JSON, or parses libtest bench output format.
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    CargoBench(Box<CargoBenchArgs>),
+
     /// Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions.
     Blame(Box<BlameArgs>),
 
@@ -283,6 +291,41 @@ enum Command {
     /// Produces a standard perfgate.run.v1 receipt that can be used with
     /// compare, report, check, and other perfgate commands.
     Ingest(Box<IngestArgs>),
+}
+
+#[derive(Debug, Args)]
+pub struct CargoBenchArgs {
+    /// Specific bench target to run (passed as `cargo bench --bench <name>`)
+    #[arg(long)]
+    pub bench: Option<String>,
+
+    /// Path to a baseline receipt for comparison
+    #[arg(long)]
+    pub compare: Option<PathBuf>,
+
+    /// Output file path for the run receipt
+    #[arg(long, default_value = "perfgate-cargo-bench.json")]
+    pub out: PathBuf,
+
+    /// Also write individual per-benchmark receipts to this directory
+    #[arg(long)]
+    pub out_dir: Option<PathBuf>,
+
+    /// Override the cargo target directory (default: auto-detect)
+    #[arg(long)]
+    pub target_dir: Option<PathBuf>,
+
+    /// Include a hashed hostname in the host fingerprint
+    #[arg(long, default_value_t = false)]
+    pub include_hostname_hash: bool,
+
+    /// Pretty-print JSON output
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+
+    /// Extra arguments passed to `cargo bench` (after --)
+    #[arg(last = true)]
+    pub extra_args: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1484,6 +1527,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
 
+        Command::CargoBench(args) => execute_cargo_bench(*args),
+
         Command::Blame(args) => execute_blame(*args),
 
         Command::Explain {
@@ -1575,6 +1620,162 @@ fn execute_blame(args: BlameArgs) -> anyhow::Result<()> {
                 }
             }
         }
+    }
+
+    Ok(())
+}
+
+/// Execute the `cargo-bench` subcommand.
+fn execute_cargo_bench(args: CargoBenchArgs) -> anyhow::Result<()> {
+    use perfgate_app::cargo_bench::{
+        BenchSource, benchmarks_to_individual_receipts, benchmarks_to_receipt,
+        build_cargo_bench_command, detect_criterion, detect_target_dir, parse_libtest_output,
+        scan_criterion_dir,
+    };
+
+    let target_dir = args.target_dir.unwrap_or_else(detect_target_dir);
+
+    // Build and run `cargo bench`
+    let cargo_cmd = build_cargo_bench_command(args.bench.as_deref(), &args.extra_args);
+
+    eprintln!("Running: {}", cargo_cmd.join(" "));
+
+    let output = std::process::Command::new(&cargo_cmd[0])
+        .args(&cargo_cmd[1..])
+        .output()
+        .with_context(|| format!("failed to execute: {}", cargo_cmd.join(" ")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() {
+        // Print stderr so the user sees what went wrong
+        eprint!("{stderr}");
+        anyhow::bail!(
+            "cargo bench exited with status {}",
+            output.status.code().unwrap_or(-1)
+        );
+    }
+
+    // Print stderr (Criterion/cargo compiler output) for user visibility
+    if !stderr.is_empty() {
+        eprint!("{stderr}");
+    }
+
+    // Determine source: check Criterion first, then libtest
+    let benchmarks = if detect_criterion(&target_dir) {
+        let criterion_dir = target_dir.join("criterion");
+        eprintln!("Detected Criterion output in {}", criterion_dir.display());
+        scan_criterion_dir(&criterion_dir)?
+    } else {
+        // Try parsing libtest output from stdout
+        let parsed = parse_libtest_output(&stdout);
+        if parsed.is_empty() {
+            // Also try stderr (some runners print there)
+            let parsed_stderr = parse_libtest_output(&stderr);
+            if parsed_stderr.is_empty() {
+                anyhow::bail!(
+                    "no benchmark results found: no Criterion data in {} and no libtest bench output detected",
+                    target_dir.display()
+                );
+            }
+            parsed_stderr
+        } else {
+            parsed
+        }
+    };
+
+    let source = benchmarks
+        .first()
+        .map(|b| b.source)
+        .unwrap_or(BenchSource::Libtest);
+
+    eprintln!("Found {} benchmark(s) from {:?}", benchmarks.len(), source);
+
+    // Collect host info and tool info
+    let tool = tool_info();
+    let host_probe = StdHostProbe;
+    let host = host_probe.probe(&perfgate_adapters::HostProbeOptions {
+        include_hostname_hash: args.include_hostname_hash,
+    });
+    let clock = SystemClock;
+
+    let command_strs: Vec<String> = cargo_cmd;
+
+    // Create aggregate receipt (all benchmarks in one receipt)
+    let receipt = benchmarks_to_receipt(
+        &benchmarks,
+        "cargo-bench",
+        &tool,
+        &host,
+        &clock,
+        &command_strs,
+    )?;
+
+    write_json(&args.out, &receipt, args.pretty)?;
+    eprintln!("Wrote run receipt to {}", args.out.display());
+
+    // Optionally write individual receipts
+    if let Some(ref out_dir) = args.out_dir {
+        let individual =
+            benchmarks_to_individual_receipts(&benchmarks, &tool, &host, &clock, &command_strs)?;
+        fs::create_dir_all(out_dir).with_context(|| format!("create dir {}", out_dir.display()))?;
+
+        for r in &individual {
+            let safe_name = r.bench.name.replace(['/', '\\'], "_");
+            let path = out_dir.join(format!("{safe_name}.json"));
+            write_json(&path, r, args.pretty)?;
+            eprintln!("  Wrote {}", path.display());
+        }
+    }
+
+    // Optionally compare against baseline
+    if let Some(baseline_path) = &args.compare {
+        let baseline: RunReceipt = read_json(baseline_path)?;
+        let budgets = BTreeMap::new(); // default budgets
+        let metric_statistics = BTreeMap::new();
+
+        let compare_result = perfgate_app::CompareUseCase::execute(perfgate_app::CompareRequest {
+            baseline,
+            current: receipt.clone(),
+            budgets,
+            metric_statistics,
+            significance: None,
+            baseline_ref: CompareRef {
+                path: Some(baseline_path.to_string_lossy().to_string()),
+                run_id: None,
+            },
+            current_ref: CompareRef {
+                path: Some(args.out.to_string_lossy().to_string()),
+                run_id: None,
+            },
+            tool: tool.clone(),
+            host_mismatch_policy: HostMismatchPolicy::Warn,
+        })?;
+
+        // Write compare receipt next to the run receipt
+        let compare_out = args.out.with_file_name("perfgate-cargo-bench-compare.json");
+        write_json(&compare_out, &compare_result.receipt, args.pretty)?;
+        eprintln!("Wrote compare receipt to {}", compare_out.display());
+
+        // Print verdict
+        let verdict = &compare_result.receipt.verdict;
+        eprintln!(
+            "Verdict: {:?} (pass={}, warn={}, fail={})",
+            verdict.status, verdict.counts.pass, verdict.counts.warn, verdict.counts.fail
+        );
+
+        // Print host mismatch warning if detected
+        if let Some(mismatch) = &compare_result.host_mismatch {
+            eprintln!(
+                "Warning: host mismatch detected: {}",
+                mismatch.reasons.join("; ")
+            );
+        }
+
+        // Print markdown summary
+        let md = perfgate_app::render_markdown(&compare_result.receipt);
+        println!("{md}");
     }
 
     Ok(())
