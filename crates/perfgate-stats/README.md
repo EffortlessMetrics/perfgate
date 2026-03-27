@@ -2,7 +2,7 @@
 
 Statistical functions for benchmarking analysis.
 
-Part of the [perfgate](https://github.com/nicholasgasior/perfgate) workspace.
+Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 ## Overview
 

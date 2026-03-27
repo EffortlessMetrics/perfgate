@@ -67,9 +67,9 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Architectural Components (25-Crate Workspace)
+## Architectural Components (26-Crate Workspace)
 
-The perfgate architecture is modularized into 25 specialized crates:
+The perfgate architecture is modularized into 26 workspace crates:
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -84,7 +84,7 @@ The perfgate architecture is modularized into 25 specialized crates:
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-budget` | Budget evaluation and verdict logic |
-| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus) |
+| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-render` | Markdown and terminal rendering |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-significance` | Statistical significance testing (Welch's t-test) |

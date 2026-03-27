@@ -1,4 +1,4 @@
-# perfgate Requirements (v2.x)
+# perfgate Requirements
 
 This document specifies the functional requirements for perfgate commands, artifacts, and behaviors.
 

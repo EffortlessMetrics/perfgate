@@ -9,7 +9,6 @@ use serde_json::json;
 
 /// Render a [`CompareReceipt`] as a Markdown table for PR comments.
 pub fn render_markdown(compare: &CompareReceipt) -> String {
-    println!("DEBUG: render_markdown called");
     let mut out = String::new();
 
     let header = match compare.verdict.status {

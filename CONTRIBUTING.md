@@ -1,14 +1,50 @@
 # Contributing
 
-## Local workflow
+## Local Workflow
 
 ```bash
+# Full CI check: fmt, clippy, test, schema validation, fixture conformance
 cargo run -p xtask -- ci
 ```
 
+## Architecture
+
+perfgate is a 26-crate Rust workspace following clean architecture. The domain
+core is I/O-free; platform-specific code lives in adapters.
+
+```
+types / error          (innermost — shared contracts)
+  ↓
+domain / stats / significance / budget / sha256 / host-detect / validation
+  ↓
+adapters / paired / auth / api / config
+  ↓
+app / summary / render / export / sensor
+  ↓
+server / client / cli  (outermost — I/O and user-facing)
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the
+[ADRs](docs/adrs/) for design rationale.
+
+## Repo Automation (xtask)
+
+| Command | Description |
+|---------|-------------|
+| `ci` | fmt + clippy + test + schema + conform |
+| `schema` / `schema-check` | Generate and verify JSON schemas |
+| `conform` | Validate fixtures against vendored schemas |
+| `sync-fixtures` | Sync golden fixtures to contracts |
+| `dogfood fixtures` | Regenerate dogfooding fixtures |
+| `dogfood verify` | Validate artifact layout in CI |
+| `docs-sync` / `docs-check` | Manage system documentation |
+| `mutants` | Run mutation testing |
+| `microcrates` | Inventory workspace crates and kill rate targets |
+
 ## Changelog
 
-When adding features or fixing bugs, update [CHANGELOG.md](CHANGELOG.md) under the `[Unreleased]` section following the [Keep a Changelog](https://keepachangelog.com/) format.
+Update [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]` for every PR, following
+[Keep a Changelog](https://keepachangelog.com/).
 
 ## Schemas
 
@@ -16,36 +52,47 @@ When adding features or fixing bugs, update [CHANGELOG.md](CHANGELOG.md) under t
 cargo run -p xtask -- schema
 ```
 
+Schemas are written to `schemas/`. The vendored `sensor.report.v1` schema at
+`contracts/schemas/` is hand-written and not auto-generated.
+
 ## Dogfooding
 
-`perfgate` uses itself to gate its own performance. If you make changes that affect the core CLI execution or artifact format, you may need to update the dogfooding fixtures:
+perfgate gates its own performance across three CI lanes (Smoke, Perf, Nightly).
+If your changes affect CLI execution or artifact formats, update fixtures:
 
 ```bash
 cargo run -p xtask -- dogfood fixtures
 ```
 
-See [docs/SELF_DOGFOODING.md](docs/SELF_DOGFOODING.md) for details on the CI lanes and baseline policy.
+See [docs/SELF_DOGFOODING.md](docs/SELF_DOGFOODING.md) and
+[docs/BASELINE_POLICY.md](docs/BASELINE_POLICY.md).
 
-## Mutation testing
+## Testing
 
-Install:
-
-```bash
-cargo install cargo-mutants
-```
-
-Run:
+See [TESTING.md](TESTING.md) for the full testing guide. Quick reference:
 
 ```bash
-# Run on all crates
-cargo run -p xtask -- mutants
-
-# Run on specific crate with summary
-cargo run -p xtask -- mutants --crate perfgate-domain --summary
+cargo test --all                                    # all tests
+cargo test --test cucumber                          # BDD tests
+cargo test -p perfgate-domain                       # single crate
+cargo run -p xtask -- mutants --crate perfgate-domain  # mutation testing
 ```
 
-See [docs/MUTATION_TESTING.md](docs/MUTATION_TESTING.md) for detailed documentation including target kill rates and troubleshooting.
+Mutation testing kill rate targets:
+- Core Domain (domain, types, budget, stats): **95-100%**
+- Application (app, client, server): **90%**
+- Adapters & Infrastructure: **80-85%**
+- Presentation (export, render, sensor): **80%**
+- CLI: **70%**
+
+See [docs/MUTATION_TESTING.md](docs/MUTATION_TESTING.md) for details.
 
 ## Fuzzing
 
-See `fuzz/README.md`.
+Requires nightly. See `fuzz/README.md`.
+
+```bash
+cd fuzz
+cargo +nightly fuzz list
+cargo +nightly fuzz run parse_run_receipt
+```

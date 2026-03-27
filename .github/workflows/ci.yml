@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [ main, cloud-stats-github-action ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, cloud-stats-github-action ]
+    branches: [ main ]
 
 jobs:
   test:

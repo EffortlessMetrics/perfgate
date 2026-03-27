@@ -2,7 +2,7 @@
 
 Unified error types for the perfgate ecosystem.
 
-Part of the [perfgate](https://github.com/nicholasgasior/perfgate) workspace.
+Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 ## Overview
 

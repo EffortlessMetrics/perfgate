@@ -44,7 +44,7 @@ perfgate employs a multi-layered testing strategy following the test pyramid:
                     └─────────────────┘
 ```
 
-### Test Types by Crate (25 Specialized Crates)
+### Test Types by Crate (26 Workspace Crates)
 
 | Crate | Unit Tests | Property Tests | BDD Coverage | Fuzz Targets |
 |-------|------------|----------------|--------------|--------------|

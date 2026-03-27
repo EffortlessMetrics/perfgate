@@ -14,36 +14,42 @@ This file provides comprehensive context for AI interactions within the `perfgat
 - **System Metrics**: Unix `rusage` (`wait4`), Windows `GlobalMemoryStatusEx`
 
 ### Architecture
-The perfgate v2.x architecture is modularized into 25 specialized crates:
+The architecture is modularized into 26 workspace crates:
 
 | Crate | Responsibility |
 |-------|----------------|
 | `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic and statistical computations |
-| `perfgate-app` | Orchestration layer for CLI commands |
-| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
+| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
+| `perfgate-budget` | Budget evaluation and verdict logic |
+| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
+| `perfgate-validation` | Schema validation and contract testing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-paired` | Paired benchmarking implementation |
+| `perfgate-auth` | Authentication and authorization types |
+| `perfgate-api` | API types and models for baseline service |
+| `perfgate-config` | Configuration loading and merging logic |
+| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate-summary` | Summarization of comparison receipts |
+| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
+| `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
-| `perfgate-budget` | Budget evaluation and verdict logic |
-| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus) |
-| `perfgate-render` | Markdown and terminal rendering |
-| `perfgate-sensor` | Cockpit mode and sensor report generation |
-| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
-| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
-| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
-| `perfgate-paired` | Paired benchmarking implementation |
-| `perfgate-error` | Shared error types and categorization |
-| `perfgate-validation` | Schema validation and contract testing |
-| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate` | Unified facade library (re-exports core crates) |
 | `perfgate-fake` | Test fixtures and mock data generators |
+| `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
 | `xtask` | Repository automation for local workflows and CI |
 
 ## Building and Running
 
 ### Common Commands
 - **Build**: `cargo build --workspace`
-- **Run CLI**: `cargo run -p perfgate -- [args]`
+- **Run CLI**: `cargo run -p perfgate-cli -- [args]`
 - **Install Locally**: `cargo install --path crates/perfgate-cli`
 - **Help**: `perfgate --help`
 
