@@ -301,6 +301,21 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Badge(Box<BadgeArgs>),
+
+    /// Auto-detect benchmarks in a repository without manual configuration.
+    ///
+    /// Scans the project directory for common benchmark frameworks:
+    /// Rust/Criterion, Go benchmarks, Python/pytest-benchmark,
+    /// JavaScript/Benchmark.js, and executable files in well-known directories.
+    Discover {
+        /// Directory to scan (defaults to current directory)
+        #[arg(long)]
+        path: Option<PathBuf>,
+
+        /// Output results as JSON instead of a table
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -1640,6 +1655,25 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Badge(args) => execute_badge(*args),
+
+        Command::Discover { path, json } => {
+            let scan_root = path.unwrap_or_else(|| PathBuf::from("."));
+            let scan_root = fs::canonicalize(&scan_root)
+                .with_context(|| format!("failed to resolve path: {}", scan_root.display()))?;
+            let benchmarks = perfgate_app::discover::discover_all(&scan_root);
+
+            if benchmarks.is_empty() {
+                eprintln!("No benchmarks discovered in {}", scan_root.display());
+                return Ok(());
+            }
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&benchmarks)?);
+            } else {
+                print_discover_table(&benchmarks);
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1687,6 +1721,55 @@ fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn print_discover_table(benchmarks: &[perfgate_app::discover::DiscoveredBenchmark]) {
+    // Compute column widths
+    let name_w = benchmarks
+        .iter()
+        .map(|b| b.name.len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    let fw_w = benchmarks
+        .iter()
+        .map(|b| b.framework.len())
+        .max()
+        .unwrap_or(9)
+        .max(9);
+    let lang_w = benchmarks
+        .iter()
+        .map(|b| b.language.len())
+        .max()
+        .unwrap_or(8)
+        .max(8);
+    let cmd_w = benchmarks
+        .iter()
+        .map(|b| b.command.len())
+        .max()
+        .unwrap_or(7)
+        .max(7);
+    let conf_w = 10;
+
+    // Header
+    println!(
+        "{:<name_w$}  {:<fw_w$}  {:<lang_w$}  {:<cmd_w$}  {:<conf_w$}",
+        "NAME", "FRAMEWORK", "LANGUAGE", "COMMAND", "CONFIDENCE",
+    );
+    println!(
+        "{:-<name_w$}  {:-<fw_w$}  {:-<lang_w$}  {:-<cmd_w$}  {:-<conf_w$}",
+        "", "", "", "", "",
+    );
+
+    // Rows
+    for b in benchmarks {
+        println!(
+            "{:<name_w$}  {:<fw_w$}  {:<lang_w$}  {:<cmd_w$}  {:<conf_w$}",
+            b.name, b.framework, b.language, b.command, b.confidence,
+        );
+    }
+
+    println!("\nDiscovered {} benchmark(s)", benchmarks.len());
 }
 
 fn execute_blame(args: BlameArgs) -> anyhow::Result<()> {
