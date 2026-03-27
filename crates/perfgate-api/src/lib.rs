@@ -487,12 +487,26 @@ pub struct StorageHealth {
     pub status: String,
 }
 
+/// Connection pool metrics exposed via the health endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct PoolMetrics {
+    /// Number of idle connections in the pool.
+    pub idle: u32,
+    /// Number of active (in-use) connections.
+    pub active: u32,
+    /// Maximum number of connections the pool is configured for.
+    pub max: u32,
+}
+
 /// Response for health check.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
     pub storage: StorageHealth,
+    /// Connection pool metrics (present only for pooled backends such as PostgreSQL).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pool: Option<PoolMetrics>,
 }
 
 /// Generic error response for the API.

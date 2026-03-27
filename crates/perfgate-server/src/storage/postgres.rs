@@ -9,11 +9,13 @@ use crate::models::{
     BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
     ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
+use crate::server::PostgresPoolConfig;
 use async_trait::async_trait;
 use perfgate_types::VerdictStatus;
-use sqlx::{PgPool, Row, postgres::PgPoolOptions};
+use sqlx::{Connection, Executor, PgPool, Row, postgres::PgPoolOptions};
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{info, warn};
 
 /// PostgreSQL storage backend for baselines.
 #[derive(Debug, Clone)]
@@ -22,22 +24,139 @@ pub struct PostgresStore {
     artifacts: Option<Arc<dyn ArtifactStore>>,
 }
 
+/// Maximum number of retry attempts for transient connection failures.
+const MAX_RETRIES: u32 = 3;
+
+/// Initial backoff delay for connection retries.
+const INITIAL_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Returns `true` when an sqlx error looks transient (connection refused,
+/// timeout, reset, etc.) -- i.e. worth retrying.
+fn is_transient(err: &sqlx::Error) -> bool {
+    match err {
+        sqlx::Error::PoolTimedOut => true,
+        sqlx::Error::PoolClosed => false,
+        sqlx::Error::Io(_) => true,
+        sqlx::Error::Database(db_err) => {
+            // Postgres error codes starting with 08 are connection exceptions.
+            db_err
+                .code()
+                .map(|c| c.starts_with("08") || c.starts_with("57P01"))
+                .unwrap_or(false)
+        }
+        _ => {
+            let msg = err.to_string().to_lowercase();
+            msg.contains("connection refused")
+                || msg.contains("connection reset")
+                || msg.contains("broken pipe")
+                || msg.contains("timed out")
+        }
+    }
+}
+
 impl PostgresStore {
     /// Creates a new PostgreSQL storage backend and runs initial schema migrations.
+    ///
+    /// The connection pool is configured according to the supplied
+    /// [`PostgresPoolConfig`]. An `after_connect` callback sets
+    /// `statement_timeout` on every new connection, and a `before_acquire`
+    /// callback pings the connection to verify it is still alive.
     pub async fn new(
         url: &str,
         artifacts: Option<Arc<dyn ArtifactStore>>,
+        pool_config: &PostgresPoolConfig,
     ) -> Result<Self, StoreError> {
+        let stmt_timeout_ms = pool_config.statement_timeout.as_millis() as u64;
+
         let pool = PgPoolOptions::new()
-            .max_connections(10)
-            .acquire_timeout(Duration::from_secs(5))
+            .max_connections(pool_config.max_connections)
+            .min_connections(pool_config.min_connections)
+            .idle_timeout(pool_config.idle_timeout)
+            .max_lifetime(pool_config.max_lifetime)
+            .acquire_timeout(pool_config.acquire_timeout)
+            .after_connect(move |conn, _meta| {
+                Box::pin(async move {
+                    conn.execute(format!("SET statement_timeout = '{}'", stmt_timeout_ms).as_str())
+                        .await?;
+                    Ok(())
+                })
+            })
+            .before_acquire(|conn, _meta| {
+                Box::pin(async move {
+                    // Quick ping to verify the connection is alive.
+                    conn.ping().await?;
+                    Ok(true)
+                })
+            })
             .connect(url)
             .await
             .map_err(|e| StoreError::ConnectionError(e.to_string()))?;
 
+        info!(
+            max = pool_config.max_connections,
+            min = pool_config.min_connections,
+            idle_timeout_s = pool_config.idle_timeout.as_secs(),
+            max_lifetime_s = pool_config.max_lifetime.as_secs(),
+            acquire_timeout_s = pool_config.acquire_timeout.as_secs(),
+            statement_timeout_ms = stmt_timeout_ms,
+            "PostgreSQL connection pool configured"
+        );
+
         let store = Self { pool, artifacts };
         store.init_schema().await?;
         Ok(store)
+    }
+
+    /// Returns current pool metrics (idle, active, max connections).
+    fn pg_pool_metrics(&self) -> crate::models::PoolMetrics {
+        let size = self.pool.size();
+        let num_idle = self.pool.num_idle() as u32;
+        crate::models::PoolMetrics {
+            idle: num_idle,
+            active: size.saturating_sub(num_idle),
+            max: self.pool.options().get_max_connections(),
+        }
+    }
+
+    /// Executes a query with automatic retry on transient errors.
+    ///
+    /// The closure receives a reference to the pool and should return the
+    /// query result. On transient failure the call is retried up to
+    /// [`MAX_RETRIES`] times with exponential backoff.
+    pub(crate) async fn with_retry<F, Fut, T>(&self, operation: F) -> Result<T, StoreError>
+    where
+        F: Fn(PgPool) -> Fut,
+        Fut: std::future::Future<Output = Result<T, sqlx::Error>>,
+    {
+        let mut last_err = None;
+        let mut backoff = INITIAL_BACKOFF;
+
+        for attempt in 0..=MAX_RETRIES {
+            match operation(self.pool.clone()).await {
+                Ok(val) => return Ok(val),
+                Err(e) if is_transient(&e) && attempt < MAX_RETRIES => {
+                    warn!(
+                        attempt = attempt + 1,
+                        max = MAX_RETRIES,
+                        backoff_ms = backoff.as_millis() as u64,
+                        error = %e,
+                        "Transient database error, retrying"
+                    );
+                    tokio::time::sleep(backoff).await;
+                    backoff *= 2;
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    return Err(StoreError::QueryError(e.to_string()));
+                }
+            }
+        }
+
+        Err(StoreError::QueryError(
+            last_err
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "Unknown error after retries".to_string()),
+        ))
     }
 
     async fn init_schema(&self) -> Result<(), StoreError> {
@@ -485,7 +604,10 @@ impl BaselineStore for PostgresStore {
     }
 
     async fn health_check(&self) -> Result<StorageHealth, StoreError> {
-        match sqlx::query("SELECT 1").execute(&self.pool).await {
+        match self
+            .with_retry(|pool| async move { sqlx::query("SELECT 1").execute(&pool).await })
+            .await
+        {
             Ok(_) => Ok(StorageHealth::Healthy),
             Err(_) => Ok(StorageHealth::Unhealthy),
         }
@@ -493,6 +615,10 @@ impl BaselineStore for PostgresStore {
 
     fn backend_type(&self) -> &'static str {
         "postgres"
+    }
+
+    fn pool_metrics(&self) -> Option<crate::models::PoolMetrics> {
+        Some(self.pg_pool_metrics())
     }
 
     async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError> {
@@ -643,5 +769,35 @@ impl PostgresStore {
             git_sha: row.get("git_sha"),
             created_at: row.get("created_at"),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_transient_pool_timed_out() {
+        assert!(is_transient(&sqlx::Error::PoolTimedOut));
+    }
+
+    #[test]
+    fn test_is_transient_pool_closed() {
+        assert!(!is_transient(&sqlx::Error::PoolClosed));
+    }
+
+    #[test]
+    fn test_is_transient_io_error() {
+        let err = sqlx::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        assert!(is_transient(&err));
+    }
+
+    #[test]
+    fn test_is_transient_non_transient() {
+        let err = sqlx::Error::ColumnNotFound("missing".to_string());
+        assert!(!is_transient(&err));
     }
 }
