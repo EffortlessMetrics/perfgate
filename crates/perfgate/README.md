@@ -19,7 +19,7 @@ Add `perfgate` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-perfgate = "0.5.0"
+perfgate = "0.15.0"
 ```
 
 ### Example: Running a benchmark

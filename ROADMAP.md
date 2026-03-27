@@ -1,74 +1,66 @@
 # perfgate Roadmap
 
-This document outlines the planned evolution of `perfgate`. We are currently in the **Enterprise & Ecosystem Hardening phase**, focusing on stabilizing the platform for large-scale production use before reaching 1.0.
+This document outlines the planned evolution of perfgate. v0.15.0 is the first published release. Future work is grounded in what exists in the codebase today.
 
-## Strategic Outlook (2026-2027)
+## Near-Term (0.16.x)
 
-### Now: Enterprise Hardening (0.16.x - 0.17.x)
-- **Persistence**: Hardening PostgreSQL and S3 backends for high-availability.
-- **Identity**: Multi-provider OIDC (GitHub, GitLab, Okta) and fine-grained RBAC.
-- **Scale**: Optimizing server performance for fleets with 1000+ active benchmarks.
+### Storage Hardening
+- [ ] **PostgreSQL connection pooling**: The PostgreSQL backend (`perfgate-server/src/storage/postgres.rs`) works but needs connection pool tuning, retry logic, and health checks under load.
+- [ ] **S3 lifecycle policies**: The `object_store` integration supports S3/GCS/Azure uploads, but there is no retention or cleanup policy for old receipts.
+- [ ] **SQLite WAL mode**: Enable WAL for the SQLite backend to improve concurrent read performance.
 
-### Next: Ecosystem Expansion (0.18.x - 0.19.x)
-- **CI Plugins**: Native integrations for Bitbucket Pipelines, CircleCI, and Jenkins.
-- **Formatters**: Supporting industry-standard performance interchange formats.
-- **API**: Stabilizing the `perfgate-client` API for third-party sensor development.
+### Authentication & Authorization
+- [ ] **OIDC stabilization**: GitHub Actions OIDC works (`perfgate-auth`), but needs testing with GitLab CI and custom providers.
+- [ ] **API key management CLI**: Auth types and role-based scoping exist, but there is no CLI for creating, listing, or revoking keys.
 
-### Later: Performance Intelligence (0.20.x+)
-- **Predictive Analytics**: Forecasting regressions based on trend analysis.
-- **Health Scoring**: Automated "Performance Health" grades for projects and teams.
-- **AI Triage**: Advanced LLM diagnostic loops with automated PR remediation.
+### Platform Parity
+- [ ] **Windows metric gaps**: `page_faults` and `ctx_switches` are not yet collected on Windows (only `cpu_ms` and `max_rss_kb`).
+- [ ] **Timeout support on Windows**: Currently returns `AdapterError::TimeoutUnsupported` on non-Unix.
 
----
+## Medium-Term (0.17.x)
 
-## The Path to 1.0 (0.16.0 - 0.20.0)
+### Observability & Audit
+- [ ] **Audit logging**: Verdict history exists in the server, but there is no audit trail for baseline promotions, deletions, or key changes.
+- [ ] **Prometheus endpoint**: Export format exists (`perfgate-export`), but the server does not expose a `/metrics` scrape endpoint.
 
-### 0.16.0: Cloud Native Stabilization
-- [ ] **High-Availability Store**: Cluster-ready PostgreSQL storage with connection pooling.
-- [ ] **S3 Lifecycle Management**: Automated archival and cleanup policies for raw receipts.
-- [ ] **Prometheus Exporter**: Direct metrics export from the baseline server.
+### Noise & Stability
+- [ ] **Noise policy tuning**: `NoisePolicy` (ignore/warn/skip) exists but paired mode retries could be smarter about when to give up.
+- [ ] **Flakiness tracking**: CV-based detection exists per-run, but there is no cross-run flakiness history.
 
-### 0.17.0: Advanced Authentication
-- [ ] **Multi-Provider OIDC**: Support for custom OIDC providers beyond GitHub/GitLab.
-- [ ] **Service Account Management**: CLI and API for managing Scoped Service Keys.
-- [ ] **Audit Logging**: Tracking all baseline modifications and promotion events.
+### Documentation & Ecosystem
+- [ ] **CI plugin guides**: GitHub Actions guide and GitLab CI guide exist in `docs/`, but Bitbucket and CircleCI are undocumented.
+- [ ] **Schema evolution strategy**: Schemas are versioned (v1), but there is no documented policy for how v2 schemas would coexist.
 
-### 0.18.0: The Formatting Powerhouse
-- [ ] **JUnit/XUnit Support**: Native export to JUnit XML for integration with legacy CI reporters.
-- [ ] **JSON Schema v2**: Evolving the schema to support complex multi-variate metrics.
-- [ ] **Custom Renderers**: Pluggable engine for user-defined Markdown/HTML templates.
+## Long-Term (Toward 1.0)
 
-### 0.19.0: Fleet Intelligence
-- [ ] **Weighted Aggregation**: Smart `aggregate` logic that accounts for runner variance.
-- [ ] **Cross-Project Comparisons**: Benchmarking common components across multiple projects.
-- [ ] **Regression Trends**: Visualizing the "rate of decay" across multiple releases.
-
-### 0.20.0: Performance Health
-- [ ] **Perf Scorecards**: Generating high-level summaries of performance stability.
-- [ ] **Auto-Triage**: Automated assignment of regressions based on `git blame`.
-- [ ] **Stable 1.0 Candidate**: Final API and Schema freeze for the 1.0.0 release.
+- [ ] **API and schema freeze**: Stabilize all public JSON contracts and REST endpoints before 1.0.
+- [ ] **Pluggable renderers**: Handlebars template support exists for Markdown; generalize to a plugin system for custom output formats.
+- [ ] **Cross-project comparisons**: The server namespaces by project, but there is no way to compare benchmarks across projects.
+- [ ] **Weighted fleet aggregation**: `perfgate aggregate` merges receipts, but does not yet account for runner variance or weighting.
 
 ---
 
-## Completed Milestones
+## Shipped in v0.15.0 (First Release)
 
-### v0.15.0: The Intelligent Gater
-- [x] **LLM Regression Explainer**: AI-ready diagnostic prompts for PRs.
-- [x] **Regression Blame**: Automated mapping of regressions to `Cargo.lock` changes.
-- [x] **Automated Bisection**: Combining `git bisect` with `paired` benchmarking.
-- [x] **Fleet Aggregation**: Merging results from multiple runners.
-- [x] **Rust 2024 Migration**: Full workspace update to Edition 2024 and Rust 1.92.
+Everything below shipped in v0.15.0, the first published release. Development milestones prior to this (v0.1.0 through v0.5.0) were internal iterations tracked in [CHANGELOG.md](CHANGELOG.md).
 
-### v0.6.0 - v0.14.0 Highlights
-- [x] **Deep Observability**: IO, Network, and Energy (RAPL) metrics.
-- [x] **Noise Detection**: CV-based flakiness detection and auto-skipping.
-- [x] **Visual Insights**: Server-side dashboard and metric graphing.
-- [x] **Production Storage**: PostgreSQL and S3 backends for the baseline service.
-- [x] **OIDC Identity**: Initial GitHub Actions OIDC support.
-- [x] **Micro-crate Refactor**: Decoupled architecture with 25+ specialized crates.
+### Intelligent Gating
+- [x] **LLM Regression Explainer**: AI-ready diagnostic prompts for PRs (`perfgate explain`).
+- [x] **Regression Blame**: Automated mapping of regressions to `Cargo.lock` dependency changes (`perfgate blame`).
+- [x] **Automated Bisection**: `git bisect` combined with `paired` benchmarking (`perfgate bisect`).
+- [x] **Fleet Aggregation**: Merging results from multiple runners into weighted verdicts (`perfgate aggregate`).
 
-### v0.5.0 and Earlier
-- [x] **Self-Dogfooding CI**: Triple-lane gating (Smoke, Perf, Nightly).
-- [x] **Baseline Server**: REST API for centralized management.
-- [x] **Paired Benchmarking**: Noise-resistant interleaved execution.
-- [x] **Locked Schemas**: Stable versioned JSON contracts.
+### Core Platform
+- [x] **15 CLI commands**: run, compare, md, github-annotations, report, promote, export, check, paired, baseline, summary, aggregate, bisect, blame, explain.
+- [x] **Baseline Server**: REST API with SQLite, PostgreSQL, and S3/GCS/Azure storage backends.
+- [x] **Paired Benchmarking**: Noise-resistant interleaved execution with significance-based retries.
+- [x] **Cockpit Mode**: `sensor.report.v1` output for dashboard integration.
+- [x] **Statistical Significance**: Welch's t-test with configurable alpha, confidence intervals, and `--require-significance`.
+
+### Infrastructure
+- [x] **26 workspace crates**: Clean-architecture modularization with I/O-free domain core.
+- [x] **Versioned schemas**: `perfgate.run.v1`, `perfgate.compare.v1`, `perfgate.report.v1`, `sensor.report.v1`.
+- [x] **Multi-format export**: CSV, JSONL, HTML, Prometheus, JUnit.
+- [x] **GitHub Actions OIDC**: Token-based authentication for CI runners.
+- [x] **Self-dogfooding CI**: Triple-lane gating (Smoke, Perf, Nightly) with automated baseline refreshes.
+- [x] **Rust 2024 edition**: Full workspace on Edition 2024 and Rust 1.92.

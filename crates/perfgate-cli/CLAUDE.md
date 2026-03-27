@@ -27,9 +27,15 @@ A single `src/main.rs` with clap command definitions and dispatch logic.
 | `github-annotations` | Emit `::error::`/`::warning::` for GitHub Actions |
 | `report` | Generate `perfgate.report.v1` from a compare receipt |
 | `promote` | Copy a run receipt as baseline |
-| `export` | Flatten run/compare to CSV or JSONL |
+| `export` | Export run/compare to CSV, JSONL, HTML, Prometheus, or JUnit |
 | `check` | Config-driven workflow (standard or cockpit mode) |
 | `paired` | Paired A/B benchmarking |
+| `baseline` | Manage baselines on baseline server (list, upload, download, delete, history, verdicts) |
+| `summary` | Summarize compare receipts in terminal table |
+| `aggregate` | Aggregate multiple run receipts (fleet) into one |
+| `bisect` | Automated performance regression bisection via git bisect |
+| `blame` | Analyze Cargo.lock dependency changes causing regressions |
+| `explain` | AI-ready regression diagnostic prompts |
 
 ### Output Modes
 
@@ -51,7 +57,7 @@ Errors carry metadata for cockpit:
 
 ## Integration Tests
 
-13 test files in `tests/`:
+16 test files in `tests/`:
 
 | File | Coverage |
 |------|----------|
@@ -68,6 +74,9 @@ Errors carry metadata for cockpit:
 | `cli_cpu_time_tests.rs` | CPU time metrics |
 | `cli_abi_conformance_tests.rs` | ABI contract validation |
 | `cli_cockpit_tests.rs` | Cockpit mode artifacts |
+| `cli_help_snapshot_tests.rs` | Help text snapshot validation |
+| `cli_mock_server_tests.rs` | CLI client behavior with wiremock |
+| `cli_server_tests.rs` | Real server integration tests |
 
 Golden fixtures at `tests/fixtures/golden/sensor_report_*.json`.
 

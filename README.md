@@ -1,23 +1,25 @@
 # perfgate
 
-A small Rust CLI for **performance budgets** and **baseline diffs**.
+A Rust CLI and library for **performance budgets** and **baseline diffs** in CI.
 
-`perfgate` is designed for modern dev automation:
-- emits stable **JSON receipts** for artifacts
-- renders a compact **Markdown table** for PR comments
-- can output **GitHub Actions annotations**
-- uses boring policy defaults (median-based, thresholded)
+Gate pull requests on performance regressions with statistical rigor:
+- **Run** benchmarks, **compare** against baselines, **fail** builds that regress
+- Emits stable **versioned JSON receipts** for every step
+- Renders compact **Markdown tables** for PR comments and **GitHub Actions annotations**
+- Statistical significance testing (Welch's t-test) to filter noise from real regressions
+- Paired benchmarking, fleet aggregation, automated bisection, and dependency blame
+- Optional **baseline server** with PostgreSQL/S3 storage and role-based access
 
 ## What's New in v0.15.0 (Intelligent Gater)
 
-v0.15.0 is a major stabilization release focusing on **Intelligent Gating** and **Automated Diagnostics**.
+v0.15.0 is the first published release, focusing on **Intelligent Gating** and **Automated Diagnostics**.
 
-- **🤖 LLM Regression Explainer**: Integration with Large Language Models to analyze code diffs and performance deltas, providing human-readable explanations for regressions directly in PRs (`perfgate explain`).
-- **🔍 Regression Blame**: Automated dependency change analysis. Mapping binary size and performance regressions to specific dependency updates in `Cargo.lock` (`perfgate blame`).
-- **🎯 Automated Performance Bisection**: New `perfgate bisect` command that orchestrates `git bisect` combined with `paired` benchmarking to find the exact commit that introduced a regression.
-- **🌐 Distributed Fleet Gating**: Support for aggregating results from multiple heterogeneous runners into a single weighted verdict (`perfgate aggregate`), enabling robust gating across large runner fleets.
-- **🛡️ Rust 2024 & Edition 1.92**: Fully migrated to the latest Rust edition and toolchain for improved performance and modern language features.
-- **📈 Deep Observability**: Expanded metric collection including native Windows IO counters, network packet tracking, and experimental energy usage (RAPL).
+- **LLM Regression Explainer**: Integration with Large Language Models to analyze code diffs and performance deltas, providing human-readable explanations for regressions directly in PRs (`perfgate explain`).
+- **Regression Blame**: Automated dependency change analysis. Mapping binary size and performance regressions to specific dependency updates in `Cargo.lock` (`perfgate blame`).
+- **Automated Performance Bisection**: New `perfgate bisect` command that orchestrates `git bisect` combined with `paired` benchmarking to find the exact commit that introduced a regression.
+- **Distributed Fleet Gating**: Support for aggregating results from multiple heterogeneous runners into a single weighted verdict (`perfgate aggregate`), enabling robust gating across large runner fleets.
+- **Rust 2024 & Edition 1.92**: Fully migrated to the latest Rust edition and toolchain for improved performance and modern language features.
+- **Deep Observability**: Expanded metric collection including native Windows IO counters, network packet tracking, and experimental energy usage (RAPL).
 
 ## Install
 
@@ -164,7 +166,7 @@ perfgate promote \
 
 ### 7) Export for trend analysis
 
-Export historical data to CSV, JSONL, HTML, or Prometheus text format:
+Export historical data to CSV, JSONL, HTML, Prometheus, or JUnit format:
 
 ```bash
 # Export to CSV
@@ -328,8 +330,7 @@ git commit -m "Update performance baseline"
 
 - **In-repo**: Commit baselines to `baselines/` directory (simple, versioned)
 - **Cloud object storage**: Use `s3://...` or `gs://...` directly with `check --baseline` / `defaults.baseline_pattern` and `promote --to`
-- **Baseline Server**: Use the perfgate baseline server for centralized management (see [Baseline Server](#baseline-server))
-- **Database**: Store in a metrics database for advanced trend analysis
+- **Baseline Server**: Use the perfgate baseline server for centralized management with SQLite or PostgreSQL (see [Baseline Server](#baseline-server))
 
 ## Baseline Server
 
@@ -490,17 +491,20 @@ The `xtask` crate provides comprehensive repo automation:
 
 ## Design
 
-`perfgate` follows a highly modularized architecture composed of 21 specialized micro-crates. For the rationale behind this design, see the [Architectural Decision Records (ADRs)](docs/adrs/).
+`perfgate` follows a highly modularized architecture composed of 26 workspace crates. For the rationale behind this design, see the [Architectural Decision Records (ADRs)](docs/adrs/).
 
 Workspace crates:
 - [`crates/perfgate-adapters`](crates/perfgate-adapters/README.md): process execution and host probing adapters
+- [`crates/perfgate-api`](crates/perfgate-api/README.md): API types and models for baseline service
 - [`crates/perfgate-app`](crates/perfgate-app/README.md): use-case orchestration and high-level application flows
+- [`crates/perfgate-auth`](crates/perfgate-auth/README.md): authentication and authorization types
 - [`crates/perfgate-budget`](crates/perfgate-budget/README.md): budget policy and threshold calculation logic
 - [`crates/perfgate-cli`](crates/perfgate-cli/README.md): user-facing `perfgate` CLI, JSON I/O, and exit policy
 - [`crates/perfgate-client`](crates/perfgate-client/README.md): API client library for centralized baseline management
+- [`crates/perfgate-config`](crates/perfgate-config/README.md): configuration loading and merging logic
 - [`crates/perfgate-domain`](crates/perfgate-domain/README.md): core domain entities and measurement models
 - [`crates/perfgate-error`](crates/perfgate-error/README.md): shared error types and stage/kind classifications
-- [`crates/perfgate-export`](crates/perfgate-export/README.md): multi-format data export (CSV, JSONL, HTML, Prometheus)
+- [`crates/perfgate-export`](crates/perfgate-export/README.md): multi-format data export (CSV, JSONL, HTML, Prometheus, JUnit)
 - [`crates/perfgate-fake`](crates/perfgate-fake/README.md): test doubles and fake implementations for internal testing
 - [`crates/perfgate-host-detect`](crates/perfgate-host-detect/README.md): host fingerprinting and mismatch detection
 - [`crates/perfgate-paired`](crates/perfgate-paired/README.md): orchestration for paired (interleaved) benchmarking
@@ -508,9 +512,10 @@ Workspace crates:
 - [`crates/perfgate-selfbench`](crates/perfgate-selfbench/README.md): internal benchmarking workloads for self-dogfooding
 - [`crates/perfgate-sensor`](crates/perfgate-sensor/README.md): cockpit-compatible sensor report generation
 - [`crates/perfgate-server`](crates/perfgate-server/README.md): REST API server for centralized baseline management
-- [`crates/perfgate-sha256`](crates/perfgate-sha256/README.md): SIMD-accelerated SHA-256 for finding fingerprints
+- [`crates/perfgate-sha256`](crates/perfgate-sha256/README.md): SHA-256 for finding fingerprints
 - [`crates/perfgate-significance`](crates/perfgate-significance/README.md): statistical significance testing (Welch's t-test, p-values)
 - [`crates/perfgate-stats`](crates/perfgate-stats/README.md): pure statistical summaries and aggregations
+- [`crates/perfgate-summary`](crates/perfgate-summary/README.md): summarization of comparison receipts
 - [`crates/perfgate-types`](crates/perfgate-types/README.md): versioned receipt/config contracts and JSON schemas
 - [`crates/perfgate-validation`](crates/perfgate-validation/README.md): fixture and schema conformance validation logic
 - [`crates/perfgate`](crates/perfgate/README.md): unified facade library

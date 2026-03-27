@@ -34,6 +34,11 @@ cargo test -p perfgate-error
 cargo test -p perfgate-validation
 cargo test -p perfgate-sha256
 cargo test -p perfgate-fake
+cargo test -p perfgate-auth
+cargo test -p perfgate-config
+cargo test -p perfgate-api
+cargo test -p perfgate-summary
+cargo test -p perfgate-selfbench
 
 # Run a single test by name
 cargo test test_name
@@ -47,6 +52,11 @@ cargo run -p xtask -- ci
 
 # Generate JSON schemas to schemas/
 cargo run -p xtask -- schema
+
+# Validate fixtures against vendored schema
+cargo run -p xtask -- conform
+cargo run -p xtask -- conform --file path/to/report.json
+cargo run -p xtask -- conform --fixtures path/to/dir
 
 # Run mutation testing (requires cargo-mutants installed)
 cargo run -p xtask -- mutants
@@ -62,6 +72,14 @@ cargo run -p perfgate -- report --compare cmp.json --out report.json
 cargo run -p perfgate -- promote --current out.json --to baselines/bench.json
 cargo run -p perfgate -- export --run out.json --format csv --out data.csv
 cargo run -p perfgate -- check --config perfgate.toml --bench my-bench
+cargo run -p perfgate -- check --config perfgate.toml --bench my-bench --mode cockpit
+cargo run -p perfgate -- paired --baseline-cmd "echo baseline" --current-cmd "echo current" --repeat 10 --out cmp.json
+cargo run -p perfgate -- baseline list --project my-project
+cargo run -p perfgate -- summary cmp.json
+cargo run -p perfgate -- aggregate run1.json run2.json --out aggregated.json
+cargo run -p perfgate -- bisect --good abc123 --bad HEAD --bench my-bench --config perfgate.toml
+cargo run -p perfgate -- blame --compare cmp.json
+cargo run -p perfgate -- explain --compare cmp.json
 ```
 
 ## Fuzzing (requires nightly)
@@ -74,29 +92,36 @@ cargo +nightly fuzz run parse_run_receipt
 
 ## Architecture
 
-This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI. The perfgate v2.x architecture is modularized into 19 specialized crates:
+This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI. The architecture is modularized into 26 workspace crates:
 
 | Crate | Responsibility |
 |-------|----------------|
 | `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic and statistical computations |
-| `perfgate-app` | Orchestration layer for CLI commands |
-| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
+| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
+| `perfgate-budget` | Budget evaluation and verdict logic |
+| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
+| `perfgate-validation` | Schema validation and contract testing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-paired` | Paired benchmarking implementation |
+| `perfgate-auth` | Authentication and authorization types |
+| `perfgate-api` | API types and models for baseline service |
+| `perfgate-config` | Configuration loading and merging logic |
+| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate-summary` | Summarization of comparison receipts |
+| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
+| `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
-| `perfgate-budget` | Budget evaluation and verdict logic |
-| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus) |
-| `perfgate-render` | Markdown and terminal rendering |
-| `perfgate-sensor` | Cockpit mode and sensor report generation |
-| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
-| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
-| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
-| `perfgate-paired` | Paired benchmarking implementation |
-| `perfgate-error` | Shared error types and categorization |
-| `perfgate-validation` | Schema validation and contract testing |
-| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
+| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate` | Unified facade library (re-exports core crates) |
 | `perfgate-fake` | Test fixtures and mock data generators |
+| `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
+| `xtask` | Repository automation (schemas, CI, conformance, mutants) |
 
 **Key design principles:**
 - `perfgate-domain` is intentionally I/O-free: it does statistics and budget policy only
