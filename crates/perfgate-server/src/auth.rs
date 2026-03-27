@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::models::ApiError;
-use crate::oidc::OidcProvider;
+use crate::oidc::OidcRegistry;
 use crate::storage::KeyStore;
 
 /// JWT validation settings.
@@ -91,17 +91,13 @@ pub struct AuthState {
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
 
-    /// Optional OIDC provider.
-    pub oidc: Option<OidcProvider>,
+    /// OIDC provider registry (may contain zero or more providers).
+    pub oidc: OidcRegistry,
 }
 
 impl AuthState {
     /// Creates auth state from a key store and optional JWT/OIDC configuration.
-    pub fn new(
-        key_store: Arc<ApiKeyStore>,
-        jwt: Option<JwtConfig>,
-        oidc: Option<OidcProvider>,
-    ) -> Self {
+    pub fn new(key_store: Arc<ApiKeyStore>, jwt: Option<JwtConfig>, oidc: OidcRegistry) -> Self {
         Self {
             key_store,
             persistent_key_store: None,
@@ -293,9 +289,9 @@ async fn authenticate_jwt(
                 });
             }
             Err(e) => {
-                // If we don't have an OIDC provider, fail here.
+                // If we don't have OIDC providers, fail here.
                 // Otherwise, fall through to OIDC.
-                if auth_state.oidc.is_none() {
+                if !auth_state.oidc.has_providers() {
                     match &e {
                         AuthError::ExpiredToken => warn!("Expired JWT token"),
                         AuthError::InvalidToken(_) => warn!("Invalid JWT token"),
@@ -307,9 +303,9 @@ async fn authenticate_jwt(
         }
     }
 
-    // Try OIDC provider if available
-    if let Some(oidc) = &auth_state.oidc {
-        match oidc.validate_token(token).await {
+    // Try OIDC providers if any are configured
+    if auth_state.oidc.has_providers() {
+        match auth_state.oidc.validate_token(token).await {
             Ok(api_key) => {
                 return Ok(AuthContext {
                     api_key,
@@ -562,7 +558,7 @@ mod tests {
             )
             .await;
 
-        let response = auth_test_router(AuthState::new(store, None, None))
+        let response = auth_test_router(AuthState::new(store, None, Default::default()))
             .oneshot(
                 Request::builder()
                     .uri("/protected")
@@ -587,7 +583,7 @@ mod tests {
         let response = auth_test_router(AuthState::new(
             Arc::new(ApiKeyStore::new()),
             Some(test_jwt_config()),
-            None,
+            Default::default(),
         ))
         .oneshot(
             Request::builder()
@@ -610,16 +606,20 @@ mod tests {
         );
         let token = create_test_token(&claims);
 
-        let response = auth_test_router(AuthState::new(Arc::new(ApiKeyStore::new()), None, None))
-            .oneshot(
-                Request::builder()
-                    .uri("/protected")
-                    .header(header::AUTHORIZATION, format!("Token {}", token))
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = auth_test_router(AuthState::new(
+            Arc::new(ApiKeyStore::new()),
+            None,
+            Default::default(),
+        ))
+        .oneshot(
+            Request::builder()
+                .uri("/protected")
+                .header(header::AUTHORIZATION, format!("Token {}", token))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
