@@ -1289,6 +1289,7 @@ pub struct BenchConfigFile {
 
 /// Configuration for computational complexity validation.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ScalingConfig {
     /// Input sizes to test.
     pub sizes: Vec<u64>,
