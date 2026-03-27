@@ -1,42 +1,55 @@
 # perfgate-sensor
 
-Sensor report building for cockpit integration.
+Cockpit mode integration via `sensor.report.v1` envelopes.
 
-Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+CI dashboards and fleet-monitoring tools need a uniform envelope around
+every tool's output. This crate wraps perfgate's typed receipts into a
+generic `SensorReport` that any cockpit system can ingest without
+knowing anything about performance budgets.
 
-## Overview
+## What It Does
 
-Wraps `PerfgateReport` into a `sensor.report.v1` envelope suitable for CI/CD
-cockpit systems. The envelope includes tool metadata, run metadata,
-capabilities, verdicts, findings with fingerprints, and artifact links.
+A `SensorReport` envelope contains:
+
+- **Tool metadata** -- name, version
+- **Run metadata** -- timestamps, duration, capability flags (baseline available, engine features)
+- **Verdict** -- pass/warn/fail with counts
+- **Findings** -- individual check results, each with a stable SHA-256 fingerprint
+- **Artifacts** -- links to detailed run/compare/report receipts
+- **Data** -- opaque summary payload for downstream consumers
 
 ## Key API
 
-- `SensorReportBuilder` — builder for constructing `SensorReport` envelopes
-- `sensor_fingerprint(parts)` — SHA-256 fingerprint from semantic parts (pipe-joined, trimmed)
-- `default_engine_capability()` — platform-aware engine capability detection
-
-## Envelope Contents
-
-- **Tool metadata**: name, version
-- **Run metadata**: timestamps, duration
-- **Capabilities**: baseline availability, engine features
-- **Verdict**: pass/warn/fail with counts
-- **Findings**: individual check results with stable fingerprints
-- **Artifacts**: links to detailed reports
-
-## Example
-
 ```rust
-use perfgate_sensor::{sensor_fingerprint, default_engine_capability};
-use perfgate_types::CapabilityStatus;
+use perfgate_sensor::SensorReportBuilder;
 
-let fp = sensor_fingerprint(&["perfgate", "perf.budget", "metric_fail", "wall_ms"]);
-assert_eq!(fp.len(), 64); // SHA-256 hex
-
-let cap = default_engine_capability();
-// Available on Unix, Unavailable on other platforms
+let report = SensorReportBuilder::new(tool_info, started_at)
+    .ended_at(ended_at, duration_ms)
+    .baseline(true, None)
+    .artifact("extras/perfgate.run.v1.json".into(), "run_receipt".into())
+    .build(&perfgate_report);
 ```
+
+### Builder Methods
+
+| Method | Purpose |
+|--------------------|------------------------------------------------|
+| `new(tool, start)` | Create builder with tool info and start time |
+| `ended_at(t, ms)` | Set end time and duration |
+| `baseline(ok, reason)` | Declare baseline availability |
+| `max_findings(n)` | Cap findings (default 100, adds truncation notice) |
+| `artifact(path, type)` | Attach an artifact link |
+| `build(report)` | Single-bench envelope from a `PerfgateReport` |
+| `build_error(msg, stage, code)` | Error envelope when the tool itself fails |
+| `build_aggregated(outcomes)` | Multi-bench envelope from `Vec<BenchOutcome>` |
+
+### Other Exports
+
+| Item | Purpose |
+|-----------------------------|----------------------------------------------|
+| `sensor_fingerprint(findings)` | SHA-256 fingerprint over a set of findings |
+| `default_engine_capability()` | Platform-aware capability detection |
+| `BenchOutcome` | Success or Error outcome for aggregation |
 
 ## License
 
