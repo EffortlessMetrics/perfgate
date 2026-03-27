@@ -63,19 +63,26 @@ Exit code `2` = budget violated. That's it.
 
 ## Install
 
-**Pre-built binaries** (coming soon):
+**Pre-built binaries** (fastest):
+
 ```bash
-# Download from GitHub Releases
-curl -sSfL https://github.com/EffortlessMetrics/perfgate/releases/latest/download/perfgate-x86_64-linux -o perfgate
-chmod +x perfgate
+# Download from GitHub Releases (Linux x86_64 example)
+curl -fsSL https://github.com/EffortlessMetrics/perfgate/releases/latest/download/perfgate-x86_64-unknown-linux-gnu.tar.gz \
+  | tar xz -C /usr/local/bin
 ```
 
-**cargo-binstall**:
+Available targets: `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
+`aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`,
+`x86_64-pc-windows-msvc`.
+
+**Via cargo-binstall** (auto-detects platform):
+
 ```bash
 cargo binstall perfgate-cli
 ```
 
 **From source**:
+
 ```bash
 cargo install perfgate-cli
 ```
