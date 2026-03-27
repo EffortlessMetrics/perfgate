@@ -348,6 +348,7 @@ pub fn generate_config(benchmarks: &[DiscoveredBench], preset: Preset) -> Config
             warmup: None,
             metrics: None,
             budgets: None,
+            scaling: None,
         })
         .collect();
 

@@ -2923,6 +2923,8 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -2975,6 +2977,8 @@ async fn given_config_file_with_bench_threshold(
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -3028,6 +3032,8 @@ async fn given_config_file_with_bench_threshold_warn(
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -3136,6 +3142,8 @@ async fn given_bench_without_explicit_settings(world: &mut PerfgateWorld, bench_
         warmup: None, // Explicitly not set
         metrics: None,
         budgets: None,
+
+        scaling: None,
     });
 
     // Update the config file
@@ -3159,6 +3167,8 @@ async fn given_bench_with_repeat(world: &mut PerfgateWorld, bench_name: String, 
         warmup: None,
         metrics: None,
         budgets: None,
+
+        scaling: None,
     });
 
     // Update the config file
@@ -3200,6 +3210,8 @@ async fn given_config_file_with_bench_baseline_dir(
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -3251,6 +3263,8 @@ async fn given_config_file_with_bench_baseline_pattern(
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -3420,6 +3434,8 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         })
         .collect();
 
@@ -3472,6 +3488,8 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         })
         .collect();
 
@@ -3527,6 +3545,8 @@ async fn given_config_file_with_benches_lenient(
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         })
         .collect();
 
@@ -3586,6 +3606,8 @@ async fn given_config_file_with_mixed_thresholds(
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         })
         .collect();
 
@@ -3612,6 +3634,8 @@ async fn given_config_file_with_mixed_thresholds(
         warmup: None,
         metrics: None,
         budgets: Some(lenient_budgets),
+
+        scaling: None,
     });
 
     // Default threshold=0.0 makes regressions fail unless overridden

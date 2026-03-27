@@ -46,6 +46,8 @@ fn config_file_validates_bench_names() {
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -67,6 +69,8 @@ fn config_file_rejects_invalid_bench_names() {
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -89,6 +93,8 @@ fn multiple_benches_all_validated() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             },
             BenchConfigFile {
                 name: "also-valid".to_string(),
@@ -100,6 +106,8 @@ fn multiple_benches_all_validated() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             },
         ],
     };
@@ -123,6 +131,8 @@ fn validation_fails_on_first_invalid_bench() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             },
             BenchConfigFile {
                 name: "Invalid".to_string(),
@@ -134,6 +144,8 @@ fn validation_fails_on_first_invalid_bench() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             },
         ],
     };
@@ -254,6 +266,8 @@ fn config_duplicate_bench_names_passes_validation() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             },
             BenchConfigFile {
                 name: "same-name".to_string(),
@@ -265,6 +279,8 @@ fn config_duplicate_bench_names_passes_validation() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             },
         ],
     };
@@ -396,6 +412,8 @@ fn config_empty_bench_name_rejected() {
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         }],
     };
 
@@ -419,6 +437,8 @@ fn config_path_traversal_variants_rejected() {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             }],
         };
 

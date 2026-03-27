@@ -974,6 +974,8 @@ mod tests {
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
 
         let config = ConfigFile {
@@ -1051,6 +1053,8 @@ mod tests {
             warmup: None,
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
         let config = ConfigFile::default();
         let req = make_check_request(config, None, HostMismatchPolicy::Warn, false);
@@ -1100,6 +1104,8 @@ mod tests {
             warmup: None,
             metrics: None,
             budgets: Some(overrides),
+
+            scaling: None,
         };
 
         let config = ConfigFile {
@@ -1187,6 +1193,8 @@ mod tests {
             warmup: Some(0),
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
@@ -1239,6 +1247,8 @@ mod tests {
             warmup: Some(0),
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
@@ -1297,6 +1307,8 @@ mod tests {
             warmup: Some(0),
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig {
@@ -1363,6 +1375,8 @@ mod tests {
             warmup: Some(0),
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
@@ -1432,6 +1446,8 @@ mod tests {
             warmup: Some(0),
             metrics: None,
             budgets: None,
+
+            scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig {
