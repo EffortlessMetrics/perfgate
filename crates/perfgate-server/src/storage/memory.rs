@@ -5,11 +5,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::{BaselineStore, StorageHealth};
+use super::{AuditStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
-    BaselineRecord, BaselineSummary, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
-    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
+    AuditEvent, BaselineRecord, BaselineSummary, BaselineVersion, ListAuditEventsQuery,
+    ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery,
+    ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
 
 /// In-memory storage backend for baselines.
@@ -18,6 +19,7 @@ pub struct InMemoryStore {
     #[allow(clippy::type_complexity)]
     baselines: Arc<RwLock<BTreeMap<(String, String, String), BaselineRecord>>>,
     verdicts: Arc<RwLock<Vec<VerdictRecord>>>,
+    audit_events: Arc<RwLock<Vec<AuditEvent>>>,
 }
 
 impl InMemoryStore {
@@ -26,6 +28,7 @@ impl InMemoryStore {
         Self {
             baselines: Arc::new(RwLock::new(BTreeMap::new())),
             verdicts: Arc::new(RwLock::new(Vec::new())),
+            audit_events: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -328,6 +331,86 @@ impl BaselineStore for InMemoryStore {
 
         Ok(ListVerdictsResponse {
             verdicts: paginated,
+            pagination: PaginationInfo {
+                total,
+                limit: query.limit,
+                offset: query.offset,
+                has_more,
+            },
+        })
+    }
+}
+
+#[async_trait]
+impl AuditStore for InMemoryStore {
+    async fn log_event(&self, event: &AuditEvent) -> Result<(), StoreError> {
+        let mut events = self.audit_events.write().await;
+        events.push(event.clone());
+        Ok(())
+    }
+
+    async fn list_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, StoreError> {
+        let events = self.audit_events.read().await;
+
+        let mut filtered: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                if let Some(ref project) = query.project
+                    && &e.project != project
+                {
+                    return false;
+                }
+
+                if let Some(ref action) = query.action
+                    && e.action.to_string() != *action
+                {
+                    return false;
+                }
+
+                if let Some(ref resource_type) = query.resource_type
+                    && e.resource_type.to_string() != *resource_type
+                {
+                    return false;
+                }
+
+                if let Some(ref actor) = query.actor
+                    && &e.actor != actor
+                {
+                    return false;
+                }
+
+                if let Some(since) = query.since
+                    && e.timestamp < since
+                {
+                    return false;
+                }
+
+                if let Some(until) = query.until
+                    && e.timestamp > until
+                {
+                    return false;
+                }
+
+                true
+            })
+            .cloned()
+            .collect();
+
+        filtered.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        let total = filtered.len() as u64;
+        let offset = query.offset as usize;
+        let limit = query.limit as usize;
+
+        let paginated: Vec<_> = filtered.into_iter().skip(offset).take(limit).collect();
+
+        let has_more = (offset + paginated.len()) < total as usize;
+
+        Ok(ListAuditEventsResponse {
+            events: paginated,
             pagination: PaginationInfo {
                 total,
                 limit: query.limit,

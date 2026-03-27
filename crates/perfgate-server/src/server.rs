@@ -24,14 +24,25 @@ use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middlewa
 use crate::error::ConfigError;
 use crate::handlers::{
     dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
-    list_baselines, list_verdicts, promote_baseline, static_asset, submit_verdict, upload_baseline,
+    list_audit_events, list_baselines, list_verdicts, promote_baseline, static_asset,
+    submit_verdict, upload_baseline,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
-    ArtifactStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore, SqliteStore,
+    ArtifactStore, AuditStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore,
+    SqliteStore,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
+
+/// Shared application state holding all stores.
+#[derive(Clone)]
+pub struct AppState {
+    /// Baseline/verdict store
+    pub store: Arc<dyn BaselineStore>,
+    /// Audit event store
+    pub audit: Arc<dyn AuditStore>,
+}
 
 /// Storage backend type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -291,15 +302,18 @@ pub(crate) async fn create_artifacts(
 }
 
 /// Creates the storage backend based on configuration.
+///
+/// Returns both a `BaselineStore` and an `AuditStore` backed by the same backend.
 pub(crate) async fn create_storage(
     config: &ServerConfig,
-) -> Result<Arc<dyn BaselineStore>, ConfigError> {
+) -> Result<(Arc<dyn BaselineStore>, Arc<dyn AuditStore>), ConfigError> {
     let artifacts = create_artifacts(config).await?;
 
     match config.storage_backend {
         StorageBackend::Memory => {
             info!("Using in-memory storage");
-            Ok(Arc::new(InMemoryStore::new()))
+            let store = Arc::new(InMemoryStore::new());
+            Ok((store.clone(), store))
         }
         StorageBackend::Sqlite => {
             let path = config
@@ -309,7 +323,8 @@ pub(crate) async fn create_storage(
             info!(path = %path.display(), "Using SQLite storage");
             let store = SqliteStore::new(&path, artifacts)
                 .map_err(|e| ConfigError::InvalidValue(format!("Failed to open SQLite: {}", e)))?;
-            Ok(Arc::new(store))
+            let store = Arc::new(store);
+            Ok((store.clone(), store))
         }
         StorageBackend::Postgres => {
             let url = config
@@ -322,7 +337,8 @@ pub(crate) async fn create_storage(
                 .map_err(|e| {
                     ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e))
                 })?;
-            Ok(Arc::new(store))
+            let store = Arc::new(store);
+            Ok((store.clone(), store))
         }
     }
 }
@@ -352,7 +368,7 @@ pub(crate) async fn create_key_store(
 
 /// Creates the router with all routes configured.
 pub(crate) fn create_router(
-    store: Arc<dyn BaselineStore>,
+    state: AppState,
     auth_state: AuthState,
     config: &ServerConfig,
     prometheus_handle: Option<PrometheusHandle>,
@@ -396,7 +412,9 @@ pub(crate) fn create_router(
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),
-        );
+        )
+        // Audit log
+        .route("/audit", get(list_audit_events));
 
     let api_routes = if config.local_mode {
         api_routes_inner
@@ -433,7 +451,7 @@ pub(crate) fn create_router(
         );
     }
 
-    app.with_state(store)
+    app.with_state(state)
 }
 
 /// Runs the HTTP server.
@@ -447,7 +465,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     );
 
     // Create storage
-    let store = create_storage(&config).await?;
+    let (store, audit) = create_storage(&config).await?;
 
     // Create key store
     let key_store = create_key_store(&config).await?;
@@ -466,8 +484,10 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     let prometheus_handle = setup_metrics_recorder();
     info!("Prometheus metrics enabled at /metrics");
 
+    let app_state = AppState { store, audit };
+
     // Create router
-    let app = create_router(store.clone(), auth_state, &config, Some(prometheus_handle));
+    let app = create_router(app_state, auth_state, &config, Some(prometheus_handle));
 
     // Add tracing and request ID layers
     let app = app.layer(
@@ -581,7 +601,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_storage_memory() {
         let config = ServerConfig::new().storage_backend(StorageBackend::Memory);
-        let storage = create_storage(&config).await.unwrap();
+        let (storage, _audit) = create_storage(&config).await.unwrap();
         assert_eq!(storage.backend_type(), "memory");
     }
 
@@ -590,7 +610,7 @@ mod tests {
         let config = ServerConfig::new()
             .storage_backend(StorageBackend::Sqlite)
             .sqlite_path(":memory:");
-        let storage = create_storage(&config).await.unwrap();
+        let (storage, _audit) = create_storage(&config).await.unwrap();
         assert_eq!(storage.backend_type(), "sqlite");
     }
 
@@ -628,8 +648,12 @@ mod tests {
         let store = Arc::new(InMemoryStore::new());
         let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
         let config = ServerConfig::new();
+        let app_state = AppState {
+            store: store.clone(),
+            audit: store,
+        };
 
-        let _router = create_router(store, auth_state, &config, None);
+        let _router = create_router(app_state, auth_state, &config, None);
         // Router created successfully
     }
 

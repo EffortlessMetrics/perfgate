@@ -5,10 +5,11 @@ use rusqlite::{OptionalExtension, params};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use super::{ArtifactStore, BaselineStore, StorageHealth};
+use super::{ArtifactStore, AuditStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
-    BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
+    AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource, BaselineVersion,
+    ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
     ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
 use perfgate_types::{VerdictCounts, VerdictStatus};
@@ -139,6 +140,20 @@ impl SqliteStore {
             );
             CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark ON verdicts(project, benchmark);
             CREATE INDEX IF NOT EXISTS idx_verdicts_created_at ON verdicts(created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                action TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                project TEXT NOT NULL,
+                metadata TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_events_project ON audit_events(project);
+            CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp ON audit_events(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(action);
             "#,
         )?;
         Ok(())
@@ -656,6 +671,157 @@ impl SqliteStore {
     }
 }
 
+#[async_trait]
+impl AuditStore for SqliteStore {
+    async fn log_event(&self, event: &AuditEvent) -> Result<(), StoreError> {
+        let metadata_json =
+            serde_json::to_string(&event.metadata).map_err(StoreError::SerializationError)?;
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+        conn.execute(
+            r#"
+            INSERT INTO audit_events (
+                id, timestamp, actor, action, resource_type, resource_id, project, metadata
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+            params![
+                event.id,
+                event.timestamp.to_rfc3339(),
+                event.actor,
+                event.action.to_string(),
+                event.resource_type.to_string(),
+                event.resource_id,
+                event.project,
+                metadata_json,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    async fn list_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, StoreError> {
+        let mut sql = "SELECT * FROM audit_events WHERE 1=1".to_string();
+        let mut params_vec: Vec<rusqlite::types::Value> = Vec::new();
+
+        if let Some(ref project) = query.project {
+            sql.push_str(" AND project = ?");
+            params_vec.push(project.clone().into());
+        }
+
+        if let Some(ref action) = query.action {
+            sql.push_str(" AND action = ?");
+            params_vec.push(action.clone().into());
+        }
+
+        if let Some(ref resource_type) = query.resource_type {
+            sql.push_str(" AND resource_type = ?");
+            params_vec.push(resource_type.clone().into());
+        }
+
+        if let Some(ref actor) = query.actor {
+            sql.push_str(" AND actor = ?");
+            params_vec.push(actor.clone().into());
+        }
+
+        if let Some(ref since) = query.since {
+            sql.push_str(" AND timestamp >= ?");
+            params_vec.push(since.to_rfc3339().into());
+        }
+
+        if let Some(ref until) = query.until {
+            sql.push_str(" AND timestamp <= ?");
+            params_vec.push(until.to_rfc3339().into());
+        }
+
+        // Count before pagination
+        let count_sql = format!("SELECT COUNT(*) FROM ({})", sql);
+
+        sql.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
+        params_vec.push((query.limit as i64).into());
+        params_vec.push((query.offset as i64).into());
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+
+        // Get total (without LIMIT/OFFSET params)
+        let count_params: Vec<rusqlite::types::Value> =
+            params_vec[..params_vec.len().saturating_sub(2)].to_vec();
+        let total: i64 = conn
+            .query_row(
+                &count_sql,
+                rusqlite::params_from_iter(count_params.iter()),
+                |row| row.get(0),
+            )
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+                Self::row_to_audit_event(row)
+            })
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            events.push(row?);
+        }
+
+        Ok(ListAuditEventsResponse {
+            events,
+            pagination: PaginationInfo {
+                total: total as u64,
+                offset: query.offset,
+                limit: query.limit,
+                has_more: (query.offset + query.limit as u64) < total as u64,
+            },
+        })
+    }
+}
+
+impl SqliteStore {
+    fn row_to_audit_event(row: &rusqlite::Row) -> Result<AuditEvent, rusqlite::Error> {
+        let timestamp_str: String = row.get(1)?;
+        let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+
+        let action_str: String = row.get(3)?;
+        let action = action_str
+            .parse::<AuditAction>()
+            .unwrap_or(AuditAction::Create);
+
+        let resource_type_str: String = row.get(4)?;
+        let resource_type = resource_type_str
+            .parse::<AuditResourceType>()
+            .unwrap_or(AuditResourceType::Baseline);
+
+        let metadata_json: String = row.get(7)?;
+        let metadata: serde_json::Value = serde_json::from_str(&metadata_json)
+            .unwrap_or(serde_json::Value::Object(Default::default()));
+
+        Ok(AuditEvent {
+            id: row.get(0)?,
+            timestamp,
+            actor: row.get(2)?,
+            action,
+            resource_type,
+            resource_id: row.get(5)?,
+            project: row.get(6)?,
+            metadata,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -766,5 +932,111 @@ mod tests {
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
         assert_eq!(busy_timeout, 5000);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_audit_log_event_and_list() {
+        use crate::models::{ListAuditEventsQuery, generate_ulid};
+
+        let store = SqliteStore::in_memory().unwrap();
+
+        let event = AuditEvent {
+            id: generate_ulid(),
+            timestamp: chrono::Utc::now(),
+            actor: "key-abc".to_string(),
+            action: AuditAction::Create,
+            resource_type: AuditResourceType::Baseline,
+            resource_id: "my-project/my-bench/v1".to_string(),
+            project: "my-project".to_string(),
+            metadata: serde_json::json!({"benchmark": "my-bench"}),
+        };
+
+        store.log_event(&event).await.unwrap();
+
+        // List all
+        let query = ListAuditEventsQuery::default();
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].actor, "key-abc");
+        assert_eq!(result.events[0].action, AuditAction::Create);
+        assert_eq!(result.events[0].resource_type, AuditResourceType::Baseline);
+
+        // Filter by project
+        let query = ListAuditEventsQuery {
+            project: Some("my-project".to_string()),
+            ..Default::default()
+        };
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 1);
+
+        // Filter by wrong project
+        let query = ListAuditEventsQuery {
+            project: Some("other-project".to_string()),
+            ..Default::default()
+        };
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 0);
+
+        // Filter by action
+        let query = ListAuditEventsQuery {
+            action: Some("create".to_string()),
+            ..Default::default()
+        };
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 1);
+
+        let query = ListAuditEventsQuery {
+            action: Some("delete".to_string()),
+            ..Default::default()
+        };
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_audit_log_multiple_events() {
+        use crate::models::{ListAuditEventsQuery, generate_ulid};
+
+        let store = SqliteStore::in_memory().unwrap();
+
+        for i in 0..5 {
+            let event = AuditEvent {
+                id: generate_ulid(),
+                timestamp: chrono::Utc::now(),
+                actor: format!("key-{}", i),
+                action: if i % 2 == 0 {
+                    AuditAction::Create
+                } else {
+                    AuditAction::Delete
+                },
+                resource_type: AuditResourceType::Baseline,
+                resource_id: format!("resource-{}", i),
+                project: "proj".to_string(),
+                metadata: serde_json::json!({}),
+            };
+            store.log_event(&event).await.unwrap();
+        }
+
+        let query = ListAuditEventsQuery::default();
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 5);
+        assert_eq!(result.pagination.total, 5);
+
+        // Pagination
+        let query = ListAuditEventsQuery {
+            limit: 2,
+            ..Default::default()
+        };
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 2);
+        assert!(result.pagination.has_more);
+
+        // Filter by action
+        let query = ListAuditEventsQuery {
+            action: Some("create".to_string()),
+            ..Default::default()
+        };
+        let result = store.list_events(&query).await.unwrap();
+        assert_eq!(result.events.len(), 3); // indices 0, 2, 4
     }
 }

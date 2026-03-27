@@ -15,8 +15,9 @@ pub use sqlite::SqliteStore;
 
 use crate::error::StoreError;
 use crate::models::{
-    BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery,
-    ListVerdictsResponse, PoolMetrics, VerdictRecord,
+    AuditEvent, BaselineRecord, BaselineVersion, ListAuditEventsQuery, ListAuditEventsResponse,
+    ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery, ListVerdictsResponse,
+    PoolMetrics, VerdictRecord,
 };
 use async_trait::async_trait;
 
@@ -113,6 +114,22 @@ pub trait BaselineStore: Send + Sync {
         project: &str,
         query: &ListVerdictsQuery,
     ) -> Result<ListVerdictsResponse, StoreError>;
+}
+
+/// Trait for append-only audit event storage.
+///
+/// This trait abstracts audit log persistence, allowing different backends
+/// to store and query audit events.
+#[async_trait]
+pub trait AuditStore: Send + Sync {
+    /// Appends a new audit event to the log.
+    async fn log_event(&self, event: &AuditEvent) -> Result<(), StoreError>;
+
+    /// Lists audit events with optional filtering.
+    async fn list_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, StoreError>;
 }
 
 /// Storage backend health status.

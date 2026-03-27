@@ -3,10 +3,11 @@
 //! This module provides a robust, asynchronous PostgreSQL backend for storing
 //! and querying perfgate baseline records using sqlx.
 
-use super::{ArtifactStore, BaselineStore, StorageHealth};
+use super::{ArtifactStore, AuditStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
-    BaselineRecord, BaselineSource, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse,
+    AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource, BaselineVersion,
+    ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
     ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
 use crate::server::PostgresPoolConfig;
@@ -205,6 +206,26 @@ impl PostgresStore {
 
             CREATE INDEX IF NOT EXISTS idx_verdicts_created_at
             ON verdicts(created_at);
+
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id VARCHAR(64) PRIMARY KEY,
+                timestamp TIMESTAMPTZ NOT NULL,
+                actor VARCHAR(255) NOT NULL,
+                action VARCHAR(32) NOT NULL,
+                resource_type VARCHAR(32) NOT NULL,
+                resource_id VARCHAR(255) NOT NULL,
+                project VARCHAR(255) NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_audit_events_project
+            ON audit_events(project);
+
+            CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp
+            ON audit_events(timestamp DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_audit_events_action
+            ON audit_events(action);
         "#;
 
         sqlx::query(sql)
@@ -770,6 +791,147 @@ impl PostgresStore {
             git_ref: row.get("git_ref"),
             git_sha: row.get("git_sha"),
             created_at: row.get("created_at"),
+        })
+    }
+}
+
+#[async_trait]
+impl AuditStore for PostgresStore {
+    async fn log_event(&self, event: &AuditEvent) -> Result<(), StoreError> {
+        let metadata_json =
+            serde_json::to_value(&event.metadata).map_err(StoreError::SerializationError)?;
+
+        let sql = r#"
+            INSERT INTO audit_events (
+                id, timestamp, actor, action, resource_type, resource_id, project, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#;
+
+        sqlx::query(sql)
+            .bind(&event.id)
+            .bind(event.timestamp)
+            .bind(&event.actor)
+            .bind(event.action.to_string())
+            .bind(event.resource_type.to_string())
+            .bind(&event.resource_id)
+            .bind(&event.project)
+            .bind(metadata_json)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn list_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, StoreError> {
+        let mut sql = "SELECT * FROM audit_events WHERE TRUE".to_string();
+        let mut params_count = 0;
+
+        if query.project.is_some() {
+            params_count += 1;
+            sql.push_str(&format!(" AND project = ${}", params_count));
+        }
+        if query.action.is_some() {
+            params_count += 1;
+            sql.push_str(&format!(" AND action = ${}", params_count));
+        }
+        if query.resource_type.is_some() {
+            params_count += 1;
+            sql.push_str(&format!(" AND resource_type = ${}", params_count));
+        }
+        if query.actor.is_some() {
+            params_count += 1;
+            sql.push_str(&format!(" AND actor = ${}", params_count));
+        }
+        if query.since.is_some() {
+            params_count += 1;
+            sql.push_str(&format!(" AND timestamp >= ${}", params_count));
+        }
+        if query.until.is_some() {
+            params_count += 1;
+            sql.push_str(&format!(" AND timestamp <= ${}", params_count));
+        }
+
+        sql.push_str(" ORDER BY timestamp DESC");
+
+        params_count += 1;
+        sql.push_str(&format!(" LIMIT ${}", params_count));
+        params_count += 1;
+        sql.push_str(&format!(" OFFSET ${}", params_count));
+
+        let mut q = sqlx::query(&sql);
+
+        if let Some(ref project) = query.project {
+            q = q.bind(project);
+        }
+        if let Some(ref action) = query.action {
+            q = q.bind(action);
+        }
+        if let Some(ref resource_type) = query.resource_type {
+            q = q.bind(resource_type);
+        }
+        if let Some(ref actor) = query.actor {
+            q = q.bind(actor);
+        }
+        if let Some(ref since) = query.since {
+            q = q.bind(since);
+        }
+        if let Some(ref until) = query.until {
+            q = q.bind(until);
+        }
+
+        q = q.bind(query.limit as i64);
+        q = q.bind(query.offset as i64);
+
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let action_str: String = row.get("action");
+            let action = action_str
+                .parse::<AuditAction>()
+                .unwrap_or(AuditAction::Create);
+
+            let resource_type_str: String = row.get("resource_type");
+            let resource_type = resource_type_str
+                .parse::<AuditResourceType>()
+                .unwrap_or(AuditResourceType::Baseline);
+
+            let metadata_json: serde_json::Value = row.get("metadata");
+
+            events.push(AuditEvent {
+                id: row.get("id"),
+                timestamp: row.get("timestamp"),
+                actor: row.get("actor"),
+                action,
+                resource_type,
+                resource_id: row.get("resource_id"),
+                project: row.get("project"),
+                metadata: metadata_json,
+            });
+        }
+
+        // Total count
+        let count_sql = "SELECT COUNT(*) FROM audit_events WHERE TRUE";
+        let total: i64 = sqlx::query_scalar(count_sql)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        Ok(ListAuditEventsResponse {
+            events,
+            pagination: PaginationInfo {
+                total: total as u64,
+                offset: query.offset,
+                limit: query.limit,
+                has_more: (query.offset + query.limit as u64) < total as u64,
+            },
         })
     }
 }
