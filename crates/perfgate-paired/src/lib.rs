@@ -234,6 +234,28 @@ pub fn summarize_paired_diffs(
     })
 }
 
+/// Compute the coefficient of variation (CV) of the wall-time differences
+/// from a set of paired samples (excluding warmups).
+///
+/// CV = std_dev / |mean|. Returns 0.0 if mean is zero (no variation detectable).
+pub fn compute_paired_cv(samples: &[PairedSample]) -> f64 {
+    let measured: Vec<f64> = samples
+        .iter()
+        .filter(|s| !s.warmup)
+        .map(|s| s.wall_diff_ms as f64)
+        .collect();
+    if measured.is_empty() {
+        return 0.0;
+    }
+    let n = measured.len() as f64;
+    let mean = measured.iter().sum::<f64>() / n;
+    if mean.abs() < f64::EPSILON {
+        return 0.0;
+    }
+    let variance = measured.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / n;
+    variance.sqrt() / mean.abs()
+}
+
 /// Result of comparing paired statistics, including significance testing.
 ///
 /// # Examples
@@ -954,6 +976,66 @@ mod tests {
             let comparison = compare_paired_stats(&stats);
             assert!((comparison.pct_change - 0.00001).abs() < 0.000001);
         }
+    }
+
+    #[test]
+    fn test_compute_paired_cv_empty_samples() {
+        let samples: Vec<PairedSample> = vec![];
+        assert_eq!(compute_paired_cv(&samples), 0.0);
+    }
+
+    #[test]
+    fn test_compute_paired_cv_no_variance() {
+        let samples = vec![
+            paired_sample(0, false, 100, 110),
+            paired_sample(1, false, 100, 110),
+            paired_sample(2, false, 100, 110),
+        ];
+        assert_eq!(compute_paired_cv(&samples), 0.0);
+    }
+
+    #[test]
+    fn test_compute_paired_cv_with_variance() {
+        // Diffs: 10, 20, 30 => mean=20, stddev=sqrt(200/3)~=8.165
+        // CV = 8.165/20 = 0.408
+        let samples = vec![
+            paired_sample(0, false, 100, 110),
+            paired_sample(1, false, 100, 120),
+            paired_sample(2, false, 100, 130),
+        ];
+        let cv = compute_paired_cv(&samples);
+        assert!((cv - 0.4082).abs() < 0.01, "expected CV ~0.408, got {}", cv);
+    }
+
+    #[test]
+    fn test_compute_paired_cv_skips_warmup() {
+        let samples = vec![
+            paired_sample(0, true, 100, 1000), // warmup, should be ignored
+            paired_sample(1, false, 100, 110),
+            paired_sample(2, false, 100, 110),
+        ];
+        assert_eq!(compute_paired_cv(&samples), 0.0);
+    }
+
+    #[test]
+    fn test_compute_paired_cv_zero_mean() {
+        // Diffs: -10, +10 => mean=0 => CV should be 0 (avoid division by zero)
+        let samples = vec![
+            paired_sample(0, false, 110, 100),
+            paired_sample(1, false, 100, 110),
+        ];
+        assert_eq!(compute_paired_cv(&samples), 0.0);
+    }
+
+    #[test]
+    fn test_compute_paired_cv_high_noise() {
+        // Diffs: -50, +60 => mean=5, stddev large => high CV
+        let samples = vec![
+            paired_sample(0, false, 200, 150),
+            paired_sample(1, false, 100, 160),
+        ];
+        let cv = compute_paired_cv(&samples);
+        assert!(cv > 1.0, "expected very high CV, got {}", cv);
     }
 }
 

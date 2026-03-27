@@ -8,7 +8,7 @@ mod paired;
 pub use blame::{
     BinaryBlame, DependencyChange, DependencyChangeType, compare_lockfiles, parse_lockfile,
 };
-pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
+pub use paired::{PairedComparison, compare_paired_stats, compute_paired_cv, compute_paired_stats};
 
 pub use perfgate_host_detect::detect_host_mismatch;
 

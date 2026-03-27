@@ -24,8 +24,8 @@ mod defaults_config;
 mod paired;
 
 pub use paired::{
-    PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample,
-    PairedSampleHalf, PairedStats,
+    NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
+    PairedRunReceipt, PairedSample, PairedSampleHalf, PairedStats,
 };
 
 pub use defaults_config::*;
