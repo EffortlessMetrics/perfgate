@@ -487,7 +487,6 @@ pub(crate) fn create_router(
         )
         .with_state(fleet_store);
 
-
     // API routes — auth middleware is skipped in local mode.
     let api_routes_inner = Router::new()
         // Baseline CRUD

@@ -427,6 +427,7 @@ mod tests {
                 fail_count: 0,
                 skip_count: 0,
             },
+            profile_path: None,
         };
 
         let body = render_comment_from_report(&report, &CommentOptions::default());
@@ -450,6 +451,7 @@ mod tests {
                 fail_count: 0,
                 skip_count: 0,
             },
+            profile_path: None,
         };
 
         let body = render_comment_from_report(&report, &CommentOptions::default());
