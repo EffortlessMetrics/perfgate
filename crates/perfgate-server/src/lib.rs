@@ -61,7 +61,10 @@ pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
 pub use oidc::{OidcConfig, OidcProvider};
 pub use server::{AppState, PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
-pub use storage::{AuditStore, BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
+pub use storage::{
+    AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyRecord, KeyStore,
+    SqliteKeyStore, SqliteStore, StorageHealth,
+};
 
 /// Server version string.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

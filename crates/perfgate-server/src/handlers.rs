@@ -4,10 +4,12 @@ mod audit;
 mod baselines;
 mod dashboard;
 mod health;
+mod keys;
 mod verdicts;
 
 pub use audit::*;
 pub use baselines::*;
 pub use dashboard::*;
 pub use health::*;
+pub use keys::*;
 pub use verdicts::*;

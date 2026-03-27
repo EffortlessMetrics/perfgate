@@ -2,10 +2,12 @@
 //!
 //! This module is only available when compiled for tests.
 
+use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::auth::AuthState;
 use crate::server::{AppState, ServerConfig, create_key_store, create_router, create_storage};
+use crate::storage::{InMemoryKeyStore, KeyStore};
 
 /// A running test server.
 pub struct TestServer {
@@ -25,9 +27,11 @@ pub async fn spawn_test_server(config: ServerConfig) -> TestServer {
     let key_store = create_key_store(&config)
         .await
         .expect("failed to create key store");
-    let auth_state = AuthState::new(key_store, config.jwt.clone(), None);
+    let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), None)
+        .with_persistent_key_store(persistent_key_store.clone());
     let app_state = AppState { store, audit };
-    let app = create_router(app_state, auth_state, &config, None);
+    let app = create_router(app_state, persistent_key_store, auth_state, &config, None);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
