@@ -15,7 +15,7 @@ Infrastructure adapters for process execution and host probing.
 ## Platform Notes
 
 - Unix supports command timeouts.
-- Windows currently returns `AdapterError::TimeoutUnsupported` if timeout is requested.
+- Windows supports command timeouts via `try_wait()` polling with `child.kill()` on expiration.
 - Other platforms run without timeout support and with limited metrics.
 
 ## Boundaries

@@ -451,22 +451,14 @@ impl CommandTimeoutExt for std::process::Child {
         &mut self,
         timeout: Duration,
     ) -> std::io::Result<Option<std::process::ExitStatus>> {
-        use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
-        use windows::Win32::System::Threading::WaitForSingleObject;
-
-        let handle = self.as_raw_handle();
-        let millis = timeout.as_millis() as u32;
-
-        unsafe {
-            let res = WaitForSingleObject(HANDLE(handle as _), millis);
-            if res == WAIT_OBJECT_0 {
-                self.wait().map(Some)
-            } else if res == WAIT_TIMEOUT {
-                Ok(None)
-            } else {
-                Err(std::io::Error::last_os_error())
+        let start = Instant::now();
+        while start.elapsed() < timeout {
+            if let Some(status) = self.try_wait()? {
+                return Ok(Some(status));
             }
+            std::thread::sleep(Duration::from_millis(10));
         }
+        Ok(None)
     }
 }
 

@@ -40,7 +40,7 @@ Traits and implementations for running processes and collecting system informati
 | Feature | Unix | Windows |
 |---------|------|---------|
 | Process execution | `wait4()` with `WNOHANG` polling | `std::process::Command::output()` |
-| Timeout | SIGKILL after deadline | `AdapterError::TimeoutUnsupported` |
+| Timeout | SIGKILL after deadline | `child.kill()` after deadline |
 | CPU time (`cpu_ms`) | `rusage.ru_utime + ru_stime` | `None` |
 | RSS (`max_rss_kb`) | `rusage.ru_maxrss` | `None` |
 | Memory detection | `/proc/meminfo` (Linux), `sysctl` (macOS) | `GlobalMemoryStatusEx` |

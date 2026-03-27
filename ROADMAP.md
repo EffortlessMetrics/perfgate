@@ -15,7 +15,7 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 
 ### Platform Parity
 - [ ] **Windows metric gaps**: `page_faults` and `ctx_switches` are not yet collected on Windows (only `cpu_ms` and `max_rss_kb`).
-- [ ] **Timeout support on Windows**: Currently returns `AdapterError::TimeoutUnsupported` on non-Unix.
+- [x] **Timeout support on Windows**: Implemented via `try_wait()` polling loop with `child.kill()` on expiration.
 
 ## Medium-Term (0.17.x)
 
