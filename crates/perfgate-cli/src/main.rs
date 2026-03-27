@@ -29,6 +29,7 @@ use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_con
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_ingest::IngestFormat;
+use perfgate_profile::{ProfileRequest, capture_flamegraph};
 use perfgate_scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
 };
@@ -729,6 +730,11 @@ pub struct CompareArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+
+    /// Automatically capture a flamegraph when a regression is detected (warn or fail).
+    /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
+    #[arg(long, default_value_t = false)]
+    pub profile_on_regression: bool,
 }
 
 #[derive(Debug, Args)]
@@ -879,6 +885,11 @@ pub struct CheckArgs {
     /// Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484).
     #[arg(long, default_value_t = false)]
     pub local_db: bool,
+
+    /// Automatically capture a flamegraph when a regression is detected (warn or fail).
+    /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
+    #[arg(long, default_value_t = false)]
+    pub profile_on_regression: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1425,6 +1436,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 host_mismatch,
                 out,
                 pretty,
+                profile_on_regression,
             } = *args;
 
             let (server_config, config_file) =
@@ -1517,6 +1529,18 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             submit_verdict_if_possible(&server_flags, &config_file, &compare_result.receipt);
 
             write_json(&out, &compare_result.receipt, pretty)?;
+
+            // Profile on regression if requested
+            if profile_on_regression && is_regression(compare_result.receipt.verdict.status) {
+                let bench = &compare_result.receipt.bench;
+                let out_parent = out.parent().unwrap_or_else(|| Path::new("."));
+                try_capture_flamegraph(
+                    &bench.command,
+                    bench.cwd.as_deref(),
+                    &bench.name,
+                    out_parent,
+                );
+            }
 
             match compare_result.receipt.verdict.status {
                 perfgate_types::VerdictStatus::Pass | perfgate_types::VerdictStatus::Skip => Ok(()),
@@ -1693,6 +1717,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 local_db,
+                profile_on_regression,
             } = *args;
 
             let req = CheckConfig {
@@ -1716,6 +1741,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 pretty,
                 md_template,
                 output_github,
+                profile_on_regression,
                 server_flags,
                 local_db,
             };
@@ -3074,8 +3100,46 @@ struct CheckConfig {
     pretty: bool,
     md_template: Option<PathBuf>,
     output_github: bool,
+    profile_on_regression: bool,
     server_flags: ServerFlags,
     local_db: bool,
+}
+
+/// Returns true if the verdict indicates a regression (warn or fail).
+fn is_regression(status: VerdictStatus) -> bool {
+    matches!(status, VerdictStatus::Warn | VerdictStatus::Fail)
+}
+
+/// Attempt to capture a flamegraph for a regressing benchmark.
+///
+/// This is a best-effort operation: failures are reported to stderr
+/// but do not affect the exit code.
+fn try_capture_flamegraph(command: &[String], cwd: Option<&str>, label: &str, out_dir: &Path) {
+    let profiles_dir = out_dir.join("profiles");
+    let request = ProfileRequest {
+        command: command.to_vec(),
+        output_dir: profiles_dir,
+        label: label.to_string(),
+        cwd: cwd.map(PathBuf::from),
+        env: Vec::new(),
+    };
+
+    match capture_flamegraph(&request) {
+        Ok(Some(result)) => {
+            eprintln!(
+                "flamegraph captured: {} (profiler: {}, {}ms)",
+                result.svg_path.display(),
+                result.profiler_used,
+                result.duration_ms
+            );
+        }
+        Ok(None) => {
+            // No profiler available; diagnostic already printed by capture_flamegraph.
+        }
+        Err(e) => {
+            eprintln!("warning: flamegraph capture failed: {e}");
+        }
+    }
 }
 
 fn submit_verdict_if_possible(
@@ -3230,6 +3294,19 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
             .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+        // Profile on regression if requested
+        if req.profile_on_regression
+            && let Some(compare) = &outcome.compare_receipt
+            && is_regression(compare.verdict.status)
+        {
+            try_capture_flamegraph(
+                &compare.bench.command,
+                compare.bench.cwd.as_deref(),
+                &compare.bench.name,
+                &bench_out_dir,
+            );
+        }
 
         if let Some(compare) = &outcome.compare_receipt {
             let markdown =
@@ -3469,6 +3546,19 @@ fn run_check_cockpit_inner(
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+            // Profile on regression if requested
+            if req.profile_on_regression
+                && let Some(compare) = &check_outcome.compare_receipt
+                && is_regression(compare.verdict.status)
+            {
+                try_capture_flamegraph(
+                    &compare.bench.command,
+                    compare.bench.cwd.as_deref(),
+                    &compare.bench.name,
+                    &extras_dir,
+                );
+            }
 
             let final_markdown = if let Some(compare) = &check_outcome.compare_receipt {
                 let rendered = render_markdown_with_optional_template(
@@ -4651,6 +4741,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            profile_path: None,
         };
 
         let outcome = CheckOutcome {
@@ -4710,6 +4801,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            profile_path: None,
         };
 
         let outcome = CheckOutcome {

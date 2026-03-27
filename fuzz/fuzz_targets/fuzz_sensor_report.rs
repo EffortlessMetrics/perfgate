@@ -109,6 +109,7 @@ fuzz_target!(|input: SensorInput| {
             fail_count: input.fail_count,
             total_count,
         },
+        profile_path: None,
     };
 
     let mut builder = perfgate_sensor::SensorReportBuilder::new(tool, input.started_at)

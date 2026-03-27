@@ -488,6 +488,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 3,
             },
+            profile_path: None,
         }
     }
 
@@ -529,6 +530,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 3,
             },
+            profile_path: None,
         }
     }
 
@@ -561,6 +563,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 2,
             },
+            profile_path: None,
         }
     }
 
@@ -769,6 +772,7 @@ mod snapshot_tests {
                 skip_count: 0,
                 total_count: 5,
             },
+            profile_path: None,
         };
 
         let sensor_report =

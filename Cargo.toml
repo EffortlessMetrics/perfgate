@@ -20,6 +20,7 @@ members = [
   "crates/perfgate-fake",
   "crates/perfgate-summary",
   "crates/perfgate-adapters",
+  "crates/perfgate-profile",
   "crates/perfgate-app",
   "crates/perfgate-ingest",
   "crates/perfgate-cli",
@@ -151,6 +152,7 @@ perfgate-fake = { path = "crates/perfgate-fake", version = "0.15.0" }
 perfgate-summary = { path = "crates/perfgate-summary", version = "0.15.0" }
 perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.15.0" }
 perfgate-ingest = { path = "crates/perfgate-ingest", version = "0.15.0" }
+perfgate-profile = { path = "crates/perfgate-profile", version = "0.15.0" }
 perfgate-app = { path = "crates/perfgate-app", version = "0.15.0" }
 perfgate-server = { path = "crates/perfgate-server", version = "0.15.0" }
 perfgate-client = { path = "crates/perfgate-client", version = "0.15.0" }

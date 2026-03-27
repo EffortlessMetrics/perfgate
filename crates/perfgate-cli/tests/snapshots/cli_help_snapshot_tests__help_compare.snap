@@ -1,5 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 239
 expression: "help_output(&[\"compare\", \"--help\"])"
 ---
 Compare a current receipt against a baseline and emit a compare receipt (JSON)
@@ -24,6 +25,7 @@ Options:
       --host-mismatch <HOST_MISMATCH> Policy for handling host mismatches between baseline and current runs [default: warn]
       --out <OUT> Output compare receipt [default: perfgate-compare.json]
       --pretty Pretty-print JSON
+      --profile-on-regression Automatically capture a flamegraph when a regression is detected (warn or fail). Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph
   -h, --help Print help
 
 Global Options:

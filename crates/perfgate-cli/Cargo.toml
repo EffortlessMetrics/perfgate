@@ -27,6 +27,7 @@ perfgate-api.workspace = true
 perfgate-ingest.workspace = true
 perfgate-app.workspace = true
 perfgate-adapters.workspace = true
+perfgate-profile.workspace = true
 perfgate-domain.workspace = true
 perfgate-scaling.workspace = true
 perfgate-sensor.workspace = true
