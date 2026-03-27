@@ -824,8 +824,9 @@
         }
 
         function verdictBadge(status) {
-            const cls = 'badge badge-' + status;
-            return '<span class="' + cls + '">' + status + '</span>';
+            const safe = escHtml(status);
+            const cls = 'badge badge-' + safe;
+            return '<span class="' + cls + '">' + safe + '</span>';
         }
 
         /* ======= API fetch ======= */
@@ -1117,13 +1118,13 @@
                     datasets: [{
                         label: metricLabels[metric] || metric,
                         data: dataPoints,
-                        borderColor: 'var(--color-primary)',
+                        borderColor: '#0366d6',
                         backgroundColor: 'rgba(3, 102, 214, 0.08)',
                         fill: true,
                         tension: 0.2,
                         pointRadius: 4,
                         pointHoverRadius: 7,
-                        pointBackgroundColor: 'var(--color-primary)',
+                        pointBackgroundColor: '#0366d6',
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2
                     }]
@@ -1236,14 +1237,14 @@
             if (bench.name) {
                 html += detailItem('Bench Name', escHtml(bench.name));
             }
-            if (run.run_id) {
-                html += detailItem('Run ID', '<code>' + escHtml(run.run_id) + '</code>');
+            if (run.id) {
+                html += detailItem('Run ID', '<code>' + escHtml(run.id) + '</code>');
             }
-            if (bench.command) {
-                html += detailItem('Command', '<code>' + escHtml(bench.command) + '</code>');
+            if (bench.command && bench.command.length > 0) {
+                html += detailItem('Command', '<code>' + escHtml(bench.command.join(' ')) + '</code>');
             }
-            if (run.repeat !== undefined) {
-                html += detailItem('Repeat', run.repeat);
+            if (bench.repeat !== undefined) {
+                html += detailItem('Repeat', bench.repeat);
             }
 
             html += '</div>';
