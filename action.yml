@@ -83,10 +83,65 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Detect platform target
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64)    target="x86_64-unknown-linux-gnu" ; ext="tar.gz" ;;
+          Linux-ARM64)  target="aarch64-unknown-linux-gnu" ; ext="tar.gz" ;;
+          macOS-X64)    target="x86_64-apple-darwin"       ; ext="tar.gz" ;;
+          macOS-ARM64)  target="aarch64-apple-darwin"      ; ext="tar.gz" ;;
+          Windows-X64)  target="x86_64-pc-windows-msvc"    ; ext="zip"    ;;
+          *)            target="" ; ext="" ;;
+        esac
+        echo "target=${target}" >> "${GITHUB_OUTPUT}"
+        echo "ext=${ext}" >> "${GITHUB_OUTPUT}"
+
+    - name: Install perfgate (pre-built binary)
+      id: install_binary
+      if: steps.detect.outputs.target != '' && inputs.version != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${{ inputs.version }}"
+        target="${{ steps.detect.outputs.target }}"
+        ext="${{ steps.detect.outputs.ext }}"
+        url="https://github.com/EffortlessMetrics/perfgate/releases/download/v${version}/perfgate-${target}.${ext}"
+
+        echo "Downloading perfgate v${version} for ${target}..."
+        echo "URL: ${url}"
+
+        tmpdir="$(mktemp -d)"
+        if curl -fsSL "${url}" -o "${tmpdir}/perfgate-archive"; then
+          if [[ "${ext}" == "tar.gz" ]]; then
+            tar xzf "${tmpdir}/perfgate-archive" -C "${tmpdir}"
+            chmod +x "${tmpdir}/perfgate"
+          else
+            unzip -o "${tmpdir}/perfgate-archive" -d "${tmpdir}"
+          fi
+
+          # Install to a directory on PATH
+          install_dir="${HOME}/.perfgate/bin"
+          mkdir -p "${install_dir}"
+          cp "${tmpdir}/perfgate"* "${install_dir}/"
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+
+          echo "installed=true" >> "${GITHUB_OUTPUT}"
+          echo "Installed perfgate v${version} from pre-built binary"
+        else
+          echo "installed=false" >> "${GITHUB_OUTPUT}"
+          echo "::warning::Pre-built binary not available for ${target}, will fall back to cargo install"
+        fi
+        rm -rf "${tmpdir}"
+
     - name: Install Rust toolchain
+      if: steps.install_binary.outputs.installed != 'true'
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Install perfgate
+    - name: Install perfgate (cargo install fallback)
+      if: steps.install_binary.outputs.installed != 'true'
       shell: bash
       run: |
         set -euo pipefail
