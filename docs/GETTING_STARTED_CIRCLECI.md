@@ -37,6 +37,7 @@ jobs:
       - store_artifacts:
           path: artifacts/perfgate
           destination: perfgate
+          when: always
 
 workflows:
   pr-check:
@@ -48,38 +49,11 @@ Exit code `2` fails the job when a budget is violated.
 
 ## With Baseline Server
 
-If you use a centralized baseline server, pass credentials via project environment variables:
-
-```yaml
-jobs:
-  perfgate:
-    docker:
-      - image: rust:latest
-    environment:
-      PERFGATE_SERVER_URL: ${PERFGATE_SERVER_URL}
-      PERFGATE_API_KEY: ${PERFGATE_API_KEY}
-    steps:
-      - checkout
-      - restore_cache:
-          keys:
-            - cargo-{{ checksum "Cargo.lock" }}
-            - cargo-
-      - run:
-          name: Install perfgate
-          command: cargo install perfgate-cli --locked
-      - save_cache:
-          key: cargo-{{ checksum "Cargo.lock" }}
-          paths:
-            - ~/.cargo
-      - run:
-          name: Run perfgate checks
-          command: perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
-      - store_artifacts:
-          path: artifacts/perfgate
-          destination: perfgate
-```
-
-Set `PERFGATE_SERVER_URL` and `PERFGATE_API_KEY` in **Project Settings > Environment Variables**.
+If you use a centralized baseline server, set `PERFGATE_SERVER_URL` and
+`PERFGATE_API_KEY` in **Project Settings > Environment Variables**. CircleCI
+automatically exposes project-level environment variables to every job, so no
+extra configuration is needed in the config file -- the basic setup above works
+as-is.
 
 ## Promoting Baselines After Merge
 
@@ -111,6 +85,7 @@ jobs:
       - store_artifacts:
           path: artifacts/perfgate
           destination: perfgate
+          when: always
 
   perfgate-promote:
     docker:
@@ -136,6 +111,7 @@ jobs:
       - store_artifacts:
           path: artifacts/perfgate
           destination: perfgate
+          when: always
 
 workflows:
   pr-check:

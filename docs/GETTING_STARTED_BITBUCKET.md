@@ -19,16 +19,17 @@ pipelines:
     '**':
       - step:
           name: perfgate
-          caches:
-            - cargo
           script:
             - cargo install perfgate-cli --locked
-            - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
+            - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate || PERFGATE_EXIT=$?
+            - exit ${PERFGATE_EXIT:-0}
           artifacts:
             - artifacts/perfgate/**
 ```
 
-Exit code `2` fails the step when a budget is violated.
+The wrapper `|| PERFGATE_EXIT=$?` captures a non-zero exit code so that
+Bitbucket collects artifacts before the step fails. Exit code `2` means a
+budget was violated. See [Caching](#caching) below for faster builds.
 
 ## Caching
 
@@ -51,14 +52,18 @@ pipelines:
             - cargo
           script:
             - cargo install perfgate-cli --locked
-            - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
+            - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate || PERFGATE_EXIT=$?
+            - exit ${PERFGATE_EXIT:-0}
           artifacts:
             - artifacts/perfgate/**
 ```
 
 ## With Baseline Server
 
-If you use a centralized baseline server, pass credentials via repository variables:
+If you use a centralized baseline server, set `PERFGATE_SERVER_URL` and
+`PERFGATE_API_KEY` in **Repository settings > Pipelines > Repository variables**.
+Bitbucket automatically injects repository variables into every step, so no
+extra `export` lines are needed:
 
 ```yaml
 image: rust:latest
@@ -68,18 +73,13 @@ pipelines:
     '**':
       - step:
           name: perfgate
-          caches:
-            - cargo
           script:
-            - export PERFGATE_SERVER_URL=$PERFGATE_SERVER_URL
-            - export PERFGATE_API_KEY=$PERFGATE_API_KEY
             - cargo install perfgate-cli --locked
-            - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
+            - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate || PERFGATE_EXIT=$?
+            - exit ${PERFGATE_EXIT:-0}
           artifacts:
             - artifacts/perfgate/**
 ```
-
-Set `PERFGATE_SERVER_URL` and `PERFGATE_API_KEY` in **Repository settings > Pipelines > Repository variables**.
 
 ## Promoting Baselines After Merge
 
@@ -93,8 +93,6 @@ pipelines:
     main:
       - step:
           name: perfgate-promote
-          caches:
-            - cargo
           script:
             - cargo install perfgate-cli --locked
             - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
@@ -111,4 +109,4 @@ after promotion or use the Bitbucket API to create a commit.
 - **Dedicated runners**: Use self-hosted runners with consistent hardware to minimize noise.
 - **Paired mode**: For noisy environments, use `perfgate paired` instead of `perfgate check` for higher-confidence results.
 - **Noise policy**: Set `noise_policy = "warn"` in `perfgate.toml` for inherently unstable benchmarks.
-- **Artifacts**: Use `artifacts` on every step so results are available even when the step fails.
+- **Artifacts**: Bitbucket does not upload artifacts from failed steps. Use the `|| PERFGATE_EXIT=$?` pattern shown above to defer the exit code so artifacts are collected before the step fails.
