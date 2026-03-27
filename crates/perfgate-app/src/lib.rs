@@ -22,6 +22,7 @@ mod paired;
 mod promote;
 mod report;
 mod sensor_report;
+pub mod watch;
 
 pub use aggregate::{AggregateOutcome, AggregateRequest, AggregateUseCase};
 pub use badge::{

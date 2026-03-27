@@ -28,6 +28,7 @@ Commands:
   discover Auto-detect benchmarks in a repository without manual configuration
   diff Quick "did I make it slower?" comparison against baselines
   init Scan a repository and generate a perfgate.toml config file
+  watch Watch for file changes and re-run benchmarks with live terminal output
   help Print this message or the help of the given subcommand(s)
 
 Options:
