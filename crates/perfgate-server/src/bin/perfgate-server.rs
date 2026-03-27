@@ -125,7 +125,13 @@ fn parse_api_key(s: &str) -> Result<ApiKeyConfigArg, String> {
 
     let key = parts[1].to_string();
     let project = parts.get(2).unwrap_or(&"default").to_string();
-    let benchmark_regex = parts.get(3).map(|s| s.to_string());
+    let benchmark_regex = parts.get(3).map(|s| {
+        if *s == "*" {
+            ".*".to_string()
+        } else {
+            s.to_string()
+        }
+    });
 
     Ok(ApiKeyConfigArg {
         role,
@@ -283,6 +289,20 @@ mod tests {
         assert_eq!(arg.key, "pg_live_key");
         assert_eq!(arg.project, "my-proj");
         assert_eq!(arg.benchmark_regex, Some("^bench-.*$".to_string()));
+    }
+
+    #[test]
+    fn test_parse_api_key_star_becomes_dot_star() {
+        let arg = parse_api_key("contributor:pg_live_key:my-proj:*").unwrap();
+        assert_eq!(arg.benchmark_regex, Some(".*".to_string()));
+
+        // Explicit `.*` stays unchanged
+        let arg2 = parse_api_key("contributor:pg_live_key:my-proj:.*").unwrap();
+        assert_eq!(arg2.benchmark_regex, Some(".*".to_string()));
+
+        // Other valid regex stays unchanged
+        let arg3 = parse_api_key("contributor:pg_live_key:my-proj:^bench-.*$").unwrap();
+        assert_eq!(arg3.benchmark_regex, Some("^bench-.*$".to_string()));
     }
 
     #[test]
