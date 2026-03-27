@@ -101,6 +101,15 @@ during PR reviews, organized by category:
 
 Each item includes the wrong vs. right pattern with code examples.
 
+### AI-Generated Code
+
+AI-generated PRs require a **separate AI review pass** before merge
+([ADR 0014](docs/adrs/0014-ai-review-always-required.md)). During a session that
+produced 40+ PRs, every single reviewed PR had real bugs found by a review agent ---
+even though the same model wrote the code. See
+[Unconventional Findings](docs/UNCONVENTIONAL_FINDINGS.md) for the full analysis of
+the review paradox, agent specialization, and merge ordering strategies.
+
 ## Fuzzing
 
 Requires nightly. See `fuzz/README.md`.
