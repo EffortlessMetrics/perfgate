@@ -49,6 +49,8 @@ perfgate-validation.workspace = true
 perfgate-error.workspace = true
 perfgate-auth.workspace = true
 perfgate-api = { workspace = true, features = ["server"] }
+perfgate-stats.workspace = true
+perfgate-domain.workspace = true
 
 # Error handling
 thiserror = { workspace = true }

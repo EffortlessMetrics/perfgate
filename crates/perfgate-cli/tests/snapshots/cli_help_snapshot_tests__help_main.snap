@@ -34,6 +34,7 @@ Commands:
   serve Start a local dashboard server backed by SQLite
   scale Validate computational complexity (scaling behavior) of a benchmark
   comment Post or update a performance report comment on a GitHub pull request
+  trend Analyze metric trends and predict budget threshold breaches
   help Print this message or the help of the given subcommand(s)
 
 Options:

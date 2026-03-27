@@ -12,6 +12,9 @@
 //! - Summary statistics (median, min, max) for `u64` and `f64` slices
 //! - Percentile calculation
 //! - Mean and variance computation
+//! - Trend analysis with linear regression and drift classification
+
+pub mod trend;
 
 pub use perfgate_error::StatsError;
 
