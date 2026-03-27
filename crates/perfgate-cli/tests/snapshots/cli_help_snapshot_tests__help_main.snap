@@ -23,6 +23,7 @@ Commands:
   bisect Automatically find the commit that introduced a performance regression
   cargo-bench Wrap `cargo bench` and produce perfgate run receipts
   blame Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions
+  fleet Fleet-wide dependency regression analysis across projects
   explain Provide AI-ready prompts and automated playbooks for diagnosing performance regressions
   ingest Import benchmark results from external frameworks into perfgate format
   badge Generate an embeddable SVG status badge from a report or compare receipt
