@@ -14,6 +14,7 @@ pub mod blame;
 pub mod cargo_bench;
 mod check;
 pub mod comparison_logic;
+pub mod discover;
 mod explain;
 mod paired;
 mod promote;
