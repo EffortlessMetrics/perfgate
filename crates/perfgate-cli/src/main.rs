@@ -7,6 +7,10 @@ use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
+use perfgate_app::init::{
+    CiPlatform, Preset, ci_workflow_path, discover_benchmarks, generate_config, render_config_toml,
+    scaffold_ci,
+};
 use perfgate_app::{
     BadgeInput, BadgeStyle, BadgeType, BadgeUseCase, BenchOutcome, BisectRequest, BisectUseCase,
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
@@ -328,6 +332,14 @@ enum Command {
     /// - 1: tool error
     /// - 2: fail (budget violated)
     Diff(Box<DiffArgs>),
+
+    /// Scan a repository and generate a perfgate.toml config file.
+    ///
+    /// Auto-detects benchmarks (Cargo [[bench]], Criterion, Go, pytest-benchmark)
+    /// and generates a ready-to-use configuration. Optionally scaffolds a CI workflow.
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    Init(Box<InitArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -872,6 +884,47 @@ pub struct IngestArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum InitPreset {
+    /// Balanced accuracy and speed (repeat=5, warmup=1, threshold=20%)
+    Standard,
+    /// High accuracy, tight thresholds (repeat=10, warmup=2, threshold=10%)
+    Release,
+    /// Quick validation, wide thresholds (repeat=3, warmup=1, threshold=30%)
+    Tier1Fast,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum InitCiPlatform {
+    Github,
+    Gitlab,
+    Bitbucket,
+    Circleci,
+}
+
+#[derive(Debug, Args)]
+pub struct InitArgs {
+    /// Directory to scan for benchmarks (default: current directory).
+    #[arg(long, default_value = ".")]
+    pub dir: PathBuf,
+
+    /// Output path for the generated config file.
+    #[arg(long, default_value = "perfgate.toml")]
+    pub output: PathBuf,
+
+    /// Budget preset.
+    #[arg(long, default_value = "standard")]
+    pub preset: InitPreset,
+
+    /// Also generate a CI workflow file.
+    #[arg(long)]
+    pub ci: Option<InitCiPlatform>,
+
+    /// Accept defaults without prompting.
+    #[arg(long, default_value_t = false)]
+    pub yes: bool,
 }
 
 /// Subcommands for baseline management.
@@ -1751,6 +1804,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             }
             Ok(())
         }
+
+        Command::Init(args) => execute_init(*args),
     }
 }
 
@@ -2047,6 +2102,81 @@ fn execute_cargo_bench(args: CargoBenchArgs) -> anyhow::Result<()> {
         let md = perfgate_app::render_markdown(&compare_result.receipt);
         println!("{md}");
     }
+
+    Ok(())
+}
+
+/// Execute the `init` subcommand.
+fn execute_init(args: InitArgs) -> anyhow::Result<()> {
+    let preset = match args.preset {
+        InitPreset::Standard => Preset::Standard,
+        InitPreset::Release => Preset::Release,
+        InitPreset::Tier1Fast => Preset::Tier1Fast,
+    };
+
+    let ci_platform = args.ci.map(|p| match p {
+        InitCiPlatform::Github => CiPlatform::GitHub,
+        InitCiPlatform::Gitlab => CiPlatform::GitLab,
+        InitCiPlatform::Bitbucket => CiPlatform::Bitbucket,
+        InitCiPlatform::Circleci => CiPlatform::CircleCi,
+    });
+
+    let scan_dir = if args.dir == Path::new(".") {
+        std::env::current_dir().context("cannot determine current directory")?
+    } else {
+        args.dir.clone()
+    };
+
+    // Check if config already exists.
+    if args.output.exists() && !args.yes {
+        anyhow::bail!(
+            "{} already exists; use --yes to overwrite",
+            args.output.display()
+        );
+    }
+
+    eprintln!("Scanning {} for benchmarks...", scan_dir.display());
+    let benchmarks = discover_benchmarks(&scan_dir);
+
+    if benchmarks.is_empty() {
+        eprintln!("No benchmarks discovered. The generated config will have no [[bench]] entries.");
+        eprintln!("You can add them manually to {}.", args.output.display());
+    } else {
+        eprintln!("Discovered {} benchmark(s):", benchmarks.len());
+        for b in &benchmarks {
+            eprintln!("  - {} ({})", b.name, b.source);
+        }
+    }
+
+    let config = generate_config(&benchmarks, preset);
+    let toml_content = render_config_toml(&config);
+
+    fs::write(&args.output, &toml_content)
+        .with_context(|| format!("write {}", args.output.display()))?;
+    eprintln!("Wrote {}", args.output.display());
+
+    // CI workflow
+    if let Some(platform) = ci_platform {
+        let workflow_path = ci_workflow_path(platform);
+        let workflow_content = scaffold_ci(platform, &args.output);
+
+        if let Some(parent) = workflow_path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+
+        fs::write(&workflow_path, &workflow_content)
+            .with_context(|| format!("write {}", workflow_path.display()))?;
+        eprintln!("Wrote {}", workflow_path.display());
+    }
+
+    eprintln!("\nNext steps:");
+    eprintln!("  1. Review and edit {}", args.output.display());
+    eprintln!(
+        "  2. Run: perfgate check --config {} --all",
+        args.output.display()
+    );
 
     Ok(())
 }
