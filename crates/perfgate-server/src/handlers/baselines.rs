@@ -11,6 +11,7 @@ use tracing::{error, info};
 
 use crate::auth::{AuthContext, Scope, check_scope};
 use crate::error::StoreError;
+use crate::metrics;
 use crate::models::{
     ApiError, BaselineRecord, BaselineRecordExt, BaselineSource, DeleteBaselineResponse,
     ListBaselinesQuery, PromoteBaselineRequest, PromoteBaselineResponse, UploadBaselineRequest,
@@ -61,6 +62,7 @@ pub async fn upload_baseline(
 
     match store.create(&record).await {
         Ok(_) => {
+            metrics::record_baseline_upload(&project);
             info!(project = %project, benchmark = %request.benchmark, version = %version, "Baseline uploaded");
             let response = UploadBaselineResponse {
                 id: record.id.clone(),
@@ -100,11 +102,14 @@ pub async fn get_latest_baseline(
     check_scope(Some(&auth_ctx), &project, Some(&benchmark), Scope::Read)?;
 
     match store.get_latest(&project, &benchmark).await {
-        Ok(Some(record)) => Ok((
-            StatusCode::OK,
-            [(header::ETAG, record.etag())],
-            Json(record),
-        )),
+        Ok(Some(record)) => {
+            metrics::record_baseline_download(&project);
+            Ok((
+                StatusCode::OK,
+                [(header::ETAG, record.etag())],
+                Json(record),
+            ))
+        }
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
             Json(ApiError::not_found(&format!(
@@ -127,11 +132,14 @@ pub async fn get_baseline(
     check_scope(Some(&auth_ctx), &project, Some(&benchmark), Scope::Read)?;
 
     match store.get(&project, &benchmark, &version).await {
-        Ok(Some(record)) => Ok((
-            StatusCode::OK,
-            [(header::ETAG, record.etag())],
-            Json(record),
-        )),
+        Ok(Some(record)) => {
+            metrics::record_baseline_download(&project);
+            Ok((
+                StatusCode::OK,
+                [(header::ETAG, record.etag())],
+                Json(record),
+            ))
+        }
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
             Json(ApiError::not_found(&format!(
@@ -155,7 +163,10 @@ pub async fn list_baselines(
     check_scope(Some(&auth_ctx), &project, None, Scope::Read)?;
 
     match store.list(&project, &query).await {
-        Ok(response) => Ok(Json(response).into_response()),
+        Ok(response) => {
+            metrics::record_storage_list();
+            Ok(Json(response).into_response())
+        }
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiError::internal_error(&e.to_string())),
@@ -171,14 +182,17 @@ pub async fn delete_baseline(
     check_scope(Some(&auth_ctx), &project, Some(&benchmark), Scope::Delete)?;
 
     match store.delete(&project, &benchmark, &version).await {
-        Ok(true) => Ok(Json(DeleteBaselineResponse {
-            deleted: true,
-            id: format!("{}/{}/{}", project, benchmark, version),
-            benchmark,
-            version,
-            deleted_at: chrono::Utc::now(),
-        })
-        .into_response()),
+        Ok(true) => {
+            metrics::record_storage_delete();
+            Ok(Json(DeleteBaselineResponse {
+                deleted: true,
+                id: format!("{}/{}/{}", project, benchmark, version),
+                benchmark,
+                version,
+                deleted_at: chrono::Utc::now(),
+            })
+            .into_response())
+        }
         Ok(false) => Err((
             StatusCode::NOT_FOUND,
             Json(ApiError::not_found(&format!(
@@ -253,17 +267,20 @@ pub async fn promote_baseline(
     );
 
     match store.create(&promoted).await {
-        Ok(_) => Ok((
-            StatusCode::CREATED,
-            Json(PromoteBaselineResponse {
-                id: promoted.id.clone(),
-                benchmark: benchmark.clone(),
-                version: request.to_version.clone(),
-                promoted_from: request.from_version.clone(),
-                promoted_at: promoted.created_at,
-                created_at: promoted.created_at,
-            }),
-        )),
+        Ok(_) => {
+            metrics::record_storage_promote();
+            Ok((
+                StatusCode::CREATED,
+                Json(PromoteBaselineResponse {
+                    id: promoted.id.clone(),
+                    benchmark: benchmark.clone(),
+                    version: request.to_version.clone(),
+                    promoted_from: request.from_version.clone(),
+                    promoted_at: promoted.created_at,
+                    created_at: promoted.created_at,
+                }),
+            ))
+        }
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiError::internal_error(&e.to_string())),

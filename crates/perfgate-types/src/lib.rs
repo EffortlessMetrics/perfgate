@@ -3,6 +3,8 @@
 //! Design goal: versioned, explicit, boring.
 //! These structs are used for receipts, PR comments, and (eventually) long-term baselines.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Examples
 //!
 //! Round-trip a [`ToolInfo`] through JSON:
@@ -24,8 +26,8 @@ mod defaults_config;
 mod paired;
 
 pub use paired::{
-    PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary, PairedRunReceipt, PairedSample,
-    PairedSampleHalf, PairedStats,
+    NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
+    PairedRunReceipt, PairedSample, PairedSampleHalf, PairedStats,
 };
 
 pub use defaults_config::*;

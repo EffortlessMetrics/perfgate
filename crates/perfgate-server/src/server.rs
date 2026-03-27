@@ -6,6 +6,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     Router, middleware,
@@ -25,10 +26,12 @@ use crate::handlers::{
     dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
     list_baselines, list_verdicts, promote_baseline, static_asset, submit_verdict, upload_baseline,
 };
+use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
     ArtifactStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore, SqliteStore,
 };
+use metrics_exporter_prometheus::PrometheusHandle;
 
 /// Storage backend type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,6 +54,56 @@ impl std::str::FromStr for StorageBackend {
             "sqlite" => Ok(Self::Sqlite),
             "postgres" | "postgresql" => Ok(Self::Postgres),
             _ => Err(format!("Unknown storage backend: {}", s)),
+        }
+    }
+}
+
+/// Configuration for PostgreSQL connection pool tuning.
+///
+/// These parameters control how sqlx manages the underlying connection pool.
+/// All fields have sensible defaults suitable for moderate production load.
+///
+/// # Recommended PostgreSQL server settings
+///
+/// For production workloads, tune these `postgresql.conf` knobs alongside the
+/// pool parameters:
+///
+/// | PostgreSQL setting      | Recommended value | Notes                                    |
+/// |-------------------------|-------------------|------------------------------------------|
+/// | `max_connections`       | 100 - 200         | Must exceed pool `max_connections`        |
+/// | `shared_buffers`        | 25% of RAM        | Main query cache                         |
+/// | `work_mem`              | 4 - 16 MB         | Per-sort/hash memory                     |
+/// | `idle_in_transaction_session_timeout` | 30s  | Kill idle-in-transaction sessions        |
+/// | `statement_timeout`     | 30s               | Server-side query timeout                |
+/// | `tcp_keepalives_idle`   | 60                | Seconds before TCP keepalive probes      |
+/// | `tcp_keepalives_interval` | 10              | Seconds between probes                   |
+/// | `tcp_keepalives_count`  | 6                 | Failed probes before disconnect           |
+#[derive(Debug, Clone)]
+pub struct PostgresPoolConfig {
+    /// Maximum number of connections in the pool (default: 10).
+    pub max_connections: u32,
+    /// Minimum number of idle connections to maintain (default: 2).
+    pub min_connections: u32,
+    /// Time a connection may sit idle before being closed (default: 300s).
+    pub idle_timeout: Duration,
+    /// Maximum lifetime of a connection before it is recycled (default: 1800s).
+    pub max_lifetime: Duration,
+    /// How long to wait when acquiring a connection from the pool (default: 5s).
+    pub acquire_timeout: Duration,
+    /// Statement timeout set on each new connection via `SET statement_timeout`
+    /// (default: 30s). Prevents runaway queries.
+    pub statement_timeout: Duration,
+}
+
+impl Default for PostgresPoolConfig {
+    fn default() -> Self {
+        Self {
+            max_connections: 10,
+            min_connections: 2,
+            idle_timeout: Duration::from_secs(300),
+            max_lifetime: Duration::from_secs(1800),
+            acquire_timeout: Duration::from_secs(5),
+            statement_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -83,6 +136,9 @@ pub struct ServerConfig {
     /// PostgreSQL connection URL (when storage_backend is Postgres)
     pub postgres_url: Option<String>,
 
+    /// PostgreSQL connection pool configuration
+    pub postgres_pool: PostgresPoolConfig,
+
     /// Artifact storage URL (e.g., s3://bucket/prefix)
     pub artifacts_url: Option<String>,
 
@@ -109,6 +165,7 @@ impl Default for ServerConfig {
             storage_backend: StorageBackend::Memory,
             sqlite_path: None,
             postgres_url: None,
+            postgres_pool: PostgresPoolConfig::default(),
             artifacts_url: None,
             api_keys: vec![],
             jwt: None,
@@ -149,6 +206,12 @@ impl ServerConfig {
     /// Sets the PostgreSQL connection URL.
     pub fn postgres_url(mut self, url: impl Into<String>) -> Self {
         self.postgres_url = Some(url.into());
+        self
+    }
+
+    /// Sets the PostgreSQL connection pool configuration.
+    pub fn postgres_pool(mut self, pool_config: PostgresPoolConfig) -> Self {
+        self.postgres_pool = pool_config;
         self
     }
 
@@ -244,9 +307,11 @@ pub(crate) async fn create_storage(
                 .clone()
                 .unwrap_or_else(|| "postgres://localhost:5432/perfgate".to_string());
             info!(url = %url, "Using PostgreSQL storage");
-            let store = PostgresStore::new(&url, artifacts).await.map_err(|e| {
-                ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e))
-            })?;
+            let store = PostgresStore::new(&url, artifacts, &config.postgres_pool)
+                .await
+                .map_err(|e| {
+                    ConfigError::InvalidValue(format!("Failed to connect to Postgres: {}", e))
+                })?;
             Ok(Arc::new(store))
         }
     }
@@ -280,6 +345,7 @@ pub(crate) fn create_router(
     store: Arc<dyn BaselineStore>,
     auth_state: AuthState,
     config: &ServerConfig,
+    prometheus_handle: Option<PrometheusHandle>,
 ) -> Router {
     // Health check (no auth required)
     let health_routes = Router::new().route("/health", get(health_check));
@@ -321,6 +387,16 @@ pub(crate) fn create_router(
         .merge(health_routes.clone())
         .nest("/api/v1", health_routes.merge(api_routes));
 
+    // Add /metrics endpoint if Prometheus handle is available
+    if let Some(handle) = prometheus_handle {
+        let metrics_routes = Router::new()
+            .route("/metrics", get(metrics_handler))
+            .with_state(handle);
+        app = app.merge(metrics_routes);
+        // Apply metrics middleware to all routes
+        app = app.layer(middleware::from_fn(metrics_middleware));
+    }
+
     // Add CORS if enabled
     if config.cors {
         app = app.layer(
@@ -360,8 +436,12 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider);
 
+    // Install Prometheus metrics recorder
+    let prometheus_handle = setup_metrics_recorder();
+    info!("Prometheus metrics enabled at /metrics");
+
     // Create router
-    let app = create_router(store.clone(), auth_state, &config);
+    let app = create_router(store.clone(), auth_state, &config, Some(prometheus_handle));
 
     // Add tracing and request ID layers
     let app = app.layer(
@@ -523,7 +603,54 @@ mod tests {
         let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
         let config = ServerConfig::new();
 
-        let _router = create_router(store, auth_state, &config);
+        let _router = create_router(store, auth_state, &config, None);
         // Router created successfully
+    }
+
+    #[test]
+    fn test_postgres_pool_config_defaults() {
+        let cfg = PostgresPoolConfig::default();
+        assert_eq!(cfg.max_connections, 10);
+        assert_eq!(cfg.min_connections, 2);
+        assert_eq!(cfg.idle_timeout, Duration::from_secs(300));
+        assert_eq!(cfg.max_lifetime, Duration::from_secs(1800));
+        assert_eq!(cfg.acquire_timeout, Duration::from_secs(5));
+        assert_eq!(cfg.statement_timeout, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_server_config_with_postgres_pool() {
+        let pool_config = PostgresPoolConfig {
+            max_connections: 20,
+            min_connections: 5,
+            idle_timeout: Duration::from_secs(120),
+            max_lifetime: Duration::from_secs(3600),
+            acquire_timeout: Duration::from_secs(10),
+            statement_timeout: Duration::from_secs(60),
+        };
+
+        let config = ServerConfig::new()
+            .storage_backend(StorageBackend::Postgres)
+            .postgres_url("postgres://localhost:5432/perfgate")
+            .postgres_pool(pool_config);
+
+        assert_eq!(config.postgres_pool.max_connections, 20);
+        assert_eq!(config.postgres_pool.min_connections, 5);
+        assert_eq!(config.postgres_pool.idle_timeout, Duration::from_secs(120));
+        assert_eq!(config.postgres_pool.max_lifetime, Duration::from_secs(3600));
+        assert_eq!(
+            config.postgres_pool.acquire_timeout,
+            Duration::from_secs(10)
+        );
+        assert_eq!(
+            config.postgres_pool.statement_timeout,
+            Duration::from_secs(60)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint_no_pool_for_memory() {
+        let store: Arc<dyn crate::storage::BaselineStore> = Arc::new(InMemoryStore::new());
+        assert!(store.pool_metrics().is_none());
     }
 }

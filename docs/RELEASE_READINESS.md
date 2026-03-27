@@ -80,8 +80,6 @@ The **core local gating pipeline** is production-quality:
 
 ## What's Missing / Not Built Yet
 
-- **crates.io publishing** — no `cargo install perfgate` yet
-- **Versioned action tag** — GitHub Action uses `@main`, no `@v0.15.0` tag
 - **Windows timeout support** — returns `AdapterError::TimeoutUnsupported`
 - **Windows page_faults/ctx_switches** — not collected
 - **API key management CLI** — auth types exist, no key CRUD

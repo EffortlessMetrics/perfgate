@@ -21,6 +21,7 @@ use perfgate_client::{
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
+use perfgate_ingest::IngestFormat;
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
@@ -275,6 +276,13 @@ enum Command {
         #[arg(long)]
         current_lock: Option<PathBuf>,
     },
+
+    /// Import benchmark results from external frameworks into perfgate format.
+    ///
+    /// Supports Criterion, hyperfine, Go bench, and pytest-benchmark.
+    /// Produces a standard perfgate.run.v1 receipt that can be used with
+    /// compare, report, check, and other perfgate commands.
+    Ingest(Box<IngestArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -668,12 +676,41 @@ pub struct PairedArgs {
     #[arg(long, default_value_t = 0)]
     pub max_retries: u32,
 
+    /// CV threshold for early termination of retries.
+    /// If the coefficient of variation of wall-time differences exceeds this value,
+    /// retries are aborted because the benchmark is too noisy. Default: 0.5 (50%).
+    #[arg(long)]
+    pub cv_threshold: Option<f64>,
+
     /// Fail the command (exit code 2) if a regression exceeds this percentage (e.g., 5.0 for 5%).
     #[arg(long)]
     pub fail_on_regression: Option<f64>,
 
     /// Output file path
     #[arg(long, default_value = "perfgate-paired.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct IngestArgs {
+    /// Input format: criterion, hyperfine, gobench, pytest
+    #[arg(long)]
+    pub format: String,
+
+    /// Path to the input file (or directory for criterion)
+    #[arg(long)]
+    pub input: PathBuf,
+
+    /// Benchmark name (default: derived from input data)
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// Output file path
+    #[arg(long, default_value = "perfgate-ingest.json")]
     pub out: PathBuf,
 
     /// Pretty-print JSON
@@ -1345,6 +1382,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 significance_alpha,
                 significance_min_samples,
                 max_retries,
+                cv_threshold,
                 fail_on_regression,
                 out,
                 pretty,
@@ -1390,6 +1428,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 require_significance,
                 max_retries,
                 fail_on_regression,
+                cv_threshold,
             })?;
 
             write_json(&out, &outcome.receipt, pretty)?;
@@ -1459,6 +1498,37 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 current_lock,
             })?;
             println!("{}", outcome.markdown);
+            Ok(())
+        }
+
+        Command::Ingest(args) => {
+            let IngestArgs {
+                format,
+                input,
+                name,
+                out,
+                pretty,
+            } = *args;
+
+            let format = IngestFormat::parse(&format).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest",
+                    format
+                )
+            })?;
+
+            let content = fs::read_to_string(&input)
+                .with_context(|| format!("read input file {}", input.display()))?;
+
+            let request = perfgate_ingest::IngestRequest {
+                format,
+                input: content,
+                name,
+            };
+
+            let receipt = perfgate_ingest::ingest(&request)?;
+            write_json(&out, &receipt, pretty)?;
+            eprintln!("Ingested {} -> {}", input.display(), out.display());
             Ok(())
         }
     }
@@ -3264,6 +3334,7 @@ mod tests {
             warnings: Vec::new(),
             failed: false,
             exit_code: 0,
+            suggest_paired: false,
         };
 
         write_check_artifacts(&outcome, false).unwrap();
@@ -3322,6 +3393,7 @@ mod tests {
             warnings: Vec::new(),
             failed: false,
             exit_code: 0,
+            suggest_paired: false,
         };
 
         write_check_artifacts(&outcome, false).unwrap();

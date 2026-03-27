@@ -21,8 +21,11 @@ use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use perfgate_server::{JwtConfig, OidcConfig, Role, ServerConfig, StorageBackend, run_server};
+use perfgate_server::{
+    JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend, run_server,
+};
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// perfgate baseline service server.
 #[derive(Parser, Debug)]
@@ -44,6 +47,30 @@ struct Args {
     /// Database URL (for sqlite: path to db file, for postgres: connection string)
     #[arg(long)]
     database_url: Option<String>,
+
+    /// Maximum number of connections in the PostgreSQL pool (default: 10)
+    #[arg(long, default_value_t = 10)]
+    pg_max_connections: u32,
+
+    /// Minimum number of idle connections in the PostgreSQL pool (default: 2)
+    #[arg(long, default_value_t = 2)]
+    pg_min_connections: u32,
+
+    /// Idle timeout in seconds for PostgreSQL pool connections (default: 300)
+    #[arg(long, default_value_t = 300)]
+    pg_idle_timeout: u64,
+
+    /// Maximum lifetime in seconds for PostgreSQL pool connections (default: 1800)
+    #[arg(long, default_value_t = 1800)]
+    pg_max_lifetime: u64,
+
+    /// Acquire timeout in seconds for the PostgreSQL pool (default: 5)
+    #[arg(long, default_value_t = 5)]
+    pg_acquire_timeout: u64,
+
+    /// Statement timeout in seconds set on each new PostgreSQL connection (default: 30)
+    #[arg(long, default_value_t = 30)]
+    pg_statement_timeout: u64,
 
     /// API keys in format "role:key[:project[:benchmark_regex]]" (comma-separated, can be specified multiple times)
     /// Roles: admin, promoter, contributor, viewer
@@ -196,10 +223,19 @@ async fn main() {
         config = config.sqlite_path(path);
     }
 
-    // Set PostgreSQL URL if provided
+    // Set PostgreSQL URL and pool configuration if provided
     if let (StorageBackend::Postgres, Some(url)) = (storage_backend, args.database_url) {
         config = config.postgres_url(url);
     }
+
+    config = config.postgres_pool(PostgresPoolConfig {
+        max_connections: args.pg_max_connections,
+        min_connections: args.pg_min_connections,
+        idle_timeout: Duration::from_secs(args.pg_idle_timeout),
+        max_lifetime: Duration::from_secs(args.pg_max_lifetime),
+        acquire_timeout: Duration::from_secs(args.pg_acquire_timeout),
+        statement_timeout: Duration::from_secs(args.pg_statement_timeout),
+    });
 
     // Add API keys
     for cfg in args.api_keys {
@@ -327,6 +363,45 @@ mod tests {
         assert_eq!(args.port, 8080);
         assert_eq!(args.storage_type, "memory");
         assert!(!args.no_cors);
+        // Verify default pool parameters
+        assert_eq!(args.pg_max_connections, 10);
+        assert_eq!(args.pg_min_connections, 2);
+        assert_eq!(args.pg_idle_timeout, 300);
+        assert_eq!(args.pg_max_lifetime, 1800);
+        assert_eq!(args.pg_acquire_timeout, 5);
+        assert_eq!(args.pg_statement_timeout, 30);
+    }
+
+    #[test]
+    fn test_cli_args_postgres_pool() {
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--storage-type",
+            "postgres",
+            "--database-url",
+            "postgres://localhost:5432/perfgate",
+            "--pg-max-connections",
+            "20",
+            "--pg-min-connections",
+            "5",
+            "--pg-idle-timeout",
+            "120",
+            "--pg-max-lifetime",
+            "3600",
+            "--pg-acquire-timeout",
+            "10",
+            "--pg-statement-timeout",
+            "60",
+        ])
+        .unwrap();
+
+        assert_eq!(args.storage_type, "postgres");
+        assert_eq!(args.pg_max_connections, 20);
+        assert_eq!(args.pg_min_connections, 5);
+        assert_eq!(args.pg_idle_timeout, 120);
+        assert_eq!(args.pg_max_lifetime, 3600);
+        assert_eq!(args.pg_acquire_timeout, 10);
+        assert_eq!(args.pg_statement_timeout, 60);
     }
 
     #[test]

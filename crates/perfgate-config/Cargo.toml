@@ -8,7 +8,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-config"
 authors.workspace = true
+keywords = ["configuration", "toml", "benchmarking", "perfgate"]
+categories = ["config", "development-tools"]
 
 [dependencies]
 anyhow.workspace = true

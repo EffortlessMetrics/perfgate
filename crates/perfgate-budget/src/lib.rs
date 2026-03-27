@@ -3,6 +3,8 @@
 //! This crate provides pure budget evaluation functions with no I/O dependencies.
 //! It handles threshold checking, regression calculation, and verdict aggregation.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Overview
 //!
 //! The crate provides:

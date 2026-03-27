@@ -1,0 +1,26 @@
+[package]
+name = "perfgate-ingest"
+description = "Import benchmark results from external frameworks into perfgate format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/perfgate-ingest"
+authors.workspace = true
+readme = "README.md"
+keywords = ["performance", "benchmarking", "import", "criterion", "hyperfine"]
+categories = ["development-tools"]
+
+[dependencies]
+perfgate-types.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+uuid.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

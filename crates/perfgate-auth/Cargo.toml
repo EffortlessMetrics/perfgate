@@ -8,7 +8,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-auth"
 authors.workspace = true
+keywords = ["authentication", "authorization", "api-key", "perfgate"]
+categories = ["authentication"]
 
 [dependencies]
 serde.workspace = true

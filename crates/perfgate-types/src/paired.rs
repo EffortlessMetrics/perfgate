@@ -3,6 +3,7 @@
 use crate::{F64Summary, RunMeta, Significance, ToolInfo, U64Summary};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 pub const PAIRED_SCHEMA_V1: &str = "perfgate.paired.v1";
 
@@ -82,6 +83,56 @@ pub struct PairedStats {
     pub throughput_diff_per_s: Option<PairedDiffSummary>,
 }
 
+/// Noise level classification for paired benchmark results.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum NoiseLevel {
+    /// CV <= 0.10 (10%)
+    Low,
+    /// 0.10 < CV <= 0.30 (30%)
+    Moderate,
+    /// CV > 0.30
+    High,
+}
+
+impl NoiseLevel {
+    /// Classify a coefficient of variation into a noise level.
+    pub fn from_cv(cv: f64) -> Self {
+        if cv <= 0.10 {
+            NoiseLevel::Low
+        } else if cv <= 0.30 {
+            NoiseLevel::Moderate
+        } else {
+            NoiseLevel::High
+        }
+    }
+}
+
+impl fmt::Display for NoiseLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NoiseLevel::Low => write!(f, "low"),
+            NoiseLevel::Moderate => write!(f, "moderate"),
+            NoiseLevel::High => write!(f, "high"),
+        }
+    }
+}
+
+/// Diagnostics about noise in paired benchmark measurements.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct NoiseDiagnostics {
+    /// Coefficient of variation of the wall-time differences.
+    pub cv: f64,
+    /// Classified noise level.
+    pub noise_level: NoiseLevel,
+    /// Number of retries used to achieve significance.
+    pub retries_used: u32,
+    /// Whether the retry loop terminated early due to excessive CV.
+    pub early_termination: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PairedRunReceipt {
@@ -91,6 +142,9 @@ pub struct PairedRunReceipt {
     pub bench: PairedBenchMeta,
     pub samples: Vec<PairedSample>,
     pub stats: PairedStats,
+    /// Noise diagnostics from the paired run (present when retries were configured).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub noise_diagnostics: Option<NoiseDiagnostics>,
 }
 
 #[cfg(test)]
@@ -168,6 +222,7 @@ mod tests {
                 current_throughput_per_s: None,
                 throughput_diff_per_s: None,
             },
+            noise_diagnostics: None,
         }
     }
 
@@ -198,5 +253,60 @@ mod tests {
         assert!(sample["baseline"].get("max_rss_kb").is_none());
         assert!(sample["baseline"].get("stdout").is_none());
         assert!(sample["baseline"].get("stderr").is_none());
+
+        assert!(json.get("noise_diagnostics").is_none());
+    }
+
+    #[test]
+    fn noise_level_from_cv_classifies_correctly() {
+        assert_eq!(NoiseLevel::from_cv(0.0), NoiseLevel::Low);
+        assert_eq!(NoiseLevel::from_cv(0.05), NoiseLevel::Low);
+        assert_eq!(NoiseLevel::from_cv(0.10), NoiseLevel::Low);
+        assert_eq!(NoiseLevel::from_cv(0.15), NoiseLevel::Moderate);
+        assert_eq!(NoiseLevel::from_cv(0.30), NoiseLevel::Moderate);
+        assert_eq!(NoiseLevel::from_cv(0.31), NoiseLevel::High);
+        assert_eq!(NoiseLevel::from_cv(0.50), NoiseLevel::High);
+        assert_eq!(NoiseLevel::from_cv(1.0), NoiseLevel::High);
+    }
+
+    #[test]
+    fn noise_level_display() {
+        assert_eq!(NoiseLevel::Low.to_string(), "low");
+        assert_eq!(NoiseLevel::Moderate.to_string(), "moderate");
+        assert_eq!(NoiseLevel::High.to_string(), "high");
+    }
+
+    #[test]
+    fn noise_diagnostics_json_round_trip() {
+        let diag = NoiseDiagnostics {
+            cv: 0.25,
+            noise_level: NoiseLevel::Moderate,
+            retries_used: 2,
+            early_termination: false,
+        };
+        let json = serde_json::to_string(&diag).unwrap();
+        let decoded: NoiseDiagnostics = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.cv, 0.25);
+        assert_eq!(decoded.noise_level, NoiseLevel::Moderate);
+        assert_eq!(decoded.retries_used, 2);
+        assert!(!decoded.early_termination);
+    }
+
+    #[test]
+    fn paired_receipt_with_noise_diagnostics_round_trip() {
+        let mut receipt = make_receipt();
+        receipt.noise_diagnostics = Some(NoiseDiagnostics {
+            cv: 0.60,
+            noise_level: NoiseLevel::High,
+            retries_used: 3,
+            early_termination: true,
+        });
+        let json = serde_json::to_string(&receipt).unwrap();
+        let decoded: PairedRunReceipt = serde_json::from_str(&json).unwrap();
+        let diag = decoded.noise_diagnostics.expect("should have diagnostics");
+        assert_eq!(diag.cv, 0.60);
+        assert_eq!(diag.noise_level, NoiseLevel::High);
+        assert_eq!(diag.retries_used, 3);
+        assert!(diag.early_termination);
     }
 }

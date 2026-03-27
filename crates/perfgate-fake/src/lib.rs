@@ -4,6 +4,8 @@
 //! perfgate adapter traits. Use these in unit tests and integration tests
 //! to avoid I/O and ensure reproducible test results.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Available Fakes
 //!
 //! - [`FakeProcessRunner`] - Configurable process runner for testing

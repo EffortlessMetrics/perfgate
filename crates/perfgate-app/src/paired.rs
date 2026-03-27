@@ -1,10 +1,10 @@
 //! Paired benchmark execution for perfgate.
 
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner};
-use perfgate_domain::compute_paired_stats;
+use perfgate_domain::{compute_paired_cv, compute_paired_stats};
 use perfgate_types::{
-    PAIRED_SCHEMA_V1, PairedBenchMeta, PairedRunReceipt, PairedSample, PairedSampleHalf, RunMeta,
-    SignificancePolicy, ToolInfo,
+    NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedRunReceipt,
+    PairedSample, PairedSampleHalf, RunMeta, SignificancePolicy, ToolInfo,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -30,6 +30,10 @@ pub struct PairedRunRequest {
     pub require_significance: bool,
     pub max_retries: u32,
     pub fail_on_regression: Option<f64>,
+    /// CV threshold for early termination. If the coefficient of variation of
+    /// the wall-time differences exceeds this value, retries are aborted because
+    /// the benchmark is too noisy for significance to be achievable.
+    pub cv_threshold: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,8 +104,9 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             min_samples: req.significance_min_samples,
         };
 
-        // Retry logic for significance
-        let mut retries_done = 0;
+        // Retry logic for significance with adaptive sample sizing and CV-based early termination
+        let mut retries_done: u32 = 0;
+        let mut early_termination = false;
         loop {
             let stats = compute_paired_stats(&samples, req.work_units, Some(&significance_policy))?;
             let significance_reached = stats
@@ -116,16 +121,34 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
                 break;
             }
 
-            // Not significant, and we have retries left - run one more pair
+            // Check CV threshold for early termination
+            if let Some(cv_thresh) = req.cv_threshold {
+                let cv = compute_paired_cv(&samples);
+                if cv > cv_thresh {
+                    early_termination = true;
+                    reasons.push(format!(
+                        "early termination: CV {:.3} exceeds threshold {:.3}, benchmark too noisy for retries",
+                        cv, cv_thresh
+                    ));
+                    break;
+                }
+            }
+
+            // Adaptive sample sizing: each retry collects more pairs (1.5x growth)
+            // Retry 1: 1 pair, Retry 2: 2 pairs, Retry 3: 3 pairs, ...
+            let extra_pairs = ((retries_done as f64 + 1.0) * 1.5).ceil() as u32;
             retries_done += 1;
-            self.run_pair(
-                req.warmup + pairs_collected,
-                false,
-                &req,
-                &mut samples,
-                &mut reasons,
-            )?;
-            pairs_collected += 1;
+
+            for _ in 0..extra_pairs {
+                self.run_pair(
+                    req.warmup + pairs_collected,
+                    false,
+                    &req,
+                    &mut samples,
+                    &mut reasons,
+                )?;
+                pairs_collected += 1;
+            }
         }
 
         // Update bench metadata if we collected more samples than originally requested
@@ -133,6 +156,19 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
 
         let stats = compute_paired_stats(&samples, req.work_units, Some(&significance_policy))?;
         let ended_at = self.clock.now_rfc3339();
+
+        // Build noise diagnostics when retries were configured
+        let noise_diagnostics = if req.max_retries > 0 {
+            let cv = compute_paired_cv(&samples);
+            Some(NoiseDiagnostics {
+                cv,
+                noise_level: NoiseLevel::from_cv(cv),
+                retries_used: retries_done,
+                early_termination,
+            })
+        } else {
+            None
+        };
 
         let receipt = PairedRunReceipt {
             schema: PAIRED_SCHEMA_V1.to_string(),
@@ -146,6 +182,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             bench,
             samples,
             stats,
+            noise_diagnostics,
         };
 
         if let Some(threshold_pct) = req.fail_on_regression {
@@ -444,6 +481,7 @@ mod tests {
                 require_significance: false,
                 max_retries: 0,
                 fail_on_regression: None,
+                cv_threshold: None,
             })
             .expect("paired run should succeed");
 
@@ -531,6 +569,7 @@ mod tests {
                 require_significance: false,
                 max_retries: 0,
                 fail_on_regression: None,
+                cv_threshold: None,
             })
             .expect("paired run should succeed");
 
@@ -583,6 +622,7 @@ mod tests {
                 require_significance: false,
                 max_retries: 0,
                 fail_on_regression: None,
+                cv_threshold: None,
             })
             .unwrap_err();
 
@@ -642,6 +682,7 @@ mod tests {
                 require_significance: false,
                 max_retries: 0,
                 fail_on_regression: None,
+                cv_threshold: None,
             })
             .expect("paired run should succeed");
 
@@ -656,16 +697,11 @@ mod tests {
     fn paired_run_retries_until_significance() {
         // We want to simulate:
         // Initial run (2 pairs): not significant
-        // Retry 1 (1 pair): now significant (or reached max retries)
+        // Adaptive retries collect increasing pairs until significance
 
-        // Wall diffs:
-        // Pair 1: 100 - 100 = 0
-        // Pair 2: 100 - 100 = 0
-        // (Mean = 0, StdDev = 0 -> not significant if alpha is tight or we need more samples)
-        // Wait, if StdDev is 0 it MIGHT be significant depending on the test.
-        // Actually compute_paired_stats uses Welch's t-test on the diffs.
-
-        // Let's just use a large enough StdDev to ensure not significant initially.
+        // Wall diffs: initially ambiguous, later consistently positive.
+        // Retry 1 collects ceil((0+1)*1.5) = 2 pairs, Retry 2 = 3 pairs, etc.
+        // Provide enough runs for multiple retries.
         let runs = vec![
             // Pair 1 (diff 0)
             run_result(100, 0, false, None, b"", b""),
@@ -673,7 +709,27 @@ mod tests {
             // Pair 2 (diff 10)
             run_result(100, 0, false, None, b"", b""),
             run_result(110, 0, false, None, b"", b""),
-            // Pair 3 (diff 10) - Should be collected because of retry
+            // Retry 1: 2 extra pairs (diff 10 each)
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            // Retry 2: 3 extra pairs (diff 10 each)
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            // Retry 3: 5 extra pairs (diff 10 each) - just in case
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
             run_result(100, 0, false, None, b"", b""),
             run_result(110, 0, false, None, b"", b""),
         ];
@@ -718,6 +774,7 @@ mod tests {
                 require_significance: true,
                 max_retries: 5, // Allow up to 5 retries
                 fail_on_regression: None,
+                cv_threshold: None,
             })
             .expect("paired run should succeed");
 
@@ -726,6 +783,154 @@ mod tests {
         assert_eq!(
             outcome.receipt.bench.repeat,
             outcome.receipt.samples.len() as u32
+        );
+
+        // Noise diagnostics should be present because max_retries > 0
+        let diag = outcome
+            .receipt
+            .noise_diagnostics
+            .expect("should have noise diagnostics");
+        assert!(diag.retries_used > 0);
+        assert!(!diag.early_termination);
+    }
+
+    #[test]
+    fn paired_run_cv_threshold_early_termination() {
+        // Simulate very noisy data: large variance in diffs
+        // Pair 1: diff = -50, Pair 2: diff = +60 => high CV
+        let runs = vec![
+            // Pair 1
+            run_result(200, 0, false, None, b"", b""),
+            run_result(150, 0, false, None, b"", b""),
+            // Pair 2
+            run_result(100, 0, false, None, b"", b""),
+            run_result(160, 0, false, None, b"", b""),
+            // Extra pair should NOT be consumed because CV threshold triggers early exit
+            // But we provide extras just in case the retry runs one more batch
+            run_result(100, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+            run_result(100, 0, false, None, b"", b""),
+        ];
+
+        let runner = TestRunner::new(runs);
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host);
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe,
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let outcome = usecase
+            .execute(PairedRunRequest {
+                name: "noisy-bench".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 2,
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: false,
+                significance_alpha: Some(0.05),
+                significance_min_samples: Some(2),
+                require_significance: true,
+                max_retries: 5,
+                fail_on_regression: None,
+                cv_threshold: Some(0.5),
+            })
+            .expect("paired run should succeed");
+
+        let diag = outcome
+            .receipt
+            .noise_diagnostics
+            .expect("should have noise diagnostics");
+        // Early termination should have kicked in
+        assert!(diag.early_termination);
+        assert!(diag.cv > 0.5);
+        assert_eq!(diag.noise_level, perfgate_types::NoiseLevel::High);
+
+        // Should have a reason about early termination
+        assert!(
+            outcome
+                .reasons
+                .iter()
+                .any(|r| r.contains("early termination")),
+            "expected early termination reason, got: {:?}",
+            outcome.reasons
+        );
+    }
+
+    #[test]
+    fn paired_run_no_retries_no_noise_diagnostics() {
+        let runs = vec![
+            run_result(100, 0, false, None, b"", b""),
+            run_result(110, 0, false, None, b"", b""),
+        ];
+
+        let runner = TestRunner::new(runs);
+        let host = HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        };
+        let host_probe = TestHostProbe::new(host);
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+
+        let usecase = PairedRunUseCase::new(
+            runner,
+            host_probe,
+            clock,
+            ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+
+        let outcome = usecase
+            .execute(PairedRunRequest {
+                name: "simple-bench".to_string(),
+                cwd: None,
+                baseline_command: vec!["true".to_string()],
+                current_command: vec!["true".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: vec![],
+                output_cap_bytes: 1024,
+                allow_nonzero: false,
+                include_hostname_hash: false,
+                significance_alpha: None,
+                significance_min_samples: None,
+                require_significance: false,
+                max_retries: 0,
+                fail_on_regression: None,
+                cv_threshold: None,
+            })
+            .expect("paired run should succeed");
+
+        assert!(
+            outcome.receipt.noise_diagnostics.is_none(),
+            "should not have noise diagnostics when max_retries=0"
         );
     }
 }

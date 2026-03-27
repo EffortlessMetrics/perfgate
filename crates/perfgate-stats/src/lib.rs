@@ -4,6 +4,8 @@
 //! It is designed to be used by `perfgate-domain` and can be independently
 //! tested and versioned.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Overview
 //!
 //! The crate provides:

@@ -18,4 +18,5 @@ tmp*/
 test_output.txt
 commit_msg.txt
 perfgate-*.json
+!vscode-perfgate/**
 bad.toml

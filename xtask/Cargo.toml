@@ -22,3 +22,4 @@ perfgate-types.workspace = true
 perfgate-stats.workspace = true
 perfgate-export.workspace = true
 glob.workspace = true
+regex.workspace = true

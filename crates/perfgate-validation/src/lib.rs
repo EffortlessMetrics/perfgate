@@ -3,6 +3,8 @@
 //! This crate provides validation logic for validating benchmark names
 //! according to a strict set of rules.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Example
 //!
 //! ```

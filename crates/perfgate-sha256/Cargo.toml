@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Minimal SHA-256 implementation for perfgate fingerprinting"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-sha256"
 keywords = ["sha256", "hash", "fingerprinting", "no-std"]
 categories = ["cryptography", "no-std"]
 

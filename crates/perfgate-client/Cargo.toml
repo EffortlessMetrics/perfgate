@@ -9,7 +9,9 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-client"
 keywords = ["performance", "benchmarking", "baseline", "client"]
+categories = ["web-programming::http-client", "development-tools"]
 
 [dependencies]
 anyhow.workspace = true
