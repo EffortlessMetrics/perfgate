@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "Host mismatch detection for benchmarking noise reduction"
+readme = "README.md"
 keywords = ["benchmarking", "host", "mismatch", "detection"]
 categories = ["development-tools"]
 

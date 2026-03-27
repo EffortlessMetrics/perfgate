@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "Paired benchmarking statistics for A/B comparison"
+readme = "README.md"
 keywords = ["paired", "benchmarking", "statistics", "ab-testing"]
 categories = ["mathematics", "development-tools"]
 

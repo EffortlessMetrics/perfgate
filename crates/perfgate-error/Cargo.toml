@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "Unified error types for perfgate"
+readme = "README.md"
 keywords = ["error", "error-handling"]
 categories = ["development-tools"]
 
