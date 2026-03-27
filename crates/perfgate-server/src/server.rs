@@ -324,14 +324,18 @@ pub(crate) fn create_router(
         .merge(health_routes.clone())
         .nest("/api/v1", health_routes.merge(api_routes));
 
-    // Add /metrics endpoint if Prometheus handle is available
+    // Add Prometheus metrics: apply middleware first so /metrics itself is excluded.
+    // In Axum, `layer()` wraps only routes already on the router; routes merged
+    // afterward are not wrapped.  This prevents Prometheus scrapes from inflating
+    // the request counters.
     if let Some(handle) = prometheus_handle {
+        // 1. Wrap existing routes with the recording middleware
+        app = app.layer(middleware::from_fn(metrics_middleware));
+        // 2. Merge /metrics *after* the layer so it is NOT recorded
         let metrics_routes = Router::new()
             .route("/metrics", get(metrics_handler))
             .with_state(handle);
         app = app.merge(metrics_routes);
-        // Apply metrics middleware to all routes
-        app = app.layer(middleware::from_fn(metrics_middleware));
     }
 
     // Add CORS if enabled
