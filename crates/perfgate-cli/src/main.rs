@@ -22,7 +22,8 @@ use perfgate_app::{
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
-    ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
+    AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
+    SubmitVerdictRequest, UploadBaselineRequest,
 };
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
@@ -349,6 +350,13 @@ enum Command {
     ///
     /// Exit codes: 0 on clean exit (Ctrl+C), 1 on error.
     Watch(Box<WatchArgs>),
+
+    /// Start a local dashboard server backed by SQLite.
+    ///
+    /// Launches the perfgate server on localhost with no authentication,
+    /// using ~/.perfgate/data.db as the default database. Opens the
+    /// dashboard in the default browser unless --no-open is passed.
+    Serve(Box<ServeArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -478,6 +486,21 @@ pub struct DiffArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ServeArgs {
+    /// Port to listen on (default: 8484)
+    #[arg(long, default_value_t = 8484)]
+    pub port: u16,
+
+    /// Path to the SQLite database file (default: ~/.perfgate/data.db)
+    #[arg(long)]
+    pub db: Option<PathBuf>,
+
+    /// Do not open the browser automatically
+    #[arg(long, default_value_t = false)]
+    pub no_open: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct BisectArgs {
     /// The known good commit
     #[arg(long)]
@@ -557,6 +580,11 @@ pub struct RunArgs {
     /// Project name for upload (overrides global --project flag).
     #[arg(long)]
     pub upload_project: Option<String>,
+
+    /// Upload the run result to the local perfgate server (started via `perfgate serve`).
+    /// Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484).
+    #[arg(long, default_value_t = false)]
+    pub local_db: bool,
 
     /// Command to run (argv) after `--`
     #[arg(last = true, required = true)]
@@ -777,6 +805,11 @@ pub struct CheckArgs {
     /// Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT.
     #[arg(long, default_value_t = false)]
     pub output_github: bool,
+
+    /// Upload the run result to the local perfgate server (started via `perfgate serve`).
+    /// Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484).
+    #[arg(long, default_value_t = false)]
+    pub local_db: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1226,6 +1259,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 pretty,
                 upload,
                 upload_project,
+                local_db,
                 command,
             } = *args;
 
@@ -1264,7 +1298,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 let project = server_config.resolve_project(upload_project)?;
 
                 let request = UploadBaselineRequest {
-                    benchmark: name,
+                    benchmark: name.clone(),
                     version: None,
                     git_ref: None,
                     git_sha: None,
@@ -1287,6 +1321,11 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     );
                     Ok::<(), anyhow::Error>(())
                 })?;
+            }
+
+            // Upload to local server if --local-db is set
+            if local_db {
+                upload_to_local_db(&name, &outcome.receipt)?;
             }
 
             if outcome.failed && !allow_nonzero {
@@ -1584,6 +1623,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 mode,
                 md_template,
                 output_github,
+                local_db,
             } = *args;
 
             let req = CheckConfig {
@@ -1608,6 +1648,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 server_flags,
+                local_db,
             };
             match mode {
                 OutputMode::Standard => run_check_standard(req),
@@ -1851,6 +1892,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Init(args) => execute_init(*args),
         Command::Watch(args) => run_watch(*args),
+        Command::Serve(args) => execute_serve(*args),
     }
 }
 
@@ -2224,6 +2266,132 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+const DEFAULT_LOCAL_SERVER_URL: &str = "http://127.0.0.1:8484/api/v1";
+
+/// Resolve the local server URL from the PERFGATE_LOCAL_DB environment variable
+/// or fall back to the default.
+fn resolve_local_db_url() -> String {
+    match std::env::var("PERFGATE_LOCAL_DB") {
+        Ok(val) if !val.is_empty() && val != "true" && val != "1" => val,
+        _ => DEFAULT_LOCAL_SERVER_URL.to_string(),
+    }
+}
+
+/// Upload a run receipt to the local perfgate server (no auth).
+fn upload_to_local_db(name: &str, receipt: &RunReceipt) -> anyhow::Result<()> {
+    let url = resolve_local_db_url();
+    let config = ClientConfig {
+        server_url: url.clone(),
+        auth: AuthMethod::None,
+        ..Default::default()
+    };
+    let client = BaselineClient::new(config)
+        .with_context(|| format!("create client for local server at {url}"))?;
+
+    let request = UploadBaselineRequest {
+        benchmark: name.to_string(),
+        version: None,
+        git_ref: None,
+        git_sha: None,
+        receipt: receipt.clone(),
+        metadata: BTreeMap::new(),
+        tags: Vec::new(),
+        normalize: false,
+    };
+
+    with_tokio_runtime(async {
+        let response: perfgate_client::types::UploadBaselineResponse = client
+            .upload_baseline("default", &request)
+            .await
+            .with_context(|| {
+                format!("upload to local server at {url} -- is `perfgate serve` running?")
+            })?;
+        eprintln!(
+            "Uploaded to local server: {} version {}",
+            response.benchmark, response.version
+        );
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+/// Resolve the default data directory (~/.perfgate/) and ensure it exists.
+fn default_data_dir() -> anyhow::Result<PathBuf> {
+    let home = if cfg!(windows) {
+        std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .context("could not determine home directory (USERPROFILE / HOME not set)")?
+    } else {
+        std::env::var("HOME").context("could not determine home directory (HOME not set)")?
+    };
+    let dir = PathBuf::from(home).join(".perfgate");
+    fs::create_dir_all(&dir).with_context(|| format!("create data directory {}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Start the local dashboard server.
+fn execute_serve(args: ServeArgs) -> anyhow::Result<()> {
+    let db_path = match args.db {
+        Some(p) => p,
+        None => default_data_dir()?.join("data.db"),
+    };
+
+    // Ensure the parent directory exists for the database file.
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create database directory {}", parent.display()))?;
+    }
+
+    let bind_addr = format!("127.0.0.1:{}", args.port);
+    let url = format!("http://127.0.0.1:{}", args.port);
+
+    eprintln!("perfgate serve");
+    eprintln!("  database : {}", db_path.display());
+    eprintln!("  dashboard: {url}");
+    eprintln!("  auth     : disabled (local mode)");
+    eprintln!();
+    eprintln!("Press Ctrl+C to stop.");
+
+    let config = perfgate_server::ServerConfig::new()
+        .bind(&bind_addr)?
+        .storage_backend(perfgate_server::StorageBackend::Sqlite)
+        .sqlite_path(&db_path)
+        .local_mode(true)
+        .cors(true);
+
+    // Open the browser unless --no-open is passed.
+    if !args.no_open {
+        open_browser(&url);
+    }
+
+    let rt = tokio::runtime::Runtime::new().context("initialize async runtime")?;
+    rt.block_on(async {
+        perfgate_server::run_server(config)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
+    })?;
+
+    Ok(())
+}
+
+/// Open a URL in the default browser.
+fn open_browser(url: &str) {
+    let result = if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(url).spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(url).spawn()
+    };
+
+    if let Err(e) = result {
+        eprintln!("warning: could not open browser: {e}");
+    }
 }
 
 /// Execute baseline management actions.
@@ -2663,6 +2831,7 @@ struct CheckConfig {
     md_template: Option<PathBuf>,
     output_github: bool,
     server_flags: ServerFlags,
+    local_db: bool,
 }
 
 fn submit_verdict_if_possible(
@@ -2805,6 +2974,13 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Submit verdict to server if configured
         if let Some(compare) = &outcome.compare_receipt {
             submit_verdict_if_possible(&req.server_flags, &config_file, compare);
+        }
+
+        // Upload to local server if --local-db is set
+        if req.local_db
+            && let Err(e) = upload_to_local_db(bench_name, &outcome.run_receipt)
+        {
+            eprintln!("warning: local-db upload failed: {:#}", e);
         }
 
         // Write artifacts
@@ -3037,6 +3213,13 @@ fn run_check_cockpit_inner(
             // Submit verdict to server if configured
             if let Some(compare) = &check_outcome.compare_receipt {
                 submit_verdict_if_possible(&req.server_flags, &config_file, compare);
+            }
+
+            // Upload to local server if --local-db is set
+            if req.local_db
+                && let Err(e) = upload_to_local_db(bench_name, &check_outcome.run_receipt)
+            {
+                eprintln!("warning: local-db upload failed: {:#}", e);
             }
 
             // Write native artifacts to extras/
