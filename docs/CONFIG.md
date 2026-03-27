@@ -24,6 +24,7 @@ budgets = { wall_ms = { threshold = 0.20, warn_factor = 0.90, statistic = "p95" 
 name = "api_latency"
 command = ["./target/release/api-bench"]
 repeat = 10                                   # override defaults per bench
+scaling = { sizes = [100, 1000, 10000], expected = "O(n)", repeat = 5, r_squared_threshold = 0.90 }
 ```
 
 ## Budget Configuration
@@ -38,6 +39,25 @@ statistic = "p95"       # gate on p95 instead of median
 ```
 
 Available statistics: `median` (default), `p95`.
+
+## Scaling Configuration
+
+Each benchmark can optionally declare a scaling policy for `perfgate scale`
+and JSON/TOML schema validation:
+
+```toml
+[[bench]]
+name = "parser"
+command = ["./target/release/parser-bench", "--size", "{n}"]
+scaling = { sizes = [100, 1000, 10000], expected = "O(n)", repeat = 7, r_squared_threshold = 0.95 }
+```
+
+| Field | Description |
+|-------|-------------|
+| `sizes` | Required input sizes used for complexity fitting |
+| `expected` | Optional expected complexity class such as `O(n)` or `O(n^2)` |
+| `repeat` | Optional repetitions per input size |
+| `r_squared_threshold` | Optional minimum fit quality threshold |
 
 ## Presets
 
@@ -66,6 +86,7 @@ perfgate check --config perfgate.toml --bench my-bench \
   --baseline gs://my-baselines/bench.json \
   --output-github \
   --mode cockpit \
+  --profile-on-regression \
   --md-template .github/perfgate-comment.hbs \
   --bench-regex "^service/"
 ```

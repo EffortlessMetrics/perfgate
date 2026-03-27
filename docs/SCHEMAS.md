@@ -8,8 +8,17 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 |--------|-------------|-------------|
 | `perfgate.run.v1` | `run`, `check` | Raw measurement data from a benchmark execution |
 | `perfgate.compare.v1` | `compare`, `check`, `paired` | Comparison of current run against baseline |
-| `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope |
+| `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
 | `sensor.report.v1` | `check --mode cockpit` | Sensor integration envelope for dashboards |
+
+## Additional Generated Schemas
+
+perfgate also commits generated schemas for tooling and editor integration:
+
+| File | Purpose |
+|------|---------|
+| `schemas/perfgate.config.v1.schema.json` | Validates `perfgate.toml` / JSON config shape, including optional per-benchmark scaling configuration |
+| `schemas/perfgate.report.v1.schema.json` | Validates report receipts, including additive diagnostics such as `profile_path` |
 
 ## JSON Schema Generation
 

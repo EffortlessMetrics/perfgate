@@ -135,6 +135,17 @@
           "format": "uint32",
           "minimum": 0
         },
+        "scaling": {
+          "description": "Optional scaling validation configuration.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScalingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "timeout": {
           "description": "Duration string parseable by humantime, e.g. \"2s\".",
           "type": [
@@ -347,6 +358,48 @@
           "type": "string",
           "const": "skip"
         }
+      ]
+    },
+    "ScalingConfig": {
+      "description": "Configuration for computational complexity validation.",
+      "type": "object",
+      "properties": {
+        "expected": {
+          "description": "Expected complexity class (e.g., \"O(n)\", \"O(n^2)\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "r_squared_threshold": {
+          "description": "Minimum R-squared for a valid fit (default: 0.90).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "repeat": {
+          "description": "Number of repetitions per input size (default: 5).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "sizes": {
+          "description": "Input sizes to test.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "sizes"
       ]
     }
   }

@@ -43,7 +43,7 @@ perfgate intentionally avoids these responsibilities:
 
 1. **Mandatory baseline service**: perfgate core does NOT require a centralized server. Users MAY use the optional baseline server for centralized management, but file-based and cloud storage baselines remain fully supported
 
-2. **Profiler**: perfgate does NOT profile code or identify hot paths. It measures whole-command execution only
+2. **General-purpose profiler**: perfgate is not a profiler-first system and does NOT instrument every run or automatically identify hot paths. It measures whole-command execution first, and may optionally capture a flamegraph after a warn/fail regression for follow-up diagnosis
 
 3. **Test runner/director**: perfgate does NOT orchestrate test suites or manage parallelism. It runs a single command specification
 
