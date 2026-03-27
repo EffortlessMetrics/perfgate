@@ -913,7 +913,7 @@ pub struct FleetAlert {
 }
 
 /// Query parameters for listing fleet alerts.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ListFleetAlertsQuery {
     /// Minimum number of affected projects to include
     #[serde(default = "default_min_affected")]
@@ -923,6 +923,16 @@ pub struct ListFleetAlertsQuery {
     /// Pagination limit
     #[serde(default = "default_limit")]
     pub limit: u32,
+}
+
+impl Default for ListFleetAlertsQuery {
+    fn default() -> Self {
+        Self {
+            min_affected: default_min_affected(),
+            since: None,
+            limit: default_limit(),
+        }
+    }
 }
 
 fn default_min_affected() -> usize {
@@ -936,13 +946,22 @@ pub struct ListFleetAlertsResponse {
 }
 
 /// Query parameters for dependency impact lookup.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DependencyImpactQuery {
     /// Only include events since this time
     pub since: Option<DateTime<Utc>>,
     /// Pagination limit
     #[serde(default = "default_limit")]
     pub limit: u32,
+}
+
+impl Default for DependencyImpactQuery {
+    fn default() -> Self {
+        Self {
+            since: None,
+            limit: default_limit(),
+        }
+    }
 }
 
 /// Response for dependency impact lookup.

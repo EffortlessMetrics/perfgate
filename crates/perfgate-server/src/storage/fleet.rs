@@ -118,6 +118,8 @@ impl FleetStore for InMemoryFleetStore {
             dep_groups.entry(key).or_default().push(event);
         }
 
+        // NOTE: Alert IDs are regenerated on each query since alerts are computed
+        // on-the-fly from events. A persistent store should cache alert records.
         let mut alerts = Vec::new();
         for ((dep_name, old_ver, new_ver), group_events) in &dep_groups {
             // Count distinct projects
