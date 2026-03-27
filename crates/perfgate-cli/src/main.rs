@@ -8,12 +8,12 @@ use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::{
-    BenchOutcome, BisectRequest, BisectUseCase, BlameRequest, BlameUseCase, CheckOutcome,
-    CheckRequest, CheckUseCase, Clock, CompareRequest, CompareUseCase, ExplainRequest,
-    ExplainUseCase, ExportFormat, ExportUseCase, PairedRunRequest, PairedRunUseCase,
-    PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
-    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_markdown,
-    render_markdown_template,
+    BadgeInput, BadgeStyle, BadgeType, BadgeUseCase, BenchOutcome, BisectRequest, BisectUseCase,
+    BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
+    CompareUseCase, ExplainRequest, ExplainUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
+    PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase,
+    RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock, classify_error,
+    github_annotations, render_markdown, render_markdown_template,
 };
 use perfgate_client::{
     ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
@@ -25,7 +25,7 @@ use perfgate_ingest::IngestFormat;
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -291,6 +291,16 @@ enum Command {
     /// Produces a standard perfgate.run.v1 receipt that can be used with
     /// compare, report, check, and other perfgate commands.
     Ingest(Box<IngestArgs>),
+
+    /// Generate an embeddable SVG status badge from a report or compare receipt.
+    ///
+    /// Badge types:
+    /// - status: overall verdict (passing/warning/failing)
+    /// - metric: single metric value with delta
+    /// - trend: performance trend summary
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    Badge(Box<BadgeArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -326,6 +336,59 @@ pub struct CargoBenchArgs {
     /// Extra arguments passed to `cargo bench` (after --)
     #[arg(last = true)]
     pub extra_args: Vec<String>,
+}
+
+/// Badge type selector for the badge subcommand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum BadgeTypeArg {
+    /// Overall verdict badge (passing/warning/failing)
+    #[default]
+    Status,
+    /// Single metric value with delta indicator
+    Metric,
+    /// Performance trend summary
+    Trend,
+}
+
+/// Badge visual style selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum BadgeStyleArg {
+    /// Rounded ends (default shields.io style)
+    #[default]
+    Flat,
+    /// Square ends
+    FlatSquare,
+}
+
+#[derive(Debug, Args)]
+pub struct BadgeArgs {
+    /// Path to a report receipt (perfgate.report.v1)
+    #[arg(long, conflicts_with = "compare")]
+    pub report: Option<PathBuf>,
+
+    /// Path to a compare receipt (perfgate.compare.v1)
+    #[arg(long, conflicts_with = "report")]
+    pub compare: Option<PathBuf>,
+
+    /// Badge type to generate
+    #[arg(long, value_enum, default_value_t = BadgeTypeArg::Status, rename_all = "kebab-case")]
+    pub r#type: BadgeTypeArg,
+
+    /// Badge visual style
+    #[arg(long, value_enum, default_value_t = BadgeStyleArg::Flat)]
+    pub style: BadgeStyleArg,
+
+    /// Metric name (required when --type metric)
+    #[arg(long)]
+    pub metric: Option<String>,
+
+    /// Output SVG file path (omit for stdout)
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+
+    /// Print SVG to stdout (equivalent to omitting --out)
+    #[arg(long)]
+    pub stdout: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1576,7 +1639,54 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             eprintln!("Ingested {} -> {}", input.display(), out.display());
             Ok(())
         }
+        Command::Badge(args) => execute_badge(*args),
     }
+}
+
+fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {
+    let input = match (&args.report, &args.compare) {
+        (Some(path), None) => {
+            let report: PerfgateReport = read_json(path)?;
+            BadgeInput::Report(report)
+        }
+        (None, Some(path)) => {
+            let compare: CompareReceipt = read_json(path)?;
+            BadgeInput::Compare(compare)
+        }
+        (None, None) => {
+            anyhow::bail!("one of --report or --compare is required");
+        }
+        (Some(_), Some(_)) => {
+            // clap `conflicts_with` should prevent this, but be safe
+            anyhow::bail!("--report and --compare are mutually exclusive");
+        }
+    };
+
+    let badge_type = match args.r#type {
+        BadgeTypeArg::Status => BadgeType::Status,
+        BadgeTypeArg::Metric => BadgeType::Metric,
+        BadgeTypeArg::Trend => BadgeType::Trend,
+    };
+
+    let badge_style = match args.style {
+        BadgeStyleArg::Flat => BadgeStyle::Flat,
+        BadgeStyleArg::FlatSquare => BadgeStyle::FlatSquare,
+    };
+
+    let usecase = BadgeUseCase;
+    let outcome = usecase.execute(&input, badge_type, badge_style, args.metric.as_deref())?;
+
+    match args.out {
+        Some(ref path) if !args.stdout => {
+            fs::write(path, &outcome.svg).with_context(|| format!("write {}", path.display()))?;
+            eprintln!("wrote {}", path.display());
+        }
+        _ => {
+            print!("{}", outcome.svg);
+        }
+    }
+
+    Ok(())
 }
 
 fn execute_blame(args: BlameArgs) -> anyhow::Result<()> {

@@ -7,6 +7,7 @@
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 mod aggregate;
+pub mod badge;
 pub mod baseline_resolve;
 pub mod bisect;
 pub mod blame;
@@ -20,6 +21,9 @@ mod report;
 mod sensor_report;
 
 pub use aggregate::{AggregateOutcome, AggregateRequest, AggregateUseCase};
+pub use badge::{
+    Badge, BadgeInput, BadgeOutcome, BadgeRequest, BadgeStyle, BadgeType, BadgeUseCase,
+};
 pub use bisect::{BisectRequest, BisectUseCase};
 pub use blame::{BlameOutcome, BlameRequest, BlameUseCase};
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
