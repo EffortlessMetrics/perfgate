@@ -1,0 +1,26 @@
+[package]
+name = "perfgate-github"
+description = "GitHub API client for perfgate PR comments"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords = ["github", "pull-request", "performance", "comments"]
+categories = ["development-tools"]
+
+[dependencies]
+anyhow.workspace = true
+perfgate-types.workspace = true
+perfgate-render.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
+wiremock = "0.6"

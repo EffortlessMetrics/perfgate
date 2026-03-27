@@ -28,6 +28,7 @@ use perfgate_client::{
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
+use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_ingest::IngestFormat;
 use perfgate_profile::{ProfileRequest, capture_flamegraph};
 use perfgate_scaling::{
@@ -373,6 +374,16 @@ enum Command {
     /// - 1: tool error
     /// - 2: complexity degradation detected (policy fail)
     Scale(Box<ScaleArgs>),
+
+    /// Post or update a performance report comment on a GitHub pull request.
+    ///
+    /// Reads a compare or report receipt and posts a rich Markdown comment
+    /// on the specified PR. If a perfgate comment already exists, it is
+    /// updated (idempotent). Supports both GitHub Actions tokens and
+    /// personal access tokens.
+    ///
+    /// Exit codes: 0 for success, 1 for errors.
+    Comment(Box<CommentArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -591,6 +602,44 @@ pub struct BisectArgs {
     /// Fail the command if a regression exceeds this percentage (e.g., 5.0 for 5%).
     #[arg(long, default_value = "5.0")]
     pub threshold: f64,
+}
+
+#[derive(Debug, Args)]
+pub struct CommentArgs {
+    /// Path to a compare receipt (mutually exclusive with --report)
+    #[arg(long, conflicts_with = "report")]
+    pub compare: Option<PathBuf>,
+
+    /// Path to a report receipt (mutually exclusive with --compare)
+    #[arg(long, conflicts_with = "compare")]
+    pub report: Option<PathBuf>,
+
+    /// GitHub token for API authentication.
+    /// Can also be set via GITHUB_TOKEN environment variable.
+    #[arg(long)]
+    pub github_token: Option<String>,
+
+    /// Repository in owner/repo format.
+    /// Can also be set via GITHUB_REPOSITORY environment variable.
+    #[arg(long)]
+    pub repo: Option<String>,
+
+    /// Pull request number.
+    /// If not specified, will attempt to parse from GITHUB_REF (refs/pull/N/merge).
+    #[arg(long)]
+    pub pr: Option<u64>,
+
+    /// GitHub API base URL (default: https://api.github.com).
+    #[arg(long, default_value = "https://api.github.com")]
+    pub github_api_url: String,
+
+    /// Optional blame text to include in the comment (output from `perfgate blame`).
+    #[arg(long)]
+    pub blame_text: Option<String>,
+
+    /// Dry-run mode: render the comment to stdout instead of posting to GitHub.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1989,6 +2038,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         Command::Watch(args) => run_watch(*args),
         Command::Serve(args) => execute_serve(*args),
         Command::Scale(args) => execute_scale(*args),
+        Command::Comment(args) => execute_comment(*args),
     }
 }
 
@@ -2663,6 +2713,102 @@ fn execute_scale(args: ScaleArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Execute the `comment` subcommand: post or update a PR comment on GitHub.
+fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
+    let CommentArgs {
+        compare,
+        report,
+        github_token,
+        repo,
+        pr,
+        github_api_url,
+        blame_text,
+        dry_run,
+    } = args;
+
+    // Load the receipt data
+    let comment_body = if let Some(compare_path) = compare {
+        let receipt: CompareReceipt = read_json(&compare_path)?;
+        let options = CommentOptions {
+            blame_text,
+            explain_text: None,
+        };
+        perfgate_github::render_comment(&receipt, &options)
+    } else if let Some(report_path) = report {
+        let report_receipt: PerfgateReport = read_json(&report_path)?;
+        let options = CommentOptions {
+            blame_text,
+            explain_text: None,
+        };
+        perfgate_github::render_comment_from_report(&report_receipt, &options)
+    } else {
+        anyhow::bail!("Either --compare or --report is required");
+    };
+
+    // Dry-run: print and exit
+    if dry_run {
+        println!("{}", comment_body);
+        return Ok(());
+    }
+
+    // Resolve GitHub token
+    let token = github_token
+        .or_else(|| std::env::var("GITHUB_TOKEN").ok())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "GitHub token is required. Use --github-token or set GITHUB_TOKEN env var."
+            )
+        })?;
+
+    // Resolve repo (owner/repo)
+    let repo_str = repo
+        .or_else(|| std::env::var("GITHUB_REPOSITORY").ok())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Repository is required. Use --repo owner/repo or set GITHUB_REPOSITORY env var."
+            )
+        })?;
+
+    let (owner, repo_name) =
+        perfgate_github::parse_github_repository(&repo_str).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Invalid repository format: '{}'. Expected owner/repo.",
+                repo_str
+            )
+        })?;
+
+    // Resolve PR number
+    let pr_number = pr
+        .or_else(|| {
+            std::env::var("GITHUB_REF")
+                .ok()
+                .and_then(|r| perfgate_github::parse_pr_number_from_ref(&r))
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "PR number is required. Use --pr NUMBER or set GITHUB_REF env var (refs/pull/N/merge)."
+            )
+        })?;
+
+    // Post/update comment via GitHub API
+    let client = GitHubClient::new(&github_api_url, &token)
+        .map_err(|e| anyhow::anyhow!("Failed to create GitHub client: {}", e))?;
+
+    with_tokio_runtime(async {
+        let (comment, created) = client
+            .upsert_comment(&owner, &repo_name, pr_number, &comment_body)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to post comment: {}", e))?;
+
+        if created {
+            eprintln!("Created perfgate comment: {}", comment.html_url);
+        } else {
+            eprintln!("Updated perfgate comment: {}", comment.html_url);
+        }
+
+        Ok(())
+    })
+}
 
 /// Execute baseline management actions.
 fn execute_baseline_action(

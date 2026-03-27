@@ -26,6 +26,7 @@ members = [
   "crates/perfgate-cli",
   "crates/perfgate-server",
   "crates/perfgate-client",
+  "crates/perfgate-github",
   "crates/perfgate",
   "crates/perfgate-scaling",
   "xtask", "crates/perfgate-selfbench",
@@ -157,4 +158,5 @@ perfgate-app = { path = "crates/perfgate-app", version = "0.15.0" }
 perfgate-server = { path = "crates/perfgate-server", version = "0.15.0" }
 perfgate-client = { path = "crates/perfgate-client", version = "0.15.0" }
 perfgate-scaling = { path = "crates/perfgate-scaling", version = "0.15.0" }
+perfgate-github = { path = "crates/perfgate-github", version = "0.15.0" }
 perfgate = { path = "crates/perfgate", version = "0.15.0" }
