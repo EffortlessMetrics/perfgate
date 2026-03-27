@@ -17,6 +17,7 @@ categories = ["mathematics", "development-tools"]
 perfgate-types.workspace = true
 perfgate-error.workspace = true
 thiserror.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 proptest = "1.7"

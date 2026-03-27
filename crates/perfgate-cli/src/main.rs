@@ -390,6 +390,14 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Comment(Box<CommentArgs>),
+
+    /// Analyze metric trends and predict budget threshold breaches.
+    ///
+    /// Fits a linear regression to recent metric history and warns when a
+    /// benchmark is drifting toward its budget threshold.
+    ///
+    /// Exit codes: 0 for stable/improving, 1 for errors, 2 for critical drift.
+    Trend(Box<TrendArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -646,6 +654,30 @@ pub struct CommentArgs {
     /// Dry-run mode: render the comment to stdout instead of posting to GitHub.
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct TrendArgs {
+    /// Paths to run receipts in chronological order (glob patterns supported).
+    #[arg(long = "history", required = true, num_args = 1..)]
+    pub history: Vec<String>,
+
+    /// Budget threshold as a fraction (e.g., 0.20 for 20% regression allowed).
+    #[arg(long, default_value = "0.20")]
+    pub threshold: f64,
+
+    /// Specific metric to analyze (e.g., wall_ms, cpu_ms, max_rss_kb).
+    /// If omitted, all available metrics are analyzed.
+    #[arg(long)]
+    pub metric: Option<String>,
+
+    /// Number of runs within which a breach is considered "critical".
+    #[arg(long, default_value = "10")]
+    pub critical_window: u32,
+
+    /// Output format (text|json).
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }
 
 #[derive(Debug, Args)]
@@ -2100,6 +2132,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         Command::Serve(args) => execute_serve(*args),
         Command::Scale(args) => execute_scale(*args),
         Command::Comment(args) => execute_comment(*args),
+        Command::Trend(args) => execute_trend(*args),
     }
 }
 
@@ -2196,6 +2229,88 @@ fn print_discover_table(benchmarks: &[perfgate_app::discover::DiscoveredBenchmar
     }
 
     println!("\nDiscovered {} benchmark(s)", benchmarks.len());
+}
+
+fn execute_trend(args: TrendArgs) -> anyhow::Result<()> {
+    use perfgate_app::{TrendRequest, TrendUseCase, format_trend_output};
+    use perfgate_domain::TrendConfig;
+    use perfgate_types::Metric;
+
+    let mut resolved_files = Vec::new();
+    for pattern in &args.history {
+        for entry in glob(pattern).map_err(|e| anyhow::anyhow!("invalid glob: {}", e))? {
+            resolved_files.push(entry?);
+        }
+    }
+
+    if resolved_files.is_empty() {
+        anyhow::bail!("no run receipt files matched the provided patterns");
+    }
+
+    let mut history: Vec<perfgate_types::RunReceipt> = Vec::new();
+    for path in &resolved_files {
+        let data = fs::read_to_string(path)
+            .with_context(|| format!("reading run receipt: {}", path.display()))?;
+        let receipt: perfgate_types::RunReceipt = serde_json::from_str(&data)
+            .with_context(|| format!("parsing run receipt: {}", path.display()))?;
+        history.push(receipt);
+    }
+
+    let metric = if let Some(ref m) = args.metric {
+        Some(Metric::parse_key(m).ok_or_else(|| anyhow::anyhow!("unknown metric: {}", m))?)
+    } else {
+        None
+    };
+
+    let config = TrendConfig {
+        critical_window: args.critical_window,
+        ..TrendConfig::default()
+    };
+
+    let request = TrendRequest {
+        history,
+        threshold: args.threshold,
+        metric,
+        config,
+    };
+
+    let outcome = TrendUseCase.execute(request)?;
+
+    if args.format == "json" {
+        println!("{}", serde_json::to_string_pretty(&outcome.analyses)?);
+    } else {
+        print!("{}", format_trend_output(&outcome));
+
+        // Print mini charts for each analyzed metric
+        for analysis in &outcome.analyses {
+            let metric_key = &analysis.metric;
+            if let Some(m) = Metric::parse_key(metric_key) {
+                let values: Vec<f64> = resolved_files
+                    .iter()
+                    .filter_map(|p| {
+                        let data = fs::read_to_string(p).ok()?;
+                        let receipt: perfgate_types::RunReceipt =
+                            serde_json::from_str(&data).ok()?;
+                        perfgate_domain::metric_value(&receipt.stats, m)
+                    })
+                    .collect();
+                if !values.is_empty() {
+                    println!("{}", perfgate_app::format_trend_chart(&values, metric_key));
+                }
+            }
+        }
+    }
+
+    // Exit with code 2 if any metric is in critical drift
+    let has_critical = outcome
+        .analyses
+        .iter()
+        .any(|a| a.drift == perfgate_domain::DriftClass::Critical);
+    if has_critical {
+        std::process::exit(2);
+    }
+
+    Ok(())
 }
 
 fn execute_blame(args: BlameArgs) -> anyhow::Result<()> {

@@ -22,6 +22,10 @@ pub use perfgate_budget::{
 };
 
 pub use perfgate_significance::{compute_significance, mean_and_variance};
+pub use perfgate_stats::trend::{
+    DriftClass, TrendAnalysis, TrendConfig, analyze_trend, classify_drift, compute_headroom_pct,
+    linear_regression, predict_breach_run, spark_chart,
+};
 pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, summarize_u64};
 
 use perfgate_types::{
@@ -772,7 +776,7 @@ fn metric_to_string(metric: Metric) -> String {
     metric.as_str().to_string()
 }
 
-fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
+pub fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
     match metric {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().map(|s| s.median as f64),
         Metric::CpuMs => stats.cpu_ms.as_ref().map(|s| s.median as f64),

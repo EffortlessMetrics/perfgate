@@ -7,6 +7,7 @@ mod dashboard;
 pub mod fleet;
 mod health;
 mod keys;
+mod trend;
 mod verdicts;
 
 pub use admin::*;
@@ -16,4 +17,5 @@ pub use dashboard::*;
 pub use fleet::*;
 pub use health::*;
 pub use keys::*;
+pub use trend::*;
 pub use verdicts::*;

@@ -25,9 +25,10 @@ use crate::cleanup::spawn_cleanup_task;
 use crate::error::ConfigError;
 use crate::handlers::{
     DefaultRetentionDays, admin_cleanup, create_key, dashboard_index, delete_baseline,
-    dependency_impact, get_baseline, get_latest_baseline, health_check, list_audit_events,
-    list_baselines, list_fleet_alerts, list_keys, list_verdicts, promote_baseline,
-    record_dependency_event, revoke_key, static_asset, submit_verdict, upload_baseline,
+    dependency_impact, get_baseline, get_latest_baseline, get_trend, health_check,
+    list_audit_events, list_baselines, list_fleet_alerts, list_keys, list_verdicts,
+    promote_baseline, record_dependency_event, revoke_key, static_asset, submit_verdict,
+    upload_baseline,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider, OidcRegistry};
@@ -509,6 +510,10 @@ pub(crate) fn create_router(
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),
+        )
+        .route(
+            "/projects/{project}/baselines/{benchmark}/trend",
+            get(get_trend),
         )
         // Audit log
         .route("/audit", get(list_audit_events));

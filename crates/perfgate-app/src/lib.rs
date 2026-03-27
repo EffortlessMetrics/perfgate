@@ -22,6 +22,7 @@ mod paired;
 mod promote;
 mod report;
 mod sensor_report;
+mod trend;
 pub mod watch;
 
 pub use aggregate::{AggregateOutcome, AggregateRequest, AggregateUseCase};
@@ -42,6 +43,9 @@ pub use report::{ReportRequest, ReportResult, ReportUseCase};
 pub use sensor_report::{
     BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,
     default_engine_capability, run_sensor_check, sensor_fingerprint,
+};
+pub use trend::{
+    TrendOutcome, TrendRequest, TrendUseCase, format_trend_chart, format_trend_output,
 };
 
 // Re-export rendering functions from perfgate-render for backward compatibility
