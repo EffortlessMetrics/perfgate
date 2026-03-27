@@ -21,6 +21,10 @@ keeping the rest of the codebase testable and portable.
 | Memory detection | `/proc/meminfo`, `sysctl` | `GlobalMemoryStatusEx` | -- |
 | Hostname hash | SHA-256 | SHA-256 | SHA-256 |
 
+- Unix supports command timeouts.
+- Windows supports command timeouts via `try_wait()` polling with `child.kill()` on expiration.
+- Other platforms run without timeout support and with limited metrics.
+
 > **RSS unit quirk:** Linux reports `ru_maxrss` in KB; macOS reports bytes
 > (divided by 1024 internally).
 

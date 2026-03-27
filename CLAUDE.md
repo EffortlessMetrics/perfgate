@@ -188,8 +188,8 @@ contracts/schemas/
 
 ## Platform Notes
 
-- Timeout support requires Unix (uses `wait4` with `WNOHANG` polling)
-- On non-Unix platforms, timeouts return `AdapterError::TimeoutUnsupported`
+- Timeout support uses `try_wait()` polling on both Unix and Windows
+- On other platforms, timeouts return `AdapterError::TimeoutUnsupported`
 - `max_rss_kb` collection only works on Unix via `rusage`
 - BDD tests skip `@unix` tagged scenarios on Windows
 - Windows parallel builds hit PDB lock contention (`fatal error C1041`); use `-j4` or stagger builds

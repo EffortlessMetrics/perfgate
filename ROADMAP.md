@@ -14,8 +14,8 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 - [ ] **API key management CLI** ([#71]): Commands for creating, listing, revoking, and rotating keys.
 
 ### Platform Parity
-- [ ] **Windows metrics** ([#70]): Collect `page_faults` and `ctx_switches` on Windows.
-- [ ] **Windows timeout** ([#69]): Implement `--timeout` support on Windows.
+- [ ] **Windows metric gaps** ([#70]): `page_faults` and `ctx_switches` are not yet collected on Windows (only `cpu_ms` and `max_rss_kb`).
+- [x] **Timeout support on Windows** ([#69]): Implemented via `try_wait()` polling loop with `child.kill()` on expiration.
 
 ### Quality
 - [ ] **Server integration tests** ([#76]): Automate `#[ignore]` server tests in CI.
