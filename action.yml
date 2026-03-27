@@ -59,6 +59,14 @@ inputs:
     description: "Optional perfgate crate version from crates.io (e.g. 0.3.0); if empty, builds from this action source"
     required: false
     default: ""
+  comment:
+    description: "Post or update a PR comment with perfgate results (requires GITHUB_TOKEN)"
+    required: false
+    default: "false"
+  github_token:
+    description: "GitHub token for posting PR comments (defaults to github.token)"
+    required: false
+    default: ""
 
 outputs:
   verdict:
@@ -206,6 +214,26 @@ runs:
         echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
 
         exit "${status}"
+
+    - name: Post PR comment
+      if: always() && inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
+      run: |
+        set -euo pipefail
+
+        # Find a compare or report receipt to comment on
+        compare_file="${{ inputs.out_dir }}/compare.json"
+        report_file="${{ inputs.out_dir }}/report.json"
+
+        if [[ -f "${report_file}" ]]; then
+          perfgate comment --report "${report_file}" --pr "${{ github.event.pull_request.number }}" || true
+        elif [[ -f "${compare_file}" ]]; then
+          perfgate comment --compare "${compare_file}" --pr "${{ github.event.pull_request.number }}" || true
+        else
+          echo "No compare or report receipt found; skipping PR comment." >&2
+        fi
 
     - name: Upload perfgate artifacts
       if: always() && inputs.upload_artifact == 'true'
