@@ -53,10 +53,10 @@ perfgate intentionally avoids these responsibilities:
 
 ## Architectural Decision Records
 
-Significant architectural changes are documented in [ADRs](../adrs/). See:
-- [ADR 0001: Workspace Modularization and Micro-crates](../adrs/0001-workspace-modularization-and-micro-crates.md)
-- [ADR 0002: Domain Logic Split (Budget, Stats, Significance)](../adrs/0002-domain-logic-split-budget-stats-significance.md)
-- [ADR 0003: Presentation Layer Split (Render, Export, CLI)](../adrs/0003-presentation-layer-split-render-export-cli.md)
+Significant architectural changes are documented in [ADRs](adrs/). See:
+- [ADR 0001: Workspace Modularization and Micro-crates](adrs/0001-workspace-modularization-and-micro-crates.md)
+- [ADR 0002: Domain Logic Split (Budget, Stats, Significance)](adrs/0002-domain-logic-split-budget-stats-significance.md)
+- [ADR 0003: Presentation Layer Split (Render, Export, CLI)](adrs/0003-presentation-layer-split-render-export-cli.md)
 
 ## Crate Boundaries
 
