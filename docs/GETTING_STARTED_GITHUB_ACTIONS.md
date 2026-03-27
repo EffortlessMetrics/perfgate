@@ -131,3 +131,45 @@ perfgate check \
 ```
 
 This writes `artifacts/perfgate/comment.md`.
+
+## Common Pitfalls
+
+**Warning: perfgate exits with code 2 on budget violations.** This is intentional
+(exit code 2 = policy fail), but it means any subsequent steps in the same job will
+be skipped unless you guard them. Steps that must always run -- especially artifact
+uploads and verdict printing -- need `if: always()`:
+
+```yaml
+      - name: Upload perfgate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perfgate-artifacts
+          path: artifacts/perfgate
+```
+
+Without `if: always()`, the upload step only runs on exit 0 (success). A budget
+violation (exit 2) will cause artifacts to be silently lost, making failures much
+harder to diagnose.
+
+**Warning: artifact uploads default to `on_success`.** GitHub Actions'
+`upload-artifact` action only runs when prior steps succeed. Since perfgate uses
+non-zero exit codes to signal policy outcomes (not just errors), always add
+`if: always()` to any artifact upload or reporting step that follows a perfgate
+command.
+
+**Warning: understand the exit code semantics.** perfgate uses three distinct
+non-zero exit codes:
+- **1** -- tool/runtime error (I/O failure, parse error, spawn failure)
+- **2** -- policy fail (budget violated)
+- **3** -- warn treated as failure (`--fail-on-warn`)
+
+If you need to distinguish these in later steps, capture the exit code:
+
+```yaml
+      - name: Run perfgate checks
+        id: perfgate
+        run: |
+          perfgate check --config perfgate.toml --all --output-github || true
+        # The actual exit code is available via outputs.exit_code
+```

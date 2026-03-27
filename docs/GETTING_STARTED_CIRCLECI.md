@@ -144,6 +144,55 @@ avoid reinstalling perfgate on every run. If your project does not have a
       - ~/.cargo
 ```
 
+## Common Pitfalls
+
+**Warning: perfgate exits with code 2 on budget violations.** CircleCI treats any
+non-zero exit code as a step failure. Commands after the failing line in the same
+`run` block will not execute unless you capture the exit code:
+
+```yaml
+      - run:
+          name: Run perfgate checks
+          command: |
+            perfgate check --config perfgate.toml --all || EXIT=$?
+            # ... post-processing here ...
+            exit ${EXIT:-0}
+```
+
+**Warning: `store_artifacts` defaults to `on_success`.** Without `when: always`,
+CircleCI only collects artifacts from successful steps. Since perfgate uses exit
+code 2 for policy failures, artifacts from failed runs would be silently lost:
+
+```yaml
+      - store_artifacts:
+          path: artifacts/perfgate
+          destination: perfgate
+          when: always            # <-- critical
+```
+
+**Warning: the `environment` key uses literal strings, not shell interpolation.**
+Do *not* use `${VAR}` syntax in the `environment` block -- it will be treated as
+a literal string, not expanded. Instead, set sensitive values as project environment
+variables in **Project Settings > Environment Variables** and reference them directly
+in shell commands. For example, this is **wrong**:
+
+```yaml
+    # WRONG -- ${PERFGATE_API_KEY} is a literal string here
+    environment:
+      PERFGATE_API_KEY: "${PERFGATE_API_KEY}"
+```
+
+And this is **correct** -- just set `PERFGATE_API_KEY` as a project env var and it
+will be available automatically, no `environment` block needed.
+
+**Warning: understand the exit code semantics.** perfgate uses three distinct
+non-zero exit codes:
+- **1** -- tool/runtime error (I/O failure, parse error, spawn failure)
+- **2** -- policy fail (budget violated)
+- **3** -- warn treated as failure (`--fail-on-warn`)
+
+All three cause step failure in CircleCI unless captured.
+
 ## Best Practices
 
 - **Resource classes**: Use a dedicated resource class with consistent hardware to minimize noise.
