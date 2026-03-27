@@ -34,9 +34,10 @@ pub struct RunResult {
     /// CPU time (user + system) in milliseconds.
     /// Collected on Unix via rusage and best-effort on Windows.
     pub cpu_ms: Option<u64>,
-    /// Major page faults (Unix only).
+    /// Page faults. On Unix: major page faults from rusage.
+    /// On Windows: total page faults from GetProcessMemoryInfo (PageFaultCount).
     pub page_faults: Option<u64>,
-    /// Voluntary + involuntary context switches (Unix only).
+    /// Voluntary + involuntary context switches (Unix only; None on Windows).
     pub ctx_switches: Option<u64>,
     /// Peak resident set size in KB.
     /// Collected on Unix via rusage and best-effort on Windows.
@@ -166,7 +167,7 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     // Windows memory and IO info requires the handle before child is dropped or stdout/stderr taken?
     // Actually we need the handle to call GetProcessMemoryInfo and GetProcessIoCounters.
     let handle = child.as_raw_handle();
-    let max_rss_kb = get_max_rss_windows(handle);
+    let (max_rss_kb, page_faults) = get_memory_info_windows(handle);
     let (io_read_bytes, io_write_bytes) = get_io_counters_windows(handle);
 
     if let Some(mut stdout) = child.stdout.take() {
@@ -183,7 +184,7 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
         exit_code,
         timed_out: false,
         cpu_ms: None,
-        page_faults: None,
+        page_faults,
         ctx_switches: None,
         max_rss_kb,
         io_read_bytes,
@@ -196,8 +197,9 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     })
 }
 
+/// Returns `(max_rss_kb, page_faults)` from `GetProcessMemoryInfo`.
 #[cfg(windows)]
-fn get_max_rss_windows(handle: std::os::windows::io::RawHandle) -> Option<u64> {
+fn get_memory_info_windows(handle: std::os::windows::io::RawHandle) -> (Option<u64>, Option<u64>) {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 
@@ -210,9 +212,12 @@ fn get_max_rss_windows(handle: std::os::windows::io::RawHandle) -> Option<u64> {
         )
         .is_ok()
         {
-            Some((counters.PeakWorkingSetSize / 1024) as u64)
+            (
+                Some((counters.PeakWorkingSetSize / 1024) as u64),
+                Some(counters.PageFaultCount as u64),
+            )
         } else {
-            None
+            (None, None)
         }
     }
 }
@@ -532,5 +537,46 @@ mod tests {
         let mut reader: &[u8] = b"hello world";
         let result = read_with_cap(&mut reader, 5);
         assert_eq!(result, b"hello");
+    }
+
+    /// On Windows, page_faults should be populated (Some) after running a command.
+    #[cfg(windows)]
+    #[test]
+    fn windows_page_faults_populated() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            name: "page-faults-test".into(),
+            argv: vec!["cmd".into(), "/c".into(), "exit".into(), "0".into()],
+            ..Default::default()
+        };
+        let result = runner.run(&spec).expect("command should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert!(
+            result.page_faults.is_some(),
+            "page_faults should be Some on Windows"
+        );
+        // PageFaultCount is always >= 0; any successfully spawned process will
+        // incur at least a handful of page faults.
+        assert!(
+            result.page_faults.unwrap() > 0,
+            "page_faults should be > 0 for a real process"
+        );
+    }
+
+    /// ctx_switches remains None on Windows (no Windows API equivalent).
+    #[cfg(windows)]
+    #[test]
+    fn windows_ctx_switches_none() {
+        let runner = StdProcessRunner;
+        let spec = CommandSpec {
+            name: "ctx-switches-test".into(),
+            argv: vec!["cmd".into(), "/c".into(), "exit".into(), "0".into()],
+            ..Default::default()
+        };
+        let result = runner.run(&spec).expect("command should succeed");
+        assert!(
+            result.ctx_switches.is_none(),
+            "ctx_switches should be None on Windows"
+        );
     }
 }
