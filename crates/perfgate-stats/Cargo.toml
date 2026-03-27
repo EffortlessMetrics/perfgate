@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "Statistical functions for benchmarking analysis"
+readme = "README.md"
 keywords = ["statistics", "median", "percentile", "benchmarking"]
 categories = ["mathematics", "development-tools"]
 

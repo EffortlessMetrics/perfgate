@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "Minimal SHA-256 implementation for perfgate fingerprinting"
+readme = "README.md"
 keywords = ["sha256", "hash", "fingerprinting", "no-std"]
 categories = ["cryptography", "no-std"]
 

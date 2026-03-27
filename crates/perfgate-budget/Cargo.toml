@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 description = "Budget evaluation logic for performance thresholds"
+readme = "README.md"
 keywords = ["budget", "threshold", "performance"]
 categories = ["development-tools"]
 
