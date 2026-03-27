@@ -25,10 +25,12 @@ use crate::handlers::{
     dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
     list_baselines, list_verdicts, promote_baseline, static_asset, submit_verdict, upload_baseline,
 };
+use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
     ArtifactStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore, SqliteStore,
 };
+use metrics_exporter_prometheus::PrometheusHandle;
 
 /// Storage backend type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -280,6 +282,7 @@ pub(crate) fn create_router(
     store: Arc<dyn BaselineStore>,
     auth_state: AuthState,
     config: &ServerConfig,
+    prometheus_handle: Option<PrometheusHandle>,
 ) -> Router {
     // Health check (no auth required)
     let health_routes = Router::new().route("/health", get(health_check));
@@ -321,6 +324,16 @@ pub(crate) fn create_router(
         .merge(health_routes.clone())
         .nest("/api/v1", health_routes.merge(api_routes));
 
+    // Add /metrics endpoint if Prometheus handle is available
+    if let Some(handle) = prometheus_handle {
+        let metrics_routes = Router::new()
+            .route("/metrics", get(metrics_handler))
+            .with_state(handle);
+        app = app.merge(metrics_routes);
+        // Apply metrics middleware to all routes
+        app = app.layer(middleware::from_fn(metrics_middleware));
+    }
+
     // Add CORS if enabled
     if config.cors {
         app = app.layer(
@@ -360,8 +373,12 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider);
 
+    // Install Prometheus metrics recorder
+    let prometheus_handle = setup_metrics_recorder();
+    info!("Prometheus metrics enabled at /metrics");
+
     // Create router
-    let app = create_router(store.clone(), auth_state, &config);
+    let app = create_router(store.clone(), auth_state, &config, Some(prometheus_handle));
 
     // Add tracing and request ID layers
     let app = app.layer(
@@ -523,7 +540,7 @@ mod tests {
         let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
         let config = ServerConfig::new();
 
-        let _router = create_router(store, auth_state, &config);
+        let _router = create_router(store, auth_state, &config, None);
         // Router created successfully
     }
 }
