@@ -49,6 +49,12 @@ command = ["./target/release/my-bench"]
 perfgate check --config perfgate.toml --bench my-service
 ```
 
+Optional diagnostics for regressing benches:
+
+```bash
+perfgate check --config perfgate.toml --bench my-service --profile-on-regression
+```
+
 **3. Gate** -- wire into GitHub Actions:
 
 ```yaml
@@ -116,11 +122,28 @@ sample sizes are too small to be conclusive.
 - Paired benchmarking for noisy CI environments with significance-based retries
 - Noise detection (CV-based) with configurable escalation policy
 - Per-metric statistic selection (median, p95, etc.)
+- Scaling validation with best-fit complexity classification via `perfgate scale`
 
 **Diagnostics**
 - `bisect` -- find the exact commit that introduced a regression
 - `blame` -- map regressions to `Cargo.lock` dependency changes
 - `explain` -- generate AI-ready regression diagnostics for PR comments
+- Optional flamegraph capture on warn/fail regressions via `--profile-on-regression`
+- Trend analysis and predictive budget alerts for drifting benchmarks
+
+## Advanced Workflows
+
+Validate computational complexity for a benchmark command:
+
+```bash
+perfgate scale --name parser --command "./target/release/parser-bench --size {n}" --sizes 100,1000,10000 --expected "O(n)"
+```
+
+Post or update a PR comment from a compare receipt:
+
+```bash
+perfgate comment --compare artifacts/perfgate/compare.json --repo owner/repo --pr 123
+```
 
 **CI Integration**
 - GitHub Actions, GitLab CI support with native annotations
@@ -140,12 +163,24 @@ sample sizes are too small to be conclusive.
 | **`check`** | **Config-driven workflow (start here)** |
 | `run` | Execute a benchmark, emit a run receipt |
 | `compare` | Compare a run against a baseline |
+| `diff` | Run a quick local regression check against discovered config/baselines |
 | `paired` | Interleaved A/B benchmarking for noisy environments |
 | `promote` | Promote a run to become the new baseline |
 | `md` | Render a comparison as Markdown |
 | `report` | Generate a cockpit-compatible report |
 | `export` | Export to CSV, JSONL, HTML, Prometheus, or JUnit |
+| `cargo-bench` | Wrap `cargo bench` and emit perfgate receipts |
+| `ingest` | Import external benchmark results into perfgate format |
+| `badge` | Generate SVG status, metric, or trend badges |
+| `discover` | Scan a repo for benchmarks and print detected targets |
+| `init` | Generate `perfgate.toml` and optional CI scaffolding |
+| `watch` | Re-run a benchmark on file changes with live deltas |
+| `serve` | Start the local dashboard/baseline server |
+| `scale` | Validate complexity scaling across input sizes |
+| `comment` | Post or update a GitHub PR performance comment |
+| `trend` | Analyze metric drift and predict threshold breaches |
 | `baseline` | Manage baselines on the server |
+| `fleet` | Analyze dependency regressions across projects |
 | `summary` | Summarize multiple comparisons in a table |
 | `aggregate` | Merge run receipts from multiple runners |
 | `bisect` | Find the commit that introduced a regression |
