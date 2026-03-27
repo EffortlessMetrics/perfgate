@@ -46,9 +46,8 @@ pub fn parse_criterion(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
     let median_ns = estimates.median.point_estimate;
     let std_dev_ns = estimates.std_dev.point_estimate;
 
-    // Convert ns to ms. For sub-millisecond benchmarks we clamp to 1ms minimum
-    // to avoid zero values in the u64 field.
-    let mean_ms = ns_to_ms(mean_ns);
+    // Convert ns to ms for u64 fields. For sub-millisecond benchmarks we clamp
+    // to 1ms minimum to avoid zero values in the u64 field.
     let median_ms = ns_to_ms(median_ns);
 
     // Synthesize samples from the summary statistics.
@@ -83,9 +82,9 @@ pub fn parse_criterion(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
     let mut stats = compute_u64_summary(&wall_values);
     // Override median with the actual Criterion median
     stats.median = median_ms;
-    // Override mean with the actual Criterion mean
-    stats.mean = Some(mean_ms as f64);
-    stats.stddev = Some(ns_to_ms(std_dev_ns) as f64);
+    // Override mean/stddev with precise floating-point values (ns -> ms)
+    stats.mean = Some(mean_ns / 1_000_000.0);
+    stats.stddev = Some(std_dev_ns / 1_000_000.0);
 
     let wall_stats = stats;
 

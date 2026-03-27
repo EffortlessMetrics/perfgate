@@ -99,7 +99,12 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
 }
 
 fn seconds_to_ms(s: f64) -> u64 {
-    (s * 1000.0).round().max(1.0) as u64
+    let ms = s * 1000.0;
+    if ms < 1.0 && ms > 0.0 {
+        1
+    } else {
+        ms.round() as u64
+    }
 }
 
 #[cfg(test)]
