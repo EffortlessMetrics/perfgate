@@ -6,247 +6,1335 @@
     <title>perfgate Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        :root {
+            --color-primary: #0366d6;
+            --color-primary-hover: #0256b9;
+            --color-bg: #f6f8fa;
+            --color-surface: #ffffff;
+            --color-border: #e1e4e8;
+            --color-text: #24292e;
+            --color-text-secondary: #586069;
+            --color-pass: #28a745;
+            --color-warn: #f9a825;
+            --color-fail: #d73a49;
+            --color-skip: #6a737d;
+            --radius: 6px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
+            --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            --transition: 0.2s ease;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
+            color: var(--color-text);
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
+            padding: 16px;
+            background-color: var(--color-bg);
         }
+
+        /* Header */
         header {
-            border-bottom: 2px solid #eee;
-            margin-bottom: 30px;
-            padding-bottom: 10px;
+            background: var(--color-surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            padding: 16px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
         }
-        h1 { margin: 0; font-size: 24px; color: #0366d6; cursor: pointer; }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 22px;
+            color: var(--color-primary);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        h1:hover { opacity: 0.8; }
+
+        .version-badge {
+            background: var(--color-bg);
+            color: var(--color-text-secondary);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .health-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            background: var(--color-skip);
+            transition: background var(--transition);
+        }
+
+        .health-dot.healthy { background: var(--color-pass); }
+        .health-dot.degraded { background: var(--color-warn); }
+        .health-dot.unknown { background: var(--color-skip); }
+
+        /* Cards */
         .card {
-            background: white;
-            border-radius: 6px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background: var(--color-surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
             padding: 20px;
             margin-bottom: 20px;
         }
+
+        .card h2, .card h3 {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+            color: var(--color-text);
+        }
+
+        /* Project selector bar */
+        .project-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .project-bar label {
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        /* Form elements */
+        input, select {
+            padding: 7px 12px;
+            border-radius: var(--radius);
+            border: 1px solid var(--color-border);
+            font-size: 14px;
+            color: var(--color-text);
+            background: var(--color-surface);
+            transition: border-color var(--transition);
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.15);
+        }
+
+        input[type="text"] { min-width: 160px; }
+        input[type="date"] { min-width: 130px; }
+
+        button {
+            padding: 7px 16px;
+            background: var(--color-primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background var(--transition);
+            white-space: nowrap;
+        }
+
+        button:hover { background: var(--color-primary-hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-secondary {
+            background: var(--color-skip);
+        }
+
+        .btn-secondary:hover {
+            background: #555d64;
+        }
+
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+
+        .back-btn {
+            background: var(--color-skip);
+            margin-bottom: 16px;
+        }
+
+        .back-btn:hover { background: #555d64; }
+
+        /* Filter bar */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 12px 16px;
+            background: var(--color-bg);
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+        }
+
+        .filter-bar label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-bar .separator {
+            width: 1px;
+            height: 24px;
+            background: var(--color-border);
+        }
+
+        /* Checkbox filter */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            accent-color: var(--color-primary);
+        }
+
+        /* Search input */
+        .search-wrapper {
+            position: relative;
+        }
+
+        .search-wrapper input {
+            padding-left: 30px;
+            width: 200px;
+        }
+
+        .search-wrapper::before {
+            content: "\1F50D";
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            opacity: 0.5;
+        }
+
+        /* Table */
         table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 14px;
         }
+
         th, td {
             text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid #eee;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border);
         }
-        th { background-color: #f6f8fa; font-weight: 600; }
-        tr.clickable:hover { background-color: #f1f8ff; cursor: pointer; }
+
+        th {
+            background: var(--color-bg);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--color-text-secondary);
+            position: sticky;
+            top: 0;
+        }
+
+        tr.clickable { cursor: pointer; transition: background var(--transition); }
+        tr.clickable:hover { background: #f1f8ff; }
+
+        /* Badges */
         .badge {
             display: inline-block;
             padding: 2px 8px;
-            border-radius: 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--color-bg);
+            color: var(--color-text-secondary);
+        }
+
+        .badge-pass { background: #dcffe4; color: #176328; }
+        .badge-warn { background: #fff8c5; color: #735c0f; }
+        .badge-fail { background: #ffdce0; color: #9e1c23; }
+        .badge-skip { background: #e1e4e8; color: #586069; }
+
+        code {
+            font-family: var(--font-mono);
             font-size: 12px;
-            background: #e1e4e8;
+            background: var(--color-bg);
+            padding: 2px 6px;
+            border-radius: 3px;
         }
-        .project-selector {
-            margin-bottom: 20px;
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--color-border);
+            font-size: 13px;
+            color: var(--color-text-secondary);
         }
-        input {
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            font-size: 16px;
+
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
         }
-        button {
-            padding: 8px 16px;
-            background: #0366d6;
-            color: white;
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--color-border);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-row td {
+            text-align: center;
+            color: var(--color-text-secondary);
+            padding: 32px;
+        }
+
+        .loading-row .spinner {
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        /* Error message */
+        .error-msg {
+            background: #ffdce0;
+            color: #9e1c23;
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .error-msg.visible { display: flex; align-items: center; gap: 8px; }
+
+        .error-msg .dismiss {
+            margin-left: auto;
+            background: none;
             border: none;
-            border-radius: 4px;
+            color: #9e1c23;
             cursor: pointer;
+            font-size: 18px;
+            padding: 0 4px;
         }
-        button:hover { background: #0256b9; }
-        .back-btn { margin-bottom: 20px; background: #6a737d; }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--color-text-secondary);
+        }
+
+        .empty-state p { margin: 4px 0; }
+
+        /* Modal overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 48px 16px;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--color-surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            max-width: 720px;
+            width: 100%;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .modal-header h3 { margin: 0; font-size: 16px; }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 22px;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+        }
+
+        .modal-close:hover { color: var(--color-text); background: none; }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-item .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--color-text-secondary);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .detail-item .value {
+            font-size: 14px;
+        }
+
+        .detail-item .value code { font-size: 13px; }
+
+        .detail-section {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--color-border);
+        }
+
+        .detail-section h4 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--color-bg);
+            font-size: 13px;
+        }
+
+        .stat-row .stat-name {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+        }
+
+        .stat-row .stat-values {
+            display: flex;
+            gap: 16px;
+        }
+
+        .stat-row .stat-values span {
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        /* Tab bar for benchmark view */
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid var(--color-border);
+            margin-bottom: 16px;
+        }
+
+        .tab-bar button {
+            background: none;
+            color: var(--color-text-secondary);
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 0;
+        }
+
+        .tab-bar button:hover { color: var(--color-text); background: none; }
+        .tab-bar button.active {
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary);
+        }
+
+        /* Metric selector for chart */
+        .chart-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .chart-controls h3 { margin: 0; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body { padding: 8px; }
+
+            header { padding: 12px 16px; }
+
+            h1 { font-size: 18px; }
+
+            .filter-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+
+            .filter-bar .separator { display: none; }
+
+            .filter-group {
+                flex-wrap: wrap;
+            }
+
+            .search-wrapper input { width: 100%; }
+
+            input[type="text"], input[type="date"], select {
+                min-width: 0;
+                width: 100%;
+            }
+
+            .project-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table { font-size: 13px; }
+
+            th, td { padding: 8px 6px; }
+
+            .modal { margin: 8px; }
+
+            .stat-row .stat-values { gap: 8px; }
+        }
+
+        @media (max-width: 480px) {
+            .stat-row {
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .pagination {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
     </style>
 </head>
 <body>
     <header>
-        <h1 onclick="showDashboard()">perfgate Dashboard</h1>
-        <div class="version">v0.9.0 Alpha</div>
-    </header>
-
-    <div id="dashboardView">
-        <div class="project-selector">
-            <label for="project">Project:</label>
-            <input type="text" id="projectInput" value="default">
+        <div class="header-left">
+            <h1 onclick="showDashboard()">perfgate</h1>
+            <span class="version-badge">Dashboard</span>
+            <span class="health-dot unknown" id="healthDot" title="Checking..."></span>
+        </div>
+        <div class="project-bar">
+            <label for="projectInput">Project:</label>
+            <input type="text" id="projectInput" value="default" placeholder="project name">
+            <label for="apiKeyInput">API Key:</label>
+            <input type="text" id="apiKeyInput" placeholder="optional" style="min-width:140px;">
             <button onclick="loadBaselines()">Load</button>
         </div>
+    </header>
 
+    <div id="errorMsg" class="error-msg">
+        <span id="errorText"></span>
+        <button class="dismiss" onclick="hideError()">&times;</button>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboardView">
         <div class="card">
-            <h2>Latest Baselines</h2>
-            <table id="baselinesTable">
-                <thead>
-                    <tr>
-                        <th>Benchmark</th>
-                        <th>Version</th>
-                        <th>Created At</th>
-                        <th>Tags</th>
-                    </tr>
-                </thead>
-                <tbody id="baselinesBody">
-                    <tr>
-                        <td colspan="4">Enter a project name and click Load...</td>
-                    </tr>
-                </tbody>
-            </table>
+            <h2>Baselines</h2>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <div class="search-wrapper">
+                        <input type="text" id="searchInput" placeholder="Filter benchmarks..." oninput="applyClientFilters()">
+                    </div>
+                </div>
+                <div class="separator"></div>
+                <div class="filter-group">
+                    <label>From:</label>
+                    <input type="date" id="filterSince" onchange="loadBaselines()">
+                </div>
+                <div class="filter-group">
+                    <label>To:</label>
+                    <input type="date" id="filterUntil" onchange="loadBaselines()">
+                </div>
+                <div class="separator"></div>
+                <div class="filter-group">
+                    <label>Metric:</label>
+                    <select id="filterMetric" onchange="applyClientFilters()">
+                        <option value="wall_ms">Wall Time (ms)</option>
+                        <option value="cpu_ms">CPU Time (ms)</option>
+                        <option value="max_rss_kb">Max RSS (KB)</option>
+                        <option value="page_faults">Page Faults</option>
+                        <option value="ctx_switches">Ctx Switches</option>
+                        <option value="io_read_bytes">I/O Read (bytes)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table id="baselinesTable">
+                    <thead>
+                        <tr>
+                            <th>Benchmark</th>
+                            <th>Version</th>
+                            <th>Created</th>
+                            <th>Metric</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody id="baselinesBody">
+                        <tr><td colspan="5" class="empty-state">
+                            <p>Enter a project name and click <strong>Load</strong></p>
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="baselinePagination" class="pagination" style="display:none;">
+                <span id="paginationInfo"></span>
+                <div class="pagination-controls">
+                    <button class="btn-sm btn-secondary" id="prevPageBtn" onclick="changePage(-1)" disabled>&laquo; Prev</button>
+                    <span id="pageIndicator"></span>
+                    <button class="btn-sm btn-secondary" id="nextPageBtn" onclick="changePage(1)" disabled>Next &raquo;</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verdict History -->
+        <div class="card">
+            <h2>Verdict History</h2>
+
+            <div class="filter-bar">
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="verdictPass" checked onchange="loadVerdicts()"> Pass</label>
+                    <label><input type="checkbox" id="verdictWarn" checked onchange="loadVerdicts()"> Warn</label>
+                    <label><input type="checkbox" id="verdictFail" checked onchange="loadVerdicts()"> Fail</label>
+                    <label><input type="checkbox" id="verdictSkip" onchange="loadVerdicts()"> Skip</label>
+                </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Benchmark</th>
+                            <th>Status</th>
+                            <th>Pass</th>
+                            <th>Warn</th>
+                            <th>Fail</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verdictsBody">
+                        <tr><td colspan="6" class="empty-state"><p>Load a project to see verdicts</p></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="verdictPagination" class="pagination" style="display:none;">
+                <span id="verdictPaginationInfo"></span>
+                <div class="pagination-controls">
+                    <button class="btn-sm btn-secondary" id="verdictPrevBtn" onclick="changeVerdictPage(-1)" disabled>&laquo; Prev</button>
+                    <span id="verdictPageIndicator"></span>
+                    <button class="btn-sm btn-secondary" id="verdictNextBtn" onclick="changeVerdictPage(1)" disabled>Next &raquo;</button>
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- Benchmark Detail View -->
     <div id="benchmarkView" style="display:none;">
-        <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
-        <h2 id="benchmarkTitle"></h2>
-        
+        <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
+        <h2 id="benchmarkTitle" style="margin:0 0 16px 0;"></h2>
+
         <div class="card">
-            <h3>Wall Time Trend (median ms)</h3>
+            <div class="chart-controls">
+                <h3>Trend Chart</h3>
+                <select id="chartMetric" onchange="updateChart(currentHistory)">
+                    <option value="wall_ms">Wall Time (ms)</option>
+                    <option value="cpu_ms">CPU Time (ms)</option>
+                    <option value="max_rss_kb">Max RSS (KB)</option>
+                    <option value="page_faults">Page Faults</option>
+                    <option value="ctx_switches">Ctx Switches</option>
+                    <option value="io_read_bytes">I/O Read (bytes)</option>
+                </select>
+            </div>
             <canvas id="trendChart"></canvas>
         </div>
 
         <div class="card">
-            <h3>History</h3>
-            <table id="historyTable">
-                <thead>
-                    <tr>
-                        <th>Version</th>
-                        <th>Created At</th>
-                        <th>Wall (ms)</th>
-                        <th>Max RSS (kb)</th>
-                    </tr>
-                </thead>
-                <tbody id="historyBody"></tbody>
-            </table>
+            <h3>Version History</h3>
+            <div style="overflow-x:auto;">
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Version</th>
+                            <th>Created</th>
+                            <th>Wall (ms)</th>
+                            <th>CPU (ms)</th>
+                            <th>Max RSS (KB)</th>
+                            <th>Git</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Run Detail Modal -->
+    <div class="modal-overlay" id="runDetailModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Run Details</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div style="text-align:center; padding:32px;">
+                    <div class="spinner"></div>
+                    <p>Loading run details...</p>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
+        /* ======= State ======= */
         let chart = null;
+        let currentHistory = [];
+        let allBaselines = [];
+        let currentPage = 0;
+        let pageSize = 20;
+        let totalBaselines = 0;
+        let verdictPage = 0;
+        let verdictPageSize = 20;
+        let totalVerdicts = 0;
 
+        /* ======= Utilities ======= */
+        function getProject() {
+            return document.getElementById('projectInput').value.trim() || 'default';
+        }
+
+        function getApiKey() {
+            return document.getElementById('apiKeyInput').value.trim();
+        }
+
+        function authHeaders() {
+            const key = getApiKey();
+            if (key) return { 'Authorization': 'Bearer ' + key };
+            return {};
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            document.getElementById('errorText').textContent = msg;
+            el.classList.add('visible');
+        }
+
+        function hideError() {
+            document.getElementById('errorMsg').classList.remove('visible');
+        }
+
+        function loadingRow(colspan) {
+            return '<tr class="loading-row"><td colspan="' + colspan + '"><div class="spinner"></div> Loading...</td></tr>';
+        }
+
+        function emptyRow(colspan, msg) {
+            return '<tr><td colspan="' + colspan + '" class="empty-state"><p>' + msg + '</p></td></tr>';
+        }
+
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '-';
+            const d = new Date(iso);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }
+
+        function getMetricValue(receipt, metric) {
+            if (!receipt || !receipt.stats) return null;
+            const stat = receipt.stats[metric];
+            if (!stat) return null;
+            return stat.median;
+        }
+
+        function verdictBadge(status) {
+            const safe = escHtml(status);
+            const cls = 'badge badge-' + safe;
+            return '<span class="' + cls + '">' + safe + '</span>';
+        }
+
+        /* ======= API fetch ======= */
+        async function fetchApi(url) {
+            hideError();
+            try {
+                const response = await fetch(url, { headers: authHeaders() });
+                if (!response.ok) {
+                    const body = await response.text();
+                    let msg = 'HTTP ' + response.status;
+                    try {
+                        const err = JSON.parse(body);
+                        if (err.message) msg += ': ' + err.message;
+                    } catch (_) {
+                        if (body) msg += ': ' + body.substring(0, 200);
+                    }
+                    throw new Error(msg);
+                }
+                return await response.json();
+            } catch (e) {
+                showError('API Error: ' + e.message);
+                return null;
+            }
+        }
+
+        /* ======= Health check ======= */
+        async function checkHealth() {
+            const dot = document.getElementById('healthDot');
+            try {
+                const res = await fetch('/health');
+                if (res.ok) {
+                    const data = await res.json();
+                    dot.className = 'health-dot ' + (data.status === 'healthy' ? 'healthy' : 'degraded');
+                    dot.title = data.status + ' | ' + data.storage.backend + ' | v' + data.version;
+                } else {
+                    dot.className = 'health-dot degraded';
+                    dot.title = 'Server returned ' + res.status;
+                }
+            } catch (_) {
+                dot.className = 'health-dot unknown';
+                dot.title = 'Cannot reach server';
+            }
+        }
+
+        /* ======= Navigation ======= */
         function showDashboard() {
             document.getElementById('dashboardView').style.display = 'block';
             document.getElementById('benchmarkView').style.display = 'none';
         }
 
-        function showBenchmark(name) {
+        function showBenchmarkView(name) {
             document.getElementById('dashboardView').style.display = 'none';
             document.getElementById('benchmarkView').style.display = 'block';
-            document.getElementById('benchmarkTitle').innerText = name;
+            document.getElementById('benchmarkTitle').textContent = name;
             loadHistory(name);
         }
 
-        async function fetchApi(url) {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                return await response.json();
-            } catch (e) {
-                console.error("API error", e);
-                return null;
+        /* ======= Baselines list ======= */
+        async function loadBaselines() {
+            const project = getProject();
+            const body = document.getElementById('baselinesBody');
+            body.innerHTML = loadingRow(5);
+
+            let url = '/api/v1/projects/' + encodeURIComponent(project)
+                + '/baselines?include_receipt=true&limit=' + pageSize
+                + '&offset=' + (currentPage * pageSize);
+
+            const since = document.getElementById('filterSince').value;
+            const until = document.getElementById('filterUntil').value;
+            if (since) url += '&since=' + since + 'T00:00:00Z';
+            if (until) url += '&until=' + until + 'T23:59:59Z';
+
+            const data = await fetchApi(url);
+            if (!data) {
+                body.innerHTML = emptyRow(5, 'Failed to load baselines.');
+                return;
             }
+
+            allBaselines = data.baselines || [];
+            totalBaselines = data.pagination ? data.pagination.total : allBaselines.length;
+
+            applyClientFilters();
+            updatePagination();
+
+            // Also load verdicts
+            loadVerdicts();
         }
 
-        async function loadBaselines() {
-            const project = document.getElementById('projectInput').value;
+        function applyClientFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const metric = document.getElementById('filterMetric').value;
             const body = document.getElementById('baselinesBody');
-            body.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
 
-            const data = await fetchApi(`/api/v1/projects/${project}/baselines`);
-            
-            if (!data || data.baselines.length === 0) {
-                body.innerHTML = '<tr><td colspan="4">No baselines found for this project.</td></tr>';
+            const filtered = allBaselines.filter(function(b) {
+                if (search && b.benchmark.toLowerCase().indexOf(search) === -1) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                body.innerHTML = emptyRow(5, 'No baselines match your filters.');
                 return;
             }
 
             body.innerHTML = '';
-            data.baselines.forEach(b => {
-                const row = document.createElement('tr');
+            filtered.forEach(function(b) {
+                var metricVal = getMetricValue(b.receipt, metric);
+                var metricStr = metricVal !== null ? metricVal.toLocaleString() : '-';
+                var row = document.createElement('tr');
                 row.className = 'clickable';
-                row.onclick = () => showBenchmark(b.benchmark);
-                row.innerHTML = `
-                    <td><strong>${b.benchmark}</strong></td>
-                    <td><code>${b.version}</code></td>
-                    <td>${new Date(b.created_at).toLocaleString()}</td>
-                    <td>${b.tags.map(t => `<span class="badge">${t}</span>`).join(' ')}</td>
-                `;
+                row.onclick = function() { showBenchmarkView(b.benchmark); };
+                row.innerHTML =
+                    '<td><strong>' + escHtml(b.benchmark) + '</strong></td>'
+                    + '<td><code>' + escHtml(b.version) + '</code></td>'
+                    + '<td>' + fmtDate(b.created_at) + '</td>'
+                    + '<td><code>' + metricStr + '</code></td>'
+                    + '<td>' + (b.tags || []).map(function(t) { return '<span class="badge">' + escHtml(t) + '</span>'; }).join(' ') + '</td>';
                 body.appendChild(row);
             });
         }
 
-        async function loadHistory(benchmark) {
-            const project = document.getElementById('projectInput').value;
-            const historyBody = document.getElementById('historyBody');
-            historyBody.innerHTML = '<tr><td colspan="4">Loading history...</td></tr>';
+        function updatePagination() {
+            var pag = document.getElementById('baselinePagination');
+            var totalPages = Math.max(1, Math.ceil(totalBaselines / pageSize));
+            if (totalBaselines <= pageSize) {
+                pag.style.display = 'none';
+                return;
+            }
+            pag.style.display = 'flex';
+            document.getElementById('paginationInfo').textContent =
+                totalBaselines + ' baselines total';
+            document.getElementById('pageIndicator').textContent =
+                'Page ' + (currentPage + 1) + ' of ' + totalPages;
+            document.getElementById('prevPageBtn').disabled = currentPage === 0;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages - 1;
+        }
 
-            const data = await fetchApi(`/api/v1/projects/${project}/baselines?benchmark=${benchmark}&include_receipt=true&limit=20`);
-            
-            if (!data || data.baselines.length === 0) {
-                historyBody.innerHTML = '<tr><td colspan="4">No history found.</td></tr>';
+        function changePage(delta) {
+            currentPage += delta;
+            if (currentPage < 0) currentPage = 0;
+            loadBaselines();
+        }
+
+        /* ======= Verdicts list ======= */
+        async function loadVerdicts() {
+            var project = getProject();
+            var body = document.getElementById('verdictsBody');
+            body.innerHTML = loadingRow(6);
+
+            var statusFilters = [];
+            if (document.getElementById('verdictPass').checked) statusFilters.push('pass');
+            if (document.getElementById('verdictWarn').checked) statusFilters.push('warn');
+            if (document.getElementById('verdictFail').checked) statusFilters.push('fail');
+            if (document.getElementById('verdictSkip').checked) statusFilters.push('skip');
+
+            // Fetch all verdicts (the API supports status filter one at a time)
+            // We'll fetch without status filter and filter client-side
+            var url = '/api/v1/projects/' + encodeURIComponent(project)
+                + '/verdicts?limit=' + verdictPageSize
+                + '&offset=' + (verdictPage * verdictPageSize);
+
+            var data = await fetchApi(url);
+            if (!data) {
+                body.innerHTML = emptyRow(6, 'Failed to load verdicts.');
+                document.getElementById('verdictPagination').style.display = 'none';
                 return;
             }
 
-            const history = data.baselines.reverse(); // Chronological order for chart
-            
-            // Update Table
+            var verdicts = (data.verdicts || []).filter(function(v) {
+                return statusFilters.indexOf(v.status) !== -1;
+            });
+            totalVerdicts = data.pagination ? data.pagination.total : verdicts.length;
+
+            if (verdicts.length === 0) {
+                body.innerHTML = emptyRow(6, 'No verdicts match your filters.');
+                document.getElementById('verdictPagination').style.display = 'none';
+                return;
+            }
+
+            body.innerHTML = '';
+            verdicts.forEach(function(v) {
+                var row = document.createElement('tr');
+                row.innerHTML =
+                    '<td><strong>' + escHtml(v.benchmark) + '</strong></td>'
+                    + '<td>' + verdictBadge(v.status) + '</td>'
+                    + '<td>' + v.counts.pass + '</td>'
+                    + '<td>' + v.counts.warn + '</td>'
+                    + '<td>' + v.counts.fail + '</td>'
+                    + '<td>' + fmtDate(v.created_at) + '</td>';
+                body.appendChild(row);
+            });
+
+            updateVerdictPagination();
+        }
+
+        function updateVerdictPagination() {
+            var pag = document.getElementById('verdictPagination');
+            var totalPages = Math.max(1, Math.ceil(totalVerdicts / verdictPageSize));
+            if (totalVerdicts <= verdictPageSize) {
+                pag.style.display = 'none';
+                return;
+            }
+            pag.style.display = 'flex';
+            document.getElementById('verdictPaginationInfo').textContent =
+                totalVerdicts + ' verdicts total';
+            document.getElementById('verdictPageIndicator').textContent =
+                'Page ' + (verdictPage + 1) + ' of ' + totalPages;
+            document.getElementById('verdictPrevBtn').disabled = verdictPage === 0;
+            document.getElementById('verdictNextBtn').disabled = verdictPage >= totalPages - 1;
+        }
+
+        function changeVerdictPage(delta) {
+            verdictPage += delta;
+            if (verdictPage < 0) verdictPage = 0;
+            loadVerdicts();
+        }
+
+        /* ======= Benchmark history ======= */
+        async function loadHistory(benchmark) {
+            var project = getProject();
+            var historyBody = document.getElementById('historyBody');
+            historyBody.innerHTML = loadingRow(6);
+
+            var data = await fetchApi(
+                '/api/v1/projects/' + encodeURIComponent(project)
+                + '/baselines?benchmark=' + encodeURIComponent(benchmark)
+                + '&include_receipt=true&limit=50'
+            );
+
+            if (!data || !data.baselines || data.baselines.length === 0) {
+                historyBody.innerHTML = emptyRow(6, 'No history found for this benchmark.');
+                return;
+            }
+
+            var history = data.baselines.slice().reverse(); // chronological
+            currentHistory = history;
+
+            // Populate table (newest first)
             historyBody.innerHTML = '';
-            [...history].reverse().forEach(b => {
-                const wall = b.receipt?.stats?.wall_ms?.median || '-';
-                const rss = b.receipt?.stats?.max_rss_kb?.median || '-';
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td><code>${b.version}</code></td>
-                    <td>${new Date(b.created_at).toLocaleString()}</td>
-                    <td>${wall}</td>
-                    <td>${rss}</td>
-                `;
+            history.slice().reverse().forEach(function(b) {
+                var wall = getMetricValue(b.receipt, 'wall_ms');
+                var cpu = getMetricValue(b.receipt, 'cpu_ms');
+                var rss = getMetricValue(b.receipt, 'max_rss_kb');
+                var gitInfo = '';
+                if (b.git_sha) gitInfo = '<code>' + escHtml(b.git_sha.substring(0, 8)) + '</code>';
+                else if (b.git_ref) gitInfo = escHtml(b.git_ref);
+                else gitInfo = '-';
+
+                var row = document.createElement('tr');
+                row.className = 'clickable';
+                row.onclick = function() { showRunDetail(project, benchmark, b.version); };
+                row.innerHTML =
+                    '<td><code>' + escHtml(b.version) + '</code></td>'
+                    + '<td>' + fmtDate(b.created_at) + '</td>'
+                    + '<td><code>' + (wall !== null ? wall.toLocaleString() : '-') + '</code></td>'
+                    + '<td><code>' + (cpu !== null ? cpu.toLocaleString() : '-') + '</code></td>'
+                    + '<td><code>' + (rss !== null ? rss.toLocaleString() : '-') + '</code></td>'
+                    + '<td>' + gitInfo + '</td>';
                 historyBody.appendChild(row);
             });
 
-            // Update Chart
             updateChart(history);
         }
 
+        /* ======= Chart ======= */
         function updateChart(history) {
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            
-            if (chart) {
-                chart.destroy();
-            }
+            var ctx = document.getElementById('trendChart').getContext('2d');
+            var metric = document.getElementById('chartMetric').value;
 
-            const labels = history.map(b => b.version);
-            const wallData = history.map(b => b.receipt?.stats?.wall_ms?.median || 0);
+            if (chart) chart.destroy();
+
+            var labels = history.map(function(b) { return b.version; });
+            var dataPoints = history.map(function(b) {
+                return getMetricValue(b.receipt, metric) || 0;
+            });
+
+            var metricLabels = {
+                wall_ms: 'Wall Time (ms)',
+                cpu_ms: 'CPU Time (ms)',
+                max_rss_kb: 'Max RSS (KB)',
+                page_faults: 'Page Faults',
+                ctx_switches: 'Context Switches',
+                io_read_bytes: 'I/O Read (bytes)'
+            };
 
             chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Wall Time (ms)',
-                        data: wallData,
+                        label: metricLabels[metric] || metric,
+                        data: dataPoints,
                         borderColor: '#0366d6',
-                        backgroundColor: 'rgba(3, 102, 214, 0.1)',
+                        backgroundColor: 'rgba(3, 102, 214, 0.08)',
                         fill: true,
-                        tension: 0.1
+                        tension: 0.2,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#0366d6',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(36,41,46,0.95)',
+                            titleFont: { size: 13 },
+                            bodyFont: { size: 12 },
+                            padding: 10,
+                            cornerRadius: 4
+                        }
+                    },
                     scales: {
                         y: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                maxRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 15
+                            }
+                        }
+                    },
+                    onClick: function(evt) {
+                        var points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
+                        if (points.length > 0) {
+                            var idx = points[0].index;
+                            var b = history[idx];
+                            if (b) {
+                                showRunDetail(getProject(), b.benchmark, b.version);
+                            }
                         }
                     }
                 }
             });
         }
+
+        /* ======= Run detail modal ======= */
+        function openModal() {
+            document.getElementById('runDetailModal').classList.add('visible');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('runDetailModal').classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        // Close modal on overlay click
+        document.getElementById('runDetailModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        async function showRunDetail(project, benchmark, version) {
+            openModal();
+            document.getElementById('modalTitle').textContent = benchmark + ' @ ' + version;
+            document.getElementById('modalBody').innerHTML =
+                '<div style="text-align:center;padding:32px;"><div class="spinner"></div><p>Loading...</p></div>';
+
+            var data = await fetchApi(
+                '/api/v1/projects/' + encodeURIComponent(project)
+                + '/baselines/' + encodeURIComponent(benchmark)
+                + '/versions/' + encodeURIComponent(version)
+            );
+
+            if (!data) {
+                document.getElementById('modalBody').innerHTML =
+                    '<div class="empty-state"><p>Failed to load run details.</p></div>';
+                return;
+            }
+
+            renderRunDetail(data);
+        }
+
+        function renderRunDetail(record) {
+            var body = document.getElementById('modalBody');
+            var receipt = record.receipt || {};
+            var stats = receipt.stats || {};
+            var bench = receipt.bench || {};
+            var run = receipt.run || {};
+
+            var html = '<div class="detail-grid">';
+            html += detailItem('Benchmark', '<strong>' + escHtml(record.benchmark) + '</strong>');
+            html += detailItem('Version', '<code>' + escHtml(record.version) + '</code>');
+            html += detailItem('Created', fmtDate(record.created_at));
+            html += detailItem('Source', escHtml(record.source || '-'));
+
+            if (record.git_sha) {
+                html += detailItem('Git SHA', '<code>' + escHtml(record.git_sha) + '</code>');
+            }
+            if (record.git_ref) {
+                html += detailItem('Git Ref', escHtml(record.git_ref));
+            }
+            if (bench.name) {
+                html += detailItem('Bench Name', escHtml(bench.name));
+            }
+            if (run.id) {
+                html += detailItem('Run ID', '<code>' + escHtml(run.id) + '</code>');
+            }
+            if (bench.command && bench.command.length > 0) {
+                html += detailItem('Command', '<code>' + escHtml(bench.command.join(' ')) + '</code>');
+            }
+            if (bench.repeat !== undefined) {
+                html += detailItem('Repeat', bench.repeat);
+            }
+
+            html += '</div>';
+
+            // Tags
+            if (record.tags && record.tags.length > 0) {
+                html += '<div class="detail-section"><h4>Tags</h4><div>';
+                record.tags.forEach(function(t) {
+                    html += '<span class="badge" style="margin-right:4px;">' + escHtml(t) + '</span>';
+                });
+                html += '</div></div>';
+            }
+
+            // Statistics
+            html += '<div class="detail-section"><h4>Statistics</h4>';
+            var metrics = [
+                ['wall_ms', 'Wall Time (ms)'],
+                ['cpu_ms', 'CPU Time (ms)'],
+                ['max_rss_kb', 'Max RSS (KB)'],
+                ['page_faults', 'Page Faults'],
+                ['ctx_switches', 'Context Switches'],
+                ['io_read_bytes', 'I/O Read (bytes)']
+            ];
+
+            metrics.forEach(function(m) {
+                var s = stats[m[0]];
+                if (s) {
+                    html += '<div class="stat-row">'
+                        + '<span class="stat-name">' + m[1] + '</span>'
+                        + '<span class="stat-values">'
+                        + '<span title="Median">med: ' + s.median.toLocaleString() + '</span>'
+                        + '<span title="Minimum">min: ' + s.min.toLocaleString() + '</span>'
+                        + '<span title="Maximum">max: ' + s.max.toLocaleString() + '</span>';
+                    if (s.mean !== null && s.mean !== undefined) {
+                        html += '<span title="Mean">avg: ' + Number(s.mean).toFixed(1) + '</span>';
+                    }
+                    if (s.stddev !== null && s.stddev !== undefined) {
+                        html += '<span title="Std Dev">sd: ' + Number(s.stddev).toFixed(1) + '</span>';
+                    }
+                    html += '</span></div>';
+                }
+            });
+            html += '</div>';
+
+            // Samples
+            if (receipt.samples && receipt.samples.length > 0) {
+                html += '<div class="detail-section"><h4>Samples (' + receipt.samples.length + ')</h4>';
+                html += '<div style="overflow-x:auto;"><table style="font-size:12px;">';
+                html += '<thead><tr><th>#</th><th>Wall (ms)</th><th>Exit Code</th></tr></thead><tbody>';
+                receipt.samples.forEach(function(s, i) {
+                    html += '<tr><td>' + (i + 1) + '</td>'
+                        + '<td><code>' + s.wall_ms + '</code></td>'
+                        + '<td>' + (s.exit_code !== undefined ? s.exit_code : '-') + '</td>'
+                        + '</tr>';
+                });
+                html += '</tbody></table></div></div>';
+            }
+
+            // Metadata
+            if (record.metadata && Object.keys(record.metadata).length > 0) {
+                html += '<div class="detail-section"><h4>Metadata</h4>';
+                Object.entries(record.metadata).forEach(function(kv) {
+                    html += '<div class="stat-row">'
+                        + '<span class="stat-name">' + escHtml(kv[0]) + '</span>'
+                        + '<span>' + escHtml(kv[1]) + '</span>'
+                        + '</div>';
+                });
+                html += '</div>';
+            }
+
+            body.innerHTML = html;
+        }
+
+        function detailItem(label, value) {
+            return '<div class="detail-item">'
+                + '<span class="label">' + label + '</span>'
+                + '<span class="value">' + value + '</span>'
+                + '</div>';
+        }
+
+        /* ======= Init ======= */
+        checkHealth();
+
+        // Handle Enter key in project input
+        document.getElementById('projectInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') loadBaselines();
+        });
+        document.getElementById('apiKeyInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') loadBaselines();
+        });
     </script>
 </body>
 </html>
