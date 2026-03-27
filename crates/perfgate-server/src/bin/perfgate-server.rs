@@ -14,6 +14,19 @@
 //!
 //! # Add API keys
 //! perfgate-server --api-keys admin:pg_live_abc123...,viewer:pg_live_def456...
+//!
+//! # GitHub Actions OIDC
+//! perfgate-server --github-oidc EffortlessMetrics/perfgate:perfgate-oss:contributor
+//!
+//! # GitLab CI OIDC (gitlab.com)
+//! perfgate-server --gitlab-oidc mygroup/myproject:my-project:contributor
+//!
+//! # GitLab CI OIDC (self-managed)
+//! perfgate-server --gitlab-oidc mygroup/myproject:my-project:contributor \
+//!     --gitlab-oidc-issuer https://gitlab.example.com
+//!
+//! # Custom OIDC provider
+//! perfgate-server --oidc-provider issuer=https://auth.example.com,jwks_url=https://auth.example.com/.well-known/jwks.json,audience=perfgate,claim=team_slug,mapping=platform-team:my-project:contributor
 //! ```
 
 use clap::Parser;
@@ -24,7 +37,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use perfgate_server::{
     JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend, run_server,
 };
-use std::collections::HashMap;
 use std::time::Duration;
 
 /// perfgate baseline service server.
@@ -101,6 +113,26 @@ struct Args {
     #[arg(long, default_value = "perfgate")]
     github_oidc_audience: String,
 
+    /// GitLab CI OIDC mapping in format "group/project:project_id:role" (can be specified multiple times).
+    /// Example: --gitlab-oidc mygroup/myproject:my-project:contributor
+    #[arg(long = "gitlab-oidc")]
+    gitlab_oidc: Vec<String>,
+
+    /// Expected audience for GitLab OIDC tokens.
+    #[arg(long, default_value = "perfgate")]
+    gitlab_oidc_audience: String,
+
+    /// GitLab issuer URL for self-managed instances (default: https://gitlab.com).
+    #[arg(long, default_value = "https://gitlab.com")]
+    gitlab_oidc_issuer: String,
+
+    /// Custom OIDC provider in format
+    /// "issuer=URL,jwks_url=URL,audience=AUD,claim=FIELD,mapping=IDENTITY:PROJECT:ROLE".
+    /// The `mapping` key can be repeated by passing --oidc-provider multiple times with the same
+    /// issuer or by using semicolons: "...,mapping=id1:proj1:role1;id2:proj2:role2".
+    #[arg(long = "oidc-provider")]
+    oidc_provider: Vec<String>,
+
     /// Disable CORS
     #[arg(long)]
     no_cors: bool,
@@ -137,18 +169,7 @@ fn parse_api_key(s: &str) -> Result<ApiKeyConfigArg, String> {
         ));
     }
 
-    let role = match parts[0].to_lowercase().as_str() {
-        "admin" => Role::Admin,
-        "promoter" => Role::Promoter,
-        "contributor" => Role::Contributor,
-        "viewer" => Role::Viewer,
-        _ => {
-            return Err(format!(
-                "Unknown role '{}'. Expected: admin, promoter, contributor, viewer",
-                parts[0]
-            ));
-        }
-    };
+    let role = parse_role(parts[0])?;
 
     let key = parts[1].to_string();
     let project = parts.get(2).unwrap_or(&"default").to_string();
@@ -166,6 +187,36 @@ fn parse_api_key(s: &str) -> Result<ApiKeyConfigArg, String> {
         project,
         benchmark_regex,
     })
+}
+
+/// Parses a role string (case-insensitive).
+fn parse_role(s: &str) -> Result<Role, String> {
+    match s.to_lowercase().as_str() {
+        "admin" => Ok(Role::Admin),
+        "promoter" => Ok(Role::Promoter),
+        "contributor" => Ok(Role::Contributor),
+        "viewer" => Ok(Role::Viewer),
+        _ => Err(format!(
+            "Unknown role '{}'. Expected: admin, promoter, contributor, viewer",
+            s
+        )),
+    }
+}
+
+/// Parses an OIDC identity mapping "identity:project_id:role".
+fn parse_oidc_mapping(mapping: &str, flag_name: &str) -> Result<(String, String, Role), String> {
+    let parts: Vec<&str> = mapping.split(':').collect();
+    if parts.len() != 3 {
+        return Err(format!(
+            "Invalid {} format '{}'. Expected 'identity:project_id:role'",
+            flag_name, mapping
+        ));
+    }
+    let identity = parts[0].to_string();
+    let project = parts[1].to_string();
+    let role = parse_role(parts[2])
+        .map_err(|e| format!("In {} mapping '{}': {}", flag_name, mapping, e))?;
+    Ok((identity, project, role))
 }
 
 /// Initializes the logging system.
@@ -242,35 +293,36 @@ async fn main() {
         config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
     }
 
+    // ----- GitHub OIDC -----
     if !args.github_oidc.is_empty() {
-        let mut repo_mappings = HashMap::new();
-        for mapping in args.github_oidc {
-            let parts: Vec<&str> = mapping.split(':').collect();
-            if parts.len() != 3 {
-                panic!(
-                    "Invalid github-oidc format '{}'. Expected 'org/repo:project_id:role'",
-                    mapping
-                );
-            }
-            let repo = parts[0].to_string();
-            let project = parts[1].to_string();
-            let role = match parts[2].to_lowercase().as_str() {
-                "admin" => Role::Admin,
-                "promoter" => Role::Promoter,
-                "contributor" => Role::Contributor,
-                "viewer" => Role::Viewer,
-                _ => panic!("Unknown role '{}' in github-oidc mapping", parts[2]),
-            };
-            repo_mappings.insert(repo, (project, role));
+        let mut oidc_config = OidcConfig::github(&args.github_oidc_audience);
+        for mapping in &args.github_oidc {
+            let (identity, project, role) =
+                parse_oidc_mapping(mapping, "--github-oidc").unwrap_or_else(|e| panic!("{}", e));
+            oidc_config = oidc_config.add_mapping(identity, project, role);
         }
-
-        let oidc_config = OidcConfig {
-            jwks_url: "https://token.actions.githubusercontent.com/.well-known/jwks".to_string(),
-            issuer: "https://token.actions.githubusercontent.com".to_string(),
-            audience: args.github_oidc_audience,
-            repo_mappings,
-        };
         config = config.oidc(oidc_config);
+    }
+
+    // ----- GitLab OIDC -----
+    if !args.gitlab_oidc.is_empty() {
+        let mut oidc_config = if args.gitlab_oidc_issuer == "https://gitlab.com" {
+            OidcConfig::gitlab(&args.gitlab_oidc_audience)
+        } else {
+            OidcConfig::gitlab_custom(&args.gitlab_oidc_issuer, &args.gitlab_oidc_audience)
+        };
+        for mapping in &args.gitlab_oidc {
+            let (identity, project, role) =
+                parse_oidc_mapping(mapping, "--gitlab-oidc").unwrap_or_else(|e| panic!("{}", e));
+            oidc_config = oidc_config.add_mapping(identity, project, role);
+        }
+        config = config.oidc(oidc_config);
+    }
+
+    // ----- Custom OIDC providers -----
+    for provider_spec in &args.oidc_provider {
+        config = config
+            .oidc(parse_custom_oidc_provider(provider_spec).unwrap_or_else(|e| panic!("{}", e)));
     }
 
     if let Some(secret) = args.jwt_secret {
@@ -295,6 +347,55 @@ async fn main() {
         eprintln!("Server error: {}", e);
         std::process::exit(1);
     }
+}
+
+/// Parses a custom OIDC provider specification from the CLI.
+///
+/// Format: `issuer=URL,jwks_url=URL,audience=AUD,claim=FIELD,mapping=ID:PROJ:ROLE[;ID2:PROJ2:ROLE2]`
+fn parse_custom_oidc_provider(spec: &str) -> Result<OidcConfig, String> {
+    let mut issuer = None;
+    let mut jwks_url = None;
+    let mut audience = None;
+    let mut claim = None;
+    let mut mappings: Vec<(String, String, Role)> = Vec::new();
+
+    for part in spec.split(',') {
+        if let Some(val) = part.strip_prefix("issuer=") {
+            issuer = Some(val.to_string());
+        } else if let Some(val) = part.strip_prefix("jwks_url=") {
+            jwks_url = Some(val.to_string());
+        } else if let Some(val) = part.strip_prefix("audience=") {
+            audience = Some(val.to_string());
+        } else if let Some(val) = part.strip_prefix("claim=") {
+            claim = Some(val.to_string());
+        } else if let Some(val) = part.strip_prefix("mapping=") {
+            // Support semicolon-separated multiple mappings
+            for m in val.split(';') {
+                mappings.push(parse_oidc_mapping(m, "--oidc-provider mapping")?);
+            }
+        } else {
+            return Err(format!(
+                "Unknown key in --oidc-provider: '{}'. Expected issuer=, jwks_url=, audience=, claim=, mapping=",
+                part
+            ));
+        }
+    }
+
+    let issuer = issuer.ok_or("Missing 'issuer=' in --oidc-provider")?;
+    let jwks_url = jwks_url.ok_or("Missing 'jwks_url=' in --oidc-provider")?;
+    let audience = audience.ok_or("Missing 'audience=' in --oidc-provider")?;
+    let claim = claim.ok_or("Missing 'claim=' in --oidc-provider")?;
+
+    if mappings.is_empty() {
+        return Err("Missing 'mapping=' in --oidc-provider".to_string());
+    }
+
+    let mut config = OidcConfig::custom(issuer, jwks_url, audience, claim);
+    for (identity, project, role) in mappings {
+        config = config.add_mapping(identity, project, role);
+    }
+
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -437,5 +538,117 @@ mod tests {
         assert_eq!(args.jwt_secret, Some("super-secret".to_string()));
         assert_eq!(args.jwt_issuer, Some("perfgate".to_string()));
         assert_eq!(args.jwt_audience, Some("perfgate-api".to_string()));
+    }
+
+    #[test]
+    fn test_cli_args_gitlab_oidc() {
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--gitlab-oidc",
+            "mygroup/myproject:my-project:contributor",
+        ])
+        .unwrap();
+
+        assert_eq!(args.gitlab_oidc.len(), 1);
+        assert_eq!(
+            args.gitlab_oidc[0],
+            "mygroup/myproject:my-project:contributor"
+        );
+        assert_eq!(args.gitlab_oidc_issuer, "https://gitlab.com");
+        assert_eq!(args.gitlab_oidc_audience, "perfgate");
+    }
+
+    #[test]
+    fn test_cli_args_gitlab_oidc_self_managed() {
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--gitlab-oidc",
+            "team/repo:internal:admin",
+            "--gitlab-oidc-issuer",
+            "https://gitlab.example.com",
+            "--gitlab-oidc-audience",
+            "my-service",
+        ])
+        .unwrap();
+
+        assert_eq!(args.gitlab_oidc.len(), 1);
+        assert_eq!(args.gitlab_oidc_issuer, "https://gitlab.example.com");
+        assert_eq!(args.gitlab_oidc_audience, "my-service");
+    }
+
+    #[test]
+    fn test_cli_args_oidc_provider() {
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--oidc-provider",
+            "issuer=https://auth.example.com,jwks_url=https://auth.example.com/jwks,audience=perfgate,claim=org_id,mapping=my-org:proj:contributor",
+        ])
+        .unwrap();
+
+        assert_eq!(args.oidc_provider.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_oidc_mapping_valid() {
+        let (identity, project, role) =
+            parse_oidc_mapping("org/repo:my-proj:contributor", "--github-oidc").unwrap();
+        assert_eq!(identity, "org/repo");
+        assert_eq!(project, "my-proj");
+        assert_eq!(role, Role::Contributor);
+    }
+
+    #[test]
+    fn test_parse_oidc_mapping_invalid() {
+        assert!(parse_oidc_mapping("bad-format", "--test").is_err());
+        assert!(parse_oidc_mapping("a:b:badrole", "--test").is_err());
+        assert!(parse_oidc_mapping("a:b:c:d", "--test").is_err());
+    }
+
+    #[test]
+    fn test_parse_custom_oidc_provider_valid() {
+        let config = parse_custom_oidc_provider(
+            "issuer=https://auth.example.com,jwks_url=https://auth.example.com/jwks,audience=perfgate,claim=team_slug,mapping=platform:proj:contributor",
+        ).unwrap();
+
+        assert_eq!(config.issuer, "https://auth.example.com");
+        assert_eq!(config.jwks_url, "https://auth.example.com/jwks");
+        assert_eq!(config.audience, "perfgate");
+        assert_eq!(config.repo_mappings.len(), 1);
+        assert!(config.repo_mappings.contains_key("platform"));
+    }
+
+    #[test]
+    fn test_parse_custom_oidc_provider_multiple_mappings() {
+        let config = parse_custom_oidc_provider(
+            "issuer=https://auth.example.com,jwks_url=https://auth.example.com/jwks,audience=perfgate,claim=team,mapping=team-a:proj-a:viewer;team-b:proj-b:admin",
+        ).unwrap();
+
+        assert_eq!(config.repo_mappings.len(), 2);
+        assert!(config.repo_mappings.contains_key("team-a"));
+        assert!(config.repo_mappings.contains_key("team-b"));
+    }
+
+    #[test]
+    fn test_parse_custom_oidc_provider_missing_fields() {
+        // Missing issuer
+        assert!(
+            parse_custom_oidc_provider("jwks_url=u,audience=a,claim=c,mapping=i:p:admin").is_err()
+        );
+        // Missing claim
+        assert!(
+            parse_custom_oidc_provider("issuer=i,jwks_url=u,audience=a,mapping=i:p:admin").is_err()
+        );
+        // Missing mapping
+        assert!(parse_custom_oidc_provider("issuer=i,jwks_url=u,audience=a,claim=c").is_err());
+    }
+
+    #[test]
+    fn test_parse_custom_oidc_provider_unknown_key() {
+        assert!(
+            parse_custom_oidc_provider(
+                "issuer=i,jwks_url=u,audience=a,claim=c,mapping=i:p:admin,unknown=val"
+            )
+            .is_err()
+        );
     }
 }

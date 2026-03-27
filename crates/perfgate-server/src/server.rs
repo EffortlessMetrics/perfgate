@@ -28,7 +28,7 @@ use crate::handlers::{
     static_asset, submit_verdict, upload_baseline,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
-use crate::oidc::{OidcConfig, OidcProvider};
+use crate::oidc::{OidcConfig, OidcProvider, OidcRegistry};
 use crate::storage::{
     ArtifactStore, AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyStore,
     ObjectArtifactStore, PostgresStore, SqliteKeyStore, SqliteStore,
@@ -159,8 +159,8 @@ pub struct ServerConfig {
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
 
-    /// Optional OIDC configuration.
-    pub oidc: Option<OidcConfig>,
+    /// OIDC provider configurations (GitHub, GitLab, custom).
+    pub oidc_configs: Vec<OidcConfig>,
 
     /// Enable CORS for all origins
     pub cors: bool,
@@ -183,7 +183,7 @@ impl Default for ServerConfig {
             artifacts_url: None,
             api_keys: vec![],
             jwt: None,
-            oidc: None,
+            oidc_configs: vec![],
             cors: true,
             timeout_seconds: 30,
             local_mode: false,
@@ -264,9 +264,11 @@ impl ServerConfig {
         self
     }
 
-    /// Configures OIDC authentication.
+    /// Adds an OIDC provider configuration.
+    ///
+    /// Multiple providers can be registered (e.g. GitHub + GitLab).
     pub fn oidc(mut self, config: OidcConfig) -> Self {
-        self.oidc = Some(config);
+        self.oidc_configs.push(config);
         self
     }
 
@@ -525,15 +527,15 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     // Create in-memory key store (for CLI-provided keys)
     let key_store = create_key_store(&config).await?;
 
-    let mut oidc_provider = None;
-    if let Some(oidc_cfg) = config.oidc.clone() {
-        let provider = OidcProvider::new(oidc_cfg)
+    let mut oidc_registry = OidcRegistry::new();
+    for oidc_cfg in &config.oidc_configs {
+        let provider = OidcProvider::new(oidc_cfg.clone())
             .await
             .map_err(|e| e.to_string())?;
-        oidc_provider = Some(provider);
+        oidc_registry.add(provider);
     }
 
-    let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider)
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_registry)
         .with_persistent_key_store(persistent_key_store.clone());
 
     // Install Prometheus metrics recorder
@@ -709,7 +711,7 @@ mod tests {
     async fn test_router_creation() {
         let store = Arc::new(InMemoryStore::new());
         let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
-        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
+        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, Default::default());
         let config = ServerConfig::new();
         let app_state = AppState {
             store: store.clone(),

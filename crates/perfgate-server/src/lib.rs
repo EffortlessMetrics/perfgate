@@ -59,7 +59,7 @@ pub mod testing;
 pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig, Role, Scope};
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
-pub use oidc::{OidcConfig, OidcProvider};
+pub use oidc::{OidcConfig, OidcProvider, OidcProviderType, OidcRegistry};
 pub use server::{AppState, PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
 pub use storage::{
     AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyRecord, KeyStore,

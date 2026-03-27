@@ -28,7 +28,7 @@ pub async fn spawn_test_server(config: ServerConfig) -> TestServer {
         .await
         .expect("failed to create key store");
     let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
-    let auth_state = AuthState::new(key_store, config.jwt.clone(), None)
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), Default::default())
         .with_persistent_key_store(persistent_key_store.clone());
     let app_state = AppState { store, audit };
     let app = create_router(app_state, persistent_key_store, auth_state, &config, None);
