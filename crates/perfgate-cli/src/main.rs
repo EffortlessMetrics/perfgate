@@ -28,11 +28,11 @@ use perfgate_client::{
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
+use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_ingest::IngestFormat;
 use perfgate_scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
 };
-use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
