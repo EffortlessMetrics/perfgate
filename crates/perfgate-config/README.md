@@ -1,6 +1,6 @@
 # perfgate-config
 
-Configuration loading and merging logic for perfgate.
+Configuration loading with three-source priority merge: **CLI flags > environment variables > config file**.
 
 ## Overview
 
