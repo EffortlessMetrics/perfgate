@@ -1,4 +1,17 @@
-//! Common API types and models for perfgate baseline service.
+//! Common API types and models for the perfgate baseline service.
+//!
+//! Defines request/response types, baseline records, project models, and verdict
+//! history used by both the server and client crates.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
+//! # Example
+//!
+//! ```
+//! use perfgate_api::BASELINE_SCHEMA_V1;
+//!
+//! assert_eq!(BASELINE_SCHEMA_V1, "perfgate.baseline.v1");
+//! ```
 
 use chrono::{DateTime, Utc};
 use perfgate_types::{RunReceipt, VerdictCounts, VerdictStatus};

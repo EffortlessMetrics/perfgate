@@ -1,6 +1,25 @@
-//! Std adapters for perfgate.
+//! Process execution and host probing adapters for perfgate.
 //!
-//! In clean-arch terms: this is where we touch the world.
+//! In clean-arch terms this is where perfgate touches the world: running child
+//! processes, collecting CPU time / RSS via platform APIs, and probing host
+//! environment metadata for mismatch detection.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use perfgate_adapters::{StdProcessRunner, ProcessRunner, CommandSpec};
+//!
+//! let runner = StdProcessRunner;
+//! let spec = CommandSpec {
+//!     name: "echo".into(),
+//!     argv: vec!["hello".into()],
+//!     ..Default::default()
+//! };
+//! let result = runner.run(&spec).unwrap();
+//! println!("wall_ms: {}", result.wall_ms);
+//! ```
 
 mod fake;
 

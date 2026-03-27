@@ -4,6 +4,8 @@
 //! variants from across the perfgate crates. It enables seamless error propagation
 //! and conversion between different error types.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Error Categories
 //!
 //! The [`PerfgateError`] enum is organized into categories:

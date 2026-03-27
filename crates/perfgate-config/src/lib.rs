@@ -1,4 +1,19 @@
 //! Configuration loading and merging logic for perfgate.
+//!
+//! Loads TOML configuration files, merges environment variables and CLI overrides,
+//! and resolves baseline server settings for perfgate workflows.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use perfgate_config::load_config_file;
+//! use std::path::Path;
+//!
+//! let config = load_config_file(Path::new("perfgate.toml")).unwrap();
+//! println!("Benches: {}", config.benches.len());
+//! ```
 
 use anyhow::Context;
 use perfgate_client::{BaselineClient, ClientConfig, FallbackClient, FallbackStorage};

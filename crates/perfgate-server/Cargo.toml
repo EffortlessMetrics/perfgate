@@ -9,6 +9,9 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-server"
+keywords = ["server", "baseline", "performance", "benchmarking", "api"]
+categories = ["web-programming::http-server", "development-tools"]
 
 [dependencies]
 # Async runtime

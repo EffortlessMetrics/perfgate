@@ -3,6 +3,8 @@
 //! Design goal: versioned, explicit, boring.
 //! These structs are used for receipts, PR comments, and (eventually) long-term baselines.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Examples
 //!
 //! Round-trip a [`ToolInfo`] through JSON:

@@ -4,6 +4,8 @@
 //! where each measurement consists of a baseline and current observation from the
 //! same experimental unit (e.g., same input, same machine configuration).
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Overview
 //!
 //! The crate provides:

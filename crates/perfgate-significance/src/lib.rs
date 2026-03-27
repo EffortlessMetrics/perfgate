@@ -3,6 +3,8 @@
 //! This crate provides Welch's t-test implementation for detecting statistically
 //! significant performance changes between benchmark runs.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Statistical Methodology
 //!
 //! ## Welch's t-test
