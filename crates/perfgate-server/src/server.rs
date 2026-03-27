@@ -25,11 +25,13 @@ use crate::cleanup::spawn_cleanup_task;
 use crate::error::ConfigError;
 use crate::handlers::{
     DefaultRetentionDays, admin_cleanup, create_key, dashboard_index, delete_baseline,
-    get_baseline, get_latest_baseline, health_check, list_audit_events, list_baselines, list_keys,
-    list_verdicts, promote_baseline, revoke_key, static_asset, submit_verdict, upload_baseline,
+    dependency_impact, get_baseline, get_latest_baseline, health_check, list_audit_events,
+    list_baselines, list_fleet_alerts, list_keys, list_verdicts, promote_baseline,
+    record_dependency_event, revoke_key, static_asset, submit_verdict, upload_baseline,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider, OidcRegistry};
+use crate::storage::fleet::{FleetStore, InMemoryFleetStore};
 use crate::storage::{
     ArtifactStore, AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyStore,
     ObjectArtifactStore, PostgresStore, SqliteKeyStore, SqliteStore,
@@ -422,10 +424,16 @@ pub(crate) fn create_persistent_key_store(
     }
 }
 
+/// Creates the fleet store (currently always in-memory).
+pub(crate) fn create_fleet_store() -> Arc<dyn FleetStore> {
+    Arc::new(InMemoryFleetStore::new())
+}
+
 /// Creates the router with all routes configured.
 pub(crate) fn create_router(
     state: AppState,
     persistent_key_store: Arc<dyn KeyStore>,
+    fleet_store: Arc<dyn FleetStore>,
     artifact_store: Option<Arc<dyn ArtifactStore>>,
     auth_state: AuthState,
     config: &ServerConfig,
@@ -469,6 +477,17 @@ pub(crate) fn create_router(
             auth_middleware,
         ));
 
+    // Fleet routes (cross-project, no per-project auth scope)
+    let fleet_routes = Router::new()
+        .route("/fleet/dependency-event", post(record_dependency_event))
+        .route("/fleet/alerts", get(list_fleet_alerts))
+        .route(
+            "/fleet/dependency/{dep_name}/impact",
+            get(dependency_impact),
+        )
+        .with_state(fleet_store);
+
+
     // API routes — auth middleware is skipped in local mode.
     let api_routes_inner = Router::new()
         // Baseline CRUD
@@ -511,7 +530,8 @@ pub(crate) fn create_router(
                 .merge(info_routes)
                 .merge(api_routes)
                 .merge(key_routes)
-                .merge(admin_routes),
+                .merge(admin_routes)
+                .merge(fleet_routes),
         );
 
     // Add /metrics endpoint if Prometheus handle is available
@@ -612,10 +632,14 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     let app_state = AppState { store, audit };
 
+    // Create fleet store
+    let fleet_store = create_fleet_store();
+
     // Create router
     let app = create_router(
         app_state,
         persistent_key_store.clone(),
+        fleet_store,
         artifact_store,
         auth_state,
         &config,
@@ -785,6 +809,7 @@ mod tests {
     async fn test_router_creation() {
         let store = Arc::new(InMemoryStore::new());
         let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
+        let fleet_store = create_fleet_store();
         let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, Default::default());
         let config = ServerConfig::new();
         let app_state = AppState {
@@ -795,6 +820,7 @@ mod tests {
         let _router = create_router(
             app_state,
             persistent_key_store,
+            fleet_store,
             None,
             auth_state,
             &config,

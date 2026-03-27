@@ -63,8 +63,8 @@ pub use models::*;
 pub use oidc::{OidcConfig, OidcProvider, OidcProviderType, OidcRegistry};
 pub use server::{AppState, PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
 pub use storage::{
-    AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyRecord, KeyStore,
-    SqliteKeyStore, SqliteStore, StorageHealth,
+    AuditStore, BaselineStore, FleetStore, InMemoryFleetStore, InMemoryKeyStore, InMemoryStore,
+    KeyRecord, KeyStore, SqliteKeyStore, SqliteStore, StorageHealth,
 };
 
 /// Server version string.

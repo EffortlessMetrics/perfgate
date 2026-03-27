@@ -391,6 +391,116 @@ impl BaselineClient {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Fleet-wide dependency regression detection
+    // -----------------------------------------------------------------------
+
+    /// Records dependency change events with their performance impact.
+    pub async fn record_dependency_event(
+        &self,
+        request: &RecordDependencyEventRequest,
+    ) -> Result<RecordDependencyEventResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url("fleet/dependency-event");
+            debug!(url = %url, project = %request.project, "Recording dependency event");
+
+            let client = self.inner.clone();
+            let request = request.clone();
+            async move {
+                let response = client
+                    .post(url)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<RecordDependencyEventResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Lists fleet-wide dependency regression alerts.
+    pub async fn list_fleet_alerts(
+        &self,
+        query: &ListFleetAlertsQuery,
+    ) -> Result<ListFleetAlertsResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url("fleet/alerts");
+            debug!(url = %url, "Listing fleet alerts");
+
+            let client = self.inner.clone();
+            let query = query.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .query(&query)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<ListFleetAlertsResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Gets the impact of a specific dependency across all projects.
+    pub async fn dependency_impact(
+        &self,
+        dep_name: &str,
+        query: &DependencyImpactQuery,
+    ) -> Result<DependencyImpactResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("fleet/dependency/{}/impact", dep_name));
+            debug!(url = %url, dep = %dep_name, "Getting dependency impact");
+
+            let client = self.inner.clone();
+            let query = query.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .query(&query)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<DependencyImpactResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
     fn url(&self, path: &str) -> String {
         let mut base = self.config.server_url.clone();
         if !base.ends_with('/') {
