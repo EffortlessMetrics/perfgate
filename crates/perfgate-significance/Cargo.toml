@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Statistical significance testing for benchmarking"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-significance"
 keywords = ["statistics", "significance", "t-test", "benchmarking"]
 categories = ["mathematics", "development-tools"]
 

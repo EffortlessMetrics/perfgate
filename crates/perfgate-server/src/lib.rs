@@ -1,8 +1,10 @@
-//! perfgate-server - REST API server for centralized baseline management.
+//! REST API server for centralized baseline management.
 //!
 //! This crate provides a REST API server for storing and managing performance
 //! baselines. It supports multiple storage backends (in-memory, SQLite, PostgreSQL)
 //! and includes authentication via API keys.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 //!
 //! # Features
 //!

@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Sensor report building for cockpit integration"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-sensor"
 keywords = ["sensor", "report", "cockpit", "integration"]
 categories = ["development-tools"]
 

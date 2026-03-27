@@ -9,7 +9,8 @@ homepage.workspace = true
 authors.workspace = true
 description = "Budget evaluation logic for performance thresholds"
 readme = "README.md"
-keywords = ["budget", "threshold", "performance"]
+documentation = "https://docs.rs/perfgate-budget"
+keywords = ["budget", "threshold", "performance", "regression"]
 categories = ["development-tools"]
 
 [dependencies]

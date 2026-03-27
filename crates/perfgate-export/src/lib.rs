@@ -3,6 +3,8 @@
 //! This crate provides functionality for exporting run and compare receipts
 //! to various formats suitable for trend analysis and time-series ingestion.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Supported Formats
 //!
 //! - **CSV**: RFC 4180 compliant CSV with header row

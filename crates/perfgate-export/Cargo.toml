@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Export formats for perfgate benchmarks (CSV, JSONL, HTML, Prometheus)"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-export"
 keywords = ["export", "csv", "prometheus", "benchmarking"]
 categories = ["development-tools"]
 

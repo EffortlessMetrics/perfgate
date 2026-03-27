@@ -5,6 +5,8 @@
 //! significant noise into performance measurements, leading to false
 //! positives or negatives in regression detection.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Example
 //!
 //! ```

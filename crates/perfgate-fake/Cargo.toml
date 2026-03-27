@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Test utilities and fake implementations for perfgate testing"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-fake"
 keywords = ["testing", "fake", "mock", "benchmarking"]
 categories = ["development-tools::testing"]
 

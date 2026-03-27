@@ -1,7 +1,9 @@
-//! perfgate-sensor: Cockpit mode and sensor report generation.
+//! Cockpit mode and sensor report generation.
 //!
 //! This crate provides functionality for generating `sensor.report.v1` JSON
 //! envelopes compatible with external performance monitoring tools like Cockpit.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 use perfgate_sha256::sha256_hex;
 pub use perfgate_types::{
