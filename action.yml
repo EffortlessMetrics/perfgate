@@ -223,15 +223,33 @@ runs:
       run: |
         set -euo pipefail
 
-        # Find a compare or report receipt to comment on
-        compare_file="${{ inputs.out_dir }}/compare.json"
-        report_file="${{ inputs.out_dir }}/report.json"
+        # Find a compare or report receipt to comment on.
+        # In standard mode, report.json is a perfgate.report.v1.
+        # In cockpit mode, report.json is a sensor.report.v1 (not
+        # parseable as --report), so we look for extras/ receipts first.
+        out="${{ inputs.out_dir }}"
+        pr_num="${{ github.event.pull_request.number }}"
+        posted=false
 
-        if [[ -f "${report_file}" ]]; then
-          perfgate comment --report "${report_file}" --pr "${{ github.event.pull_request.number }}" || true
-        elif [[ -f "${compare_file}" ]]; then
-          perfgate comment --compare "${compare_file}" --pr "${{ github.event.pull_request.number }}" || true
-        else
+        # 1. Cockpit single-bench extras
+        if [[ "${posted}" == "false" && -f "${out}/extras/perfgate.report.v1.json" ]]; then
+          perfgate comment --report "${out}/extras/perfgate.report.v1.json" --pr "${pr_num}" || true
+          posted=true
+        fi
+
+        # 2. Standard mode report.json (perfgate.report.v1)
+        if [[ "${posted}" == "false" && -f "${out}/report.json" && "${{ inputs.mode }}" != "cockpit" ]]; then
+          perfgate comment --report "${out}/report.json" --pr "${pr_num}" || true
+          posted=true
+        fi
+
+        # 3. Standard mode compare.json
+        if [[ "${posted}" == "false" && -f "${out}/compare.json" ]]; then
+          perfgate comment --compare "${out}/compare.json" --pr "${pr_num}" || true
+          posted=true
+        fi
+
+        if [[ "${posted}" == "false" ]]; then
           echo "No compare or report receipt found; skipping PR comment." >&2
         fi
 
