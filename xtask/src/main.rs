@@ -1,7 +1,9 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use glob::glob;
+use regex::Regex;
 use schemars::schema_for;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -155,6 +157,13 @@ enum Command {
 
     /// Fail CI if generated docs differ from committed docs.
     DocsCheck,
+
+    /// Validate CLI examples in documentation against actual --help output.
+    DocTest {
+        /// Additional markdown files to scan (default: README.md, CLAUDE.md, docs/*.md)
+        #[arg(long)]
+        files: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -195,6 +204,7 @@ fn main() -> anyhow::Result<()> {
         Command::Dogfood { action } => cmd_dogfood(action),
         Command::DocsSync => cmd_docs_sync(),
         Command::DocsCheck => cmd_docs_check(),
+        Command::DocTest { files } => cmd_doc_test(files),
     }
 }
 
@@ -1341,6 +1351,444 @@ fn cmd_docs_check() -> anyhow::Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// doc-test: validate CLI examples in documentation
+// ---------------------------------------------------------------------------
+
+/// A CLI invocation extracted from a documentation file.
+#[derive(Debug, Clone)]
+struct DocCommand {
+    /// Source file
+    file: PathBuf,
+    /// Line number (1-based) where the command was found
+    line: usize,
+    /// The raw command text
+    raw: String,
+    /// Subcommand path (e.g. ["check"] or ["baseline", "list"])
+    subcommand: Vec<String>,
+    /// Flags used (e.g. ["--config", "--bench", "--mode"])
+    flags: Vec<String>,
+}
+
+/// Collect default doc files: README.md, CLAUDE.md, and docs/**/*.md
+fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+
+    for name in ["README.md", "CLAUDE.md", "CONTRIBUTING.md"] {
+        let p = PathBuf::from(name);
+        if p.exists() {
+            files.push(p);
+        }
+    }
+
+    for entry in glob("docs/**/*.md")? {
+        files.push(entry?);
+    }
+
+    files.sort();
+    Ok(files)
+}
+
+/// Extract perfgate CLI invocations from markdown fenced code blocks.
+///
+/// Handles both direct `perfgate <subcommand>` and
+/// `cargo run -p perfgate-cli -- <subcommand>` patterns.
+/// Multi-line commands joined with trailing backslash are supported.
+fn extract_commands(file: &Path, content: &str) -> Vec<DocCommand> {
+    let mut commands = Vec::new();
+    let mut in_code_block = false;
+    // Accumulated lines for multi-line commands (trailing backslash)
+    let mut continuation: Option<(usize, String)> = None;
+
+    for (idx, line) in content.lines().enumerate() {
+        let line_num = idx + 1;
+
+        if line.trim_start().starts_with("```") {
+            if in_code_block {
+                // Closing fence -- flush any pending continuation
+                if let Some((start, acc)) = continuation.take()
+                    && let Some(cmd) = parse_perfgate_line(file, start, &acc)
+                {
+                    commands.push(cmd);
+                }
+            }
+            in_code_block = !in_code_block;
+            continue;
+        }
+
+        if !in_code_block {
+            continue;
+        }
+
+        let trimmed = line.trim();
+
+        // Handle line continuation (trailing backslash)
+        if let Some((start, ref mut acc)) = continuation {
+            // Append this line (strip leading whitespace, it's a continuation)
+            acc.push(' ');
+            if let Some(stripped) = trimmed.strip_suffix('\\') {
+                acc.push_str(stripped.trim());
+            } else {
+                acc.push_str(trimmed);
+                // End of continuation -- parse accumulated line
+                let full = std::mem::take(acc);
+                let start_line = start;
+                continuation = None;
+                if let Some(cmd) = parse_perfgate_line(file, start_line, &full) {
+                    commands.push(cmd);
+                }
+            }
+            continue;
+        }
+
+        // New line -- check for trailing backslash
+        if let Some(stripped) = trimmed.strip_suffix('\\') {
+            // Start a continuation
+            continuation = Some((line_num, stripped.trim().to_string()));
+            continue;
+        }
+
+        if let Some(cmd) = parse_perfgate_line(file, line_num, trimmed) {
+            commands.push(cmd);
+        }
+    }
+
+    // Flush any trailing continuation (shouldn't normally happen)
+    if let Some((start, acc)) = continuation
+        && let Some(cmd) = parse_perfgate_line(file, start, &acc)
+    {
+        commands.push(cmd);
+    }
+
+    commands
+}
+
+/// Try to parse a single line as a perfgate CLI invocation.
+fn parse_perfgate_line(file: &Path, line: usize, text: &str) -> Option<DocCommand> {
+    // Strip shell prefixes like `$ ` or `> `
+    let text = text
+        .strip_prefix("$ ")
+        .or_else(|| text.strip_prefix("> "))
+        .unwrap_or(text);
+
+    // Match `perfgate <args>` or `cargo run -p perfgate-cli [--bin perfgate] -- <args>`
+    let args_str = if let Some(rest) = strip_cargo_run_prefix(text) {
+        rest
+    } else if let Some(rest) = text.strip_prefix("perfgate ") {
+        rest
+    } else if text == "perfgate" {
+        ""
+    } else {
+        return None;
+    };
+
+    let tokens = shell_tokenize(args_str);
+    if tokens.is_empty() {
+        return None;
+    }
+
+    // Extract subcommand path and flags
+    let mut subcommand = Vec::new();
+    let mut flags = Vec::new();
+
+    for token in &tokens {
+        if token == "--" {
+            // End-of-flags separator: everything after is passed to the sub-process
+            break;
+        }
+        if token.starts_with('-') {
+            // It's a flag -- extract just the flag name (e.g. "--config" from "--config=foo")
+            let flag = token.split('=').next().unwrap_or(token).to_string();
+            flags.push(flag);
+        } else if flags.is_empty() {
+            // Before any flags, it's part of the subcommand path
+            subcommand.push(token.clone());
+        }
+        // After the first flag, positional args are arguments, not subcommands
+    }
+
+    // Skip if no subcommand found
+    if subcommand.is_empty() {
+        return None;
+    }
+
+    // The subcommand path might include positional arguments after the actual subcommand.
+    // We'll validate against --help to determine which are real subcommands.
+
+    Some(DocCommand {
+        file: file.to_path_buf(),
+        line,
+        raw: text.to_string(),
+        subcommand,
+        flags,
+    })
+}
+
+/// Strip the `cargo run -p perfgate-cli [--bin perfgate] [--release] -- ` prefix.
+fn strip_cargo_run_prefix(text: &str) -> Option<&str> {
+    // Look for `cargo run -p perfgate-cli` followed by optional flags and then `--`
+    let re = Regex::new(
+        r"^cargo\s+run\s+(?:--release\s+)?-p\s+perfgate-cli(?:\s+--bin\s+perfgate)?(?:\s+--release)?\s+--\s+",
+    )
+    .ok()?;
+
+    re.find(text).map(|m| &text[m.end()..])
+}
+
+/// Simple shell tokenizer: splits on whitespace, respects double quotes.
+fn shell_tokenize(s: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for ch in s.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+            }
+            ' ' | '\t' if !in_quotes => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
+/// Get the list of valid subcommands from `perfgate --help` output.
+fn get_valid_subcommands(cargo: &str) -> anyhow::Result<BTreeSet<String>> {
+    let output = std::process::Command::new(cargo)
+        .args(["run", "-p", "perfgate-cli", "--", "--help"])
+        .output()
+        .context("running perfgate --help")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_subcommands_from_help(&stdout)
+}
+
+/// Parse subcommand names from --help output.
+fn parse_subcommands_from_help(help_text: &str) -> anyhow::Result<BTreeSet<String>> {
+    let mut subcommands = BTreeSet::new();
+    let mut in_commands_section = false;
+
+    for line in help_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Commands:") {
+            in_commands_section = true;
+            continue;
+        }
+        if !in_commands_section {
+            continue;
+        }
+
+        // Blank lines within the section are fine -- skip them
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // A non-indented, non-empty line means we've left the Commands section
+        if !line.starts_with(' ') {
+            in_commands_section = false;
+            continue;
+        }
+
+        // Parse "  subcommand   description"
+        if let Some(name) = trimmed.split_whitespace().next()
+            && name != "help"
+        {
+            subcommands.insert(name.to_string());
+        }
+    }
+
+    Ok(subcommands)
+}
+
+/// Get valid flags for a specific subcommand by running `perfgate <subcmd> --help`.
+fn get_valid_flags(cargo: &str, subcmd: &[String]) -> anyhow::Result<BTreeSet<String>> {
+    let mut args = vec!["run", "-p", "perfgate-cli", "--"];
+    let subcmd_strs: Vec<&str> = subcmd.iter().map(|s| s.as_str()).collect();
+    args.extend_from_slice(&subcmd_strs);
+    args.push("--help");
+
+    let output = std::process::Command::new(cargo)
+        .args(&args)
+        .output()
+        .with_context(|| format!("running perfgate {} --help", subcmd.join(" ")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}\n{}", stdout, stderr);
+
+    parse_flags_from_help(&combined)
+}
+
+/// Parse flag names from --help output.
+fn parse_flags_from_help(help_text: &str) -> anyhow::Result<BTreeSet<String>> {
+    let mut flags = BTreeSet::new();
+    let re = Regex::new(r"--[a-zA-Z][a-zA-Z0-9_-]*").context("compile flag regex")?;
+
+    for mat in re.find_iter(help_text) {
+        flags.insert(mat.as_str().to_string());
+    }
+
+    // Always include --help and --version as universally valid
+    flags.insert("--help".to_string());
+    flags.insert("--version".to_string());
+
+    Ok(flags)
+}
+
+fn cmd_doc_test(extra_files: Vec<PathBuf>) -> anyhow::Result<()> {
+    println!("Validating CLI examples in documentation...\n");
+
+    // Collect files to scan
+    let mut files = default_doc_files()?;
+    files.extend(extra_files);
+    files.sort();
+    files.dedup();
+
+    if files.is_empty() {
+        anyhow::bail!("no documentation files found");
+    }
+
+    // Extract all commands from all files
+    let mut all_commands = Vec::new();
+    for file in &files {
+        let content =
+            fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
+        let cmds = extract_commands(file, &content);
+        all_commands.extend(cmds);
+    }
+
+    println!(
+        "Found {} CLI examples in {} files\n",
+        all_commands.len(),
+        files.len()
+    );
+
+    if all_commands.is_empty() {
+        println!("No perfgate CLI examples found in documentation.");
+        return Ok(());
+    }
+
+    // Get valid subcommands from the binary
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let valid_subcommands = get_valid_subcommands(&cargo)?;
+
+    println!(
+        "Valid subcommands: {}\n",
+        valid_subcommands
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    // For each unique subcommand, get valid flags (caching)
+    let mut flag_cache: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+    let mut errors: Vec<String> = Vec::new();
+    let mut checked = 0u32;
+
+    for cmd in &all_commands {
+        checked += 1;
+        let first_subcmd = &cmd.subcommand[0];
+
+        // Check if the top-level subcommand is valid
+        if !valid_subcommands.contains(first_subcmd) {
+            errors.push(format!(
+                "  {}:{}: unknown subcommand '{}'\n    {}",
+                cmd.file.display(),
+                cmd.line,
+                first_subcmd,
+                cmd.raw
+            ));
+            continue;
+        }
+
+        // Determine the effective subcommand path for --help.
+        // For subcommands like "baseline list", we need to pass both words.
+        // We try the longest prefix that is a valid sub-subcommand.
+        let subcmd_path = resolve_subcommand_path(&cargo, &cmd.subcommand, &mut flag_cache)?;
+
+        // Get valid flags for this subcommand
+        let cache_key = subcmd_path.join(" ");
+        if !flag_cache.contains_key(&cache_key) {
+            let flags = get_valid_flags(&cargo, &subcmd_path)?;
+            flag_cache.insert(cache_key.clone(), flags);
+        }
+        let valid_flags = &flag_cache[&cache_key];
+
+        // Check each flag
+        for flag in &cmd.flags {
+            if !valid_flags.contains(flag) {
+                errors.push(format!(
+                    "  {}:{}: unknown flag '{}' for 'perfgate {}'\n    {}",
+                    cmd.file.display(),
+                    cmd.line,
+                    flag,
+                    cache_key,
+                    cmd.raw
+                ));
+            }
+        }
+    }
+
+    println!("Checked {} examples", checked);
+
+    if errors.is_empty() {
+        println!("\n  OK  all CLI examples are valid");
+        Ok(())
+    } else {
+        println!("\nFound {} error(s):\n", errors.len());
+        for err in &errors {
+            println!("{}\n", err);
+        }
+        anyhow::bail!(
+            "{} documentation example(s) have invalid subcommands or flags",
+            errors.len()
+        );
+    }
+}
+
+/// Resolve the subcommand path (e.g., ["baseline", "list"]) by checking
+/// if deeper subcommands are valid.
+fn resolve_subcommand_path(
+    cargo: &str,
+    tokens: &[String],
+    cache: &mut BTreeMap<String, BTreeSet<String>>,
+) -> anyhow::Result<Vec<String>> {
+    if tokens.len() <= 1 {
+        return Ok(tokens.to_vec());
+    }
+
+    // Try the first two tokens as a subcommand path (e.g. "baseline list")
+    let two_deep = &tokens[..2];
+    let cache_key = two_deep.join(" ");
+
+    if let std::collections::btree_map::Entry::Vacant(e) = cache.entry(cache_key) {
+        // Try getting help for the two-level subcommand
+        if let Ok(flags) = get_valid_flags(cargo, two_deep)
+            && !flags.is_empty()
+        {
+            e.insert(flags);
+            return Ok(two_deep.to_vec());
+        }
+    } else {
+        return Ok(two_deep.to_vec());
+    }
+
+    // Fall back to just the first token
+    Ok(vec![tokens[0].clone()])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1628,5 +2076,180 @@ mod tests {
             );
         });
         let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    // --- doc-test unit tests ---
+
+    #[test]
+    fn extract_commands_from_bash_block() {
+        let md = r#"
+# Example
+
+```bash
+perfgate run --name bench --out out.json -- echo hello
+perfgate compare --baseline base.json --current cur.json
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0].subcommand, vec!["run"]);
+        assert!(cmds[0].flags.contains(&"--name".to_string()));
+        assert!(cmds[0].flags.contains(&"--out".to_string()));
+        assert_eq!(cmds[1].subcommand, vec!["compare"]);
+        assert!(cmds[1].flags.contains(&"--baseline".to_string()));
+        assert!(cmds[1].flags.contains(&"--current".to_string()));
+    }
+
+    #[test]
+    fn extract_commands_cargo_run_form() {
+        let md = r#"
+```bash
+cargo run -p perfgate-cli -- check --config perfgate.toml --bench my-bench
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].subcommand, vec!["check"]);
+        assert!(cmds[0].flags.contains(&"--config".to_string()));
+        assert!(cmds[0].flags.contains(&"--bench".to_string()));
+    }
+
+    #[test]
+    fn extract_commands_multiline_continuation() {
+        let md = r#"
+```bash
+perfgate check --config perfgate.toml \
+  --bench my-bench \
+  --mode cockpit
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].subcommand, vec!["check"]);
+        assert!(cmds[0].flags.contains(&"--config".to_string()));
+        assert!(cmds[0].flags.contains(&"--bench".to_string()));
+        assert!(cmds[0].flags.contains(&"--mode".to_string()));
+    }
+
+    #[test]
+    fn extract_commands_ignores_non_perfgate() {
+        let md = r#"
+```bash
+echo hello
+cargo build --release
+ls -la
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn extract_commands_ignores_outside_code_blocks() {
+        let md = r#"
+Run `perfgate check --config perfgate.toml` to validate.
+
+perfgate run --name bench -- echo hello
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn extract_commands_baseline_subsubcommand() {
+        let md = r#"
+```bash
+perfgate baseline list --project my-project
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].subcommand, vec!["baseline", "list"]);
+        assert!(cmds[0].flags.contains(&"--project".to_string()));
+    }
+
+    #[test]
+    fn shell_tokenize_basic() {
+        let tokens = shell_tokenize("--name bench --out out.json -- echo hello");
+        assert_eq!(
+            tokens,
+            vec![
+                "--name", "bench", "--out", "out.json", "--", "echo", "hello"
+            ]
+        );
+    }
+
+    #[test]
+    fn shell_tokenize_with_quotes() {
+        let tokens = shell_tokenize(r#"--name "my bench" --out out.json"#);
+        assert_eq!(tokens, vec!["--name", "my bench", "--out", "out.json"]);
+    }
+
+    #[test]
+    fn parse_subcommands_from_help_output() {
+        let help = r#"Usage: perfgate [OPTIONS] <COMMAND>
+
+Commands:
+  run                 Run a command
+  compare             Compare receipts
+  check               Config-driven workflow
+  baseline            Manage baselines
+  help                Print help
+
+Options:
+  -h, --help     Print help
+"#;
+        let subs = parse_subcommands_from_help(help).unwrap();
+        assert!(subs.contains("run"));
+        assert!(subs.contains("compare"));
+        assert!(subs.contains("check"));
+        assert!(subs.contains("baseline"));
+        assert!(!subs.contains("help"));
+    }
+
+    #[test]
+    fn parse_flags_from_help_output() {
+        let help = r#"Usage: perfgate run [OPTIONS] -- <COMMAND>...
+
+Options:
+      --name <NAME>      Benchmark name
+      --repeat <REPEAT>  Number of repetitions [default: 7]
+      --out <OUT>        Output file path
+  -h, --help             Print help
+"#;
+        let flags = parse_flags_from_help(help).unwrap();
+        assert!(flags.contains("--name"));
+        assert!(flags.contains("--repeat"));
+        assert!(flags.contains("--out"));
+        assert!(flags.contains("--help"));
+    }
+
+    #[test]
+    fn strip_cargo_run_prefix_variants() {
+        assert_eq!(
+            strip_cargo_run_prefix("cargo run -p perfgate-cli -- check --config foo.toml"),
+            Some("check --config foo.toml")
+        );
+        assert_eq!(
+            strip_cargo_run_prefix("cargo run -p perfgate-cli --bin perfgate -- run --name bench"),
+            Some("run --name bench")
+        );
+        assert_eq!(
+            strip_cargo_run_prefix("cargo run --release -p perfgate-cli -- run --name bench"),
+            Some("run --name bench")
+        );
+        assert_eq!(strip_cargo_run_prefix("echo hello"), None);
+    }
+
+    #[test]
+    fn extract_commands_with_dollar_prefix() {
+        let md = r#"
+```bash
+$ perfgate run --name bench --out out.json -- echo hello
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].subcommand, vec!["run"]);
     }
 }
