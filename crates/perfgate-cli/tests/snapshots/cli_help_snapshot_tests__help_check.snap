@@ -56,6 +56,8 @@ Options:
 
       --output-github Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT
 
+      --local-db Upload the run result to the local perfgate server (started via `perfgate serve`). Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484)
+
   -h, --help Print help (see a summary with '-h')
 
 Global Options:

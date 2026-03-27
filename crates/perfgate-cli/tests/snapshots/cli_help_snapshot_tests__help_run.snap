@@ -24,6 +24,7 @@ Options:
       --pretty Pretty-print JSON
       --upload Upload the run result to the baseline server
       --upload-project <UPLOAD_PROJECT> Project name for upload (overrides global --project flag)
+      --local-db Upload the run result to the local perfgate server (started via `perfgate serve`). Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484)
   -h, --help Print help
 
 Global Options:

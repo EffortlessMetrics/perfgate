@@ -582,6 +582,7 @@
         <div class="header-left">
             <h1 onclick="showDashboard()">perfgate</h1>
             <span class="version-badge">Dashboard</span>
+            <span id="localModeBadge" style="display:none;background:#28a745;color:white;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600;">Local Mode</span>
             <span class="health-dot unknown" id="healthDot" title="Checking..."></span>
         </div>
         <div class="project-bar">
@@ -1089,6 +1090,15 @@
 
             updateChart(history);
         }
+
+        // Detect local mode and show badge
+        async function checkLocalMode() {
+            const info = await fetchApi('/api/v1/info');
+            if (info && info.local_mode) {
+                document.getElementById('localModeBadge').style.display = 'inline-block';
+            }
+        }
+        checkLocalMode();
 
         /* ======= Chart ======= */
         function updateChart(history) {

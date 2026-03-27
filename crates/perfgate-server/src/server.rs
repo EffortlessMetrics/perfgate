@@ -156,6 +156,9 @@ pub struct ServerConfig {
 
     /// Request timeout in seconds
     pub timeout_seconds: u64,
+
+    /// Local mode: disable authentication for single-user local use.
+    pub local_mode: bool,
 }
 
 impl Default for ServerConfig {
@@ -172,6 +175,7 @@ impl Default for ServerConfig {
             oidc: None,
             cors: true,
             timeout_seconds: 30,
+            local_mode: false,
         }
     }
 }
@@ -258,6 +262,12 @@ impl ServerConfig {
     /// Enables or disables CORS.
     pub fn cors(mut self, enabled: bool) -> Self {
         self.cors = enabled;
+        self
+    }
+
+    /// Enables or disables local mode (no authentication).
+    pub fn local_mode(mut self, enabled: bool) -> Self {
+        self.local_mode = enabled;
         self
     }
 }
@@ -347,8 +357,16 @@ pub(crate) fn create_router(
     config: &ServerConfig,
     prometheus_handle: Option<PrometheusHandle>,
 ) -> Router {
+    let local_mode = config.local_mode;
+
     // Health check (no auth required)
     let health_routes = Router::new().route("/health", get(health_check));
+
+    // Info endpoint: exposes local_mode flag for the dashboard.
+    let info_routes = Router::new().route(
+        "/info",
+        get(move || async move { axum::Json(serde_json::json!({ "local_mode": local_mode })) }),
+    );
 
     // Dashboard routes (no auth required for read-only view)
     let dashboard_routes = Router::new()
@@ -356,8 +374,8 @@ pub(crate) fn create_router(
         .route("/index.html", get(dashboard_index))
         .route("/assets/{*path}", get(static_asset));
 
-    // API routes that require authentication
-    let api_routes = Router::new()
+    // API routes — auth middleware is skipped in local mode.
+    let api_routes_inner = Router::new()
         // Baseline CRUD
         .route("/projects/{project}/baselines", post(upload_baseline))
         .route(
@@ -378,14 +396,22 @@ pub(crate) fn create_router(
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),
-        )
-        .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
+        );
+
+    let api_routes = if config.local_mode {
+        api_routes_inner
+    } else {
+        api_routes_inner.layer(middleware::from_fn_with_state(auth_state, auth_middleware))
+    };
 
     // Combine routes under /api/v1, plus root /health and dashboard
     let mut app = Router::new()
         .merge(dashboard_routes)
         .merge(health_routes.clone())
-        .nest("/api/v1", health_routes.merge(api_routes));
+        .nest(
+            "/api/v1",
+            health_routes.merge(info_routes).merge(api_routes),
+        );
 
     // Add /metrics endpoint if Prometheus handle is available
     if let Some(handle) = prometheus_handle {
