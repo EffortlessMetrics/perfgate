@@ -1,131 +1,102 @@
 # perfgate-server
 
-REST API server for centralized baseline management.
+Centralized baseline management for teams that run benchmarks across multiple CI runners.
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](../../LICENSE-MIT)
 
-## Overview
+## Why
 
-perfgate-server provides a centralized service for storing and managing performance baselines. It enables teams to:
+Performance baselines live on individual CI runners. When different runners execute benchmarks, they each see different baselines -- or none at all. Promoting, versioning, and auditing baselines becomes a manual chore that does not scale.
 
-- Share baselines across multiple repositories and CI runners
-- Track baseline version history with rich metadata
-- Control access with role-based permissions
-- Scale to fleet-level performance management
+`perfgate-server` is a REST API that stores baselines centrally so every CI job, repository, and team member works from the same source of truth. It ships as a single binary with built-in storage, auth, and a web dashboard.
 
-**Documentation:** [Getting Started with Baseline Server](../../docs/GETTING_STARTED_BASELINE_SERVER.md)
-
-## Features
-
-- **Multi-tenancy**: Projects/namespaces for isolation
-- **Version history**: Track baseline versions over time
-- **Rich metadata**: Git refs, tags, custom metadata
-- **Access control**: Role-based permissions (Viewer, Contributor, Promoter, Admin)
-- **Multiple backends**: In-memory (dev), SQLite (production), PostgreSQL (planned)
-
-## Installation
+## Quick start
 
 ```bash
 cargo install perfgate-server
-```
 
-## Usage
+# SQLite (recommended for production)
+perfgate-server --storage-type sqlite --database-url ./perfgate.db \
+  --api-keys admin:pg_live_<your-key>
 
-### Start server with in-memory storage (development)
-
-```bash
+# In-memory (development / demos)
 perfgate-server
 ```
 
-### Start with SQLite storage (production)
+## Feature highlights
 
-```bash
-perfgate-server --storage-type sqlite --database-url ./perfgate.db
-```
+| Feature | Details |
+|---------|---------|
+| **Storage backends** | In-memory, SQLite, PostgreSQL |
+| **Artifact offload** | S3, GCS, and Azure Blob via `--artifacts-url` |
+| **Auth** | API keys (scoped to project + benchmark regex), JWT (HS256), GitHub Actions OIDC |
+| **Role-based access** | Viewer, Contributor, Promoter, Admin |
+| **Web dashboard** | Embedded SPA served at `/` -- no extra deployment needed |
+| **Fleet analytics** | Dependency-change impact tracking and cross-project alerts |
+| **Verdict history** | Record and query pass/warn/fail verdicts over time |
+| **Observability** | Structured JSON logging, request IDs, `/health` endpoint |
+| **Graceful shutdown** | Handles SIGTERM / Ctrl-C cleanly |
 
-### Specify bind address and port
+## REST API
 
-```bash
-perfgate-server --bind 127.0.0.1 --port 3000
-```
+All data endpoints live under `/api/v1`. The health check and dashboard are at the root.
 
-### Add API keys
-
-```bash
-perfgate-server --api-keys admin:pg_live_abc123def456... --api-keys viewer:pg_live_xyz789...
-```
-
-## CLI Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--bind` | `0.0.0.0` | Bind address |
-| `--port` | `8080` | Port number |
-| `--storage-type` | `memory` | Storage backend: memory, sqlite, postgres |
-| `--database-url` | - | Database URL/path |
-| `--api-keys` | - | API keys in format "role:key" |
-| `--no-cors` | false | Disable CORS |
-| `--timeout` | `30` | Request timeout in seconds |
-| `--log-level` | `info` | Log level: trace, debug, info, warn, error |
-| `--log-format` | `json` | Log format: json, pretty |
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/projects/{project}/baselines` | Upload a baseline |
-| `GET` | `/projects/{project}/baselines/{benchmark}/latest` | Get latest baseline |
-| `GET` | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Get specific version |
-| `GET` | `/projects/{project}/baselines` | List baselines |
-| `DELETE` | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
-| `POST` | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
-| `GET` | `/health` | Health check |
+| Method | Path | Auth | Description |
+|--------|------|:----:|-------------|
+| `GET` | `/health` | -- | Health check with storage status |
+| `GET` | `/` | -- | Web dashboard |
+| `POST` | `/api/v1/projects/{project}/baselines` | Y | Upload a baseline |
+| `GET` | `/api/v1/projects/{project}/baselines` | Y | List baselines (filterable) |
+| `GET` | `/api/v1/projects/{project}/baselines/{bench}/latest` | Y | Get latest baseline |
+| `GET` | `/api/v1/projects/{project}/baselines/{bench}/versions/{ver}` | Y | Get specific version |
+| `DELETE` | `/api/v1/projects/{project}/baselines/{bench}/versions/{ver}` | Y | Soft-delete a version |
+| `POST` | `/api/v1/projects/{project}/baselines/{bench}/promote` | Y | Promote a version |
+| `POST` | `/api/v1/projects/{project}/verdicts` | Y | Submit a verdict |
+| `GET` | `/api/v1/projects/{project}/verdicts` | Y | List verdicts |
+| `POST` | `/api/v1/fleet/dependency-event` | Y | Record dependency change events |
+| `GET` | `/api/v1/fleet/alerts` | Y | List fleet-wide alerts |
+| `GET` | `/api/v1/fleet/dependency/{dep}/impact` | Y | Query dependency impact |
 
 ## Authentication
 
-API requests require an API key in the `Authorization` header:
-
-```
-Authorization: Bearer pg_live_abc123def456...
-```
-
-### API Key Format
-
-- Live keys: `pg_live_<32-char-random>`
-- Test keys: `pg_test_<32-char-random>`
-
-### Roles
-
-| Role | Permissions |
-|------|-------------|
-| `viewer` | Read-only access |
-| `contributor` | Upload and read baselines |
-| `promoter` | Upload, read, and promote baselines |
-| `admin` | Full access including delete |
-
-## Example: Upload a Baseline
+Pass an API key as a Bearer token (`Authorization: Bearer pg_live_<32-char-random>`).
+Keys are scoped to a project and optionally restricted by benchmark regex:
 
 ```bash
-curl -X POST http://localhost:8080/projects/my-project/baselines \
-  -H "Authorization: Bearer pg_live_abc123..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "benchmark": "my-bench",
-    "version": "v1.0.0",
-    "git_ref": "refs/heads/main",
-    "git_sha": "abc123def456",
-    "receipt": { ... }
-  }'
+--api-keys contributor:pg_live_abc123:my-project:^bench-.*$
 ```
 
-## Example: Get Latest Baseline
+For GitHub Actions CI, use OIDC (`--github-oidc org/repo:project-id:contributor`).
+JWT tokens (HS256) are also supported via `--jwt-secret`.
 
-```bash
-curl http://localhost:8080/projects/my-project/baselines/my-bench/latest \
-  -H "Authorization: Bearer pg_live_abc123..."
-```
+## Configuration
 
-## Library Usage
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--bind` | `0.0.0.0` | Bind address |
+| `--port` | `8080` | Port |
+| `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
+| `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
+| `--artifacts-url` | -- | Object-store URL (`s3://...`, `gs://...`, `az://...`) |
+| `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
+| `--github-oidc` | -- | `org/repo:project_id:role` (repeatable) |
+| `--jwt-secret` | -- | HS256 secret for JWT auth |
+| `--no-cors` | `false` | Disable CORS |
+| `--timeout` | `30` | Request timeout (seconds) |
+| `--log-level` | `info` | `trace`, `debug`, `info`, `warn`, `error` |
+| `--log-format` | `json` | `json` or `pretty` |
+
+## Storage backends
+
+| Backend | Use case | Persistence | Setup |
+|---------|----------|:-----------:|-------|
+| **memory** | Dev / tests | None | Zero config |
+| **sqlite** | Single-node production | Disk | `--database-url ./perfgate.db` |
+| **postgres** | Multi-node / HA | Disk | `--database-url postgresql://host/db` |
+
+Artifact payloads (run receipts) can be offloaded to S3, GCS, or Azure Blob Storage independently of the metadata backend.
+
+## Library usage
 
 ```rust
 use perfgate_server::{ServerConfig, StorageBackend, run_server};
@@ -135,12 +106,12 @@ async fn main() {
     let config = ServerConfig::new()
         .bind("0.0.0.0:8080").unwrap()
         .storage_backend(StorageBackend::Sqlite)
-        .sqlite_path("perfgate.db")
-        .api_key("pg_live_abc123...", Role::Admin);
-
+        .sqlite_path("perfgate.db");
     run_server(config).await.unwrap();
 }
 ```
+
+See also: [Getting Started with Baseline Server](../../docs/GETTING_STARTED_BASELINE_SERVER.md)
 
 ## License
 

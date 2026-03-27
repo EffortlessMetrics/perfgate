@@ -1,6 +1,10 @@
 //! Domain logic for perfgate.
 //!
-//! This crate is intentionally I/O-free: it does math and policy.
+//! Pure, I/O-free business logic: statistics computation, budget policy evaluation,
+//! host mismatch detection, and regression analysis. All data comes in via
+//! function arguments; no filesystem, network, or process access.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 mod blame;
 mod paired;
@@ -8,7 +12,7 @@ mod paired;
 pub use blame::{
     BinaryBlame, DependencyChange, DependencyChangeType, compare_lockfiles, parse_lockfile,
 };
-pub use paired::{PairedComparison, compare_paired_stats, compute_paired_stats};
+pub use paired::{PairedComparison, compare_paired_stats, compute_paired_cv, compute_paired_stats};
 
 pub use perfgate_host_detect::detect_host_mismatch;
 

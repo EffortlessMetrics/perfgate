@@ -1,34 +1,73 @@
 # perfgate-types
 
-Versioned data contracts for perfgate.
+Canonical types and versioned schemas that every perfgate crate depends on.
 
-## Responsibilities
+`perfgate-types` is the innermost crate in the dependency graph. It defines all
+receipt structs, configuration types, enums, and constants shared across the
+workspace. Everything here is a plain data type -- no I/O, no statistics, no
+policy logic.
 
-- Defines receipt and report schemas:
-  - `perfgate.run.v1`
-  - `perfgate.compare.v1`
-  - `perfgate.report.v1`
-  - `sensor.report.v1`
-  - paired benchmarking schema (`perfgate.paired.v1`)
-- Defines config types (`ConfigFile`, `BenchConfigFile`, defaults/budget overrides).
-- Defines shared enums/tokens used across crates (metrics, verdicts, finding codes, reason tokens).
-- Provides JSON Schema derivation support through `schemars`.
+## Schema Versions
 
-## Boundaries
+| Schema                | Struct            | Purpose                           |
+|-----------------------|-------------------|-----------------------------------|
+| `perfgate.run.v1`     | `RunReceipt`      | Single benchmark execution result |
+| `perfgate.compare.v1` | `CompareReceipt`  | Baseline vs current comparison    |
+| `perfgate.report.v1`  | `PerfgateReport`  | Findings and verdict summary      |
+| `perfgate.config.v1`  | `ConfigFile`      | Budget and benchmark definitions  |
+| `perfgate.paired.v1`  | `PairedRunReceipt`| Paired A/B benchmark result       |
+| `sensor.report.v1`    | `SensorReport`    | Cockpit integration envelope      |
 
-- No process execution or host probing.
-- No statistics math or budget decision logic.
-- No CLI parsing or filesystem I/O.
+## Key Types
+
+**Run pipeline:** `RunReceipt`, `RunMeta`, `BenchMeta`, `Sample`, `Stats`,
+`U64Summary`, `F64Summary`
+
+**Comparison:** `CompareReceipt`, `Metric`, `Direction`, `Budget`, `Delta`,
+`MetricStatus`, `Verdict`, `VerdictCounts`
+
+**Reporting:** `PerfgateReport`, `ReportFinding`, `FindingData`, `Severity`
+
+**Configuration:** `ConfigFile`, `DefaultsConfig`, `BenchConfigFile`,
+`BudgetOverride`
+
+**Sensor (cockpit):** `SensorReport`, `SensorVerdict`, `SensorFinding`,
+`SensorCapabilities`, `ToolInfo`, `HostInfo`, `HostMismatchPolicy`
+
+**Paired:** `PairedRunReceipt`, `PairedSample`, `PairedSampleHalf`,
+`PairedStats`, `PairedDiffSummary`
+
+## The `Metric` Enum
+
+Central to budget evaluation. Each variant carries metadata:
+
+- `as_str()` / `parse_key()` -- canonical snake_case key (`wall_ms`, `cpu_ms`, ...)
+- `default_direction()` -- `Lower` or `Higher` (throughput is the only `Higher`)
+- `default_warn_factor()` -- default warning threshold multiplier
 
 ## Feature Flags
 
-- `arbitrary`: enables structure-aware fuzzing derives for core types.
+| Flag        | Effect                                                  |
+|-------------|---------------------------------------------------------|
+| `arbitrary` | Enables `Arbitrary` derive for structure-aware fuzzing  |
 
-## Workspace Role
+JSON Schema generation via `schemars` is always available (not feature-gated).
 
-`perfgate-types` is the innermost crate and the shared contract layer:
+## Design Constraints
 
-`perfgate-types` -> `perfgate-domain` -> `perfgate-adapters` -> `perfgate-app` -> `perfgate` (CLI)
+- **All collections use `BTreeMap`** for deterministic serialization order.
+- **Backward-compatible evolution:** new fields use `#[serde(default)]`;
+  removing or renaming fields is a breaking change.
+- **`SensorReport` uses `serde_json::Value`** for opaque data (ABI hardening),
+  so it cannot derive `JsonSchema` or `Arbitrary`.
+- **No logic:** statistics, policy, and rendering belong in downstream crates.
+
+## Testing
+
+- Property-based (proptest): serialization round-trips for `RunReceipt`,
+  `CompareReceipt`, `ConfigFile`, `Budget`, `BudgetOverride`
+- Snapshot (insta): backward compatibility for `HostInfo` defaults
+- TOML and JSON round-trip tests for all receipt and config types
 
 ## License
 

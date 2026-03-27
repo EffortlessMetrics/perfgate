@@ -1,4 +1,18 @@
 //! Authentication and authorization types for perfgate.
+//!
+//! Provides API key management, permission scopes, and role-based access control
+//! types used by the perfgate baseline service.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
+//! # Example
+//!
+//! ```
+//! use perfgate_auth::{generate_api_key, API_KEY_PREFIX_LIVE};
+//!
+//! let key = generate_api_key(false);
+//! assert!(key.starts_with(API_KEY_PREFIX_LIVE));
+//! ```
 
 use chrono::{DateTime, Utc};
 use perfgate_error::AuthError;

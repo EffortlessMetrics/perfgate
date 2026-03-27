@@ -8,7 +8,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-summary"
 authors.workspace = true
+keywords = ["summary", "benchmarking", "comparison", "performance"]
+categories = ["development-tools"]
 
 [dependencies]
 anyhow.workspace = true

@@ -3,7 +3,7 @@
 //! This module re-exports from `perfgate_paired` for backward compatibility.
 
 pub use perfgate_paired::{
-    PairedComparison, PairedError, compare_paired_stats, compute_paired_stats,
+    PairedComparison, PairedError, compare_paired_stats, compute_paired_cv, compute_paired_stats,
 };
 
 use crate::DomainError;

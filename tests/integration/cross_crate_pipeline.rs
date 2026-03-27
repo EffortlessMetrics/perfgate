@@ -510,6 +510,7 @@ fn paired_receipt_json_roundtrip() {
             current_throughput_per_s: None,
             throughput_diff_per_s: None,
         },
+        noise_diagnostics: None,
     };
 
     let json = serde_json::to_string_pretty(&receipt).unwrap();

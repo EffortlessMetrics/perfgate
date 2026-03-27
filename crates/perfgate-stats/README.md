@@ -1,23 +1,33 @@
 # perfgate-stats
 
-Statistical functions for benchmarking analysis.
+Descriptive statistics for performance data -- the numerical foundation of
+perfgate's budget evaluation pipeline.
 
-Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+Pure functions with no I/O dependencies. Used by `perfgate-domain` and can be
+independently tested and versioned.
 
-## Overview
+## API
 
-Pure statistical functions with no I/O dependencies. Provides summary
-statistics, percentile calculation, and mean/variance computation for
-benchmark sample data.
+### Summary Statistics
 
-## Key API
+- `summarize_u64(values) -> U64Summary` -- median, min, max, mean, stddev
+- `summarize_f64(values) -> F64Summary` -- same for `f64` samples
 
-- `summarize_u64(values)` — compute median, min, max for `u64` samples → `U64Summary`
-- `summarize_f64(values)` — compute median, min, max for `f64` samples → `F64Summary`
-- `median_u64_sorted(sorted)` — median of pre-sorted `u64` slice (overflow-safe)
-- `median_f64_sorted(sorted)` — median of pre-sorted `f64` slice
-- `percentile(values, q)` — compute the q-th percentile (q ∈ [0, 1])
-- `mean_and_variance(values)` — arithmetic mean and sample variance (Bessel-corrected)
+### Median (pre-sorted)
+
+- `median_u64_sorted(sorted)` -- overflow-safe `u64` median via split-halves
+- `median_f64_sorted(sorted)` -- `f64` median
+
+### Percentile
+
+- `percentile(values, q)` -- q-th percentile (q in [0, 1]) with linear
+  interpolation between adjacent ranks
+
+### Mean and Variance
+
+- `mean_and_variance(values) -> Option<(f64, f64)>` -- arithmetic mean and
+  Bessel-corrected sample variance using Welford's online algorithm for
+  numerical stability; returns `None` for empty or non-finite input
 
 ## Example
 
@@ -32,6 +42,21 @@ assert_eq!(summary.max, 120);
 let p95 = percentile(vec![1.0, 2.0, 3.0, 4.0, 5.0], 0.95).unwrap();
 let (mean, var) = mean_and_variance(&[10.0, 20.0, 30.0]).unwrap();
 ```
+
+## Numerical Stability
+
+`mean_and_variance` uses Welford's one-pass online algorithm, avoiding the
+catastrophic cancellation that affects naive two-pass (sum-of-squares) methods.
+Results are validated as finite before returning.
+
+The `u64` median uses a split-halves technique (`a/2 + b/2 + remainder`) to
+avoid overflow at `u64::MAX` boundaries.
+
+## Testing
+
+- Property-based (proptest): ordering invariants, overflow handling, percentile
+  bounds, mean correctness against naive computation
+- Benchmarks via Criterion (`cargo bench -p perfgate-stats`)
 
 ## License
 

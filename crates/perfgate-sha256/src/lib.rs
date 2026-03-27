@@ -4,6 +4,8 @@
 //! that returns a hexadecimal string. It's designed for fingerprinting
 //! and identification purposes, not for cryptographic security.
 //!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
 //! # Features
 //!
 //! - `std` (default): Enable `std` support

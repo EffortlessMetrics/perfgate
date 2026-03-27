@@ -9,7 +9,8 @@ homepage.workspace = true
 authors.workspace = true
 description = "Unified error types for perfgate"
 readme = "README.md"
-keywords = ["error", "error-handling"]
+documentation = "https://docs.rs/perfgate-error"
+keywords = ["error", "error-handling", "performance", "benchmarking"]
 categories = ["development-tools"]
 
 [dependencies]

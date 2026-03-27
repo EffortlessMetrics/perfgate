@@ -5,7 +5,7 @@
 #
 # Usage:
 #   include:
-#     - remote: 'https://raw.githubusercontent.com/EffortlessMetrics/perfgate/main/gitlab-ci/perfgate.yml'
+#     - remote: 'https://raw.githubusercontent.com/EffortlessMetrics/perfgate/v0.15.0/gitlab-ci/perfgate.yml'
 #
 #   perfgate-check:
 #     extends: .perfgate-check
@@ -22,7 +22,7 @@
     - |
       if ! command -v perfgate &> /dev/null; then
         echo "Installing perfgate..."
-        cargo install --path crates/perfgate-cli 2>/dev/null || cargo install perfgate
+        cargo install perfgate-cli 2>/dev/null || cargo install perfgate
       fi
   script:
     - mkdir -p ${PERFGATE_ARTIFACTS_DIR}

@@ -5,38 +5,72 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 ## Near-Term (0.16.x)
 
 ### Storage Hardening
-- [ ] **PostgreSQL connection pooling**: The PostgreSQL backend (`perfgate-server/src/storage/postgres.rs`) works but needs connection pool tuning, retry logic, and health checks under load.
-- [ ] **S3 lifecycle policies**: The `object_store` integration supports S3/GCS/Azure uploads, but there is no retention or cleanup policy for old receipts.
-- [ ] **SQLite WAL mode**: Enable WAL for the SQLite backend to improve concurrent read performance.
+- [ ] **PostgreSQL connection pooling** ([#65]): Pool tuning, retry logic, and health checks under load.
+- [ ] **S3 lifecycle policies** ([#67]): Retention and cleanup for old receipts in object storage.
+- [ ] **SQLite WAL mode** ([#73]): Enable WAL for concurrent read performance.
 
 ### Authentication & Authorization
-- [ ] **OIDC stabilization**: GitHub Actions OIDC works (`perfgate-auth`), but needs testing with GitLab CI and custom providers.
-- [ ] **API key management CLI**: Auth types and role-based scoping exist, but there is no CLI for creating, listing, or revoking keys.
+- [ ] **OIDC stabilization** ([#72]): Test with GitLab CI and custom providers beyond GitHub Actions.
+- [ ] **API key management CLI** ([#71]): Commands for creating, listing, revoking, and rotating keys.
 
 ### Platform Parity
-- [ ] **Windows metric gaps**: `page_faults` and `ctx_switches` are not yet collected on Windows (only `cpu_ms` and `max_rss_kb`).
-- [ ] **Timeout support on Windows**: Currently returns `AdapterError::TimeoutUnsupported` on non-Unix.
+- [ ] **Windows metric gaps** ([#70]): `page_faults` and `ctx_switches` are not yet collected on Windows (only `cpu_ms` and `max_rss_kb`).
+- [x] **Timeout support on Windows** ([#69]): Implemented via `try_wait()` polling loop with `child.kill()` on expiration.
+
+### Quality
+- [ ] **Server integration tests** ([#76]): Automate `#[ignore]` server tests in CI.
+- [ ] **CLI doc example validation** ([#83]): Validate doc examples against the actual binary.
 
 ## Medium-Term (0.17.x)
 
 ### Observability & Audit
-- [ ] **Audit logging**: Verdict history exists in the server, but there is no audit trail for baseline promotions, deletions, or key changes.
-- [ ] **Prometheus endpoint**: Export format exists (`perfgate-export`), but the server does not expose a `/metrics` scrape endpoint.
+- [ ] **Audit logging** ([#68]): Audit trail for baseline promotions, deletions, and key changes.
+- [ ] **Prometheus endpoint** ([#66]): `/metrics` scrape endpoint on the server.
 
 ### Noise & Stability
-- [ ] **Noise policy tuning**: `NoisePolicy` (ignore/warn/skip) exists but paired mode retries could be smarter about when to give up.
-- [ ] **Flakiness tracking**: CV-based detection exists per-run, but there is no cross-run flakiness history.
+- [ ] **Noise policy tuning** ([#78]): Smarter paired retry logic with adaptive sample sizes.
+- [ ] **Flakiness tracking** ([#79]): Cross-run flakiness history and scoring.
+
+### Dashboard
+- [ ] **Dashboard enhancement** ([#77]): Filtering, drill-down, export, and responsive layout.
 
 ### Documentation & Ecosystem
-- [ ] **CI plugin guides**: GitHub Actions guide and GitLab CI guide exist in `docs/`, but Bitbucket and CircleCI are undocumented.
-- [ ] **Schema evolution strategy**: Schemas are versioned (v1), but there is no documented policy for how v2 schemas would coexist.
+- [ ] **CI guides** ([#74]): Bitbucket Pipelines and CircleCI integration guides.
+- [ ] **Schema evolution** ([#75]): Documented policy for v2 schema coexistence.
+- [ ] **Crate READMEs** ([#59]): Expand thin READMEs for api, config, selfbench, summary.
+- [ ] **Baseline server docs** ([#51], [#52]): Validate and trim server documentation.
 
 ## Long-Term (Toward 1.0)
 
 - [ ] **API and schema freeze**: Stabilize all public JSON contracts and REST endpoints before 1.0.
-- [ ] **Pluggable renderers**: Handlebars template support exists for Markdown; generalize to a plugin system for custom output formats.
-- [ ] **Cross-project comparisons**: The server namespaces by project, but there is no way to compare benchmarks across projects.
-- [ ] **Weighted fleet aggregation**: `perfgate aggregate` merges receipts, but does not yet account for runner variance or weighting.
+- [ ] **Pluggable renderers** ([#82]): Generalize template support into a plugin system.
+- [ ] **Cross-project comparisons** ([#80]): Compare benchmarks across project boundaries.
+- [ ] **Weighted fleet aggregation** ([#81]): Account for runner variance in `perfgate aggregate`.
+
+---
+
+[#51]: https://github.com/EffortlessMetrics/perfgate/issues/51
+[#52]: https://github.com/EffortlessMetrics/perfgate/issues/52
+[#59]: https://github.com/EffortlessMetrics/perfgate/issues/59
+[#65]: https://github.com/EffortlessMetrics/perfgate/issues/65
+[#66]: https://github.com/EffortlessMetrics/perfgate/issues/66
+[#67]: https://github.com/EffortlessMetrics/perfgate/issues/67
+[#68]: https://github.com/EffortlessMetrics/perfgate/issues/68
+[#69]: https://github.com/EffortlessMetrics/perfgate/issues/69
+[#70]: https://github.com/EffortlessMetrics/perfgate/issues/70
+[#71]: https://github.com/EffortlessMetrics/perfgate/issues/71
+[#72]: https://github.com/EffortlessMetrics/perfgate/issues/72
+[#73]: https://github.com/EffortlessMetrics/perfgate/issues/73
+[#74]: https://github.com/EffortlessMetrics/perfgate/issues/74
+[#75]: https://github.com/EffortlessMetrics/perfgate/issues/75
+[#76]: https://github.com/EffortlessMetrics/perfgate/issues/76
+[#77]: https://github.com/EffortlessMetrics/perfgate/issues/77
+[#78]: https://github.com/EffortlessMetrics/perfgate/issues/78
+[#79]: https://github.com/EffortlessMetrics/perfgate/issues/79
+[#80]: https://github.com/EffortlessMetrics/perfgate/issues/80
+[#81]: https://github.com/EffortlessMetrics/perfgate/issues/81
+[#82]: https://github.com/EffortlessMetrics/perfgate/issues/82
+[#83]: https://github.com/EffortlessMetrics/perfgate/issues/83
 
 ---
 

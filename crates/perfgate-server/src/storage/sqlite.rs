@@ -38,7 +38,9 @@ impl SqliteStore {
             std::fs::create_dir_all(parent)?;
         }
 
+        let is_memory = path.as_os_str() == ":memory:";
         let conn = rusqlite::Connection::open(&path)?;
+        Self::configure_pragmas(&conn, is_memory)?;
 
         let store = Self {
             _path: path,
@@ -53,6 +55,7 @@ impl SqliteStore {
     /// Creates an in-memory SQLite database (for testing).
     pub fn in_memory() -> Result<Self, StoreError> {
         let conn = rusqlite::Connection::open_in_memory()?;
+        Self::configure_pragmas(&conn, true)?;
 
         let store = Self {
             _path: std::path::PathBuf::from(":memory:"),
@@ -62,6 +65,29 @@ impl SqliteStore {
 
         store.initialize()?;
         Ok(store)
+    }
+
+    /// Configures SQLite pragmas for performance and concurrent access.
+    ///
+    /// - `journal_mode=WAL`: enables write-ahead logging so readers do not
+    ///   block writers and vice-versa.  Verified via the returned mode string
+    ///   so that silent fallbacks (e.g. read-only filesystem) become hard
+    ///   errors.  Skipped for in-memory databases where WAL is not applicable.
+    /// - `busy_timeout=5000`: waits up to 5 seconds when the database is
+    ///   locked instead of returning SQLITE_BUSY immediately.
+    fn configure_pragmas(conn: &rusqlite::Connection, is_memory: bool) -> Result<(), StoreError> {
+        conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+
+        if !is_memory {
+            let mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+            if mode.to_lowercase() != "wal" {
+                return Err(StoreError::Other(format!(
+                    "failed to enable WAL journal mode (got '{mode}')"
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     fn initialize(&self) -> Result<(), StoreError> {
@@ -717,5 +743,23 @@ mod tests {
             let retrieved = store.get("my-project", "my-bench", "v1.0.0").await.unwrap();
             assert!(retrieved.is_some());
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_wal_mode_enabled() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("wal_test.db");
+        let store = SqliteStore::new(&db_path, None).unwrap();
+
+        let conn = store.conn.lock().unwrap();
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(journal_mode.to_lowercase(), "wal");
+
+        let busy_timeout: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(busy_timeout, 5000);
     }
 }

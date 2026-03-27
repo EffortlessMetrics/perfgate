@@ -7,6 +7,9 @@ use crate::models::{HealthResponse, StorageHealth as ModelStorageHealth};
 use crate::storage::{BaselineStore, StorageHealth};
 
 /// Health check endpoint.
+///
+/// Returns server health status, storage backend health, and connection pool
+/// metrics (when using a pooled backend such as PostgreSQL).
 pub async fn health_check(State(store): State<Arc<dyn BaselineStore>>) -> Json<HealthResponse> {
     let storage_health = match store.health_check().await {
         Ok(health) => health,
@@ -14,6 +17,9 @@ pub async fn health_check(State(store): State<Arc<dyn BaselineStore>>) -> Json<H
     };
 
     let status_str = storage_health.as_str();
+
+    // Collect pool metrics if the backend exposes them.
+    let pool = store.pool_metrics();
 
     Json(HealthResponse {
         status: if storage_health == StorageHealth::Healthy {
@@ -26,5 +32,6 @@ pub async fn health_check(State(store): State<Arc<dyn BaselineStore>>) -> Json<H
             backend: store.backend_type().to_string(),
             status: status_str.to_string(),
         },
+        pool,
     })
 }

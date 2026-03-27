@@ -2,45 +2,65 @@
 
 Configuration loading with three-source priority merge: **CLI flags > environment variables > config file**.
 
-Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+## Overview
 
-## Merge behavior
+`perfgate-config` resolves the effective perfgate configuration by merging
+values from three sources in priority order:
 
-Each setting is resolved highest-priority-first; the first non-empty value wins:
+1. **CLI flags** (highest priority)
+2. **Environment variables** (`PERFGATE_SERVER_URL`, `PERFGATE_API_KEY`, `PERFGATE_PROJECT`)
+3. **Config file** (`perfgate.toml` or `perfgate.json`)
 
-| Setting  | CLI flag       | Env var                | File key (`perfgate.toml`)          |
-|----------|----------------|------------------------|-------------------------------------|
-| URL      | `--server-url` | `PERFGATE_SERVER_URL`  | `[baseline_server].url`             |
-| API key  | `--api-key`    | `PERFGATE_API_KEY`     | `[baseline_server].api_key`         |
-| Project  | `--project`    | `PERFGATE_PROJECT`     | `[baseline_server].project`         |
+The merged result is a `ResolvedServerConfig` that can create ready-to-use
+`BaselineClient` or `FallbackClient` instances for talking to the centralized
+Baseline Service.
 
-Config files are loaded from `perfgate.toml` (TOML) or `perfgate.json` (JSON).
-If the file does not exist, defaults are used silently.
+## Key API
 
-## Key types
+### Functions
 
-- `ResolvedServerConfig` -- merged settings with helpers to create a `BaselineClient` or `FallbackClient`
-- `load_config_file(path)` -- load a `ConfigFile` from TOML or JSON
-- `resolve_server_config(flag_url, flag_key, flag_project, file_config)` -- merge all sources
+- `load_config_file(path)` — reads a `perfgate.toml` or `perfgate.json` file
+  and deserializes it into a `ConfigFile`. Returns the default config if the
+  file does not exist.
+- `resolve_server_config(flag_url, flag_key, flag_project, file_config)` —
+  merges CLI flags with the `[baseline_server]` section of the config file,
+  producing a `ResolvedServerConfig`.
+
+### `ResolvedServerConfig`
+
+| Method | Description |
+|--------|-------------|
+| `is_configured()` | `true` when a server URL is present |
+| `create_client()` | builds a `BaselineClient` from the merged settings |
+| `create_fallback_client(dir)` | wraps the client in a `FallbackClient` that falls back to local storage |
+| `require_fallback_client(dir, msg)` | like above, but returns an error if the server is not configured |
+| `resolve_project(override)` | resolves the project name from the override, config, or returns an error |
 
 ## Example
 
 ```rust
-use perfgate_config::{load_config_file, resolve_server_config};
 use std::path::Path;
+use perfgate_config::{load_config_file, resolve_server_config};
 
-let file = load_config_file(Path::new("perfgate.toml")).unwrap();
-let cfg = resolve_server_config(
-    None,               // no CLI flag
-    None,               // no CLI flag
-    None,               // no CLI flag
-    &file.baseline_server,
+let config = load_config_file(Path::new("perfgate.toml"))?;
+let resolved = resolve_server_config(
+    Some("https://baselines.example.com".into()),
+    None,
+    None,
+    &config.baseline_server,
 );
 
-if cfg.is_configured() {
-    let client = cfg.create_client().unwrap();
+if resolved.is_configured() {
+    let client = resolved.create_client()?;
+    // use client to upload/download baselines...
 }
 ```
+
+## Workspace Role
+
+`perfgate-config` bridges configuration sources and the client library:
+
+`perfgate-types` + `perfgate-client` -> **`perfgate-config`** -> `perfgate-app` / `perfgate-cli`
 
 ## License
 
