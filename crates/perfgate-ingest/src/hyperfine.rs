@@ -74,10 +74,14 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
     }
 
     let mut stats = compute_u64_summary(&wall_values);
-    // Override with hyperfine's own statistics (more precise)
+    // Override with hyperfine's own statistics (more precise).
+    // median/min/max are u64 so integer seconds_to_ms() is fine.
     stats.median = seconds_to_ms(result.median);
     stats.min = seconds_to_ms(result.min);
     stats.max = seconds_to_ms(result.max);
+    // IMPORTANT: Use f64 arithmetic here, NOT seconds_to_ms(). See the
+    // GOTCHA on seconds_to_ms — integer truncation would lose sub-ms
+    // precision that budget evaluation and significance testing rely on.
     stats.mean = Some(result.mean * 1000.0);
     stats.stddev = Some(result.stddev * 1000.0);
 
@@ -98,6 +102,14 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
     Ok(make_receipt(&bench_name, samples, full_stats))
 }
 
+/// Integer seconds-to-ms conversion for sample `wall_ms` values (u64).
+///
+/// GOTCHA: This intentionally truncates to integer milliseconds -- it is only
+/// appropriate for per-sample u64 fields where sub-ms precision is not needed.
+/// For stats fields (mean, stddev) use direct `f64` arithmetic (`value * 1000.0`)
+/// to preserve sub-millisecond precision. Using this function for stats would
+/// silently destroy the fractional component that downstream budget evaluation
+/// and significance testing depend on.
 fn seconds_to_ms(s: f64) -> u64 {
     let ms = s * 1000.0;
     if ms < 1.0 && ms > 0.0 {

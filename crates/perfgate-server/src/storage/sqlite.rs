@@ -78,6 +78,11 @@ impl SqliteStore {
     fn configure_pragmas(conn: &rusqlite::Connection, is_memory: bool) -> Result<(), StoreError> {
         conn.execute_batch("PRAGMA busy_timeout=5000;")?;
 
+        // GOTCHA: In-memory SQLite databases cannot use WAL mode. Executing
+        // `PRAGMA journal_mode=WAL` on an in-memory DB silently succeeds but
+        // returns "memory" instead of "wal". You MUST check the returned
+        // string — a bare `execute_batch("PRAGMA journal_mode=WAL")` will
+        // appear to work but leave you without WAL's concurrency benefits.
         if !is_memory {
             let mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
             if mode.to_lowercase() != "wal" {
