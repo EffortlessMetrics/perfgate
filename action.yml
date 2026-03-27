@@ -114,18 +114,25 @@ runs:
         echo "URL: ${url}"
 
         tmpdir="$(mktemp -d)"
-        if curl -fsSL "${url}" -o "${tmpdir}/perfgate-archive"; then
+        ok=false
+        if curl -fsSL "${url}" -o "${tmpdir}/archive.${ext}"; then
           if [[ "${ext}" == "tar.gz" ]]; then
-            tar xzf "${tmpdir}/perfgate-archive" -C "${tmpdir}"
-            chmod +x "${tmpdir}/perfgate"
+            tar xzf "${tmpdir}/archive.${ext}" -C "${tmpdir}" && ok=true
           else
-            unzip -o "${tmpdir}/perfgate-archive" -d "${tmpdir}"
+            unzip -o "${tmpdir}/archive.${ext}" -d "${tmpdir}" && ok=true
           fi
+        fi
 
+        if [[ "${ok}" == "true" ]]; then
           # Install to a directory on PATH
           install_dir="${HOME}/.perfgate/bin"
           mkdir -p "${install_dir}"
-          cp "${tmpdir}/perfgate"* "${install_dir}/"
+          if [[ "${ext}" == "tar.gz" ]]; then
+            chmod +x "${tmpdir}/perfgate"
+            cp "${tmpdir}/perfgate" "${install_dir}/"
+          else
+            cp "${tmpdir}/perfgate.exe" "${install_dir}/"
+          fi
           echo "${install_dir}" >> "${GITHUB_PATH}"
 
           echo "installed=true" >> "${GITHUB_OUTPUT}"
