@@ -32,13 +32,13 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 ## Known Bugs
 
 - [#55](https://github.com/EffortlessMetrics/perfgate/issues/55) ~~Leftover DEBUG prints~~ — **Fixed** (committed)
-- [#56](https://github.com/EffortlessMetrics/perfgate/issues/56) CLI examples in docs use wrong flags for `paired`, `blame`, `bisect`
+- [#56](https://github.com/EffortlessMetrics/perfgate/issues/56) ~~CLI examples in docs use wrong flags~~ — **Fixed** (committed)
 
-## Doc/Flag Mismatches Found During Testing
+## Doc/Flag Mismatches Found During Testing (all fixed)
 
 ### `paired` command
-- Docs say `--threshold 0.20` — **doesn't exist**. Actual: `--fail-on-regression 20.0`
-- Docs omit required `--name` flag
+- Docs said `--threshold 0.20` — **fixed** to `--fail-on-regression 20.0`
+- Docs omitted required `--name` flag — **fixed**
 
 ### `blame` command
 - Docs say `--compare cmp.json` — **wrong**. Actual: `--baseline <Cargo.lock> --current <Cargo.lock>`

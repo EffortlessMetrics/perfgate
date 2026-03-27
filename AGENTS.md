@@ -73,12 +73,12 @@ cargo run -p perfgate -- promote --current out.json --to baselines/bench.json
 cargo run -p perfgate -- export --run out.json --format csv --out data.csv
 cargo run -p perfgate -- check --config perfgate.toml --bench my-bench
 cargo run -p perfgate -- check --config perfgate.toml --bench my-bench --mode cockpit
-cargo run -p perfgate -- paired --baseline-cmd "echo baseline" --current-cmd "echo current" --repeat 10 --out cmp.json
+cargo run -p perfgate -- paired --name my-bench --baseline-cmd "echo baseline" --current-cmd "echo current" --repeat 10 --out cmp.json
 cargo run -p perfgate -- baseline list --project my-project
 cargo run -p perfgate -- summary cmp.json
 cargo run -p perfgate -- aggregate run1.json run2.json --out aggregated.json
-cargo run -p perfgate -- bisect --good abc123 --bad HEAD --bench my-bench --config perfgate.toml
-cargo run -p perfgate -- blame --compare cmp.json
+cargo run -p perfgate -- bisect --good abc123 --bad HEAD --executable ./target/release/my-bench
+cargo run -p perfgate -- blame --baseline old-Cargo.lock --current Cargo.lock
 cargo run -p perfgate -- explain --compare cmp.json
 ```
 

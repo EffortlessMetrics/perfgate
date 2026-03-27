@@ -14,10 +14,11 @@ back-to-back to minimize variance from system load fluctuations.
 
 ```bash
 perfgate paired \
+  --name my-bench \
   --baseline-cmd "sleep 0.01" \
   --current-cmd "sleep 0.02" \
   --repeat 10 \
-  --threshold 0.20 \
+  --fail-on-regression 20.0 \
   --out artifacts/perfgate/compare.json
 ```
 
@@ -31,6 +32,7 @@ not reached:
 
 ```bash
 perfgate paired \
+  --name my-bench \
   --baseline-cmd "./bench-old" \
   --current-cmd "./bench-new" \
   --repeat 10 \
