@@ -1,40 +1,45 @@
 # perfgate-validation
 
-Validation functions for benchmark names and configuration.
+Schema validation and contract testing for benchmark names in perfgate.
 
 Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
-## Overview
+## Problem
 
-This crate re-exports bench-name validation logic from `perfgate-error` and
-provides a focused entry point for validating benchmark names against strict
-naming rules.
+Benchmark names appear in file paths, JSON keys, and REST URLs. A bad name
+(path traversal, illegal characters, excessive length) can break storage,
+confuse queries, or open security holes. This crate provides a single
+validation entry point that enforces strict naming rules everywhere.
 
 ## Naming Rules
 
-- Lowercase alphanumeric, dots, underscores, hyphens, slashes only
-- Maximum 64 characters
-- No empty path segments (leading/trailing/consecutive slashes)
-- No path traversal (`.` or `..` segments)
+1. Must not be empty.
+2. Maximum 64 characters (`BENCH_NAME_MAX_LEN`).
+3. Lowercase ASCII letters, digits, `_`, `.`, `-`, `/` only (`BENCH_NAME_PATTERN`).
+4. No empty path segments -- leading, trailing, or consecutive `/` forbidden.
+5. No `.` or `..` segments -- path traversal forbidden.
 
 ## Key API
 
-- `validate_bench_name(name)` — validate a bench name, returns `Result<(), ValidationError>`
-- `ValidationError` — error enum (Empty, TooLong, InvalidCharacters, EmptySegment, PathTraversal)
-- `BENCH_NAME_MAX_LEN` — maximum allowed length (64)
-- `BENCH_NAME_PATTERN` — regex pattern for valid names
+- `validate_bench_name(name)` -- returns `Ok(())` or a `ValidationError`
+- `ValidationError` -- enum: `Empty`, `TooLong`, `InvalidCharacters`, `EmptySegment`, `PathTraversal`
+- `BENCH_NAME_MAX_LEN` -- `64`
+- `BENCH_NAME_PATTERN` -- `^[a-z0-9_.\-/]+$`
+
+All types are re-exported from `perfgate-error` for a focused, dependency-light
+entry point.
 
 ## Example
 
 ```rust
 use perfgate_validation::{validate_bench_name, ValidationError};
 
-assert!(validate_bench_name("my-bench").is_ok());
+assert!(validate_bench_name("ci/build-time").is_ok());
 assert!(validate_bench_name("path/to/bench.v2").is_ok());
 
 assert!(matches!(validate_bench_name(""), Err(ValidationError::Empty)));
-assert!(validate_bench_name("MyBench").is_err());   // uppercase
-assert!(validate_bench_name("../bench").is_err());   // path traversal
+assert!(matches!(validate_bench_name("MyBench"), Err(ValidationError::InvalidCharacters { .. })));
+assert!(matches!(validate_bench_name("../escape"), Err(ValidationError::PathTraversal { .. })));
 ```
 
 ## License
