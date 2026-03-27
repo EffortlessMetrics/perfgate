@@ -1,34 +1,51 @@
 # perfgate-adapters
 
-Infrastructure adapters for process execution and host probing.
+Platform-specific process execution and metric collection for the
+[perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
-## Responsibilities
+Every other crate in the workspace is platform-agnostic. `perfgate-adapters`
+is the single place where OS APIs, `libc`, and `std::process` are used --
+keeping the rest of the codebase testable and portable.
 
-- Runs benchmark commands through `StdProcessRunner` and `ProcessRunner`.
-- Captures wall-clock timing, exit code, timeout status, and capped stdout/stderr.
-- Collects process metrics when available:
-  - Unix: `cpu_ms`, `max_rss_kb`, `page_faults`, `ctx_switches` (via `wait4`/`rusage`)
-  - Windows: best-effort `cpu_ms` and `max_rss_kb`
-- Probes host info via `StdHostProbe` (`os`, `arch`, CPU count, memory, optional hostname hash).
-- Provides `FakeProcessRunner` for deterministic tests.
+## Platform support
 
-## Platform Notes
+| Capability | Unix | Windows | Other |
+|---|---|---|---|
+| Process execution | `wait4` + `WNOHANG` polling | `WaitForSingleObject` | `std::process::Command` |
+| Timeout / kill | SIGKILL after deadline | `WaitForSingleObject` + kill | not supported |
+| CPU time (`cpu_ms`) | `rusage` (user + system) | -- | -- |
+| Peak RSS (`max_rss_kb`) | `rusage.ru_maxrss` | `GetProcessMemoryInfo` | -- |
+| Page faults | `rusage.ru_majflt` | -- | -- |
+| Context switches | `rusage` (vol + invol) | -- | -- |
+| I/O bytes | -- | `GetProcessIoCounters` | -- |
+| Memory detection | `/proc/meminfo`, `sysctl` | `GlobalMemoryStatusEx` | -- |
+| Hostname hash | SHA-256 | SHA-256 | SHA-256 |
 
-- Unix supports command timeouts.
-- Windows currently returns `AdapterError::TimeoutUnsupported` if timeout is requested.
-- Other platforms run without timeout support and with limited metrics.
+> **RSS unit quirk:** Linux reports `ru_maxrss` in KB; macOS reports bytes
+> (divided by 1024 internally).
 
-## Boundaries
+## Key types
 
-- No policy or threshold logic.
-- No markdown/report rendering.
-- No CLI argument parsing.
+| Type | Role |
+|---|---|
+| `CommandSpec` | Describes a command: argv, cwd, env, timeout, output cap |
+| `RunResult` | Execution output: wall_ms, exit_code, cpu_ms, max_rss_kb, stdout/stderr, ... |
+| `AdapterError` | Typed errors: `EmptyArgv`, `Timeout`, `RunCommand`, `Other` |
+| `ProcessRunner` (trait) | Abstracts process execution for dependency injection |
+| `HostProbe` (trait) | Collects OS, arch, CPU count, memory, optional hostname hash |
+| `FakeProcessRunner` | Deterministic test double for `ProcessRunner` |
 
-## Workspace Role
+## Design
 
-`perfgate-adapters` is the "touch the world" layer used by application use-cases:
+- **Traits enable testing** -- `ProcessRunner` and `HostProbe` are trait objects
+  so the app layer can inject fakes without spawning real processes.
+- **Output capping** -- stdout/stderr are truncated to `output_cap_bytes` (default 8 KB).
+- **No policy logic** -- this crate only collects data; thresholds and verdicts
+  live in `perfgate-budget` and `perfgate-domain`.
 
-`perfgate-types` + `perfgate-domain` + `perfgate-adapters` -> `perfgate-app`
+```text
+perfgate-types + perfgate-domain + perfgate-adapters --> perfgate-app
+```
 
 ## License
 
