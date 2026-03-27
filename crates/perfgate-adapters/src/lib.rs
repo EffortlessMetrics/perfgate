@@ -445,24 +445,7 @@ trait CommandTimeoutExt {
     ) -> std::io::Result<Option<std::process::ExitStatus>>;
 }
 
-#[cfg(windows)]
-impl CommandTimeoutExt for std::process::Child {
-    fn wait_timeout(
-        &mut self,
-        timeout: Duration,
-    ) -> std::io::Result<Option<std::process::ExitStatus>> {
-        let start = Instant::now();
-        while start.elapsed() < timeout {
-            if let Some(status) = self.try_wait()? {
-                return Ok(Some(status));
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        Ok(None)
-    }
-}
-
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl CommandTimeoutExt for std::process::Child {
     fn wait_timeout(
         &mut self,
