@@ -17,6 +17,7 @@ pub mod comparison_logic;
 mod diff;
 pub mod discover;
 mod explain;
+pub mod init;
 mod paired;
 mod promote;
 mod report;
