@@ -1,2 +1,12 @@
 Generating trend variance summary...
-No trend data found in artifacts/trends
+
+## Weekly Variance Summary
+
+| Benchmark | Samples | Mean (ms) | StdDev | CV (%) | Rec. Threshold |
+|-----------|---------|-----------|--------|--------|----------------|
+| cli/check-no-baseline | 1 | 7.00 | N/A | N/A | N/A |
+| cli/check-single | 1 | 7.00 | N/A | N/A | N/A |
+| cli/compare-large | 1 | 7.00 | N/A | N/A | N/A |
+| cli/compare-small | 1 | 7.00 | N/A | N/A | N/A |
+| render/md | 1 | 6.00 | N/A | N/A | N/A |
+| render/report | 1 | 6.00 | N/A | N/A | N/A |
