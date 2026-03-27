@@ -45,6 +45,7 @@
 //! | GET | `/metrics` | Prometheus metrics |
 
 pub mod auth;
+pub mod cleanup;
 pub mod error;
 pub mod handlers;
 pub mod metrics;

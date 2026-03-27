@@ -22,6 +22,18 @@ use crate::models::{
     PoolMetrics, VerdictRecord,
 };
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+
+/// Metadata for a stored artifact object.
+#[derive(Debug, Clone)]
+pub struct ArtifactMeta {
+    /// Object path/key.
+    pub path: String,
+    /// Last-modified timestamp (if available from the backend).
+    pub last_modified: DateTime<Utc>,
+    /// Size in bytes.
+    pub size: u64,
+}
 
 /// Trait for storing raw artifacts (receipts).
 #[async_trait]
@@ -34,6 +46,9 @@ pub trait ArtifactStore: std::fmt::Debug + Send + Sync {
 
     /// Deletes an artifact from the given path.
     async fn delete(&self, path: &str) -> Result<(), StoreError>;
+
+    /// Lists all objects under the given prefix, returning their metadata.
+    async fn list(&self, prefix: Option<&str>) -> Result<Vec<ArtifactMeta>, StoreError>;
 }
 
 /// Trait for baseline storage operations.
