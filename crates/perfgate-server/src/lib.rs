@@ -40,6 +40,7 @@
 //! | GET | `/projects/{project}/baselines` | List baselines |
 //! | DELETE | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
 //! | POST | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
+//! | GET | `/audit` | List audit events (admin only) |
 //! | GET | `/health` | Health check |
 //! | GET | `/metrics` | Prometheus metrics |
 
@@ -59,8 +60,8 @@ pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
 pub use oidc::{OidcConfig, OidcProvider};
-pub use server::{PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
-pub use storage::{BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
+pub use server::{AppState, PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
+pub use storage::{AuditStore, BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
 
 /// Server version string.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

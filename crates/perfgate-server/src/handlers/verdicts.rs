@@ -6,21 +6,20 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::auth::{AuthContext, Scope, check_scope};
 use crate::models::{
-    ApiError, ListVerdictsQuery, SubmitVerdictRequest, VERDICT_SCHEMA_V1, VerdictRecord,
-    generate_ulid,
+    ApiError, AuditAction, AuditEvent, AuditResourceType, ListVerdictsQuery, SubmitVerdictRequest,
+    VERDICT_SCHEMA_V1, VerdictRecord, generate_ulid,
 };
-use crate::storage::BaselineStore;
+use crate::server::AppState;
 
 /// Submit a new benchmark verdict.
 pub async fn submit_verdict(
     Path(project): Path<String>,
     Extension(auth_ctx): Extension<AuthContext>,
-    State(store): State<Arc<dyn BaselineStore>>,
+    State(state): State<AppState>,
     Json(request): Json<SubmitVerdictRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     check_scope(
@@ -54,7 +53,7 @@ pub async fn submit_verdict(
         created_at: chrono::Utc::now(),
     };
 
-    match store.create_verdict(&record).await {
+    match state.store.create_verdict(&record).await {
         Ok(_) => {
             info!(
                 project = %project,
@@ -62,6 +61,24 @@ pub async fn submit_verdict(
                 status = ?record.status,
                 "Verdict submitted"
             );
+
+            let audit_event = AuditEvent {
+                id: generate_ulid(),
+                timestamp: chrono::Utc::now(),
+                actor: auth_ctx.api_key.id.clone(),
+                action: AuditAction::Create,
+                resource_type: AuditResourceType::Verdict,
+                resource_id: record.id.clone(),
+                project: project.clone(),
+                metadata: serde_json::json!({
+                    "benchmark": record.benchmark,
+                    "status": format!("{:?}", record.status).to_lowercase(),
+                }),
+            };
+            if let Err(e) = state.audit.log_event(&audit_event).await {
+                warn!(error = %e, "Failed to log audit event");
+            }
+
             Ok((StatusCode::CREATED, Json(record)))
         }
         Err(e) => {
@@ -78,12 +95,12 @@ pub async fn submit_verdict(
 pub async fn list_verdicts(
     Path(project): Path<String>,
     Extension(auth_ctx): Extension<AuthContext>,
-    State(store): State<Arc<dyn BaselineStore>>,
+    State(state): State<AppState>,
     Query(query): Query<ListVerdictsQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     check_scope(Some(&auth_ctx), &project, None, Scope::Read)?;
 
-    match store.list_verdicts(&project, &query).await {
+    match state.store.list_verdicts(&project, &query).await {
         Ok(response) => Ok(Json(response)),
         Err(e) => {
             error!(error = %e, "Failed to list verdicts");

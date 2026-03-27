@@ -28,6 +28,9 @@ pub const PROJECT_SCHEMA_V1: &str = "perfgate.project.v1";
 /// Schema identifier for verdict records.
 pub const VERDICT_SCHEMA_V1: &str = "perfgate.verdict.v1";
 
+/// Schema identifier for audit event records.
+pub const AUDIT_SCHEMA_V1: &str = "perfgate.audit.v1";
+
 /// Source of baseline creation.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -491,6 +494,153 @@ pub struct DeleteBaselineResponse {
     pub benchmark: String,
     pub version: String,
     pub deleted_at: DateTime<Utc>,
+}
+
+// =========================================================================
+// Audit logging types
+// =========================================================================
+
+/// The action that was performed in an audit event.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditAction {
+    /// A resource was created (e.g., baseline upload)
+    Create,
+    /// A resource was updated
+    Update,
+    /// A resource was deleted (soft or hard)
+    Delete,
+    /// A baseline was promoted
+    Promote,
+}
+
+impl std::fmt::Display for AuditAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuditAction::Create => write!(f, "create"),
+            AuditAction::Update => write!(f, "update"),
+            AuditAction::Delete => write!(f, "delete"),
+            AuditAction::Promote => write!(f, "promote"),
+        }
+    }
+}
+
+impl std::str::FromStr for AuditAction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "create" => Ok(AuditAction::Create),
+            "update" => Ok(AuditAction::Update),
+            "delete" => Ok(AuditAction::Delete),
+            "promote" => Ok(AuditAction::Promote),
+            other => Err(format!("Unknown audit action: {}", other)),
+        }
+    }
+}
+
+/// The type of resource affected by an audit event.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditResourceType {
+    /// A baseline record
+    Baseline,
+    /// An API key
+    Key,
+    /// A verdict record
+    Verdict,
+}
+
+impl std::fmt::Display for AuditResourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuditResourceType::Baseline => write!(f, "baseline"),
+            AuditResourceType::Key => write!(f, "key"),
+            AuditResourceType::Verdict => write!(f, "verdict"),
+        }
+    }
+}
+
+impl std::str::FromStr for AuditResourceType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "baseline" => Ok(AuditResourceType::Baseline),
+            "key" => Ok(AuditResourceType::Key),
+            "verdict" => Ok(AuditResourceType::Verdict),
+            other => Err(format!("Unknown resource type: {}", other)),
+        }
+    }
+}
+
+/// An append-only audit event for tracking mutations and admin actions.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct AuditEvent {
+    /// Unique event identifier
+    pub id: String,
+    /// Timestamp of the event (RFC 3339)
+    pub timestamp: DateTime<Utc>,
+    /// Actor identity (API key ID or OIDC subject)
+    pub actor: String,
+    /// The action performed
+    pub action: AuditAction,
+    /// Type of resource affected
+    pub resource_type: AuditResourceType,
+    /// Identifier for the affected resource
+    pub resource_id: String,
+    /// Project scope
+    pub project: String,
+    /// Additional structured metadata (endpoint-specific details)
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+/// Query parameters for listing audit events.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListAuditEventsQuery {
+    /// Filter by project
+    pub project: Option<String>,
+    /// Filter by action
+    pub action: Option<String>,
+    /// Filter by resource type
+    pub resource_type: Option<String>,
+    /// Filter by actor
+    pub actor: Option<String>,
+    /// Filter by events after this time
+    pub since: Option<DateTime<Utc>>,
+    /// Filter by events before this time
+    pub until: Option<DateTime<Utc>>,
+    /// Pagination limit
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    /// Pagination offset
+    #[serde(default)]
+    pub offset: u64,
+}
+
+impl Default for ListAuditEventsQuery {
+    fn default() -> Self {
+        Self {
+            project: None,
+            action: None,
+            resource_type: None,
+            actor: None,
+            since: None,
+            until: None,
+            limit: default_limit(),
+            offset: 0,
+        }
+    }
+}
+
+/// Response for audit event list operation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListAuditEventsResponse {
+    /// The audit events matching the query
+    pub events: Vec<AuditEvent>,
+    /// Pagination metadata
+    pub pagination: PaginationInfo,
 }
 
 /// Health status of a storage backend.
