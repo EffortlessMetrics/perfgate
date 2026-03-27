@@ -10,6 +10,7 @@ mod aggregate;
 pub mod baseline_resolve;
 pub mod bisect;
 pub mod blame;
+pub mod cargo_bench;
 mod check;
 pub mod comparison_logic;
 mod explain;
