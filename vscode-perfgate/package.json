@@ -1,0 +1,218 @@
+{
+  "name": "perfgate",
+  "displayName": "perfgate - Performance Budgets",
+  "description": "Performance regression detection and budget management for CI. Provides perfgate.toml support, inline diagnostics, and CLI integration.",
+  "version": "0.1.0",
+  "publisher": "effortlessmetrics",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EffortlessMetrics/perfgate"
+  },
+  "homepage": "https://github.com/EffortlessMetrics/perfgate/tree/main/vscode-perfgate",
+  "bugs": {
+    "url": "https://github.com/EffortlessMetrics/perfgate/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Testing",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "performance",
+    "benchmarking",
+    "regression",
+    "budget",
+    "ci",
+    "toml"
+  ],
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "workspaceContains:perfgate.toml",
+    "workspaceContains:**/perfgate.toml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "perfgate-toml",
+        "aliases": [
+          "perfgate.toml"
+        ],
+        "filenames": [
+          "perfgate.toml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "perfgate-toml",
+        "scopeName": "source.toml.perfgate",
+        "path": "./syntaxes/perfgate-toml.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "perfgate-toml",
+        "path": "./snippets/perfgate-toml.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "perfgate.check",
+        "title": "perfgate: Run Check",
+        "icon": "$(testing-run-icon)"
+      },
+      {
+        "command": "perfgate.run",
+        "title": "perfgate: Run Benchmark"
+      },
+      {
+        "command": "perfgate.compare",
+        "title": "perfgate: Compare Results"
+      },
+      {
+        "command": "perfgate.viewReport",
+        "title": "perfgate: View Last Report"
+      },
+      {
+        "command": "perfgate.openDashboard",
+        "title": "perfgate: Open Dashboard"
+      },
+      {
+        "command": "perfgate.pickBench",
+        "title": "perfgate: Select Benchmark"
+      }
+    ],
+    "configuration": {
+      "title": "perfgate",
+      "properties": {
+        "perfgate.binaryPath": {
+          "type": "string",
+          "default": "perfgate",
+          "description": "Path to the perfgate CLI binary. Use an absolute path or a command on $PATH."
+        },
+        "perfgate.configPath": {
+          "type": "string",
+          "default": "perfgate.toml",
+          "description": "Path to the perfgate configuration file, relative to the workspace root."
+        },
+        "perfgate.serverUrl": {
+          "type": "string",
+          "default": "",
+          "description": "URL of the perfgate Baseline Service (e.g., http://localhost:3000/api/v1)."
+        },
+        "perfgate.autoRefreshDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh diagnostics when perfgate output files change."
+        },
+        "perfgate.artifactDir": {
+          "type": "string",
+          "default": "artifacts/perfgate",
+          "description": "Directory where perfgate writes output artifacts."
+        }
+      }
+    },
+    "taskDefinitions": [
+      {
+        "type": "perfgate",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The perfgate task to run: check, run, or compare."
+          },
+          "bench": {
+            "type": "string",
+            "description": "The benchmark name to operate on."
+          },
+          "config": {
+            "type": "string",
+            "description": "Path to perfgate.toml config file."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "cockpit"
+            ],
+            "description": "Execution mode: standard or cockpit."
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "perfgate",
+        "owner": "perfgate",
+        "fileLocation": "absolute",
+        "pattern": [
+          {
+            "regexp": "^::(error|warning)::perfgate\\s+(\\S+)\\s+(\\S+):\\s+(.+)$",
+            "severity": 1,
+            "code": 3,
+            "message": 4
+          }
+        ]
+      },
+      {
+        "name": "perfgate-check",
+        "owner": "perfgate",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
+        "severity": "error",
+        "pattern": [
+          {
+            "regexp": "^error:\\s+bench\\s+'([^']+)':\\s+(.+)$",
+            "code": 1,
+            "message": 2
+          }
+        ]
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": [
+          "**/perfgate.run.v1.json",
+          "**/run.json"
+        ],
+        "url": "./schemas/run.v1.schema.json"
+      },
+      {
+        "fileMatch": [
+          "**/perfgate.compare.v1.json",
+          "**/compare.json"
+        ],
+        "url": "./schemas/compare.v1.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "npx @vscode/vsce package",
+    "publish": "npx @vscode/vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0"
+  }
+}

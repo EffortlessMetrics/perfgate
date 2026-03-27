@@ -2,6 +2,8 @@
 //!
 //! This crate provides functions for rendering performance comparison results
 //! as markdown tables and GitHub Actions annotations.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 use anyhow::Context;
 use perfgate_types::{CompareReceipt, Direction, Metric, MetricStatistic, MetricStatus};

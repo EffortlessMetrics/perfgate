@@ -42,7 +42,9 @@ Traits and implementations for running processes and collecting system informati
 | Process execution | `wait4()` with `WNOHANG` polling | `std::process::Command::output()` |
 | Timeout | SIGKILL after deadline | `child.kill()` after deadline |
 | CPU time (`cpu_ms`) | `rusage.ru_utime + ru_stime` | `None` |
-| RSS (`max_rss_kb`) | `rusage.ru_maxrss` | `None` |
+| RSS (`max_rss_kb`) | `rusage.ru_maxrss` | `GetProcessMemoryInfo` (`PeakWorkingSetSize`) |
+| Page faults (`page_faults`) | `rusage.ru_majflt` (major only) | `GetProcessMemoryInfo` (`PageFaultCount`) |
+| Context switches (`ctx_switches`) | `rusage.ru_nvcsw + ru_nivcsw` | `None` (no Windows API equivalent) |
 | Memory detection | `/proc/meminfo` (Linux), `sysctl` (macOS) | `GlobalMemoryStatusEx` |
 | Hostname hash | SHA-256 of hostname | SHA-256 of hostname |
 

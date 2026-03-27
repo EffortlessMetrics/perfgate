@@ -87,6 +87,20 @@ Mutation testing kill rate targets:
 
 See [docs/MUTATION_TESTING.md](docs/MUTATION_TESTING.md) for details.
 
+## Pre-Merge Review Checklist
+
+Before approving any PR, run through the
+[Review Checklist](docs/REVIEW_CHECKLIST.md). It covers recurring bugs found
+during PR reviews, organized by category:
+
+- **Platform & CI** — SQLite WAL on in-memory DBs, Windows PDB locks, Bitbucket
+  artifact collection, CircleCI env var interpolation
+- **Precision & Math** — nanosecond conversion truncation, floor clamping
+- **Security** — XSS in HTML exports and dashboards
+- **Code Quality** — platform code duplication, serde field name mismatches
+
+Each item includes the wrong vs. right pattern with code examples.
+
 ## Fuzzing
 
 Requires nightly. See `fuzz/README.md`.

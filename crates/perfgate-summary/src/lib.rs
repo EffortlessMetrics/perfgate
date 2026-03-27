@@ -1,4 +1,23 @@
 //! Summarization logic for perfgate comparison receipts.
+//!
+//! Aggregates multiple comparison receipts into a compact summary table showing
+//! benchmark name, verdict status, wall-clock time, and percentage change.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use perfgate_summary::{SummaryRequest, SummaryUseCase};
+//!
+//! let uc = SummaryUseCase;
+//! let outcome = uc.execute(SummaryRequest {
+//!     files: vec!["artifacts/perfgate/*.compare.json".to_string()],
+//! }).unwrap();
+//! for row in &outcome.rows {
+//!     println!("{}: {} ({})", row.benchmark, row.status, row.change_pct);
+//! }
+//! ```
 
 use anyhow::Context;
 use glob::glob;

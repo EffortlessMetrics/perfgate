@@ -16,7 +16,7 @@ pub use sqlite::SqliteStore;
 use crate::error::StoreError;
 use crate::models::{
     BaselineRecord, BaselineVersion, ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery,
-    ListVerdictsResponse, VerdictRecord,
+    ListVerdictsResponse, PoolMetrics, VerdictRecord,
 };
 use async_trait::async_trait;
 
@@ -95,6 +95,14 @@ pub trait BaselineStore: Send + Sync {
 
     /// Returns the backend type name.
     fn backend_type(&self) -> &'static str;
+
+    /// Returns connection pool metrics, if the backend uses a pool.
+    ///
+    /// The default implementation returns `None`, which is appropriate for
+    /// backends without a connection pool (e.g., in-memory or SQLite).
+    fn pool_metrics(&self) -> Option<PoolMetrics> {
+        None
+    }
 
     /// Stores a new verdict record.
     async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError>;

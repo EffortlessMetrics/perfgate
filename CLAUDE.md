@@ -192,3 +192,13 @@ contracts/schemas/
 - On other platforms, timeouts return `AdapterError::TimeoutUnsupported`
 - `max_rss_kb` collection only works on Unix via `rusage`
 - BDD tests skip `@unix` tagged scenarios on Windows
+- Windows parallel builds hit PDB lock contention (`fatal error C1041`); use `-j4` or stagger builds
+- SQLite in-memory databases silently reject `PRAGMA journal_mode=WAL` (returns `"memory"`); always verify the return value with `query_row`
+- `execute_batch` discards PRAGMA return values; use `query_row` for PRAGMAs that need verification
+- Nanosecond-to-millisecond conversion for float fields must use `ns as f64 / 1_000_000.0`, not integer division then cast
+- User-controlled strings (bench names, verdicts) must be HTML-escaped before DOM insertion in exports and dashboards
+- Chart.js cannot resolve CSS `var()` custom properties; use hardcoded hex colors
+- When `#[cfg(unix)]` and `#[cfg(windows)]` blocks are identical, unify with `#[cfg(any(unix, windows))]`
+- JS consumers must verify field names against actual serde JSON output, not Rust struct names (serde rename can differ)
+
+See [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md) for the full pre-merge checklist with code examples.

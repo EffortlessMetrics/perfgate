@@ -1,7 +1,10 @@
 //! Application layer for perfgate.
 //!
-//! The app layer coordinates adapters and domain logic.
+//! The app layer coordinates adapters and domain logic into use-case workflows
+//! such as run, compare, report, check, export, paired, and promote.
 //! It does not parse CLI flags and it does not do filesystem I/O.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 mod aggregate;
 pub mod baseline_resolve;
