@@ -67,9 +67,9 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Architectural Components (25-Crate Workspace)
+## Architectural Components (26-Crate Workspace)
 
-The perfgate architecture is modularized into 25 specialized crates:
+The perfgate architecture is modularized into 26 workspace crates:
 
 | Crate | Responsibility |
 |-------|----------------|

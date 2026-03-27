@@ -2,7 +2,7 @@
 
 Paired benchmarking statistics for A/B comparison.
 
-Part of the [perfgate](https://github.com/nicholasgasior/perfgate) workspace.
+Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 ## Overview
 

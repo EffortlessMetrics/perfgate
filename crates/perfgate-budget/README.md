@@ -2,7 +2,7 @@
 
 Budget evaluation logic for performance thresholds.
 
-Part of the [perfgate](https://github.com/nicholasgasior/perfgate) workspace.
+Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 ## Overview
 

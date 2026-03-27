@@ -46,7 +46,7 @@ jobs:
 
       - name: Run perfgate
         id: perfgate
-        uses: EffortlessMetrics/perfgate@v2
+        uses: EffortlessMetrics/perfgate@main
         with:
           config: perfgate.toml
           all: "true"

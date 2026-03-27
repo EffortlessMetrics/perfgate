@@ -98,7 +98,7 @@ The format is `role:key` where:
 Set environment variables to configure the perfgate CLI:
 
 ```bash
-export PERFGATE_BASELINE_SERVER=http://localhost:8080
+export PERFGATE_SERVER_URL=http://localhost:8080
 export PERFGATE_API_KEY=pg_live_abc123def456...
 export PERFGATE_PROJECT=my-project
 ```
@@ -216,7 +216,7 @@ perfgate-server \
 ```yaml
 # GitHub Actions
 env:
-  PERFGATE_BASELINE_SERVER: https://perfgate.example.com
+  PERFGATE_SERVER_URL: https://perfgate.example.com
   PERFGATE_API_KEY: ${{ secrets.PERFGATE_VIEWER_KEY }}
   PERFGATE_PROJECT: my-project
 ```
@@ -226,7 +226,7 @@ env:
 ```yaml
 # GitHub Actions (on push to main)
 env:
-  PERFGATE_BASELINE_SERVER: https://perfgate.example.com
+  PERFGATE_SERVER_URL: https://perfgate.example.com
   PERFGATE_API_KEY: ${{ secrets.PERFGATE_PROMOTER_KEY }}
   PERFGATE_PROJECT: my-project
 ```

@@ -2,7 +2,7 @@
 
 Sensor report building for cockpit integration.
 
-Part of the [perfgate](https://github.com/nicholasgasior/perfgate) workspace.
+Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 ## Overview
 

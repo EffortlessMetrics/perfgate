@@ -60,7 +60,7 @@ Significant architectural changes are documented in [ADRs](../adrs/). See:
 
 ## Crate Boundaries
 
-perfgate follows a highly modular micro-crate architecture with strictly layered dependencies. The workspace is split into 19 crates to enforce boundaries and improve build times.
+perfgate follows a highly modular micro-crate architecture with strictly layered dependencies. The workspace is split into 26 crates to enforce boundaries and improve build times.
 
 ### Component Layers
 

@@ -5,42 +5,32 @@
 #
 # Usage:
 #   include:
-#     - remote: 'https://raw.githubusercontent.com/effortlesssteven/perfgate/main/gitlab-ci/perfgate.yml'
+#     - remote: 'https://raw.githubusercontent.com/EffortlessMetrics/perfgate/main/gitlab-ci/perfgate.yml'
 #
 #   perfgate-check:
 #     extends: .perfgate-check
 #     variables:
-#       PERFGATE_PROJECT: "my-project"
-#       PERFGATE_SERVER_URL: "https://perfgate.example.com"
-#       PERFGATE_API_KEY: $PERFGATE_CI_KEY
+#       PERFGATE_CONFIG: "perfgate.toml"
 
 .perfgate-check:
   image: rust:latest
   stage: test
   variables:
-    PERFGATE_VERSION: "v0.11.0"
+    PERFGATE_CONFIG: "perfgate.toml"
     PERFGATE_ARTIFACTS_DIR: "artifacts/perfgate"
   before_script:
     - |
       if ! command -v perfgate &> /dev/null; then
-        echo "Installing perfgate ${PERFGATE_VERSION}..."
-        cargo install perfgate --version ${PERFGATE_VERSION} || true
+        echo "Installing perfgate..."
+        cargo install --path crates/perfgate-cli 2>/dev/null || cargo install perfgate
       fi
   script:
     - mkdir -p ${PERFGATE_ARTIFACTS_DIR}
-    - |
-      perfgate check \
-        --project "${PERFGATE_PROJECT}" \
-        --server "${PERFGATE_SERVER_URL}" \
-        --api-key "${PERFGATE_API_KEY}" \
-        --output-json "${PERFGATE_ARTIFACTS_DIR}/report.json" \
-        --output-md "${PERFGATE_ARTIFACTS_DIR}/report.md"
+    - perfgate check --config ${PERFGATE_CONFIG} --all
   artifacts:
     when: always
     paths:
       - ${PERFGATE_ARTIFACTS_DIR}/
-    reports:
-      metrics: ${PERFGATE_ARTIFACTS_DIR}/report.json
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
