@@ -135,7 +135,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             }
 
             // Adaptive sample sizing: each retry collects more pairs (1.5x growth)
-            // Retry 1: 1 pair, Retry 2: 2 pairs, Retry 3: 3 pairs, ...
+            // Retry 1: 2 pairs, Retry 2: 3 pairs, Retry 3: 5 pairs, ...
             let extra_pairs = ((retries_done as f64 + 1.0) * 1.5).ceil() as u32;
             retries_done += 1;
 
