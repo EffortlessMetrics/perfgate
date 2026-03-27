@@ -39,10 +39,12 @@
 //! | DELETE | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
 //! | POST | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
 //! | GET | `/health` | Health check |
+//! | GET | `/metrics` | Prometheus metrics |
 
 pub mod auth;
 pub mod error;
 pub mod handlers;
+pub mod metrics;
 pub mod models;
 pub mod oidc;
 pub mod server;
