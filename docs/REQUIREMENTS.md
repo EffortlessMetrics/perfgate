@@ -26,7 +26,12 @@ CLI surface stability: the following commands are considered stable and MUST rem
 - `promote`
 - `export`
 - `paired`
-- `baseline` (Added in v2.0)
+- `baseline`
+- `summary`
+- `aggregate`
+- `bisect`
+- `blame`
+- `explain`
 
 ## Commands
 
@@ -214,21 +219,70 @@ Paired benchmarking with interleaved baseline/current runs.
 - MUST measure each pair back-to-back to minimize environmental variance
 - Output MUST conform to `perfgate.compare.v1` schema
 
-### baseline (New in v2.0)
+### baseline
 
 Dedicated baseline management commands for the Centralized Baseline Service.
 
 **Subcommands:**
-- `list`: List baselines for a project with optional filters (tags, git ref)
+- `list`: List baselines for a project with optional filters
 - `download`: Download a specific baseline version to a local file
-- `upload`: Manually upload a run receipt as a baseline
+- `upload`: Upload a run receipt as a baseline
 - `delete`: Delete a specific baseline version
 - `history`: View version history for a benchmark
-- `rollback`: Revert a benchmark to a previous version
+- `verdicts`: Show execution verdict history
+- `submit-verdict`: Submit a benchmark verdict to the server
+- `migrate`: Bulk migrate local baselines to the server
 
 **Behavior:**
-- MUST interact with the server defined in `perfgate.toml` or via environment variables
-- MUST support authentication via API Key or JWT
+- MUST interact with the server defined via `--baseline-server` flag or `PERFGATE_SERVER_URL` env var
+- MUST support authentication via API Key (`--api-key` or `PERFGATE_API_KEY`)
+
+### summary
+
+Summarize one or more compare receipts in a terminal table.
+
+**Behavior:**
+- MUST accept one or more file paths or glob patterns as positional arguments
+- MUST output a table with benchmark name, status, wall time, and change percentage
+- Exit code follows standard convention (0 for all pass, 1 for errors)
+
+### aggregate
+
+Merge multiple run receipts (e.g., from a fleet of runners) into a single run receipt.
+
+**Behavior:**
+- MUST accept one or more file paths as positional arguments
+- MUST produce a valid `perfgate.run.v1` receipt with merged samples
+- MUST write output to `--out` path
+
+### bisect
+
+Automatically find the commit that introduced a performance regression using `git bisect`.
+
+**Behavior:**
+- MUST accept `--good` (known-good commit) and `--executable` (benchmark binary path)
+- MUST accept optional `--bad` (defaults to HEAD)
+- MUST use `perfgate paired` internally to determine good/bad status at each bisect step
+- MUST operate within the current git repository
+
+### blame
+
+Analyze changes between two Cargo.lock files to identify dependency updates.
+
+**Behavior:**
+- MUST accept `--baseline` and `--current` paths to Cargo.lock files
+- MUST report added, removed, and updated dependencies
+- MUST support `--format text` (default) and `--format json` output
+
+### explain
+
+Generate structured diagnostic prompts for regression analysis.
+
+**Behavior:**
+- MUST accept `--compare` path to a comparison receipt
+- MUST output human-readable text to stdout
+- SHOULD include metric deltas, significance data, and suggested investigation steps
+- Does NOT call external services — produces prompts only
 
 ## Cockpit Mode
 
@@ -251,7 +305,7 @@ artifacts/perfgate/
     └── perfgate.report.v1.json
 ```
 
-## Baseline Server API (v2.0)
+## Baseline Server API
 
 Centralized management service for fleet-scale performance monitoring.
 
