@@ -1118,6 +1118,10 @@
                     datasets: [{
                         label: metricLabels[metric] || metric,
                         data: dataPoints,
+                        // GOTCHA: Chart.js renders on a <canvas> 2D context which
+                        // cannot resolve CSS custom properties (var(--color-*)).
+                        // Using var() here silently produces transparent/black
+                        // lines. Always use literal hex/rgba color values.
                         borderColor: '#0366d6',
                         backgroundColor: 'rgba(3, 102, 214, 0.08)',
                         fill: true,

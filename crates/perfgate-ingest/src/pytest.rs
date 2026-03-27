@@ -83,10 +83,14 @@ pub fn parse_pytest_benchmark(input: &str, name: Option<&str>) -> anyhow::Result
     }
 
     let mut computed = compute_u64_summary(&wall_values);
-    // Override with the actual pytest-benchmark statistics
+    // Override with the actual pytest-benchmark statistics.
+    // median/min/max are u64 so integer seconds_to_ms() is fine.
     computed.median = seconds_to_ms(stats.median);
     computed.min = seconds_to_ms(stats.min);
     computed.max = seconds_to_ms(stats.max);
+    // IMPORTANT: Use f64 arithmetic here, NOT seconds_to_ms(). See the
+    // GOTCHA on seconds_to_ms — integer truncation would lose sub-ms
+    // precision that budget evaluation and significance testing rely on.
     computed.mean = Some(stats.mean * 1000.0);
     computed.stddev = Some(stats.stddev * 1000.0);
 
@@ -127,6 +131,14 @@ fn make_sample(wall_ms: u64) -> Sample {
     }
 }
 
+/// Integer seconds-to-ms conversion for sample `wall_ms` values (u64).
+///
+/// GOTCHA: This intentionally truncates to integer milliseconds -- it is only
+/// appropriate for per-sample u64 fields where sub-ms precision is not needed.
+/// For stats fields (mean, stddev) use direct `f64` arithmetic (`value * 1000.0`)
+/// to preserve sub-millisecond precision. Using this function for stats would
+/// silently destroy the fractional component that downstream budget evaluation
+/// and significance testing depend on.
 fn seconds_to_ms(s: f64) -> u64 {
     let ms = s * 1000.0;
     if ms < 1.0 && ms > 0.0 {
