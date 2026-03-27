@@ -39,9 +39,11 @@ fn is_transient(err: &sqlx::Error) -> bool {
         sqlx::Error::Io(_) => true,
         sqlx::Error::Database(db_err) => {
             // Postgres error codes starting with 08 are connection exceptions.
+            // Class 57P covers operator intervention: 57P01 (admin_shutdown),
+            // 57P02 (crash_shutdown), 57P03 (cannot_connect_now).
             db_err
                 .code()
-                .map(|c| c.starts_with("08") || c.starts_with("57P01"))
+                .map(|c| c.starts_with("08") || c.starts_with("57P"))
                 .unwrap_or(false)
         }
         _ => {
