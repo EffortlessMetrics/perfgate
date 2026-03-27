@@ -31,7 +31,14 @@ pub async fn spawn_test_server(config: ServerConfig) -> TestServer {
     let auth_state = AuthState::new(key_store, config.jwt.clone(), Default::default())
         .with_persistent_key_store(persistent_key_store.clone());
     let app_state = AppState { store, audit };
-    let app = create_router(app_state, persistent_key_store, auth_state, &config, None);
+    let app = create_router(
+        app_state,
+        persistent_key_store,
+        None,
+        auth_state,
+        &config,
+        None,
+    );
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

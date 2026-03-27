@@ -1,8 +1,9 @@
 //! Artifact storage implementations using object_store.
 
-use super::ArtifactStore;
+use super::{ArtifactMeta, ArtifactStore};
 use crate::error::StoreError;
 use async_trait::async_trait;
+use futures::TryStreamExt;
 use object_store::{ObjectStore, path::Path};
 use std::sync::Arc;
 
@@ -53,5 +54,24 @@ impl ArtifactStore for ObjectArtifactStore {
             .await
             .map_err(|e| StoreError::Other(format!("ObjectStore delete failed: {}", e)))?;
         Ok(())
+    }
+
+    async fn list(&self, prefix: Option<&str>) -> Result<Vec<ArtifactMeta>, StoreError> {
+        let prefix = prefix.map(Path::from);
+        let stream = self.inner.list(prefix.as_ref());
+
+        let objects: Vec<_> = stream
+            .try_collect()
+            .await
+            .map_err(|e| StoreError::Other(format!("ObjectStore list failed: {}", e)))?;
+
+        Ok(objects
+            .into_iter()
+            .map(|meta| ArtifactMeta {
+                path: meta.location.to_string(),
+                last_modified: meta.last_modified,
+                size: meta.size as u64,
+            })
+            .collect())
     }
 }

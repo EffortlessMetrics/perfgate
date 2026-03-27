@@ -21,11 +21,12 @@ use tower_http::{
 use tracing::info;
 
 use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware};
+use crate::cleanup::spawn_cleanup_task;
 use crate::error::ConfigError;
 use crate::handlers::{
-    create_key, dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
-    list_audit_events, list_baselines, list_keys, list_verdicts, promote_baseline, revoke_key,
-    static_asset, submit_verdict, upload_baseline,
+    DefaultRetentionDays, admin_cleanup, create_key, dashboard_index, delete_baseline,
+    get_baseline, get_latest_baseline, health_check, list_audit_events, list_baselines, list_keys,
+    list_verdicts, promote_baseline, revoke_key, static_asset, submit_verdict, upload_baseline,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider, OidcRegistry};
@@ -170,6 +171,12 @@ pub struct ServerConfig {
 
     /// Local mode: disable authentication for single-user local use.
     pub local_mode: bool,
+
+    /// Artifact retention period in days (0 = no cleanup).
+    pub retention_days: u64,
+
+    /// Interval between background cleanup passes (in hours).
+    pub cleanup_interval_hours: u64,
 }
 
 impl Default for ServerConfig {
@@ -187,6 +194,8 @@ impl Default for ServerConfig {
             cors: true,
             timeout_seconds: 30,
             local_mode: false,
+            retention_days: 0,
+            cleanup_interval_hours: 1,
         }
     }
 }
@@ -283,6 +292,18 @@ impl ServerConfig {
         self.local_mode = enabled;
         self
     }
+
+    /// Sets the artifact retention period in days. 0 means no cleanup.
+    pub fn retention_days(mut self, days: u64) -> Self {
+        self.retention_days = days;
+        self
+    }
+
+    /// Sets the interval (in hours) between background cleanup passes.
+    pub fn cleanup_interval_hours(mut self, hours: u64) -> Self {
+        self.cleanup_interval_hours = hours;
+        self
+    }
 }
 
 /// Creates the artifact storage based on configuration.
@@ -310,7 +331,14 @@ pub(crate) async fn create_storage(
     config: &ServerConfig,
 ) -> Result<(Arc<dyn BaselineStore>, Arc<dyn AuditStore>), ConfigError> {
     let artifacts = create_artifacts(config).await?;
+    create_storage_with_artifacts(config, artifacts).await
+}
 
+/// Creates the storage backend with a pre-built artifact store.
+pub(crate) async fn create_storage_with_artifacts(
+    config: &ServerConfig,
+    artifacts: Option<Arc<dyn ArtifactStore>>,
+) -> Result<(Arc<dyn BaselineStore>, Arc<dyn AuditStore>), ConfigError> {
     match config.storage_backend {
         StorageBackend::Memory => {
             info!("Using in-memory storage");
@@ -397,6 +425,7 @@ pub(crate) fn create_persistent_key_store(
 pub(crate) fn create_router(
     state: AppState,
     persistent_key_store: Arc<dyn KeyStore>,
+    artifact_store: Option<Arc<dyn ArtifactStore>>,
     auth_state: AuthState,
     config: &ServerConfig,
     prometheus_handle: Option<PrometheusHandle>,
@@ -424,6 +453,16 @@ pub(crate) fn create_router(
         .route("/keys", get(list_keys))
         .route("/keys/{id}", delete(revoke_key))
         .with_state(persistent_key_store)
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
+
+    // Admin routes (require admin auth, never skipped even in local mode)
+    let admin_routes = Router::new()
+        .route("/admin/cleanup", delete(admin_cleanup))
+        .layer(axum::Extension(artifact_store.clone()))
+        .layer(axum::Extension(DefaultRetentionDays(config.retention_days)))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
@@ -470,7 +509,8 @@ pub(crate) fn create_router(
             health_routes
                 .merge(info_routes)
                 .merge(api_routes)
-                .merge(key_routes),
+                .merge(key_routes)
+                .merge(admin_routes),
         );
 
     // Add /metrics endpoint if Prometheus handle is available
@@ -503,11 +543,15 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     info!(
         bind = %config.bind,
         backend = ?config.storage_backend,
+        retention_days = config.retention_days,
         "Starting perfgate server"
     );
 
+    // Create artifact store (shared between baseline store and cleanup)
+    let artifact_store = create_artifacts(&config).await?;
+
     // Create storage
-    let (store, audit) = create_storage(&config).await?;
+    let (store, audit) = create_storage_with_artifacts(&config, artifact_store.clone()).await?;
 
     // Create the persistent key store (shares SQLite connection when applicable)
     let sqlite_conn = if config.storage_backend == StorageBackend::Sqlite {
@@ -538,6 +582,29 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_registry)
         .with_persistent_key_store(persistent_key_store.clone());
 
+    // Spawn background cleanup task if retention is configured
+    let cleanup_handle = if config.retention_days > 0 {
+        if let Some(ref art_store) = artifact_store {
+            info!(
+                retention_days = config.retention_days,
+                interval_hours = config.cleanup_interval_hours,
+                "Spawning background artifact cleanup task"
+            );
+            Some(spawn_cleanup_task(
+                art_store.clone(),
+                config.retention_days,
+                config.cleanup_interval_hours,
+            ))
+        } else {
+            info!(
+                "Retention policy configured but no artifact store available; skipping background cleanup"
+            );
+            None
+        }
+    } else {
+        None
+    };
+
     // Install Prometheus metrics recorder
     let prometheus_handle = setup_metrics_recorder();
     info!("Prometheus metrics enabled at /metrics");
@@ -548,6 +615,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     let app = create_router(
         app_state,
         persistent_key_store.clone(),
+        artifact_store,
         auth_state,
         &config,
         Some(prometheus_handle),
@@ -570,6 +638,11 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    // Abort cleanup task on shutdown
+    if let Some(handle) = cleanup_handle {
+        handle.abort();
+    }
 
     info!("Server shutdown complete");
     Ok(())
@@ -718,7 +791,14 @@ mod tests {
             audit: store,
         };
 
-        let _router = create_router(app_state, persistent_key_store, auth_state, &config, None);
+        let _router = create_router(
+            app_state,
+            persistent_key_store,
+            None,
+            auth_state,
+            &config,
+            None,
+        );
         // Router created successfully
     }
 

@@ -148,6 +148,15 @@ struct Args {
     /// Log format: json, pretty
     #[arg(long, default_value = "json")]
     log_format: String,
+
+    /// Artifact retention period in days. Objects older than this are
+    /// automatically cleaned up. 0 = no automatic cleanup (default).
+    #[arg(long, default_value_t = 0)]
+    retention_days: u64,
+
+    /// Hours between background cleanup passes (default: 1).
+    #[arg(long, default_value_t = 1)]
+    cleanup_interval_hours: u64,
 }
 
 /// Helper struct for parsing API key CLI arguments.
@@ -263,7 +272,9 @@ async fn main() {
         .bind(bind_addr.to_string())
         .unwrap_or_else(|_| panic!("Invalid bind address"))
         .storage_backend(storage_backend)
-        .cors(!args.no_cors);
+        .cors(!args.no_cors)
+        .retention_days(args.retention_days)
+        .cleanup_interval_hours(args.cleanup_interval_hours);
 
     // Set database path for SQLite
     if storage_backend == StorageBackend::Sqlite {
@@ -464,6 +475,8 @@ mod tests {
         assert_eq!(args.port, 8080);
         assert_eq!(args.storage_type, "memory");
         assert!(!args.no_cors);
+        assert_eq!(args.retention_days, 0);
+        assert_eq!(args.cleanup_interval_hours, 1);
         // Verify default pool parameters
         assert_eq!(args.pg_max_connections, 10);
         assert_eq!(args.pg_min_connections, 2);
@@ -650,5 +663,20 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn test_cli_args_retention() {
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--retention-days",
+            "30",
+            "--cleanup-interval-hours",
+            "6",
+        ])
+        .unwrap();
+
+        assert_eq!(args.retention_days, 30);
+        assert_eq!(args.cleanup_interval_hours, 6);
     }
 }
