@@ -1,0 +1,164 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "perfgate.toml",
+  "scopeName": "source.toml.perfgate",
+  "fileTypes": [],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#table" },
+    { "include": "#array-table" },
+    { "include": "#key-value" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#boolean" },
+    { "include": "#array" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.toml.perfgate"
+    },
+    "table": {
+      "patterns": [
+        {
+          "match": "^\\s*\\[(defaults)\\]",
+          "captures": {
+            "1": { "name": "entity.name.section.defaults.toml.perfgate" }
+          },
+          "name": "meta.section.defaults.toml.perfgate"
+        },
+        {
+          "match": "^\\s*\\[(baseline_server)\\]",
+          "captures": {
+            "1": { "name": "entity.name.section.server.toml.perfgate" }
+          },
+          "name": "meta.section.server.toml.perfgate"
+        },
+        {
+          "match": "^\\s*\\[(bench\\.budgets\\.(\\w+))\\]",
+          "captures": {
+            "1": { "name": "entity.name.section.budget.toml.perfgate" },
+            "2": { "name": "variable.other.metric.toml.perfgate" }
+          },
+          "name": "meta.section.budget.toml.perfgate"
+        },
+        {
+          "match": "^\\s*\\[([^\\[\\]]+)\\]",
+          "captures": {
+            "1": { "name": "entity.name.section.toml.perfgate" }
+          },
+          "name": "meta.section.toml.perfgate"
+        }
+      ]
+    },
+    "array-table": {
+      "match": "^\\s*\\[\\[(bench)\\]\\]",
+      "captures": {
+        "1": { "name": "entity.name.section.bench.toml.perfgate" }
+      },
+      "name": "meta.array-table.bench.toml.perfgate"
+    },
+    "key-value": {
+      "patterns": [
+        {
+          "match": "^\\s*(name)\\s*=",
+          "captures": {
+            "1": { "name": "keyword.other.name.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(command)\\s*=",
+          "captures": {
+            "1": { "name": "keyword.other.command.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(repeat|warmup|work)\\s*=",
+          "captures": {
+            "1": { "name": "variable.parameter.numeric.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(threshold|warn_factor|noise_threshold)\\s*=",
+          "captures": {
+            "1": { "name": "variable.parameter.threshold.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(baseline_dir|baseline_pattern|out_dir|markdown_template|cwd|timeout)\\s*=",
+          "captures": {
+            "1": { "name": "variable.parameter.path.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(noise_policy|direction|statistic)\\s*=",
+          "captures": {
+            "1": { "name": "variable.parameter.policy.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(url|api_key|project|fallback_to_local)\\s*=",
+          "captures": {
+            "1": { "name": "variable.parameter.server.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(budgets|metrics)\\s*=",
+          "captures": {
+            "1": { "name": "variable.parameter.budgets.toml.perfgate" }
+          }
+        },
+        {
+          "match": "^\\s*(\\w+)\\s*=",
+          "captures": {
+            "1": { "name": "variable.other.key.toml.perfgate" }
+          }
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "name": "string.quoted.triple.toml.perfgate"
+        },
+        {
+          "begin": "\"",
+          "end": "\"",
+          "name": "string.quoted.double.toml.perfgate",
+          "patterns": [
+            {
+              "match": "\\\\[btnfr\"\\\\]",
+              "name": "constant.character.escape.toml.perfgate"
+            }
+          ]
+        },
+        {
+          "begin": "'",
+          "end": "'",
+          "name": "string.quoted.single.toml.perfgate"
+        }
+      ]
+    },
+    "number": {
+      "match": "(?<=\\s*=\\s*)[-+]?(?:\\d+\\.\\d+|\\d+)(?:[eE][-+]?\\d+)?",
+      "name": "constant.numeric.toml.perfgate"
+    },
+    "boolean": {
+      "match": "\\b(true|false)\\b",
+      "name": "constant.language.boolean.toml.perfgate"
+    },
+    "array": {
+      "begin": "\\[",
+      "end": "\\]",
+      "name": "meta.array.toml.perfgate",
+      "patterns": [
+        { "include": "#string" },
+        { "include": "#number" },
+        { "include": "#boolean" },
+        { "include": "#comment" }
+      ]
+    }
+  }
+}

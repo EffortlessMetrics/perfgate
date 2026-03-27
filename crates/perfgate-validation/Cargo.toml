@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Validation functions for benchmark names and configuration"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-validation"
 keywords = ["validation", "benchmarking", "names"]
 categories = ["development-tools"]
 

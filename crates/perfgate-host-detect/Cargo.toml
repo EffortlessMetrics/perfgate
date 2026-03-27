@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Host mismatch detection for benchmarking noise reduction"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-host-detect"
 keywords = ["benchmarking", "host", "mismatch", "detection"]
 categories = ["development-tools"]
 

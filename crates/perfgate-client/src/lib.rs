@@ -1,6 +1,4 @@
-//! # perfgate-client
-//!
-//! A Rust client library for the perfgate baseline service.
+//! Client library for the perfgate baseline service.
 //!
 //! This crate provides a client for interacting with the perfgate baseline
 //! service API, including:
@@ -10,6 +8,8 @@
 //! - Promoting and deleting baselines
 //! - Health checking
 //! - Automatic fallback to local storage when the server is unavailable
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 //!
 //! ## Quick Start
 //!

@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Statistical functions for benchmarking analysis"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-stats"
 keywords = ["statistics", "median", "percentile", "benchmarking"]
 categories = ["mathematics", "development-tools"]
 

@@ -9,6 +9,9 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-server"
+keywords = ["server", "baseline", "performance", "benchmarking", "api"]
+categories = ["web-programming::http-server", "development-tools"]
 
 [dependencies]
 # Async runtime
@@ -55,6 +58,10 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 regex = { workspace = true }
 
+# Metrics
+metrics = "0.24.3"
+metrics-exporter-prometheus = { version = "0.18.1", default-features = false }
+
 # Additional dependencies
 sha2 = "0.10.8"
 base64 = "0.22.1"
@@ -74,6 +81,8 @@ wiremock = "0.6"
 uuid = { workspace = true }
 uselesskey = { version = "0.2.0", features = ["hmac"] }
 uselesskey-jsonwebtoken = { version = "0.2.0", features = ["hmac"] }
+# Self-reference to activate test-utils for integration tests
+perfgate-server = { path = ".", features = ["test-utils"] }
 
 [[bin]]
 name = "perfgate-server"
@@ -82,7 +91,6 @@ path = "src/bin/perfgate-server.rs"
 [[test]]
 name = "real_server_integration"
 path = "tests/real_server_integration.rs"
-required-features = ["test-utils"]
 
 [features]
 default = []

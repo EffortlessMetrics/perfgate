@@ -4,14 +4,17 @@
 //!
 //! # Running Tests
 //!
-//! Most tests use wiremock for HTTP mocking and can run without a real server.
-//! Tests marked with `#[ignore]` require a running perfgate-server.
+//! Mock-based tests use wiremock and require no server.
+//! In-memory server tests use `spawn_test_server` to start a real server on a random port.
 
 mod common;
 
 use common::{ADMIN_KEY, CONTRIBUTOR_KEY, PROMOTER_KEY, VIEWER_KEY, create_test_upload_request};
 use perfgate_client::types::ListBaselinesQuery;
 use perfgate_client::{BaselineClient, ClientConfig, ClientError};
+use perfgate_server::auth::Role;
+use perfgate_server::server::{ServerConfig, StorageBackend};
+use perfgate_server::testing::spawn_test_server;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -387,20 +390,32 @@ async fn test_conflict_error() {
 }
 
 // =============================================================================
-// Integration tests requiring a running server (marked with #[ignore])
+// Integration tests using in-memory server (no external server required)
 // =============================================================================
 
-/// Full integration test with a running server.
-/// Run with: cargo test -p perfgate-server --test server_integration -- --ignored
+/// Helper to create a ServerConfig with in-memory storage and test API keys.
+fn test_server_config() -> ServerConfig {
+    ServerConfig::new()
+        .storage_backend(StorageBackend::Memory)
+        .scoped_api_key(
+            CONTRIBUTOR_KEY,
+            Role::Contributor,
+            "integration-tests",
+            None,
+        )
+        .scoped_api_key(VIEWER_KEY, Role::Viewer, "integration-tests", None)
+        .api_key(ADMIN_KEY, Role::Admin)
+}
+
+/// Full integration test with an in-memory server.
 #[tokio::test]
-#[ignore = "Requires a running perfgate-server on localhost:8080"]
 async fn test_full_upload_workflow_with_server() {
-    let server_url = "http://localhost:8080";
+    let server = spawn_test_server(test_server_config()).await;
     let client = reqwest::Client::new();
 
     // First, check server health
     let health_response = client
-        .get(format!("{}/health", server_url))
+        .get(format!("{}/health", server.root_url))
         .send()
         .await
         .expect("Failed to connect to server");
@@ -415,7 +430,7 @@ async fn test_full_upload_workflow_with_server() {
     let upload_response = client
         .post(format!(
             "{}/projects/integration-tests/baselines",
-            server_url
+            server.url
         ))
         .header("Authorization", format!("Bearer {}", CONTRIBUTOR_KEY))
         .json(&request)
@@ -425,21 +440,21 @@ async fn test_full_upload_workflow_with_server() {
 
     assert!(
         upload_response.status().is_success(),
-        "Upload should succeed"
+        "Upload should succeed: {}",
+        upload_response.status()
     );
 }
 
-/// Test baseline list with a running server.
+/// Test baseline list with an in-memory server.
 #[tokio::test]
-#[ignore = "Requires a running perfgate-server on localhost:8080"]
 async fn test_baseline_list_with_server() {
-    let server_url = "http://localhost:8080";
+    let server = spawn_test_server(test_server_config()).await;
     let client = reqwest::Client::new();
 
     let response = client
         .get(format!(
             "{}/projects/integration-tests/baselines",
-            server_url
+            server.url
         ))
         .header("Authorization", format!("Bearer {}", VIEWER_KEY))
         .query(&[("limit", "10")])

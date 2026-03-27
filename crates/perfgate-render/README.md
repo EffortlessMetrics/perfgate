@@ -1,101 +1,54 @@
 # perfgate-render
 
-Rendering utilities for perfgate output (markdown, GitHub annotations).
+Human-readable output from performance comparisons.
 
-## Overview
+Takes a `CompareReceipt` and turns it into something a human can read --
+a Markdown table for a PR comment, GitHub Actions annotations for the
+checks tab, or a fully custom layout via Handlebars templates.
 
-This crate provides functions for rendering performance comparison results as:
-- Markdown tables with metrics, budgets, and status icons
-- GitHub Actions workflow annotations (`::error::` and `::warning::`)
-- Template-based markdown rendering using Handlebars
+## Output Formats
 
-## Features
+| Function | Output | Where it shows up |
+|----------------------------|-------------------------------|----------------------------------|
+| `render_markdown` | Markdown table with verdicts | PR comments, CI summaries |
+| `github_annotations` | `::error::` / `::warning::` | GitHub Actions checks tab |
+| `render_markdown_template` | Custom Handlebars template | Anywhere you need a custom layout |
 
-- **Markdown Tables**: Render `CompareReceipt` as formatted markdown tables with verdict status
-- **GitHub Annotations**: Generate `::error::` and `::warning::` annotations for CI workflows
-- **Template Rendering**: Custom Handlebars templates for flexible output formatting
-- **Helper Functions**: Format metrics, values, percentages, and status indicators
-
-## Usage
+## Quick Start
 
 ```rust
 use perfgate_render::{render_markdown, github_annotations, render_markdown_template};
-use perfgate_types::CompareReceipt;
 
-// Render a markdown table
-let markdown = render_markdown(&compare_receipt);
+// Markdown table for a PR comment
+let md = render_markdown(&compare_receipt);
 
-// Generate GitHub Actions annotations
+// GitHub Actions annotations (only emitted for warn/fail metrics)
 let annotations = github_annotations(&compare_receipt);
 
-// Use a custom template
-let template = "{{header}}\n{{#each rows}}- {{metric}}: {{delta_pct}}\n{{/each}}";
-let custom = render_markdown_template(&compare_receipt, template)?;
+// Custom template
+let tmpl = "{{header}}\n{{#each rows}}- {{metric}}: {{delta_pct}}\n{{/each}}";
+let custom = render_markdown_template(&compare_receipt, tmpl)?;
 ```
 
-## API
+## Helpers
 
-### Main Functions
+Formatting functions used internally, also exported for custom renderers:
 
-| Function | Description |
-|----------|-------------|
-| `render_markdown` | Render a `CompareReceipt` as a markdown table |
-| `render_markdown_template` | Render using a custom Handlebars template |
-| `github_annotations` | Generate GitHub Actions annotations for failed/warned metrics |
-
-### Helper Functions
-
-| Function | Description |
-|----------|-------------|
-| `format_metric` | Get the string representation of a `Metric` |
-| `format_metric_with_statistic` | Format metric name with statistic type |
-| `format_value` | Format a metric value with appropriate precision |
-| `format_pct` | Format a percentage with sign (e.g., `+10.00%`) |
-| `direction_str` | Get the string for a budget direction (`lower`/`higher`) |
-| `metric_status_icon` | Get the emoji for a status (✅/⚠️/❌) |
-| `metric_status_str` | Get the string for a status (`pass`/`warn`/`fail`) |
-| `parse_reason_token` | Parse a reason token like `wall_ms_warn` |
-| `render_reason_line` | Render a reason line with threshold info |
-| `markdown_template_context` | Get the JSON context for template rendering |
+| Function | Example output |
+|-------------------------------|--------------------------|
+| `format_value(metric, v)` | `"42"`, `"1.234"` |
+| `format_pct(pct)` | `"+10.00%"`, `"-3.50%"` |
+| `direction_str(dir)` | `"lower"`, `"higher"` |
+| `metric_status_icon(status)` | pass / warn / fail / skip |
+| `metric_status_str(status)` | `"pass"`, `"warn"` |
+| `parse_reason_token(token)` | `"wall_ms_warn"` -> `(WallMs, Warn)` |
 
 ## Template Context
 
-When using `render_markdown_template`, the following context is available:
+`render_markdown_template` exposes a JSON context with `header`, `bench`,
+`verdict`, `rows` (array of per-metric objects with `metric`, `delta_pct`,
+`status_icon`, `raw`, etc.), `reasons`, and the full `compare` receipt.
 
-```json
-{
-  "header": "✅ perfgate: pass",
-  "bench": { "name": "...", ... },
-  "verdict": { "status": "pass", ... },
-  "rows": [
-    {
-      "metric": "wall_ms",
-      "metric_with_statistic": "wall_ms",
-      "statistic": "median",
-      "baseline": "100",
-      "current": "110",
-      "unit": "ms",
-      "delta_pct": "+10.00%",
-      "budget_threshold_pct": 20.0,
-      "budget_direction": "lower",
-      "status": "warn",
-      "status_icon": "⚠️",
-      "raw": { "baseline": 100.0, "current": 110.0, ... }
-    }
-  ],
-  "reasons": ["wall_ms_warn"],
-  "compare": { ... }
-}
-```
+## License
 
-## Testing
-
-```bash
-cargo test -p perfgate-render
-```
-
-The crate includes:
-- Unit tests for all formatting functions
-- Property-based tests for markdown rendering completeness
-- Property-based tests for GitHub annotation generation
-- Snapshot tests using insta for output verification
+Licensed under either Apache-2.0 or MIT.

@@ -9,6 +9,7 @@ homepage.workspace = true
 authors.workspace = true
 description = "Paired benchmarking statistics for A/B comparison"
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-paired"
 keywords = ["paired", "benchmarking", "statistics", "ab-testing"]
 categories = ["mathematics", "development-tools"]
 

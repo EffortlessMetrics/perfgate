@@ -1,8 +1,10 @@
-//! perfgate-server - REST API server for centralized baseline management.
+//! REST API server for centralized baseline management.
 //!
 //! This crate provides a REST API server for storing and managing performance
 //! baselines. It supports multiple storage backends (in-memory, SQLite, PostgreSQL)
 //! and includes authentication via API keys.
+//!
+//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 //!
 //! # Features
 //!
@@ -39,10 +41,12 @@
 //! | DELETE | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
 //! | POST | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
 //! | GET | `/health` | Health check |
+//! | GET | `/metrics` | Prometheus metrics |
 
 pub mod auth;
 pub mod error;
 pub mod handlers;
+pub mod metrics;
 pub mod models;
 pub mod oidc;
 pub mod server;
@@ -55,7 +59,7 @@ pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
 pub use oidc::{OidcConfig, OidcProvider};
-pub use server::{ServerConfig, StorageBackend, run_server};
+pub use server::{PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
 pub use storage::{BaselineStore, InMemoryStore, SqliteStore, StorageHealth};
 
 /// Server version string.

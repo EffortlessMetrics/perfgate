@@ -3,6 +3,21 @@
 //! High-performance, modular Rust library for performance budgeting and baseline diffing.
 //!
 //! This is a facade crate that re-exports functionality from the core perfgate micro-crates.
+//! Use it when you want a single dependency instead of picking individual sub-crates.
+//!
+//! See the [GitHub repository](https://github.com/EffortlessMetrics/perfgate) for full
+//! documentation and usage examples.
+//!
+//! # Example
+//!
+//! ```
+//! use perfgate::types::{ToolInfo, Metric, Direction};
+//!
+//! let tool = ToolInfo { name: "perfgate".into(), version: "1.0.0".into() };
+//! assert_eq!(tool.name, "perfgate");
+//!
+//! assert_eq!(Metric::WallMs.default_direction(), Direction::Lower);
+//! ```
 
 pub use perfgate_adapters as adapters;
 pub use perfgate_app as app;

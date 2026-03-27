@@ -8,7 +8,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
+documentation = "https://docs.rs/perfgate-api"
 authors.workspace = true
+keywords = ["api", "baseline", "performance", "benchmarking"]
+categories = ["web-programming", "development-tools"]
 
 [dependencies]
 serde.workspace = true

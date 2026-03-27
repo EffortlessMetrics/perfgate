@@ -52,7 +52,8 @@ perfgate check --config perfgate.toml --bench my-service
 **3. Gate** -- wire into GitHub Actions:
 
 ```yaml
-- uses: EffortlessMetrics/perfgate@main
+# .github/workflows/perf.yml
+- uses: EffortlessMetrics/perfgate@v0.15.0
   with:
     config: perfgate.toml
     all: "true"
@@ -151,6 +152,8 @@ Exit codes: `0` pass, `1` error, `2` fail, `3` warn (with `--fail-on-warn`).
 **Tutorials** -- get started step by step:
 - [GitHub Actions](docs/GETTING_STARTED_GITHUB_ACTIONS.md)
 - [GitLab CI](docs/GETTING_STARTED_GITLAB_CI.md)
+- [Bitbucket Pipelines](docs/GETTING_STARTED_BITBUCKET.md)
+- [CircleCI](docs/GETTING_STARTED_CIRCLECI.md)
 - [Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md)
 - [Step-by-Step Pipeline](docs/PIPELINE.md) -- manual run/compare/promote workflow
 
