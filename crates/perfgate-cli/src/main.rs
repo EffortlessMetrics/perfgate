@@ -19,6 +19,7 @@ use perfgate_app::{
     ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
     SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
     render_markdown_template, render_terminal_diff,
+    watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
     ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
@@ -340,6 +341,14 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Init(Box<InitArgs>),
+
+    /// Watch for file changes and re-run benchmarks with live terminal output.
+    ///
+    /// Monitors the workspace for file changes and automatically re-runs
+    /// the specified benchmark, showing a live performance delta display.
+    ///
+    /// Exit codes: 0 on clean exit (Ctrl+C), 1 on error.
+    Watch(Box<WatchArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -925,6 +934,41 @@ pub struct InitArgs {
     /// Accept defaults without prompting.
     #[arg(long, default_value_t = false)]
     pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WatchArgs {
+    /// Path to the config file (TOML or JSON)
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Name of the benchmark to watch (must match a [[bench]] in config)
+    #[arg(long)]
+    pub bench: Option<String>,
+
+    /// Watch all benchmarks defined in the config file
+    #[arg(long, default_value_t = false)]
+    pub all: bool,
+
+    /// Debounce interval in milliseconds (wait for changes to settle)
+    #[arg(long, default_value_t = 500)]
+    pub debounce: u64,
+
+    /// Do not clear the screen between runs
+    #[arg(long, default_value_t = false)]
+    pub no_clear: bool,
+
+    /// Directories to watch (defaults to current directory)
+    #[arg(long)]
+    pub watch_dir: Vec<PathBuf>,
+
+    /// Policy for handling host mismatches between baseline and current runs.
+    #[arg(long, default_value = "warn", value_parser = parse_host_mismatch_policy)]
+    pub host_mismatch: HostMismatchPolicy,
+
+    /// Environment variable (KEY=VALUE). Repeatable.
+    #[arg(long, value_parser = parse_key_val_string)]
+    pub env: Vec<(String, String)>,
 }
 
 /// Subcommands for baseline management.
@@ -1806,6 +1850,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::Init(args) => execute_init(*args),
+        Command::Watch(args) => run_watch(*args),
     }
 }
 
@@ -3240,6 +3285,264 @@ fn rename_extras_to_versioned(extras_dir: &Path) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Run the watch command: monitor filesystem and re-run benchmarks on changes.
+fn run_watch(args: WatchArgs) -> anyhow::Result<()> {
+    use notify::{EventKind, RecursiveMode, Watcher};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+
+    let WatchArgs {
+        config: config_path,
+        bench,
+        all,
+        debounce,
+        no_clear,
+        watch_dir,
+        host_mismatch,
+        env,
+    } = args;
+
+    // Load and validate config
+    let config_content = fs::read_to_string(&config_path)
+        .with_context(|| format!("read {}", config_path.display()))?;
+
+    let config_file: ConfigFile = if config_path
+        .extension()
+        .map(|e| e == "json")
+        .unwrap_or(false)
+    {
+        serde_json::from_str(&config_content)
+            .with_context(|| format!("parse JSON config {}", config_path.display()))?
+    } else {
+        toml::from_str(&config_content)
+            .with_context(|| format!("parse TOML config {}", config_path.display()))?
+    };
+
+    config_file
+        .validate()
+        .map_err(ConfigValidationError::ConfigFile)?;
+
+    // Determine which bench to run
+    let bench_name = if all {
+        // For --all, we run each bench sequentially on each change
+        None
+    } else if let Some(name) = bench {
+        Some(name)
+    } else if config_file.benches.len() == 1 {
+        // If only one bench, use it automatically
+        Some(config_file.benches[0].name.clone())
+    } else {
+        anyhow::bail!(
+            "multiple benchmarks in config; specify --bench <name> or --all\navailable: {}",
+            config_file
+                .benches
+                .iter()
+                .map(|b| b.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    };
+
+    let bench_names: Vec<String> = if let Some(name) = &bench_name {
+        // Verify the bench exists
+        if !config_file.benches.iter().any(|b| b.name == *name) {
+            anyhow::bail!(
+                "bench '{}' not found in config; available: {}",
+                name,
+                config_file
+                    .benches
+                    .iter()
+                    .map(|b| b.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        vec![name.clone()]
+    } else {
+        config_file.benches.iter().map(|b| b.name.clone()).collect()
+    };
+
+    let display_name = bench_name.as_deref().unwrap_or("all").to_string();
+
+    // Setup Ctrl+C handler
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .with_context(|| "failed to set Ctrl+C handler")?;
+
+    // Setup file watcher
+    let (tx, rx) = mpsc::channel();
+    let mut watcher =
+        notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = res {
+                match event.kind {
+                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {
+                        let _ = tx.send(());
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .with_context(|| "failed to create file watcher")?;
+
+    // Watch directories
+    let watch_dirs = if watch_dir.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        watch_dir
+    };
+
+    for dir in &watch_dirs {
+        watcher
+            .watch(dir.as_ref(), RecursiveMode::Recursive)
+            .with_context(|| format!("failed to watch directory: {}", dir.display()))?;
+    }
+
+    // Temporary output directory for watch artifacts
+    let out_dir = PathBuf::from("artifacts/perfgate-watch");
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("create watch output dir {}", out_dir.display()))?;
+
+    let mut state = WatchState::new();
+    let mut debouncer = Debouncer::new(debounce);
+
+    eprintln!(
+        "perfgate watch: monitoring {} for changes (debounce: {}ms)",
+        watch_dirs
+            .iter()
+            .map(|d| d.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+        debounce
+    );
+    eprintln!("press Ctrl+C to stop\n");
+
+    let ctx = WatchIterationCtx {
+        config: &config_file,
+        bench_names: &bench_names,
+        out_dir: &out_dir,
+        env: &env,
+        host_mismatch_policy: host_mismatch,
+        no_clear,
+        display_name: &display_name,
+    };
+
+    // Initial run
+    run_watch_iteration(&ctx, &mut state);
+
+    // Main watch loop
+    while running.load(Ordering::SeqCst) {
+        // Check for file events (non-blocking with timeout)
+        match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(()) => {
+                debouncer.event();
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+
+        // Drain any queued events
+        while rx.try_recv().is_ok() {
+            debouncer.event();
+        }
+
+        // Check if debounce has settled
+        if debouncer.should_trigger() {
+            run_watch_iteration(&ctx, &mut state);
+        }
+    }
+
+    // Print summary on exit
+    eprintln!("\n--- watch summary ---");
+    eprintln!(
+        "iterations: {} | pass: {} | warn: {} | fail: {}",
+        state.iteration_count, state.pass_count, state.warn_count, state.fail_count
+    );
+
+    Ok(())
+}
+
+/// Context for a watch iteration (avoids too many function arguments).
+struct WatchIterationCtx<'a> {
+    config: &'a ConfigFile,
+    bench_names: &'a [String],
+    out_dir: &'a Path,
+    env: &'a [(String, String)],
+    host_mismatch_policy: HostMismatchPolicy,
+    no_clear: bool,
+    display_name: &'a str,
+}
+
+/// Execute one watch iteration: run all requested benchmarks and update display.
+fn run_watch_iteration(ctx: &WatchIterationCtx<'_>, state: &mut WatchState) {
+    for bench_name in ctx.bench_names {
+        let bench_out_dir = if ctx.bench_names.len() > 1 {
+            ctx.out_dir.join(bench_name)
+        } else {
+            ctx.out_dir.to_path_buf()
+        };
+
+        if let Err(e) = fs::create_dir_all(&bench_out_dir) {
+            eprintln!("error: create dir {}: {}", bench_out_dir.display(), e);
+            continue;
+        }
+
+        // Resolve baseline
+        let baseline_path =
+            perfgate_app::baseline_resolve::resolve_baseline_path(&None, bench_name, ctx.config);
+        let baseline = load_optional_baseline_receipt(&baseline_path)
+            .ok()
+            .flatten();
+
+        let request = WatchRunRequest {
+            config: ctx.config.clone(),
+            bench_name: bench_name.clone(),
+            out_dir: bench_out_dir,
+            baseline,
+            baseline_path: Some(baseline_path),
+            tool: tool_info(),
+            env: ctx.env.to_vec(),
+            output_cap_bytes: 8192,
+            host_mismatch_policy: ctx.host_mismatch_policy,
+        };
+
+        // Print status
+        if !ctx.no_clear {
+            // ANSI clear screen
+            print!("\x1b[2J\x1b[H");
+        }
+
+        let lines = render_watch_display(state, ctx.display_name, "running...");
+        for line in &lines {
+            println!("{}", line);
+        }
+
+        let runner = StdProcessRunner;
+        let host_probe = StdHostProbe;
+        let clock = SystemClock;
+
+        match execute_watch_run(runner, host_probe, clock, &request) {
+            Ok(result) => {
+                state.update(result);
+            }
+            Err(err) => {
+                eprintln!("error running bench '{}': {:#}", bench_name, err);
+            }
+        }
+    }
+
+    // Final display after all benches
+    if !ctx.no_clear {
+        print!("\x1b[2J\x1b[H");
+    }
+    let lines = render_watch_display(state, ctx.display_name, "idle (watching)");
+    for line in &lines {
+        println!("{}", line);
+    }
 }
 
 /// Write all artifacts from a check outcome.
