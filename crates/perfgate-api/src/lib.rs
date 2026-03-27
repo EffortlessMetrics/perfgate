@@ -802,6 +802,181 @@ pub struct RevokeKeyResponse {
     pub revoked_at: DateTime<Utc>,
 }
 
+// ---------------------------------------------------------------------------
+// Fleet-wide dependency regression detection types
+// ---------------------------------------------------------------------------
+
+/// Schema identifier for dependency event records.
+pub const DEPENDENCY_EVENT_SCHEMA_V1: &str = "perfgate.dependency_event.v1";
+
+/// Schema identifier for fleet alert records.
+pub const FLEET_ALERT_SCHEMA_V1: &str = "perfgate.fleet_alert.v1";
+
+/// A single dependency version change observed alongside a benchmark run.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct DependencyChange {
+    /// Dependency name (e.g., crate name)
+    pub name: String,
+    /// Previous version (None if newly added)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_version: Option<String>,
+    /// New version (None if removed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_version: Option<String>,
+}
+
+/// A recorded dependency change event with its performance impact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct DependencyEvent {
+    /// Schema identifier
+    pub schema: String,
+    /// Unique event identifier
+    pub id: String,
+    /// Project that reported the event
+    pub project: String,
+    /// Benchmark name
+    pub benchmark: String,
+    /// Dependency name
+    pub dep_name: String,
+    /// Previous version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_version: Option<String>,
+    /// New version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_version: Option<String>,
+    /// Primary metric name (e.g., "wall_ms")
+    pub metric: String,
+    /// Percentage change in that metric (positive = regression)
+    pub delta_pct: f64,
+    /// Timestamp of the event
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to record a dependency change event.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecordDependencyEventRequest {
+    /// Project that observed the event
+    pub project: String,
+    /// Benchmark name
+    pub benchmark: String,
+    /// List of dependency changes observed
+    pub dependency_changes: Vec<DependencyChange>,
+    /// Primary metric name
+    pub metric: String,
+    /// Percentage change in the metric (positive = regression)
+    pub delta_pct: f64,
+}
+
+/// Response after recording dependency events.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RecordDependencyEventResponse {
+    /// Number of events recorded
+    pub recorded: usize,
+}
+
+/// A project affected by a fleet-wide dependency regression.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct AffectedProject {
+    /// Project identifier
+    pub project: String,
+    /// Benchmark name
+    pub benchmark: String,
+    /// Primary metric name
+    pub metric: String,
+    /// Percentage change
+    pub delta_pct: f64,
+}
+
+/// A fleet-wide alert: multiple projects regressed after the same dependency update.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct FleetAlert {
+    /// Schema identifier
+    pub schema: String,
+    /// Unique alert identifier
+    pub id: String,
+    /// Dependency name
+    pub dependency: String,
+    /// Previous version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_version: Option<String>,
+    /// New version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_version: Option<String>,
+    /// Projects affected by this dependency change
+    pub affected_projects: Vec<AffectedProject>,
+    /// Confidence score (0.0 - 1.0): higher means more projects affected
+    pub confidence: f64,
+    /// Average delta percentage across affected projects
+    pub avg_delta_pct: f64,
+    /// When the alert was first detected
+    pub first_seen: DateTime<Utc>,
+}
+
+/// Query parameters for listing fleet alerts.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListFleetAlertsQuery {
+    /// Minimum number of affected projects to include
+    #[serde(default = "default_min_affected")]
+    pub min_affected: usize,
+    /// Only include alerts since this time
+    pub since: Option<DateTime<Utc>>,
+    /// Pagination limit
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+impl Default for ListFleetAlertsQuery {
+    fn default() -> Self {
+        Self {
+            min_affected: default_min_affected(),
+            since: None,
+            limit: default_limit(),
+        }
+    }
+}
+
+fn default_min_affected() -> usize {
+    2
+}
+
+/// Response for listing fleet alerts.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListFleetAlertsResponse {
+    pub alerts: Vec<FleetAlert>,
+}
+
+/// Query parameters for dependency impact lookup.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DependencyImpactQuery {
+    /// Only include events since this time
+    pub since: Option<DateTime<Utc>>,
+    /// Pagination limit
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+impl Default for DependencyImpactQuery {
+    fn default() -> Self {
+        Self {
+            since: None,
+            limit: default_limit(),
+        }
+    }
+}
+
+/// Response for dependency impact lookup.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DependencyImpactResponse {
+    /// Dependency name
+    pub dependency: String,
+    /// All recorded events for this dependency
+    pub events: Vec<DependencyEvent>,
+    /// Number of distinct projects affected
+    pub project_count: usize,
+    /// Average delta percentage
+    pub avg_delta_pct: f64,
+}
+
 #[cfg(feature = "server")]
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {

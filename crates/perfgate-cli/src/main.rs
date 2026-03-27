@@ -282,6 +282,12 @@ enum Command {
     /// Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions.
     Blame(Box<BlameArgs>),
 
+    /// Fleet-wide dependency regression analysis across projects.
+    Fleet {
+        #[command(subcommand)]
+        action: FleetAction,
+    },
+
     /// Provide AI-ready prompts and automated playbooks for diagnosing performance regressions.
     Explain {
         /// Path to a compare receipt
@@ -1289,6 +1295,59 @@ enum BaselineAction {
     },
 }
 
+/// Subcommands for fleet-wide dependency regression analysis.
+#[derive(Debug, Subcommand)]
+enum FleetAction {
+    /// List fleet-wide dependency regression alerts.
+    Alerts {
+        /// Minimum number of affected projects (default: 2)
+        #[arg(long, default_value_t = 2)]
+        min_affected: usize,
+
+        /// Maximum number of alerts to show
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+    },
+
+    /// Show impact of a specific dependency across projects.
+    Impact {
+        /// Dependency name to check
+        #[arg(long)]
+        dependency: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+
+    /// Record a dependency change event with performance impact.
+    RecordEvent {
+        /// Project name
+        #[arg(long)]
+        project: String,
+
+        /// Benchmark name
+        #[arg(long)]
+        benchmark: String,
+
+        /// Path to a compare receipt to extract delta from
+        #[arg(long)]
+        compare: PathBuf,
+
+        /// Path to baseline Cargo.lock
+        #[arg(long)]
+        baseline_lock: PathBuf,
+
+        /// Path to current Cargo.lock
+        #[arg(long)]
+        current_lock: PathBuf,
+
+        /// Metric to track (default: wall_ms)
+        #[arg(long, default_value = "wall_ms")]
+        metric: String,
+    },
+}
+
 fn render_markdown_with_optional_template(
     compare: &CompareReceipt,
     template_path: Option<&Path>,
@@ -1879,6 +1938,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::Baseline { action } => execute_baseline_action(action, &server_flags),
+
+        Command::Fleet { action } => execute_fleet_action(action, &server_flags),
 
         Command::Summary {
             files,
@@ -3207,6 +3268,168 @@ fn execute_baseline_action(
             if error_count > 0 {
                 anyhow::bail!("Migration finished with errors.");
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_fleet_action(action: FleetAction, server_flags: &ServerFlags) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+
+    let client = server_config
+        .create_client()?
+        .ok_or_else(|| anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED))?;
+    let rt = tokio::runtime::Runtime::new()?;
+
+    match action {
+        FleetAction::Alerts {
+            min_affected,
+            limit,
+        } => {
+            rt.block_on(async {
+                let query = perfgate_client::ListFleetAlertsQuery {
+                    min_affected,
+                    since: None,
+                    limit,
+                };
+                let response = client
+                    .list_fleet_alerts(&query)
+                    .await
+                    .context("Failed to list fleet alerts")?;
+
+                if response.alerts.is_empty() {
+                    println!("No fleet-wide dependency regression alerts.");
+                } else {
+                    println!("Fleet Alerts ({} found):\n", response.alerts.len());
+                    for alert in &response.alerts {
+                        let ver_change = format!(
+                            "{} -> {}",
+                            alert.old_version.as_deref().unwrap_or("(none)"),
+                            alert.new_version.as_deref().unwrap_or("(none)")
+                        );
+                        println!(
+                            "  {} ({})  confidence={:.0}%  avg_delta={:+.1}%",
+                            alert.dependency,
+                            ver_change,
+                            alert.confidence * 100.0,
+                            alert.avg_delta_pct
+                        );
+                        println!("    Affected projects ({}):", alert.affected_projects.len());
+                        for p in &alert.affected_projects {
+                            println!(
+                                "      - {}/{}: {:+.1}% ({})",
+                                p.project, p.benchmark, p.delta_pct, p.metric
+                            );
+                        }
+                        println!();
+                    }
+                }
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
+        FleetAction::Impact { dependency, limit } => {
+            rt.block_on(async {
+                let query = perfgate_client::DependencyImpactQuery { since: None, limit };
+                let response = client
+                    .dependency_impact(&dependency, &query)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to get impact for dependency '{}'", dependency)
+                    })?;
+
+                println!(
+                    "Dependency: {}  ({} projects, avg delta: {:+.1}%)\n",
+                    response.dependency, response.project_count, response.avg_delta_pct
+                );
+                if response.events.is_empty() {
+                    println!("  No recorded events.");
+                } else {
+                    for event in &response.events {
+                        let ver = format!(
+                            "{} -> {}",
+                            event.old_version.as_deref().unwrap_or("(none)"),
+                            event.new_version.as_deref().unwrap_or("(none)")
+                        );
+                        println!(
+                            "  {}/{}: {:+.1}% ({}) [{}]",
+                            event.project, event.benchmark, event.delta_pct, event.metric, ver
+                        );
+                    }
+                }
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
+        FleetAction::RecordEvent {
+            project,
+            benchmark,
+            compare,
+            baseline_lock,
+            current_lock,
+            metric,
+        } => {
+            // Parse compare receipt to extract delta
+            let compare_receipt: CompareReceipt = read_json(&compare)?;
+
+            // Extract the delta for the requested metric
+            let delta_pct = compare_receipt
+                .deltas
+                .iter()
+                .find(|(m, _)| m.as_str() == metric)
+                .map(|(_, d)| d.pct)
+                .unwrap_or(0.0);
+
+            // Parse lockfiles to find dependency changes
+            let baseline_content = fs::read_to_string(&baseline_lock)
+                .with_context(|| format!("read baseline lockfile {:?}", baseline_lock))?;
+            let current_content = fs::read_to_string(&current_lock)
+                .with_context(|| format!("read current lockfile {:?}", current_lock))?;
+
+            let blame = perfgate_domain::compare_lockfiles(&baseline_content, &current_content);
+
+            if blame.changes.is_empty() {
+                println!("No dependency changes detected.");
+                return Ok(());
+            }
+
+            let dep_changes: Vec<perfgate_client::DependencyChange> = blame
+                .changes
+                .iter()
+                .filter(|c| c.change_type == DependencyChangeType::Updated)
+                .map(|c| perfgate_client::DependencyChange {
+                    name: c.name.clone(),
+                    old_version: c.old_version.clone(),
+                    new_version: c.new_version.clone(),
+                })
+                .collect();
+
+            if dep_changes.is_empty() {
+                println!("No dependency version updates detected (only adds/removes).");
+                return Ok(());
+            }
+
+            let request = perfgate_client::RecordDependencyEventRequest {
+                project: project.clone(),
+                benchmark: benchmark.clone(),
+                dependency_changes: dep_changes,
+                metric: metric.clone(),
+                delta_pct,
+            };
+
+            rt.block_on(async {
+                let response = client
+                    .record_dependency_event(&request)
+                    .await
+                    .context("Failed to record dependency events")?;
+
+                println!(
+                    "Recorded {} dependency event(s) for {}/{} (delta: {:+.1}%)",
+                    response.recorded, project, benchmark, delta_pct
+                );
+                Ok::<(), anyhow::Error>(())
+            })?;
         }
     }
 

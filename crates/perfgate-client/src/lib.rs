@@ -108,10 +108,13 @@ pub use config::{AuthMethod, ClientConfig, FallbackStorage, RetryConfig};
 pub use error::ClientError;
 pub use fallback::FallbackClient;
 pub use types::{
-    BaselineRecord, BaselineSource, BaselineSummary, DeleteBaselineResponse, HealthResponse,
-    ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery, ListVerdictsResponse,
-    PaginationInfo, PromoteBaselineRequest, PromoteBaselineResponse, StorageHealth,
-    SubmitVerdictRequest, UploadBaselineRequest, UploadBaselineResponse, VerdictRecord,
+    AffectedProject, BaselineRecord, BaselineSource, BaselineSummary, DeleteBaselineResponse,
+    DependencyChange, DependencyEvent, DependencyImpactQuery, DependencyImpactResponse, FleetAlert,
+    HealthResponse, ListBaselinesQuery, ListBaselinesResponse, ListFleetAlertsQuery,
+    ListFleetAlertsResponse, ListVerdictsQuery, ListVerdictsResponse, PaginationInfo,
+    PromoteBaselineRequest, PromoteBaselineResponse, RecordDependencyEventRequest,
+    RecordDependencyEventResponse, StorageHealth, SubmitVerdictRequest, UploadBaselineRequest,
+    UploadBaselineResponse, VerdictRecord,
 };
 
 #[cfg(test)]

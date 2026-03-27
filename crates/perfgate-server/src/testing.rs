@@ -6,7 +6,9 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::auth::AuthState;
-use crate::server::{AppState, ServerConfig, create_key_store, create_router, create_storage};
+use crate::server::{
+    AppState, ServerConfig, create_fleet_store, create_key_store, create_router, create_storage,
+};
 use crate::storage::{InMemoryKeyStore, KeyStore};
 
 /// A running test server.
@@ -28,12 +30,14 @@ pub async fn spawn_test_server(config: ServerConfig) -> TestServer {
         .await
         .expect("failed to create key store");
     let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
+    let fleet_store = create_fleet_store();
     let auth_state = AuthState::new(key_store, config.jwt.clone(), Default::default())
         .with_persistent_key_store(persistent_key_store.clone());
     let app_state = AppState { store, audit };
     let app = create_router(
         app_state,
         persistent_key_store,
+        fleet_store,
         None,
         auth_state,
         &config,
