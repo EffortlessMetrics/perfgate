@@ -116,6 +116,9 @@ pub struct CheckOutcome {
 
     /// Exit code to use (0=pass, 2=fail, 3=warn with fail-on-warn).
     pub exit_code: i32,
+
+    /// Suggestion to use paired mode due to high noise (CV > 0.30).
+    pub suggest_paired: bool,
 }
 
 /// Use case for running a config-driven check.
@@ -270,6 +273,15 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             (false, 0)
         };
 
+        // 8. Check for high CV and suggest paired mode
+        let suggest_paired = detect_high_cv(&run_receipt);
+        if suggest_paired {
+            warnings.push(
+                "high noise detected (CV > 30%): consider using `perfgate paired` for more reliable results"
+                    .to_string(),
+            );
+        }
+
         Ok(CheckOutcome {
             run_receipt,
             run_path,
@@ -282,6 +294,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             warnings,
             failed,
             exit_code,
+            suggest_paired,
         })
     }
 
@@ -533,6 +546,14 @@ fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
             total_count: 1,
         },
     }
+}
+
+/// Detect high coefficient of variation in run receipt wall_ms.
+///
+/// Returns true if the wall_ms CV exceeds 0.30 (30%), which indicates
+/// the benchmark environment is noisy and paired mode would give better results.
+fn detect_high_cv(run: &RunReceipt) -> bool {
+    run.stats.wall_ms.cv().map(|cv| cv > 0.30).unwrap_or(false)
 }
 
 /// Render markdown for the case when there is no baseline.

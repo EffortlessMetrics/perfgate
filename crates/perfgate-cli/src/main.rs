@@ -668,6 +668,12 @@ pub struct PairedArgs {
     #[arg(long, default_value_t = 0)]
     pub max_retries: u32,
 
+    /// CV threshold for early termination of retries.
+    /// If the coefficient of variation of wall-time differences exceeds this value,
+    /// retries are aborted because the benchmark is too noisy. Default: 0.5 (50%).
+    #[arg(long)]
+    pub cv_threshold: Option<f64>,
+
     /// Fail the command (exit code 2) if a regression exceeds this percentage (e.g., 5.0 for 5%).
     #[arg(long)]
     pub fail_on_regression: Option<f64>,
@@ -1345,6 +1351,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 significance_alpha,
                 significance_min_samples,
                 max_retries,
+                cv_threshold,
                 fail_on_regression,
                 out,
                 pretty,
@@ -1390,6 +1397,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 require_significance,
                 max_retries,
                 fail_on_regression,
+                cv_threshold,
             })?;
 
             write_json(&out, &outcome.receipt, pretty)?;
@@ -3264,6 +3272,7 @@ mod tests {
             warnings: Vec::new(),
             failed: false,
             exit_code: 0,
+            suggest_paired: false,
         };
 
         write_check_artifacts(&outcome, false).unwrap();
@@ -3322,6 +3331,7 @@ mod tests {
             warnings: Vec::new(),
             failed: false,
             exit_code: 0,
+            suggest_paired: false,
         };
 
         write_check_artifacts(&outcome, false).unwrap();
