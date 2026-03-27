@@ -318,6 +318,7 @@ fn sensor_report_from_run_receipt_pass() {
             skip_count: 0,
             total_count: 1,
         },
+        profile_path: None,
     };
 
     let builder = SensorReportBuilder::new(receipt.tool.clone(), receipt.run.started_at.clone())
@@ -365,6 +366,7 @@ fn sensor_report_serializes_to_valid_json() {
             skip_count: 0,
             total_count: 1,
         },
+        profile_path: None,
     };
 
     let builder = SensorReportBuilder::new(receipt.tool.clone(), receipt.run.started_at.clone())

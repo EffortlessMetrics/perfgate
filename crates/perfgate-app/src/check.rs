@@ -499,6 +499,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
         compare: Some(compare.clone()),
         findings,
         summary,
+        profile_path: None,
     }
 }
 
@@ -545,6 +546,7 @@ fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
             skip_count: 0,
             total_count: 1,
         },
+        profile_path: None,
     }
 }
 

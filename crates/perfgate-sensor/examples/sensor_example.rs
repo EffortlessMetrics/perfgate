@@ -34,6 +34,7 @@ fn main() {
             skip_count: 0,
             total_count: 1,
         },
+        profile_path: None,
     };
 
     // 2. Build the sensor report envelope

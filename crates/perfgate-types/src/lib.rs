@@ -1112,6 +1112,10 @@ pub struct PerfgateReport {
 
     /// Summary counts.
     pub summary: ReportSummary,
+
+    /// Path to a flamegraph SVG captured when regression was detected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_path: Option<String>,
 }
 
 // ----------------------------
@@ -2000,6 +2004,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 2,
             },
+            profile_path: None,
         };
         let json = serde_json::to_string(&report).unwrap();
         let back: PerfgateReport = serde_json::from_str(&json).unwrap();
@@ -3673,6 +3678,7 @@ mod property_tests {
                 compare,
                 findings,
                 summary,
+                profile_path: None,
             })
     }
 

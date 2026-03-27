@@ -41,6 +41,7 @@ fn make_pass_report() -> PerfgateReport {
             skip_count: 0,
             total_count: 1,
         },
+        profile_path: None,
     }
 }
 
@@ -79,6 +80,7 @@ fn make_fail_report() -> PerfgateReport {
             skip_count: 0,
             total_count: 1,
         },
+        profile_path: None,
     }
 }
 
