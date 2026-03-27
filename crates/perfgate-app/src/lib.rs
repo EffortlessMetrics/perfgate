@@ -14,6 +14,7 @@ pub mod blame;
 pub mod cargo_bench;
 mod check;
 pub mod comparison_logic;
+mod diff;
 pub mod discover;
 mod explain;
 mod paired;
@@ -28,6 +29,10 @@ pub use badge::{
 pub use bisect::{BisectRequest, BisectUseCase};
 pub use blame::{BlameOutcome, BlameRequest, BlameUseCase};
 pub use check::{CheckOutcome, CheckRequest, CheckUseCase};
+pub use diff::{
+    BenchDiffOutcome, DiffOutcome, DiffRequest, DiffUseCase, discover_config, render_json_diff,
+    render_terminal_diff,
+};
 pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};

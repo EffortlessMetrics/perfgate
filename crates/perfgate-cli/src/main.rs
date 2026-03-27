@@ -10,10 +10,11 @@ use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, ver
 use perfgate_app::{
     BadgeInput, BadgeStyle, BadgeType, BadgeUseCase, BenchOutcome, BisectRequest, BisectUseCase,
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
-    CompareUseCase, ExplainRequest, ExplainUseCase, ExportFormat, ExportUseCase, PairedRunRequest,
-    PairedRunUseCase, PromoteRequest, PromoteUseCase, ReportRequest, ReportUseCase,
-    RunBenchRequest, RunBenchUseCase, SensorReportBuilder, SystemClock, classify_error,
-    github_annotations, render_markdown, render_markdown_template,
+    CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
+    ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
+    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
+    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
+    render_markdown_template, render_terminal_diff,
 };
 use perfgate_client::{
     ListBaselinesQuery, ListVerdictsQuery, SubmitVerdictRequest, UploadBaselineRequest,
@@ -316,6 +317,17 @@ enum Command {
         #[arg(long, default_value_t = false)]
         json: bool,
     },
+
+    /// Quick "did I make it slower?" comparison against baselines.
+    ///
+    /// Auto-discovers perfgate.toml, runs benchmarks, compares against
+    /// existing baselines, and prints a colored terminal diff.
+    ///
+    /// Exit codes:
+    /// - 0: pass (no regressions)
+    /// - 1: tool error
+    /// - 2: fail (budget violated)
+    Diff(Box<DiffArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -419,6 +431,29 @@ pub struct BlameArgs {
     /// Output format (text|json)
     #[arg(long, default_value = "text")]
     pub format: String,
+}
+
+#[derive(Debug, Args)]
+pub struct DiffArgs {
+    /// Run only a specific benchmark (must match a [[bench]] in config).
+    #[arg(long)]
+    pub bench: Option<String>,
+
+    /// Compare against a specific git ref (commit or branch). Reserved for future use.
+    #[arg(long)]
+    pub against: Option<String>,
+
+    /// Reduce repeat count for faster feedback.
+    #[arg(long, default_value_t = false)]
+    pub quick: bool,
+
+    /// Output comparison as JSON instead of terminal rendering.
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+
+    /// Path to the config file (default: auto-discover by walking up from cwd).
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -1671,6 +1706,48 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 println!("{}", serde_json::to_string_pretty(&benchmarks)?);
             } else {
                 print_discover_table(&benchmarks);
+            }
+
+            Ok(())
+        }
+
+        Command::Diff(args) => {
+            let DiffArgs {
+                bench,
+                against,
+                quick,
+                json,
+                config,
+            } = *args;
+
+            if against.is_some() {
+                eprintln!("warning: --against is reserved for future use and currently ignored");
+            }
+
+            let runner = StdProcessRunner;
+            let host_probe = StdHostProbe;
+            let clock = SystemClock;
+            let usecase = DiffUseCase::new(runner, host_probe, clock);
+
+            let outcome = usecase.execute(DiffRequest {
+                config_path: config,
+                bench_filter: bench,
+                against,
+                quick,
+                json,
+                tool: tool_info(),
+            })?;
+
+            if json {
+                let output = render_json_diff(&outcome)?;
+                println!("{output}");
+            } else {
+                let output = render_terminal_diff(&outcome);
+                print!("{output}");
+            }
+
+            if outcome.exit_code != 0 {
+                exit_with_code(outcome.exit_code);
             }
             Ok(())
         }
