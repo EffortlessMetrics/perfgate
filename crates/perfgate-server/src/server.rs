@@ -23,15 +23,15 @@ use tracing::info;
 use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware};
 use crate::error::ConfigError;
 use crate::handlers::{
-    dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
-    list_audit_events, list_baselines, list_verdicts, promote_baseline, static_asset,
-    submit_verdict, upload_baseline,
+    create_key, dashboard_index, delete_baseline, get_baseline, get_latest_baseline, health_check,
+    list_audit_events, list_baselines, list_keys, list_verdicts, promote_baseline, revoke_key,
+    static_asset, submit_verdict, upload_baseline,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider};
 use crate::storage::{
-    ArtifactStore, AuditStore, BaselineStore, InMemoryStore, ObjectArtifactStore, PostgresStore,
-    SqliteStore,
+    ArtifactStore, AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyStore,
+    ObjectArtifactStore, PostgresStore, SqliteKeyStore, SqliteStore,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
 
@@ -343,7 +343,7 @@ pub(crate) async fn create_storage(
     }
 }
 
-/// Creates the API key store from configuration.
+/// Creates the in-memory API key store from CLI configuration.
 pub(crate) async fn create_key_store(
     config: &ServerConfig,
 ) -> Result<Arc<ApiKeyStore>, ConfigError> {
@@ -366,9 +366,35 @@ pub(crate) async fn create_key_store(
     Ok(Arc::new(store))
 }
 
+/// Creates the persistent key store based on the storage backend.
+pub(crate) fn create_persistent_key_store(
+    config: &ServerConfig,
+    sqlite_conn: Option<Arc<std::sync::Mutex<rusqlite::Connection>>>,
+) -> Result<Arc<dyn KeyStore>, ConfigError> {
+    match config.storage_backend {
+        StorageBackend::Sqlite => {
+            if let Some(conn) = sqlite_conn {
+                let store = SqliteKeyStore::new(conn).map_err(|e| {
+                    ConfigError::InvalidValue(format!("Failed to create SQLite key store: {}", e))
+                })?;
+                info!("Using SQLite persistent key store");
+                Ok(Arc::new(store))
+            } else {
+                info!("Using in-memory key store (no SQLite connection available)");
+                Ok(Arc::new(InMemoryKeyStore::new()))
+            }
+        }
+        _ => {
+            info!("Using in-memory key store");
+            Ok(Arc::new(InMemoryKeyStore::new()))
+        }
+    }
+}
+
 /// Creates the router with all routes configured.
 pub(crate) fn create_router(
     state: AppState,
+    persistent_key_store: Arc<dyn KeyStore>,
     auth_state: AuthState,
     config: &ServerConfig,
     prometheus_handle: Option<PrometheusHandle>,
@@ -389,6 +415,17 @@ pub(crate) fn create_router(
         .route("/", get(dashboard_index))
         .route("/index.html", get(dashboard_index))
         .route("/assets/{*path}", get(static_asset));
+
+    // Key management routes (admin-only, using the persistent key store as state)
+    let key_routes = Router::new()
+        .route("/keys", post(create_key))
+        .route("/keys", get(list_keys))
+        .route("/keys/{id}", delete(revoke_key))
+        .with_state(persistent_key_store)
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth_middleware,
+        ));
 
     // API routes — auth middleware is skipped in local mode.
     let api_routes_inner = Router::new()
@@ -428,7 +465,10 @@ pub(crate) fn create_router(
         .merge(health_routes.clone())
         .nest(
             "/api/v1",
-            health_routes.merge(info_routes).merge(api_routes),
+            health_routes
+                .merge(info_routes)
+                .merge(api_routes)
+                .merge(key_routes),
         );
 
     // Add /metrics endpoint if Prometheus handle is available
@@ -467,7 +507,22 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     // Create storage
     let (store, audit) = create_storage(&config).await?;
 
-    // Create key store
+    // Create the persistent key store (shares SQLite connection when applicable)
+    let sqlite_conn = if config.storage_backend == StorageBackend::Sqlite {
+        let path = config
+            .sqlite_path
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("perfgate.db"));
+        let conn = rusqlite::Connection::open(&path).map_err(|e| {
+            ConfigError::InvalidValue(format!("Failed to open SQLite for key store: {}", e))
+        })?;
+        Some(Arc::new(std::sync::Mutex::new(conn)))
+    } else {
+        None
+    };
+    let persistent_key_store = create_persistent_key_store(&config, sqlite_conn)?;
+
+    // Create in-memory key store (for CLI-provided keys)
     let key_store = create_key_store(&config).await?;
 
     let mut oidc_provider = None;
@@ -478,7 +533,8 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
         oidc_provider = Some(provider);
     }
 
-    let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider);
+    let auth_state = AuthState::new(key_store, config.jwt.clone(), oidc_provider)
+        .with_persistent_key_store(persistent_key_store.clone());
 
     // Install Prometheus metrics recorder
     let prometheus_handle = setup_metrics_recorder();
@@ -487,7 +543,13 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     let app_state = AppState { store, audit };
 
     // Create router
-    let app = create_router(app_state, auth_state, &config, Some(prometheus_handle));
+    let app = create_router(
+        app_state,
+        persistent_key_store.clone(),
+        auth_state,
+        &config,
+        Some(prometheus_handle),
+    );
 
     // Add tracing and request ID layers
     let app = app.layer(
@@ -646,6 +708,7 @@ mod tests {
     #[tokio::test]
     async fn test_router_creation() {
         let store = Arc::new(InMemoryStore::new());
+        let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
         let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, None);
         let config = ServerConfig::new();
         let app_state = AppState {
@@ -653,7 +716,7 @@ mod tests {
             audit: store,
         };
 
-        let _router = create_router(app_state, auth_state, &config, None);
+        let _router = create_router(app_state, persistent_key_store, auth_state, &config, None);
         // Router created successfully
     }
 

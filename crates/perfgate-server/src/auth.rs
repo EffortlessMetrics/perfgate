@@ -20,6 +20,7 @@ use tracing::warn;
 
 use crate::models::ApiError;
 use crate::oidc::OidcProvider;
+use crate::storage::KeyStore;
 
 /// JWT validation settings.
 #[derive(Clone)]
@@ -81,8 +82,11 @@ impl std::fmt::Debug for JwtConfig {
 /// Authentication state shared by middleware.
 #[derive(Clone)]
 pub struct AuthState {
-    /// In-memory API key store.
+    /// In-memory API key store (for CLI-provided keys).
     pub key_store: Arc<ApiKeyStore>,
+
+    /// Persistent key store (database-backed).
+    pub persistent_key_store: Option<Arc<dyn KeyStore>>,
 
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
@@ -100,9 +104,16 @@ impl AuthState {
     ) -> Self {
         Self {
             key_store,
+            persistent_key_store: None,
             jwt,
             oidc,
         }
+    }
+
+    /// Adds a persistent key store for database-backed key validation.
+    pub fn with_persistent_key_store(mut self, store: Arc<dyn KeyStore>) -> Self {
+        self.persistent_key_store = Some(store);
+        self
     }
 }
 
@@ -200,7 +211,7 @@ fn unauthorized(message: &str) -> (StatusCode, Json<ApiError>) {
 }
 
 async fn authenticate_api_key(
-    key_store: &ApiKeyStore,
+    auth_state: &AuthState,
     api_key_str: &str,
     headers: &HeaderMap,
 ) -> Result<AuthContext, (StatusCode, Json<ApiError>)> {
@@ -212,23 +223,44 @@ async fn authenticate_api_key(
         unauthorized("Invalid API key format")
     })?;
 
-    let api_key = key_store.get_key(api_key_str).await.ok_or_else(|| {
-        warn!(
-            key_prefix = &api_key_str[..10.min(api_key_str.len())],
-            "Invalid API key"
-        );
-        unauthorized("Invalid API key")
-    })?;
-
-    if api_key.is_expired() {
-        warn!(key_id = %api_key.id, "API key expired");
-        return Err(unauthorized("API key has expired"));
+    // Try the in-memory store first (CLI-provided keys)
+    if let Some(api_key) = auth_state.key_store.get_key(api_key_str).await {
+        if api_key.is_expired() {
+            warn!(key_id = %api_key.id, "API key expired");
+            return Err(unauthorized("API key has expired"));
+        }
+        return Ok(AuthContext {
+            api_key,
+            source_ip: source_ip(headers),
+        });
     }
 
-    Ok(AuthContext {
-        api_key,
-        source_ip: source_ip(headers),
-    })
+    // Try the persistent key store (database-backed keys)
+    if let Some(persistent) = &auth_state.persistent_key_store
+        && let Ok(Some(record)) = persistent.validate_key(api_key_str).await
+    {
+        let mut api_key = ApiKey::new(
+            record.id.clone(),
+            record.description.clone(),
+            record.project.clone(),
+            record.role,
+        );
+        // Apply benchmark pattern as regex
+        api_key.benchmark_regex = record.pattern.clone();
+        api_key.expires_at = record.expires_at;
+        api_key.created_at = record.created_at;
+
+        return Ok(AuthContext {
+            api_key,
+            source_ip: source_ip(headers),
+        });
+    }
+
+    warn!(
+        key_prefix = &api_key_str[..10.min(api_key_str.len())],
+        "Invalid API key"
+    );
+    Err(unauthorized("Invalid API key"))
 }
 
 fn validate_jwt(token: &str, config: &JwtConfig) -> Result<JwtClaims, AuthError> {
@@ -332,7 +364,7 @@ pub async fn auth_middleware(
 
     let auth_ctx = match extract_credentials(request.headers()) {
         Some(Credentials::ApiKey(api_key)) => {
-            authenticate_api_key(&auth_state.key_store, &api_key, request.headers()).await?
+            authenticate_api_key(&auth_state, &api_key, request.headers()).await?
         }
         Some(Credentials::Jwt(token)) => {
             authenticate_jwt(&auth_state, &token, request.headers()).await?

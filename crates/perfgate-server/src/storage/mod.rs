@@ -4,11 +4,13 @@
 //! operations and implementations for different backends.
 
 mod artifacts;
+mod key_store;
 mod memory;
 mod postgres;
 mod sqlite;
 
 pub use artifacts::ObjectArtifactStore;
+pub use key_store::{InMemoryKeyStore, KeyRecord, KeyStore, SqliteKeyStore, hash_key, key_prefix};
 pub use memory::InMemoryStore;
 pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;

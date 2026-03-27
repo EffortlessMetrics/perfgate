@@ -718,6 +718,90 @@ impl ApiError {
     }
 }
 
+// ── API Key Management Types ──────────────────────────────────────────
+
+/// Request for creating a new API key.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateKeyRequest {
+    /// Human-readable description
+    pub description: String,
+    /// Role to assign (viewer, contributor, promoter, admin)
+    pub role: perfgate_auth::Role,
+    /// Project this key is scoped to (use "*" for all projects)
+    pub project: String,
+    /// Optional glob pattern to restrict benchmark access
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// Optional expiration timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Response for creating a new API key (contains the plaintext key once).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateKeyResponse {
+    /// Unique key identifier (for management)
+    pub id: String,
+    /// The plaintext API key (only returned once)
+    pub key: String,
+    /// Human-readable description
+    pub description: String,
+    /// Assigned role
+    pub role: perfgate_auth::Role,
+    /// Scoped project
+    pub project: String,
+    /// Optional benchmark pattern
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// Creation timestamp
+    pub created_at: DateTime<Utc>,
+    /// Expiration timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// A redacted API key entry returned by list operations.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct KeyEntry {
+    /// Unique key identifier
+    pub id: String,
+    /// Redacted key prefix (e.g., "pg_live_abc1...***")
+    pub key_prefix: String,
+    /// Human-readable description
+    pub description: String,
+    /// Assigned role
+    pub role: perfgate_auth::Role,
+    /// Scoped project
+    pub project: String,
+    /// Optional benchmark pattern
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// Creation timestamp
+    pub created_at: DateTime<Utc>,
+    /// Expiration timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    /// Revocation timestamp (if revoked)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// Response for listing API keys.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListKeysResponse {
+    /// List of key entries (redacted)
+    pub keys: Vec<KeyEntry>,
+}
+
+/// Response for revoking an API key.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RevokeKeyResponse {
+    /// The key ID that was revoked
+    pub id: String,
+    /// When the key was revoked
+    pub revoked_at: DateTime<Utc>,
+}
+
 #[cfg(feature = "server")]
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
