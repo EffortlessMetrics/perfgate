@@ -57,7 +57,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 - `baseline_dir` may have path resolution issues in mixed Unix/Windows environments (MSYS2). `baseline_pattern` with absolute path works reliably.
 
 ### `run -p perfgate` vs `run -p perfgate-cli`
-- `cargo run -p perfgate` fails (no bin target). Must use `cargo run -p perfgate-cli --bin perfgate` or just `perfgate` if installed. The CLAUDE.md examples use `cargo run -p perfgate --` which works because Cargo resolves the binary, but the root `perfgate` crate is a library.
+- `cargo run -p perfgate` fails (no bin target — it's a library facade). **Fixed**: all docs now use `cargo run -p perfgate-cli --`.
 
 ## What's Solid (ship with confidence)
 

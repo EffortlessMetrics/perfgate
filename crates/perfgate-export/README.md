@@ -17,10 +17,11 @@ formats suitable for trend analysis and time-series ingestion.
 | JSONL        | JSON Lines (one JSON object per line)        |
 | HTML         | HTML summary table                           |
 | Prometheus   | Prometheus text exposition format             |
+| JUnit        | JUnit XML for legacy CI reporters             |
 
 ## Key API
 
-- `ExportFormat` — enum of supported formats (Csv, Jsonl, Html, Prometheus)
+- `ExportFormat` — enum of supported formats (Csv, Jsonl, Html, Prometheus, JUnit)
 - `ExportFormat::parse(s)` — parse format from string
 - `ExportUseCase::export_run(receipt, format)` — export a run receipt
 - `ExportUseCase::export_compare(receipt, format)` — export a compare receipt

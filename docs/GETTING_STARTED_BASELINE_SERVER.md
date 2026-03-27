@@ -135,7 +135,7 @@ Or use the `baseline` subcommand:
 
 ```bash
 perfgate baseline upload \
-  --server http://localhost:8080 \
+  --baseline-server http://localhost:8080/api/v1 \
   --api-key pg_live_abc123... \
   --project my-project \
   --benchmark my-bench \

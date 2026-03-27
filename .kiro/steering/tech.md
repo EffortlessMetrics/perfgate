@@ -26,7 +26,7 @@
 ```bash
 cargo build                    # Build all crates
 cargo test --all               # Run all tests
-cargo run -p perfgate -- --help  # Run CLI
+cargo run -p perfgate-cli -- --help  # Run CLI
 ```
 
 ### CI Workflow (all checks)

@@ -8,7 +8,7 @@ CLI interface — clap argument parsing, JSON I/O, and command dispatch. This is
 cargo test -p perfgate              # all integration tests
 cargo test -p perfgate -- cockpit   # cockpit tests only
 cargo test -p perfgate -- abi       # ABI conformance tests only
-cargo run -p perfgate -- --help     # see all commands
+cargo run -p perfgate-cli -- --help     # see all commands
 ```
 
 Mutation testing target: **70% kill rate**.

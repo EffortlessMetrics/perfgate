@@ -49,7 +49,7 @@ The architecture is modularized into 26 workspace crates:
 
 ### Common Commands
 - **Build**: `cargo build --workspace`
-- **Run CLI**: `cargo run -p perfgate -- [args]`
+- **Run CLI**: `cargo run -p perfgate-cli -- [args]`
 - **Install Locally**: `cargo install --path crates/perfgate-cli`
 - **Help**: `perfgate --help`
 
