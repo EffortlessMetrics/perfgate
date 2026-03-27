@@ -24,6 +24,7 @@ perfgate-client.workspace = true
 perfgate-summary.workspace = true
 perfgate-config.workspace = true
 perfgate-api.workspace = true
+perfgate-ingest.workspace = true
 perfgate-app.workspace = true
 perfgate-adapters.workspace = true
 perfgate-domain.workspace = true

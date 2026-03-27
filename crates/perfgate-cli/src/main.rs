@@ -21,6 +21,7 @@ use perfgate_client::{
 use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
+use perfgate_ingest::IngestFormat;
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
@@ -275,6 +276,13 @@ enum Command {
         #[arg(long)]
         current_lock: Option<PathBuf>,
     },
+
+    /// Import benchmark results from external frameworks into perfgate format.
+    ///
+    /// Supports Criterion, hyperfine, Go bench, and pytest-benchmark.
+    /// Produces a standard perfgate.run.v1 receipt that can be used with
+    /// compare, report, check, and other perfgate commands.
+    Ingest(Box<IngestArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -674,6 +682,29 @@ pub struct PairedArgs {
 
     /// Output file path
     #[arg(long, default_value = "perfgate-paired.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct IngestArgs {
+    /// Input format: criterion, hyperfine, gobench, pytest
+    #[arg(long)]
+    pub format: String,
+
+    /// Path to the input file (or directory for criterion)
+    #[arg(long)]
+    pub input: PathBuf,
+
+    /// Benchmark name (default: derived from input data)
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// Output file path
+    #[arg(long, default_value = "perfgate-ingest.json")]
     pub out: PathBuf,
 
     /// Pretty-print JSON
@@ -1459,6 +1490,37 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 current_lock,
             })?;
             println!("{}", outcome.markdown);
+            Ok(())
+        }
+
+        Command::Ingest(args) => {
+            let IngestArgs {
+                format,
+                input,
+                name,
+                out,
+                pretty,
+            } = *args;
+
+            let format = IngestFormat::parse(&format).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest",
+                    format
+                )
+            })?;
+
+            let content = fs::read_to_string(&input)
+                .with_context(|| format!("read input file {}", input.display()))?;
+
+            let request = perfgate_ingest::IngestRequest {
+                format,
+                input: content,
+                name,
+            };
+
+            let receipt = perfgate_ingest::ingest(&request)?;
+            write_json(&out, &receipt, pretty)?;
+            eprintln!("Ingested {} -> {}", input.display(), out.display());
             Ok(())
         }
     }
