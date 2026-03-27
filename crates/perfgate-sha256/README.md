@@ -1,23 +1,25 @@
 # perfgate-sha256
 
-Minimal SHA-256 implementation for perfgate fingerprinting.
+Minimal, dependency-free SHA-256 for deterministic fingerprints.
 
 Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
-## Overview
+## Why not use a crate?
 
-A `#![no_std]`-compatible SHA-256 hash function returning a hexadecimal string.
-Designed for fingerprinting and identification, not cryptographic security.
-Zero external dependencies.
-
-## Features
-
-- `std` (default) — enables `std` support
-- Without `std` — uses `alloc::string::String` only
+`perfgate-sha256` sits in the innermost layer of the architecture, where
+zero external dependencies is a hard design constraint. A single public
+function, `#![no_std]`-compatible, is all that is needed for host and
+receipt fingerprinting.
 
 ## Key API
 
-- `sha256_hex(data: &[u8])` — compute SHA-256 and return a 64-char lowercase hex string
+- `sha256_hex(data: &[u8]) -> String` -- SHA-256 as a 64-char lowercase hex string
+
+## Features
+
+| Feature | Default | Effect |
+|---------|---------|--------|
+| `std`   | yes     | Enables `std`; without it, only `alloc` is required |
 
 ## Example
 
@@ -25,11 +27,11 @@ Zero external dependencies.
 use perfgate_sha256::sha256_hex;
 
 let hash = sha256_hex(b"hello");
-assert_eq!(hash, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
 assert_eq!(hash.len(), 64);
-
-let empty = sha256_hex(b"");
-assert_eq!(empty, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+assert_eq!(
+    hash,
+    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+);
 ```
 
 ## License
