@@ -29,6 +29,9 @@ use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_con
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_ingest::IngestFormat;
+use perfgate_scaling::{
+    ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
+};
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
@@ -357,6 +360,18 @@ enum Command {
     /// using ~/.perfgate/data.db as the default database. Opens the
     /// dashboard in the default browser unless --no-open is passed.
     Serve(Box<ServeArgs>),
+
+    /// Validate computational complexity (scaling behavior) of a benchmark.
+    ///
+    /// Runs a command at multiple input sizes, fits complexity models (O(1)
+    /// through O(n^3) and exponential), and reports the best-fitting class.
+    /// If --expected is given, fails when detected complexity is worse.
+    ///
+    /// Exit codes:
+    /// - 0: scaling validation passed
+    /// - 1: tool error
+    /// - 2: complexity degradation detected (policy fail)
+    Scale(Box<ScaleArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -445,6 +460,60 @@ pub struct BadgeArgs {
     /// Print SVG to stdout (equivalent to omitting --out)
     #[arg(long)]
     pub stdout: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ScaleArgs {
+    /// Bench identifier
+    #[arg(long)]
+    pub name: String,
+
+    /// Command template with {n} placeholder for input size.
+    /// Example: "./target/release/my-bench --size {n}"
+    #[arg(long)]
+    pub command: String,
+
+    /// Comma-separated input sizes to test.
+    /// Example: 100,1000,10000,100000
+    #[arg(long, value_delimiter = ',')]
+    pub sizes: Vec<u64>,
+
+    /// Number of repetitions per input size.
+    #[arg(long, default_value_t = 5)]
+    pub repeat: u32,
+
+    /// Expected complexity class (e.g., "O(n)", "O(n^2)").
+    /// If specified, fails when detected complexity is worse.
+    #[arg(long)]
+    pub expected: Option<String>,
+
+    /// Minimum R-squared for a valid fit (0.0 to 1.0).
+    #[arg(long, default_value_t = 0.90)]
+    pub r_squared_threshold: f64,
+
+    /// Working directory
+    #[arg(long)]
+    pub cwd: Option<PathBuf>,
+
+    /// Per-run timeout (e.g. "2s")
+    #[arg(long)]
+    pub timeout: Option<String>,
+
+    /// Output file path
+    #[arg(long, default_value = "perfgate-scaling.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+
+    /// Chart width in characters
+    #[arg(long, default_value_t = 60)]
+    pub chart_width: usize,
+
+    /// Chart height in lines
+    #[arg(long, default_value_t = 20)]
+    pub chart_height: usize,
 }
 
 #[derive(Debug, Args)]
@@ -1893,6 +1962,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         Command::Init(args) => execute_init(*args),
         Command::Watch(args) => run_watch(*args),
         Command::Serve(args) => execute_serve(*args),
+        Command::Scale(args) => execute_scale(*args),
     }
 }
 
@@ -2393,6 +2463,180 @@ fn open_browser(url: &str) {
         eprintln!("warning: could not open browser: {e}");
     }
 }
+
+fn execute_scale(args: ScaleArgs) -> anyhow::Result<()> {
+    use std::process::Command as ProcessCommand;
+
+    let ScaleArgs {
+        name,
+        command,
+        sizes,
+        repeat,
+        expected,
+        r_squared_threshold,
+        cwd,
+        timeout,
+        out,
+        pretty,
+        chart_width,
+        chart_height,
+    } = args;
+
+    if sizes.len() < 3 {
+        anyhow::bail!("--sizes must contain at least 3 values for curve fitting");
+    }
+
+    let expected_class = expected
+        .as_deref()
+        .map(parse_complexity)
+        .transpose()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let timeout_duration = timeout.as_deref().map(parse_duration).transpose()?;
+
+    eprintln!("Scaling analysis: {}", name);
+    eprintln!("  Command template: {}", command);
+    eprintln!("  Input sizes: {:?}", sizes);
+    eprintln!("  Repeat: {}", repeat);
+    if let Some(ref ec) = expected_class {
+        eprintln!("  Expected complexity: {}", ec);
+    }
+
+    let mut measurements = Vec::new();
+
+    for &size in &sizes {
+        let cmd_str = command.replace("{n}", &size.to_string());
+        eprintln!("\n  Running size={} ...", size);
+
+        let mut wall_times = Vec::new();
+        for iteration in 0..repeat {
+            let argv = shell_words::split(&cmd_str)
+                .with_context(|| format!("failed to parse command: {}", cmd_str))?;
+            if argv.is_empty() {
+                anyhow::bail!("command is empty after substituting size={}", size);
+            }
+
+            let mut proc = ProcessCommand::new(&argv[0]);
+            proc.args(&argv[1..]);
+
+            if let Some(ref dir) = cwd {
+                proc.current_dir(dir);
+            }
+
+            let start = Instant::now();
+            let status = proc
+                .status()
+                .with_context(|| format!("failed to execute: {}", cmd_str))?;
+            let elapsed = start.elapsed();
+
+            if !status.success() {
+                anyhow::bail!(
+                    "command failed with {} at size={}, iteration={}",
+                    status,
+                    size,
+                    iteration + 1
+                );
+            }
+
+            // Check timeout
+            if let Some(limit) = timeout_duration
+                && elapsed > limit
+            {
+                anyhow::bail!(
+                    "command timed out ({}ms > {}ms) at size={}, iteration={}",
+                    elapsed.as_millis(),
+                    limit.as_millis(),
+                    size,
+                    iteration + 1,
+                );
+            }
+
+            wall_times.push(elapsed.as_secs_f64() * 1000.0);
+        }
+
+        // Use median of wall times
+        wall_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = if wall_times.len() % 2 == 1 {
+            wall_times[wall_times.len() / 2]
+        } else {
+            let mid = wall_times.len() / 2;
+            (wall_times[mid - 1] + wall_times[mid]) / 2.0
+        };
+
+        eprintln!(
+            "    size={}: median={:.2}ms (n={})",
+            size,
+            median,
+            wall_times.len()
+        );
+
+        measurements.push(SizeMeasurement {
+            input_size: size,
+            time_ms: median,
+        });
+    }
+
+    // Classify complexity
+    let result = classify_complexity(&measurements, Some(r_squared_threshold))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Build report
+    let report = ScalingReport::new(
+        name.clone(),
+        command.clone(),
+        sizes.clone(),
+        repeat,
+        expected_class,
+        measurements.clone(),
+        result.clone(),
+    );
+
+    // Print results
+    eprintln!("\n{}", "=".repeat(60));
+    eprintln!("Scaling Analysis Results");
+    eprintln!("{}", "=".repeat(60));
+    eprintln!("Benchmark: {}", name);
+    eprintln!("Detected complexity: {}", result.best_fit);
+    eprintln!("R-squared: {:.4}", result.r_squared);
+    if let Some(ec) = expected_class {
+        eprintln!("Expected: {}", ec);
+    }
+    eprintln!("Verdict: {}", report.verdict);
+
+    // Print all model fits
+    eprintln!("\nModel fits (sorted by R-squared):");
+    for (class, r2) in &result.all_fits {
+        let marker = if *class == result.best_fit {
+            " <-- best"
+        } else {
+            ""
+        };
+        eprintln!("  {:<12} R^2={:.4}{}", class.to_string(), r2, marker);
+    }
+
+    // Print ASCII chart
+    eprintln!();
+    let chart = render_ascii_chart(
+        &measurements,
+        result.best_fit,
+        &result.coefficients,
+        chart_width,
+        chart_height,
+    );
+    eprintln!("{}", chart);
+
+    // Write JSON report
+    write_json(&out, &report, pretty)?;
+    eprintln!("\nReport written to: {}", out.display());
+
+    if !report.pass {
+        // Exit code 2 for policy failure
+        std::process::exit(2);
+    }
+
+    Ok(())
+}
+
 
 /// Execute baseline management actions.
 fn execute_baseline_action(

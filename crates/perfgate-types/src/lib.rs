@@ -1281,6 +1281,29 @@ pub struct BenchConfigFile {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budgets: Option<BTreeMap<Metric, BudgetOverride>>,
+
+    /// Optional scaling validation configuration.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub scaling: Option<ScalingConfig>,
+}
+
+/// Configuration for computational complexity validation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ScalingConfig {
+    /// Input sizes to test.
+    pub sizes: Vec<u64>,
+
+    /// Expected complexity class (e.g., "O(n)", "O(n^2)").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+
+    /// Number of repetitions per input size (default: 5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<u32>,
+
+    /// Minimum R-squared for a valid fit (default: 0.90).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r_squared_threshold: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
@@ -1522,6 +1545,8 @@ mod tests {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             }],
         };
         assert!(config.validate().is_err());
@@ -1609,6 +1634,8 @@ mod tests {
                 warmup: None,
                 metrics: None,
                 budgets: None,
+
+                scaling: None,
             }],
         };
         assert!(config.validate().is_ok());
@@ -2018,6 +2045,7 @@ mod tests {
                     );
                     m
                 }),
+                scaling: None,
             }],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -2931,6 +2959,7 @@ mod property_tests {
                         warmup,
                         metrics,
                         budgets,
+                        scaling: None,
                     }
                 },
             )

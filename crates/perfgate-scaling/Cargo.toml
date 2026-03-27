@@ -1,0 +1,22 @@
+[package]
+name = "perfgate-scaling"
+description = "Computational complexity validation and curve fitting for perfgate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["performance", "complexity", "scaling", "benchmarking", "big-o"]
+categories = ["development-tools", "mathematics"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1.7"
+approx = "0.5"
