@@ -52,7 +52,7 @@ perfgate check --config perfgate.toml --bench my-service
 
 ```yaml
 # .github/workflows/perf.yml
-- uses: EffortlessMetrics/perfgate@main
+- uses: EffortlessMetrics/perfgate@v0.15.0
   with:
     config: perfgate.toml
     all: "true"
@@ -63,7 +63,7 @@ Exit code `2` = budget violated. That's it.
 ## Install
 
 ```bash
-cargo install --path crates/perfgate-cli
+cargo install perfgate-cli
 ```
 
 ## How It Works

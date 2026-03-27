@@ -16,7 +16,7 @@ perfgate:
   image: rust:latest
   stage: test
   before_script:
-    - cargo install --path crates/perfgate-cli
+    - cargo install perfgate-cli
   script:
     - perfgate check --config perfgate.toml --all
   artifacts:
@@ -39,7 +39,7 @@ perfgate:
     PERFGATE_SERVER_URL: $PERFGATE_SERVER_URL
     PERFGATE_API_KEY: $PERFGATE_API_KEY
   before_script:
-    - cargo install --path crates/perfgate-cli
+    - cargo install perfgate-cli
   script:
     - perfgate check --config perfgate.toml --all
   artifacts:
@@ -61,7 +61,7 @@ perfgate-promote:
   only:
     - main
   before_script:
-    - cargo install --path crates/perfgate-cli
+    - cargo install perfgate-cli
   script:
     - perfgate check --config perfgate.toml --all
     - perfgate promote --current artifacts/perfgate/run.json --to baselines/bench.json
