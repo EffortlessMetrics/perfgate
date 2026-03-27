@@ -2154,7 +2154,6 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
 
 /// Run check in cockpit mode (always write receipt, exit 0 unless catastrophic).
 fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
-    eprintln!("DEBUG: run_check_cockpit entered");
     let clock = SystemClock;
     let started_at = clock.now_rfc3339();
     let start_instant = Instant::now();

@@ -34,10 +34,8 @@ pub struct SummaryUseCase;
 impl SummaryUseCase {
     /// Executes the summary use case.
     pub fn execute(&self, req: SummaryRequest) -> anyhow::Result<SummaryOutcome> {
-        println!("DEBUG: SummaryUseCase::execute");
         let mut paths = Vec::new();
         for pattern in req.files {
-            println!("DEBUG: matching glob {}", pattern);
             for entry in
                 glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))?
             {
@@ -52,21 +50,16 @@ impl SummaryUseCase {
         let mut failed = false;
         let mut rows = Vec::new();
         for path in paths {
-            println!("DEBUG: processing {}", path.display());
             let content =
                 fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-            println!("DEBUG: content read ({} bytes)", content.len());
             let compare: CompareReceipt = serde_json::from_str(&content)
                 .with_context(|| format!("parse JSON from {}", path.display()))?;
-            println!("DEBUG: JSON parsed");
 
             let benchmark = compare.bench.name.clone();
             let status = format!("{:?}", compare.verdict.status).to_lowercase();
             if status == "fail" {
                 failed = true;
             }
-            println!("DEBUG: benchmark={}, status={}", benchmark, status);
-
             let wall = compare.deltas.get(&Metric::WallMs);
             let (wall_ms, change_pct) = if let Some(d) = wall {
                 (
