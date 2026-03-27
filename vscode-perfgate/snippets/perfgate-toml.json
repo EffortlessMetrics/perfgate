@@ -1,0 +1,95 @@
+{
+  "Defaults block": {
+    "prefix": "defaults",
+    "body": [
+      "[defaults]",
+      "repeat = ${1:5}",
+      "warmup = ${2:1}",
+      "threshold = ${3:0.20}",
+      "warn_factor = ${4:0.90}",
+      "baseline_dir = \"${5:baselines}\"",
+      ""
+    ],
+    "description": "Insert a [defaults] configuration block with common settings."
+  },
+  "Benchmark entry": {
+    "prefix": "bench",
+    "body": [
+      "[[bench]]",
+      "name = \"${1:my-bench}\"",
+      "command = [\"${2:./scripts/bench.sh}\"]",
+      "# work = ${3:1000}",
+      ""
+    ],
+    "description": "Insert a [[bench]] entry defining a new benchmark."
+  },
+  "Benchmark with budget override": {
+    "prefix": "bench-budget",
+    "body": [
+      "[[bench]]",
+      "name = \"${1:my-bench}\"",
+      "command = [\"${2:./scripts/bench.sh}\"]",
+      "budgets = { ${3:wall_ms} = { threshold = ${4:0.10}, warn_factor = ${5:0.90}, statistic = \"${6|median,p95,mean|}\" } }",
+      ""
+    ],
+    "description": "Insert a [[bench]] entry with inline budget override."
+  },
+  "Budget section": {
+    "prefix": "budget",
+    "body": [
+      "[bench.budgets.${1|wall_ms,cpu_ms,max_rss_kb,throughput_per_s|}]",
+      "threshold = ${2:0.10}",
+      "warn_factor = ${3:0.90}",
+      "statistic = \"${4|median,p95,mean|}\"",
+      ""
+    ],
+    "description": "Insert a [bench.budgets.<metric>] section for fine-grained budget control."
+  },
+  "Baseline server": {
+    "prefix": "server",
+    "body": [
+      "[baseline_server]",
+      "url = \"${1:http://localhost:3000/api/v1}\"",
+      "project = \"${2:my-project}\"",
+      "# api_key = \"${3:your-api-key}\"",
+      "fallback_to_local = ${4|true,false|}",
+      ""
+    ],
+    "description": "Insert a [baseline_server] configuration block."
+  },
+  "Full configuration": {
+    "prefix": "perfgate-full",
+    "body": [
+      "# perfgate.toml",
+      "",
+      "[defaults]",
+      "repeat = ${1:5}",
+      "warmup = ${2:1}",
+      "threshold = ${3:0.20}",
+      "warn_factor = ${4:0.90}",
+      "baseline_dir = \"${5:baselines}\"",
+      "",
+      "[[bench]]",
+      "name = \"${6:my-bench}\"",
+      "command = [\"${7:./scripts/bench.sh}\"]",
+      "# work = ${8:1000}",
+      ""
+    ],
+    "description": "Insert a complete perfgate.toml configuration scaffold."
+  },
+  "Baseline pattern": {
+    "prefix": "baseline-pattern",
+    "body": [
+      "baseline_pattern = \"${1:baselines}/{bench}.json\""
+    ],
+    "description": "Insert a baseline_pattern with {bench} placeholder."
+  },
+  "Noise policy": {
+    "prefix": "noise",
+    "body": [
+      "noise_threshold = ${1:0.05}",
+      "noise_policy = \"${2|ignore,warn,fail|}\""
+    ],
+    "description": "Insert noise threshold and policy settings."
+  }
+}
