@@ -16,16 +16,18 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    RatchetRequest, RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_json_diff,
+    render_markdown, render_markdown_template, render_ratchet_preview, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     SubmitVerdictRequest, UploadBaselineRequest,
 };
-use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
+use perfgate_config::{
+    ResolvedServerConfig, apply_ratchet_changes, load_config_file, resolve_server_config,
+};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_github::{CommentOptions, GitHubClient};
@@ -857,6 +859,26 @@ pub struct PromoteArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+
+    /// Ratchet budgets using a compare receipt (explicit promote path only).
+    #[arg(long, default_value_t = false)]
+    pub ratchet: bool,
+
+    /// Compare receipt used as ratchet evidence.
+    #[arg(long, requires = "ratchet")]
+    pub compare: Option<PathBuf>,
+
+    /// Config path to preview/apply ratchet changes.
+    #[arg(long, requires = "ratchet", default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Preview ratchet config changes without writing.
+    #[arg(long, requires = "ratchet", default_value_t = false)]
+    pub ratchet_preview: bool,
+
+    /// Path to write ratchet artifact receipt.
+    #[arg(long, requires = "ratchet", default_value = "perfgate-ratchet.json")]
+    pub ratchet_artifact: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1740,6 +1762,11 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 version,
                 normalize,
                 pretty,
+                ratchet,
+                compare,
+                config,
+                ratchet_preview,
+                ratchet_artifact,
             } = *args;
 
             let receipt: RunReceipt = read_json_from_location(&current)?;
@@ -1792,6 +1819,42 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
                 let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
                 write_json_to_location(&to_path, &result.receipt, pretty)?;
+            }
+
+            if ratchet {
+                if to_server {
+                    anyhow::bail!(
+                        "--ratchet currently supports local promote only (without --to-server)"
+                    );
+                }
+                let compare_path = compare.ok_or_else(|| {
+                    anyhow::anyhow!("--ratchet requires --compare <perfgate.compare.v1.json>")
+                })?;
+                let compare_receipt: CompareReceipt = read_json(&compare_path)?;
+                let cfg = load_config_file(&config)?;
+                if !cfg.ratchet.enabled {
+                    anyhow::bail!(
+                        "ratchet is disabled in config ([ratchet].enabled=false); refusing to apply"
+                    );
+                }
+
+                let ratchet_outcome = RatchetUseCase::preview(RatchetRequest {
+                    compare: compare_receipt,
+                    config: cfg.clone(),
+                });
+                eprintln!("{}", render_ratchet_preview(&ratchet_outcome));
+
+                if !ratchet_preview {
+                    apply_ratchet_changes(
+                        &config,
+                        &ratchet_outcome.bench_name,
+                        &ratchet_outcome.changes,
+                    )?;
+                }
+
+                let ratchet_receipt =
+                    RatchetUseCase::build_receipt(&ratchet_outcome, cfg.ratchet, !ratchet_preview);
+                write_json(&ratchet_artifact, &ratchet_receipt, true)?;
             }
 
             Ok(())

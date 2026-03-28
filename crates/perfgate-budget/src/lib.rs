@@ -40,7 +40,8 @@
 //! ```
 
 use perfgate_types::{
-    Budget, Direction, Metric, MetricStatus, Verdict, VerdictCounts, VerdictStatus,
+    Budget, Direction, Metric, MetricStatus, RatchetConfig, RatchetMode, Verdict, VerdictCounts,
+    VerdictStatus,
 };
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -118,6 +119,14 @@ pub struct BudgetResult {
     pub status: MetricStatus,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RatchetDecision {
+    pub eligible: bool,
+    pub improvement: f64,
+    pub proposed_threshold: Option<f64>,
+    pub reason: String,
+}
+
 /// Evaluates a metric against a budget threshold.
 ///
 /// This is the core budget evaluation function that:
@@ -185,6 +194,62 @@ pub fn evaluate_budget(
         noise_threshold: budget.noise_threshold,
         status,
     })
+}
+
+pub fn evaluate_ratchet_threshold(
+    baseline: f64,
+    current: f64,
+    current_threshold: f64,
+    direction: Direction,
+    policy: &RatchetConfig,
+) -> RatchetDecision {
+    if !matches!(policy.mode, RatchetMode::Threshold) {
+        return RatchetDecision {
+            eligible: false,
+            improvement: 0.0,
+            proposed_threshold: None,
+            reason: "ratchet mode baseline_value not supported for thresholds".to_string(),
+        };
+    }
+    if baseline <= 0.0 {
+        return RatchetDecision {
+            eligible: false,
+            improvement: 0.0,
+            proposed_threshold: None,
+            reason: "baseline must be > 0".to_string(),
+        };
+    }
+    let improvement = match direction {
+        Direction::Lower => ((baseline - current) / baseline).max(0.0),
+        Direction::Higher => ((current - baseline) / baseline).max(0.0),
+    };
+    if improvement < policy.min_improvement {
+        return RatchetDecision {
+            eligible: false,
+            improvement,
+            proposed_threshold: None,
+            reason: format!(
+                "improvement {:.4} below min_improvement {:.4}",
+                improvement, policy.min_improvement
+            ),
+        };
+    }
+    let tightening = improvement.min(policy.max_tightening);
+    let candidate = current_threshold * (1.0 - tightening);
+    if candidate >= current_threshold {
+        return RatchetDecision {
+            eligible: false,
+            improvement,
+            proposed_threshold: None,
+            reason: "candidate is not tighter than current threshold".to_string(),
+        };
+    }
+    RatchetDecision {
+        eligible: true,
+        improvement,
+        proposed_threshold: Some(candidate),
+        reason: format!("tightened by {:.4} (capped)", tightening),
+    }
 }
 
 /// Calculates the regression percentage between baseline and current values.

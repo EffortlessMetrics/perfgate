@@ -21,6 +21,20 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "$ref": "#/$defs/RatchetConfig",
+      "default": {
+        "allow_metrics": [
+          "wall_ms",
+          "cpu_ms"
+        ],
+        "enabled": false,
+        "max_tightening": 0.1,
+        "min_improvement": 0.05,
+        "mode": "threshold",
+        "require_significance": true
+      }
     }
   },
   "$defs": {
@@ -358,6 +372,50 @@
           "type": "string",
           "const": "skip"
         }
+      ]
+    },
+    "RatchetConfig": {
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "type": "array",
+          "default": [
+            "wall_ms",
+            "cpu_ms"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "type": "string",
+      "enum": [
+        "threshold",
+        "baseline_value"
       ]
     },
     "ScalingConfig": {

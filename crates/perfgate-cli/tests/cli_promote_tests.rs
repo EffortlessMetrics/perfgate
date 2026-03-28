@@ -363,3 +363,63 @@ fn test_promote_creates_parent_directories() {
         "baseline file should exist in nested directory"
     );
 }
+
+#[test]
+fn test_promote_ratchet_preview_does_not_write_config() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let compare_path = temp_dir.path().join("compare.json");
+    let baseline = fixtures_dir().join("baseline.json");
+    let current = fixtures_dir().join("current_pass.json");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let out_baseline = temp_dir.path().join("baseline-out.json");
+
+    fs::write(
+        &config_path,
+        r#"[ratchet]
+enabled = true
+mode = "threshold"
+min_improvement = 0.01
+max_tightening = 0.10
+require_significance = false
+allow_metrics = ["wall_ms"]
+
+[[bench]]
+name = "my-bench"
+command = ["echo", "hello"]
+
+[bench.budgets.wall_ms]
+threshold = 0.20
+"#,
+    )
+    .expect("write config");
+    let before = fs::read_to_string(&config_path).expect("read config before");
+
+    let mut compare_cmd = perfgate_cmd();
+    compare_cmd
+        .arg("compare")
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--current")
+        .arg(&current)
+        .arg("--out")
+        .arg(&compare_path);
+    compare_cmd.assert().success();
+
+    let mut promote_cmd = perfgate_cmd();
+    promote_cmd
+        .arg("promote")
+        .arg("--current")
+        .arg(&baseline)
+        .arg("--to")
+        .arg(&out_baseline)
+        .arg("--ratchet")
+        .arg("--compare")
+        .arg(&compare_path)
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--ratchet-preview");
+    promote_cmd.assert().success();
+
+    let after = fs::read_to_string(&config_path).expect("read config after");
+    assert_eq!(before, after, "preview should not modify config");
+}

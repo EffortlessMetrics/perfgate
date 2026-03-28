@@ -17,7 +17,7 @@
 
 use anyhow::Context;
 use perfgate_client::{BaselineClient, ClientConfig, FallbackClient, FallbackStorage};
-use perfgate_types::{BaselineServerConfig, ConfigFile};
+use perfgate_types::{BaselineServerConfig, ConfigFile, RatchetChange};
 use std::fs;
 use std::path::Path;
 
@@ -127,4 +127,37 @@ pub fn resolve_server_config(
         project: flag_project.or_else(|| file_config.resolved_project()),
         fallback_to_local: file_config.fallback_to_local,
     }
+}
+
+/// Apply ratchet threshold changes to a TOML config.
+pub fn apply_ratchet_changes(
+    path: &Path,
+    bench_name: &str,
+    changes: &[RatchetChange],
+) -> anyhow::Result<()> {
+    if changes.is_empty() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let mut updated = content.clone();
+    for change in changes {
+        let section = format!("[bench.budgets.{}]", change.metric.as_str());
+        if let Some(section_idx) = updated.find(&section) {
+            let tail = &updated[section_idx..];
+            if let Some(line_rel) = tail.find("threshold =") {
+                let start = section_idx + line_rel;
+                let line_end = updated[start..]
+                    .find('\n')
+                    .map(|i| start + i)
+                    .unwrap_or(updated.len());
+                updated.replace_range(
+                    start..line_end,
+                    &format!("threshold = {:.6}", change.new_threshold),
+                );
+            }
+        }
+    }
+    let _ = bench_name;
+    fs::write(path, updated).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }

@@ -48,7 +48,7 @@ pub fn is_remote_storage_uri(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{BaselineServerConfig, ConfigFile, DefaultsConfig};
+    use perfgate_types::{BaselineServerConfig, ConfigFile, DefaultsConfig, RatchetConfig};
 
     #[test]
     fn test_resolve_baseline_path_uses_cli_over_config() {
@@ -60,6 +60,7 @@ mod tests {
                 ..Default::default()
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: RatchetConfig::default(),
             benches: Vec::new(),
         };
 
