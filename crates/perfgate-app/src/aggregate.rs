@@ -329,6 +329,8 @@ fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> Aggrega
 mod tests {
     use super::*;
     use perfgate_types::{BenchMeta, Sample, Stats, ToolInfo, U64Summary};
+    use std::fs;
+    use tempfile::tempdir;
 
     fn mk_receipt(id: &str, os: &str, arch: &str, exit_code: i32) -> RunReceipt {
         RunReceipt {
@@ -546,5 +548,45 @@ mod tests {
 
         assert_eq!(input_status(&receipt), MetricStatus::Pass);
         assert!(input_reasons(&receipt).is_empty());
+    }
+
+    #[test]
+    fn execute_returns_combined_run_receipt_and_aggregate_metadata() {
+        let dir = tempdir().unwrap();
+        let first_path = dir.path().join("run1.json");
+        let second_path = dir.path().join("run2.json");
+
+        let mut first = mk_receipt("1", "linux", "x86_64", 0);
+        first.samples[0].wall_ms = 100;
+        first.stats.wall_ms = U64Summary::new(100, 100, 100);
+
+        let mut second = mk_receipt("2", "linux", "x86_64", 0);
+        second.samples[0].wall_ms = 110;
+        second.stats.wall_ms = U64Summary::new(110, 110, 110);
+
+        fs::write(&first_path, serde_json::to_string(&first).unwrap()).unwrap();
+        fs::write(&second_path, serde_json::to_string(&second).unwrap()).unwrap();
+
+        let outcome = AggregateUseCase
+            .execute(AggregateRequest {
+                files: vec![first_path, second_path],
+                policy: AggregationPolicy::All,
+                quorum: None,
+                fail_if: None,
+                weights: BTreeMap::new(),
+                runner_class: None,
+                lane: None,
+            })
+            .unwrap();
+
+        assert_eq!(outcome.receipt.schema, perfgate_types::RUN_SCHEMA_V1);
+        assert_eq!(outcome.receipt.samples.len(), 2);
+        assert_eq!(outcome.receipt.stats.wall_ms.median, 105);
+
+        assert_eq!(outcome.aggregate.schema, AGGREGATE_SCHEMA_V1);
+        assert_eq!(outcome.aggregate.benchmark, "bench");
+        assert_eq!(outcome.aggregate.policy, AggregationPolicy::All);
+        assert_eq!(outcome.aggregate.inputs.len(), 2);
+        assert_eq!(outcome.aggregate.verdict.status, MetricStatus::Pass);
     }
 }

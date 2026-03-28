@@ -2046,7 +2046,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 runner_class,
                 lane,
             })?;
-            write_json(&out, &outcome.aggregate, pretty)?;
+            write_json(&out, &outcome.receipt, pretty)?;
             Ok(())
         }
 
