@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (for example v0.15.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -29,17 +35,19 @@ jobs:
             runner: ubuntu-latest
             cross: true
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-15-intel
             cross: false
           - target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-15
             cross: false
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             cross: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -48,6 +56,10 @@ jobs:
       - name: Install cross
         if: matrix.cross
         run: cargo install cross --locked
+
+      - name: Generate lockfile when not checked in
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
 
       - name: Build binary
         shell: bash
@@ -75,7 +87,7 @@ jobs:
           cd ../../..
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: perfgate-${{ matrix.target }}
           path: perfgate-${{ matrix.target }}.*
@@ -86,10 +98,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           pattern: perfgate-*
@@ -106,6 +120,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: |
             artifacts/perfgate-*.tar.gz
             artifacts/perfgate-*.zip
