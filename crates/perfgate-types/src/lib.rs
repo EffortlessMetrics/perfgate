@@ -1154,6 +1154,9 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    #[serde(default, rename = "tradeoff")]
+    pub tradeoffs: Vec<TradeoffRule>,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 }
@@ -1540,6 +1543,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1555,6 +1559,29 @@ mod tests {
             }],
         };
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn config_file_parses_tradeoff_rules() {
+        let toml_str = r#"
+            [[tradeoff]]
+            name = "memory_for_speed"
+            if_failed = "max_rss_kb"
+            downgrade_to = "warn"
+
+            [[tradeoff.require]]
+            metric = "throughput_per_s"
+            min_improvement_ratio = 1.5
+
+            [[bench]]
+            name = "demo"
+            command = ["echo", "ok"]
+        "#;
+
+        let parsed: ConfigFile = toml::from_str(toml_str).expect("parse config");
+        assert_eq!(parsed.tradeoffs.len(), 1);
+        assert_eq!(parsed.tradeoffs[0].if_failed, Metric::MaxRssKb);
+        assert_eq!(parsed.tradeoffs[0].require.len(), 1);
     }
 
     #[test]
@@ -1629,6 +1656,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2027,6 +2055,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2064,6 +2093,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3036,6 +3066,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                tradeoffs: vec![],
                 benches,
             })
     }

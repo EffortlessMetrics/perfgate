@@ -40,7 +40,8 @@
 //! ```
 
 use perfgate_types::{
-    Budget, Direction, Metric, MetricStatus, Verdict, VerdictCounts, VerdictStatus,
+    Budget, Direction, Metric, MetricStatus, TradeoffDowngradeTo, TradeoffRule, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -398,9 +399,99 @@ where
     Ok((deltas, verdict))
 }
 
+fn sanitize_tradeoff_name(name: &str) -> String {
+    name.to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
+}
+
+fn improvement_ratio(metric: Metric, budget: &Budget, result: &BudgetResult) -> Option<f64> {
+    if result.baseline <= 0.0 || result.current <= 0.0 {
+        return None;
+    }
+
+    let _ = metric;
+    let ratio = match budget.direction {
+        Direction::Higher => result.current / result.baseline,
+        Direction::Lower => result.baseline / result.current,
+    };
+    Some(ratio)
+}
+
+/// Applies structured tradeoff rules to failed metric results.
+///
+/// Rules are evaluated deterministically in declaration order for each failed
+/// metric. At most one rule is applied per failed metric.
+pub fn apply_tradeoff_rules(
+    results: &mut BTreeMap<Metric, BudgetResult>,
+    budgets: &BTreeMap<Metric, Budget>,
+    rules: &[TradeoffRule],
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    let snapshot = results.clone();
+
+    for (failed_metric, failed_result) in results.iter_mut() {
+        if failed_result.status != MetricStatus::Fail {
+            continue;
+        }
+
+        for rule in rules.iter().filter(|rule| rule.if_failed == *failed_metric) {
+            let mut missing_required_metric = false;
+            let mut all_requirements_satisfied = true;
+
+            for requirement in &rule.require {
+                let Some(required_result) = snapshot.get(&requirement.metric) else {
+                    missing_required_metric = true;
+                    break;
+                };
+                let Some(required_budget) = budgets.get(&requirement.metric) else {
+                    missing_required_metric = true;
+                    break;
+                };
+
+                let Some(ratio) =
+                    improvement_ratio(requirement.metric, required_budget, required_result)
+                else {
+                    missing_required_metric = true;
+                    break;
+                };
+
+                if ratio < requirement.min_improvement_ratio {
+                    all_requirements_satisfied = false;
+                    break;
+                }
+            }
+
+            if missing_required_metric {
+                reasons.push("tradeoff_missing_required_metric".to_string());
+                continue;
+            }
+
+            if !all_requirements_satisfied {
+                reasons.push("tradeoff_rule_not_satisfied".to_string());
+                continue;
+            }
+
+            failed_result.status = match rule.downgrade_to {
+                TradeoffDowngradeTo::Warn => MetricStatus::Warn,
+                TradeoffDowngradeTo::Pass => MetricStatus::Pass,
+            };
+            reasons.push(format!(
+                "tradeoff_{}_applied",
+                sanitize_tradeoff_name(&rule.name)
+            ));
+            break;
+        }
+    }
+
+    reasons
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use perfgate_types::{TradeoffDowngradeTo, TradeoffRequirement, TradeoffRule};
 
     fn test_budget() -> Budget {
         Budget::new(0.20, 0.10, Direction::Lower)
@@ -565,6 +656,142 @@ mod tests {
         assert_eq!(verdict.status, VerdictStatus::Warn);
         assert_eq!(verdict.counts.warn, 1);
         assert_eq!(verdict.counts.pass, 1);
+    }
+
+    #[test]
+    fn tradeoff_downgrades_fail_when_requirement_satisfied() {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.10, 0.05, Direction::Lower));
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget::new(0.20, 0.10, Direction::Higher),
+        );
+
+        let mut results = BTreeMap::new();
+        results.insert(
+            Metric::MaxRssKb,
+            evaluate_budget(100.0, 130.0, budgets.get(&Metric::MaxRssKb).unwrap(), None).unwrap(),
+        );
+        results.insert(
+            Metric::ThroughputPerS,
+            evaluate_budget(
+                100.0,
+                170.0,
+                budgets.get(&Metric::ThroughputPerS).unwrap(),
+                None,
+            )
+            .unwrap(),
+        );
+
+        let reasons = apply_tradeoff_rules(
+            &mut results,
+            &budgets,
+            &[TradeoffRule {
+                name: "memory_for_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::ThroughputPerS,
+                    min_improvement_ratio: 1.5,
+                }],
+                downgrade_to: TradeoffDowngradeTo::Warn,
+            }],
+        );
+
+        assert_eq!(
+            results.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Warn
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|reason| reason == "tradeoff_memory_for_speed_applied")
+        );
+    }
+
+    #[test]
+    fn tradeoff_keeps_fail_when_requirement_not_satisfied() {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.10, 0.05, Direction::Lower));
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget::new(0.20, 0.10, Direction::Higher),
+        );
+
+        let mut results = BTreeMap::new();
+        results.insert(
+            Metric::MaxRssKb,
+            evaluate_budget(100.0, 130.0, budgets.get(&Metric::MaxRssKb).unwrap(), None).unwrap(),
+        );
+        results.insert(
+            Metric::ThroughputPerS,
+            evaluate_budget(
+                100.0,
+                140.0,
+                budgets.get(&Metric::ThroughputPerS).unwrap(),
+                None,
+            )
+            .unwrap(),
+        );
+
+        let reasons = apply_tradeoff_rules(
+            &mut results,
+            &budgets,
+            &[TradeoffRule {
+                name: "memory_for_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::ThroughputPerS,
+                    min_improvement_ratio: 1.5,
+                }],
+                downgrade_to: TradeoffDowngradeTo::Warn,
+            }],
+        );
+
+        assert_eq!(
+            results.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Fail
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|reason| reason == "tradeoff_rule_not_satisfied")
+        );
+    }
+
+    #[test]
+    fn tradeoff_emits_missing_required_metric_reason() {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.10, 0.05, Direction::Lower));
+
+        let mut results = BTreeMap::new();
+        results.insert(
+            Metric::MaxRssKb,
+            evaluate_budget(100.0, 130.0, budgets.get(&Metric::MaxRssKb).unwrap(), None).unwrap(),
+        );
+
+        let reasons = apply_tradeoff_rules(
+            &mut results,
+            &budgets,
+            &[TradeoffRule {
+                name: "memory_for_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::ThroughputPerS,
+                    min_improvement_ratio: 1.5,
+                }],
+                downgrade_to: TradeoffDowngradeTo::Warn,
+            }],
+        );
+
+        assert_eq!(
+            results.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Fail
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|reason| reason == "tradeoff_missing_required_metric")
+        );
     }
 }
 

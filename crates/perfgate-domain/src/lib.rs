@@ -17,8 +17,8 @@ pub use paired::{PairedComparison, compare_paired_stats, compute_paired_cv, comp
 pub use perfgate_host_detect::detect_host_mismatch;
 
 pub use perfgate_budget::{
-    BudgetError, BudgetResult, aggregate_verdict, calculate_regression, determine_status,
-    evaluate_budget, evaluate_budgets, reason_token,
+    BudgetError, BudgetResult, aggregate_verdict, apply_tradeoff_rules, calculate_regression,
+    determine_status, evaluate_budget, evaluate_budgets, reason_token,
 };
 
 pub use perfgate_significance::{compute_significance, mean_and_variance};
@@ -30,8 +30,8 @@ pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, su
 
 use perfgate_types::{
     Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, Verdict,
-    VerdictCounts, VerdictStatus,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats,
+    TradeoffRule, Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 
@@ -421,15 +421,16 @@ pub fn compare_stats(
     current: &Stats,
     budgets: &BTreeMap<Metric, Budget>,
 ) -> Result<Comparison, DomainError> {
-    let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
-    let mut reasons: Vec<String> = Vec::new();
+    compare_stats_with_tradeoffs(baseline, current, budgets, &[])
+}
 
-    let mut counts = VerdictCounts {
-        pass: 0,
-        warn: 0,
-        fail: 0,
-        skip: 0,
-    };
+pub fn compare_stats_with_tradeoffs(
+    baseline: &Stats,
+    current: &Stats,
+    budgets: &BTreeMap<Metric, Budget>,
+    tradeoffs: &[TradeoffRule],
+) -> Result<Comparison, DomainError> {
+    let mut results: BTreeMap<Metric, BudgetResult> = BTreeMap::new();
 
     for (metric, budget) in budgets {
         let b = metric_value(baseline, *metric);
@@ -441,62 +442,30 @@ pub fn compare_stats(
         };
 
         if bv <= 0.0 {
-            deltas.insert(
+            results.insert(
                 *metric,
-                Delta {
+                BudgetResult {
                     baseline: bv,
                     current: cv,
                     ratio: 1.0,
                     pct: 0.0,
                     regression: 0.0,
-                    status: MetricStatus::Skip,
-                    significance: None,
                     cv: current_cv,
                     noise_threshold: budget.noise_threshold,
-                    statistic: MetricStatistic::Median,
+                    status: MetricStatus::Skip,
                 },
             );
-            counts.skip += 1;
             continue;
         }
 
         let result = evaluate_budget(bv, cv, budget, current_cv)
             .expect("evaluate_budget is infallible for bv > 0");
 
-        match result.status {
-            MetricStatus::Pass => counts.pass += 1,
-            MetricStatus::Warn => {
-                counts.warn += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Warn));
-            }
-            MetricStatus::Fail => {
-                counts.fail += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Fail));
-            }
-            MetricStatus::Skip => {
-                counts.skip += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Skip));
-            }
-        }
-
-        deltas.insert(
-            *metric,
-            Delta {
-                baseline: result.baseline,
-                current: result.current,
-                ratio: result.ratio,
-                pct: result.pct,
-                regression: result.regression,
-                cv: result.cv,
-                noise_threshold: result.noise_threshold,
-                statistic: MetricStatistic::Median,
-                significance: None,
-                status: result.status,
-            },
-        );
+        results.insert(*metric, result);
     }
 
-    let verdict = aggregate_verdict_from_counts(counts, reasons);
+    let tradeoff_reasons = apply_tradeoff_rules(&mut results, budgets, tradeoffs);
+    let (deltas, verdict) = finalize_comparison(results, MetricStatistic::Median, tradeoff_reasons);
 
     Ok(Comparison { deltas, verdict })
 }
@@ -513,15 +482,26 @@ pub fn compare_runs(
     metric_statistics: &BTreeMap<Metric, MetricStatistic>,
     significance_policy: Option<SignificancePolicy>,
 ) -> Result<Comparison, DomainError> {
-    let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
-    let mut reasons: Vec<String> = Vec::new();
+    compare_runs_with_tradeoffs(
+        baseline,
+        current,
+        budgets,
+        metric_statistics,
+        significance_policy,
+        &[],
+    )
+}
 
-    let mut counts = VerdictCounts {
-        pass: 0,
-        warn: 0,
-        fail: 0,
-        skip: 0,
-    };
+pub fn compare_runs_with_tradeoffs(
+    baseline: &RunReceipt,
+    current: &RunReceipt,
+    budgets: &BTreeMap<Metric, Budget>,
+    metric_statistics: &BTreeMap<Metric, MetricStatistic>,
+    significance_policy: Option<SignificancePolicy>,
+    tradeoffs: &[TradeoffRule],
+) -> Result<Comparison, DomainError> {
+    let mut results: BTreeMap<Metric, BudgetResult> = BTreeMap::new();
+    let mut significance_by_metric = BTreeMap::new();
 
     for (metric, budget) in budgets {
         let statistic = metric_statistics
@@ -538,29 +518,24 @@ pub fn compare_runs(
         };
 
         if bv <= 0.0 {
-            deltas.insert(
+            results.insert(
                 *metric,
-                Delta {
+                BudgetResult {
                     baseline: bv,
                     current: cv,
                     ratio: 1.0,
                     pct: 0.0,
                     regression: 0.0,
                     status: MetricStatus::Skip,
-                    significance: None,
                     cv: current_cv,
                     noise_threshold: budget.noise_threshold,
-                    statistic,
                 },
             );
-            counts.skip += 1;
             continue;
         }
 
-        let result = evaluate_budget(bv, cv, budget, current_cv)
+        let mut result = evaluate_budget(bv, cv, budget, current_cv)
             .expect("evaluate_budget is infallible for bv > 0");
-
-        let mut status = result.status;
 
         let significance = significance_policy.and_then(|policy| {
             let baseline_series = metric_series_from_run(baseline, *metric);
@@ -575,35 +550,67 @@ pub fn compare_runs(
 
         if let Some(policy) = significance_policy
             && policy.require_significance
-            && matches!(status, MetricStatus::Warn | MetricStatus::Fail)
+            && matches!(result.status, MetricStatus::Warn | MetricStatus::Fail)
         {
             let is_significant = significance
                 .as_ref()
                 .map(|sig| sig.significant)
                 .unwrap_or(false);
             if !is_significant {
-                status = MetricStatus::Pass;
+                result.status = MetricStatus::Pass;
             }
         }
 
-        match status {
+        significance_by_metric.insert(*metric, significance);
+        results.insert(*metric, result);
+    }
+
+    let tradeoff_reasons = apply_tradeoff_rules(&mut results, budgets, tradeoffs);
+    let (mut deltas, verdict) =
+        finalize_comparison(results, MetricStatistic::Median, tradeoff_reasons);
+    for (metric, delta) in &mut deltas {
+        delta.statistic = metric_statistics
+            .get(metric)
+            .copied()
+            .unwrap_or(MetricStatistic::Median);
+        delta.significance = significance_by_metric.remove(metric).flatten();
+    }
+
+    Ok(Comparison { deltas, verdict })
+}
+
+fn finalize_comparison(
+    results: BTreeMap<Metric, BudgetResult>,
+    default_statistic: MetricStatistic,
+    mut reasons: Vec<String>,
+) -> (BTreeMap<Metric, Delta>, Verdict) {
+    let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
+    let mut counts = VerdictCounts {
+        pass: 0,
+        warn: 0,
+        fail: 0,
+        skip: 0,
+    };
+
+    for (metric, result) in results {
+        match result.status {
             MetricStatus::Pass => counts.pass += 1,
             MetricStatus::Warn => {
                 counts.warn += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Warn));
+                reasons.push(reason_token(metric, MetricStatus::Warn));
             }
             MetricStatus::Fail => {
                 counts.fail += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Fail));
+                reasons.push(reason_token(metric, MetricStatus::Fail));
             }
             MetricStatus::Skip => {
                 counts.skip += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Skip));
+                reasons.push(reason_token(metric, MetricStatus::Skip));
             }
         }
 
         deltas.insert(
-            *metric,
+            metric,
             Delta {
                 baseline: result.baseline,
                 current: result.current,
@@ -612,16 +619,15 @@ pub fn compare_runs(
                 regression: result.regression,
                 cv: result.cv,
                 noise_threshold: result.noise_threshold,
-                statistic,
-                significance,
-                status,
+                statistic: default_statistic,
+                significance: None,
+                status: result.status,
             },
         );
     }
 
     let verdict = aggregate_verdict_from_counts(counts, reasons);
-
-    Ok(Comparison { deltas, verdict })
+    (deltas, verdict)
 }
 
 // ============================================================================
@@ -4484,5 +4490,108 @@ mod tests {
             assert_eq!(metric_to_string(Metric::MaxRssKb), "max_rss_kb");
             assert_eq!(metric_to_string(Metric::ThroughputPerS), "throughput_per_s");
         }
+    }
+}
+
+#[cfg(test)]
+mod tradeoff_tests {
+    use super::*;
+    use perfgate_types::{
+        Direction, F64Summary, NoisePolicy, TradeoffDowngradeTo, TradeoffRequirement, TradeoffRule,
+        U64Summary,
+    };
+
+    fn stats_with_memory_and_throughput(memory: u64, throughput: f64) -> Stats {
+        Stats {
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(U64Summary::new(memory, memory, memory)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: Some(F64Summary::new(throughput, throughput, throughput)),
+        }
+    }
+
+    #[test]
+    fn compare_stats_applies_tradeoff_deterministically() {
+        let baseline = stats_with_memory_and_throughput(100, 100.0);
+        let current = stats_with_memory_and_throughput(130, 170.0);
+
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::MaxRssKb,
+            Budget {
+                threshold: 0.10,
+                warn_threshold: 0.05,
+                noise_threshold: None,
+                noise_policy: NoisePolicy::Ignore,
+                direction: Direction::Lower,
+            },
+        );
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget {
+                threshold: 0.20,
+                warn_threshold: 0.10,
+                noise_threshold: None,
+                noise_policy: NoisePolicy::Ignore,
+                direction: Direction::Higher,
+            },
+        );
+
+        let comparison = compare_stats_with_tradeoffs(
+            &baseline,
+            &current,
+            &budgets,
+            &[
+                TradeoffRule {
+                    name: "first_rule".to_string(),
+                    if_failed: Metric::MaxRssKb,
+                    require: vec![TradeoffRequirement {
+                        metric: Metric::ThroughputPerS,
+                        min_improvement_ratio: 2.0,
+                    }],
+                    downgrade_to: TradeoffDowngradeTo::Warn,
+                },
+                TradeoffRule {
+                    name: "memory_for_speed".to_string(),
+                    if_failed: Metric::MaxRssKb,
+                    require: vec![TradeoffRequirement {
+                        metric: Metric::ThroughputPerS,
+                        min_improvement_ratio: 1.5,
+                    }],
+                    downgrade_to: TradeoffDowngradeTo::Warn,
+                },
+            ],
+        )
+        .expect("comparison");
+
+        assert_eq!(
+            comparison
+                .deltas
+                .get(&Metric::MaxRssKb)
+                .expect("memory delta")
+                .status,
+            MetricStatus::Warn
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .iter()
+                .any(|reason| reason == "tradeoff_rule_not_satisfied")
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .iter()
+                .any(|reason| reason == "tradeoff_memory_for_speed_applied")
+        );
     }
 }
