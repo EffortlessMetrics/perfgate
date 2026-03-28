@@ -994,6 +994,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench.clone()],
         };
 
@@ -1124,6 +1125,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench.clone()],
         };
 
@@ -1201,6 +1203,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
@@ -1255,6 +1258,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
@@ -1326,6 +1330,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
@@ -1383,6 +1388,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
@@ -1413,6 +1419,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![],
         };
 
@@ -1465,6 +1472,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
