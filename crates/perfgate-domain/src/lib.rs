@@ -265,7 +265,19 @@ mod tradeoff_tests {
             comparison
                 .verdict
                 .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Warn))
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
                 .contains(&"tradeoff_memory_for_speed_applied".to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Fail))
         );
     }
 
@@ -894,6 +906,10 @@ fn push_unique_reason(reasons: &mut Vec<String>, token: String) {
     }
 }
 
+fn remove_reason(reasons: &mut Vec<String>, token: &str) {
+    reasons.retain(|reason| reason != token);
+}
+
 fn improvement_ratio(delta: &Delta, metric: Metric) -> Option<f64> {
     match metric.default_direction() {
         perfgate_types::Direction::Higher => Some(delta.ratio),
@@ -964,6 +980,13 @@ fn apply_tradeoffs(
                         MetricStatus::Fail | MetricStatus::Skip => {}
                     }
                     delta.status = new_status;
+                    remove_reason(reasons, &reason_token(failed_metric, MetricStatus::Fail));
+                    if new_status == MetricStatus::Warn {
+                        push_unique_reason(
+                            reasons,
+                            reason_token(failed_metric, MetricStatus::Warn),
+                        );
+                    }
                 }
             }
 

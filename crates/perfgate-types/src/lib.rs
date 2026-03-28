@@ -1515,6 +1515,7 @@ pub struct TradeoffRule {
     pub if_failed: Metric,
 
     /// Required compensating improvements.
+    #[schemars(length(min = 1))]
     pub require: Vec<TradeoffRequirement>,
 
     /// Downgrade target when all requirements are satisfied.

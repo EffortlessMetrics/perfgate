@@ -518,7 +518,8 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/TradeoffRequirement"
-          }
+          },
+          "minItems": 1
         }
       },
       "required": [
