@@ -16,16 +16,18 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    RatchetRequest, RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_json_diff,
+    render_markdown, render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     SubmitVerdictRequest, UploadBaselineRequest,
 };
-use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
+use perfgate_config::{
+    ResolvedServerConfig, apply_ratchet_changes_to_toml, load_config_file, resolve_server_config,
+};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_github::{CommentOptions, GitHubClient};
@@ -202,6 +204,9 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Promote(Box<PromoteArgs>),
+
+    /// Preview budget ratchet changes from a compare receipt.
+    Ratchet(Box<RatchetArgs>),
 
     /// Generate a cockpit-compatible report from a compare receipt.
     ///
@@ -857,6 +862,33 @@ pub struct PromoteArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+
+    /// Apply automatic budget ratcheting after a successful promote.
+    #[arg(long, default_value_t = false)]
+    pub ratchet: bool,
+
+    /// Path to config used for ratcheting.
+    #[arg(long, default_value = "perfgate.toml", requires = "ratchet")]
+    pub config: PathBuf,
+
+    /// Compare receipt used as ratcheting evidence.
+    #[arg(long, requires = "ratchet")]
+    pub compare: Option<PathBuf>,
+
+    /// Ratchet artifact output path.
+    #[arg(long, requires = "ratchet")]
+    pub ratchet_out: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct RatchetArgs {
+    /// Path to config file (TOML).
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Path to compare receipt with ratchet evidence.
+    #[arg(long)]
+    pub compare: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1740,6 +1772,10 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 version,
                 normalize,
                 pretty,
+                ratchet,
+                config,
+                compare,
+                ratchet_out,
             } = *args;
 
             let receipt: RunReceipt = read_json_from_location(&current)?;
@@ -1794,6 +1830,77 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 write_json_to_location(&to_path, &result.receipt, pretty)?;
             }
 
+            if ratchet {
+                let compare_path = compare.ok_or_else(|| {
+                    anyhow::anyhow!("--compare is required when --ratchet is set")
+                })?;
+                let config_file = load_config_file(&config)?;
+                let compare_receipt: CompareReceipt = read_json(&compare_path)?;
+                let req = RatchetRequest {
+                    compare: compare_receipt.clone(),
+                    policy: config_file.ratchet.clone(),
+                    tool: ToolInfo {
+                        name: env!("CARGO_PKG_NAME").to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                };
+                let outcome = RatchetUseCase::execute(req.clone());
+
+                if outcome.changes.is_empty() {
+                    eprintln!("ratchet: no eligible changes");
+                } else {
+                    eprintln!("ratchet: {} change(s)", outcome.changes.len());
+                    for change in &outcome.changes {
+                        eprintln!(
+                            "  {}: {:.4} -> {:.4} ({:.2}% improvement)",
+                            change.metric.as_str(),
+                            change.old_value,
+                            change.new_value,
+                            change.evidence.improvement * 100.0
+                        );
+                    }
+                    apply_ratchet_changes_to_toml(
+                        &config,
+                        &compare_receipt.bench.name,
+                        &outcome.changes,
+                    )?;
+                }
+
+                if let Some(out_path) = ratchet_out {
+                    let artifact = RatchetUseCase::build_receipt(&req, outcome);
+                    write_json(&out_path, &artifact, pretty)?;
+                }
+            }
+
+            Ok(())
+        }
+
+        Command::Ratchet(args) => {
+            let RatchetArgs { config, compare } = *args;
+            let config_file = load_config_file(&config)?;
+            let compare_receipt: CompareReceipt = read_json(&compare)?;
+            let req = RatchetRequest {
+                compare: compare_receipt,
+                policy: config_file.ratchet,
+                tool: ToolInfo {
+                    name: env!("CARGO_PKG_NAME").to_string(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                },
+            };
+            let outcome = RatchetUseCase::execute(req);
+            if outcome.changes.is_empty() {
+                println!("No ratchet changes.");
+            } else {
+                for change in outcome.changes {
+                    println!(
+                        "{}: {:.4} -> {:.4} ({:.2}% improvement)",
+                        change.metric.as_str(),
+                        change.old_value,
+                        change.new_value,
+                        change.evidence.improvement * 100.0
+                    );
+                }
+            }
             Ok(())
         }
 

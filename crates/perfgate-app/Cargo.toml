@@ -17,6 +17,7 @@ categories = ["development-tools"]
 perfgate-types.workspace = true
 perfgate-error.workspace = true
 perfgate-domain.workspace = true
+perfgate-budget.workspace = true
 perfgate-adapters.workspace = true
 perfgate-config.workspace = true
 perfgate-sha256.workspace = true

@@ -40,7 +40,8 @@
 //! ```
 
 use perfgate_types::{
-    Budget, Direction, Metric, MetricStatus, Verdict, VerdictCounts, VerdictStatus,
+    Budget, Delta, Direction, Metric, MetricStatus, RatchetConfig, RatchetMode, RatchetReceipt,
+    ToolInfo, Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -396,6 +397,70 @@ where
     verdict.reasons = reasons;
 
     Ok((deltas, verdict))
+}
+
+/// Evaluates whether a metric qualifies for ratcheting and returns `(improvement, tighter_value)`.
+pub fn ratchet_threshold_for_metric(
+    metric: Metric,
+    budget: &Budget,
+    delta: &Delta,
+    policy: &RatchetConfig,
+) -> Option<(f64, f64)> {
+    if !policy.allow_metrics.is_empty() && !policy.allow_metrics.contains(&metric) {
+        return None;
+    }
+    if delta.status != MetricStatus::Pass {
+        return None;
+    }
+    if let (Some(cv), Some(limit)) = (delta.cv, delta.noise_threshold)
+        && cv > limit
+    {
+        return None;
+    }
+    if policy.require_significance {
+        let Some(sig) = &delta.significance else {
+            return None;
+        };
+        if !sig.significant {
+            return None;
+        }
+    }
+
+    let improvement = match budget.direction {
+        Direction::Lower => ((delta.baseline - delta.current) / delta.baseline).max(0.0),
+        Direction::Higher => ((delta.current - delta.baseline) / delta.baseline).max(0.0),
+    };
+    if improvement < policy.min_improvement {
+        return None;
+    }
+
+    let tightening = improvement.min(policy.max_tightening);
+    let new_value = match policy.mode {
+        RatchetMode::Threshold => budget.threshold * (1.0 - tightening),
+        RatchetMode::BaselineValue => delta.current,
+    };
+
+    if new_value >= budget.threshold {
+        return None;
+    }
+
+    Some((improvement, new_value))
+}
+
+/// Build a machine-readable ratchet artifact.
+pub fn build_ratchet_receipt(
+    bench_name: String,
+    compare_ref: perfgate_types::CompareRef,
+    tool: ToolInfo,
+    changes: Vec<perfgate_types::RatchetChange>,
+) -> RatchetReceipt {
+    RatchetReceipt {
+        schema: perfgate_types::RATCHET_SCHEMA_V1.to_string(),
+        tool,
+        bench_name,
+        compare_ref,
+        changes,
+    }
 }
 
 #[cfg(test)]

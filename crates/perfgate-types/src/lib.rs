@@ -48,6 +48,7 @@ pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
+pub const RATCHET_SCHEMA_V1: &str = "perfgate.ratchet.v1";
 
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
@@ -1003,6 +1004,44 @@ pub struct CompareReceipt {
     pub verdict: Verdict,
 }
 
+/// Evidence captured for a ratchet decision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetEvidence {
+    pub improvement: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cv: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise_threshold: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p_value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub significant: Option<bool>,
+}
+
+/// A single metric ratchet change.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetChange {
+    pub metric: Metric,
+    pub mode: RatchetMode,
+    pub old_value: f64,
+    pub new_value: f64,
+    pub reason: String,
+    pub evidence: RatchetEvidence,
+}
+
+/// Machine-readable ratchet artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub bench_name: String,
+    pub compare_ref: CompareRef,
+    pub changes: Vec<RatchetChange>,
+}
+
 // ----------------------------
 // Report types (perfgate.report.v1)
 // ----------------------------
@@ -1154,6 +1193,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    /// Optional budget ratcheting policy (explicit promote path only).
+    #[serde(default)]
+    pub ratchet: RatchetConfig,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 }
@@ -1220,6 +1263,72 @@ pub struct BaselineServerConfig {
     /// Fall back to local storage when server is unavailable.
     #[serde(default = "default_fallback_to_local")]
     pub fallback_to_local: bool,
+}
+
+/// Ratcheting mode used when tightening budgets.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum RatchetMode {
+    /// Tighten budget threshold values.
+    #[default]
+    Threshold,
+    /// Track improved baseline values in ratchet artifacts.
+    BaselineValue,
+}
+
+/// Ratchet policy configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetConfig {
+    /// Opt-in gate; ratcheting is disabled by default.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Ratcheting mode.
+    #[serde(default)]
+    pub mode: RatchetMode,
+
+    /// Minimum improvement required before tightening (fraction).
+    #[serde(default = "default_ratchet_min_improvement")]
+    pub min_improvement: f64,
+
+    /// Maximum tightening applied in one step (fraction).
+    #[serde(default = "default_ratchet_max_tightening")]
+    pub max_tightening: f64,
+
+    /// Require statistical significance evidence for each ratcheted metric.
+    #[serde(default = "default_ratchet_require_significance")]
+    pub require_significance: bool,
+
+    /// Optional allow-list of metrics eligible for ratcheting.
+    #[serde(default)]
+    pub allow_metrics: Vec<Metric>,
+}
+
+impl Default for RatchetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: RatchetMode::Threshold,
+            min_improvement: default_ratchet_min_improvement(),
+            max_tightening: default_ratchet_max_tightening(),
+            require_significance: default_ratchet_require_significance(),
+            allow_metrics: vec![Metric::WallMs, Metric::CpuMs],
+        }
+    }
+}
+
+fn default_ratchet_min_improvement() -> f64 {
+    0.05
+}
+
+fn default_ratchet_max_tightening() -> f64 {
+    0.10
+}
+
+fn default_ratchet_require_significance() -> bool {
+    true
 }
 
 fn default_fallback_to_local() -> bool {
@@ -1540,6 +1649,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: Default::default(),
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1629,6 +1739,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: Default::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2027,6 +2138,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: Default::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2064,6 +2176,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: Default::default(),
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3036,6 +3149,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                ratchet: RatchetConfig::default(),
                 benches,
             })
     }

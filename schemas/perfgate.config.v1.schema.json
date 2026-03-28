@@ -21,6 +21,21 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "description": "Optional budget ratcheting policy (explicit promote path only).",
+      "$ref": "#/$defs/RatchetConfig",
+      "default": {
+        "allow_metrics": [
+          "wall_ms",
+          "cpu_ms"
+        ],
+        "enabled": false,
+        "max_tightening": 0.1,
+        "min_improvement": 0.05,
+        "mode": "threshold",
+        "require_significance": true
+      }
     }
   },
   "$defs": {
@@ -357,6 +372,62 @@
           "description": "Demote Pass and Fail to Skip.",
           "type": "string",
           "const": "skip"
+        }
+      ]
+    },
+    "RatchetConfig": {
+      "description": "Ratchet policy configuration.",
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "description": "Optional allow-list of metrics eligible for ratcheting.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "description": "Opt-in gate; ratcheting is disabled by default.",
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "description": "Maximum tightening applied in one step (fraction).",
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "description": "Minimum improvement required before tightening (fraction).",
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "description": "Ratcheting mode.",
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "description": "Require statistical significance evidence for each ratcheted metric.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "description": "Ratcheting mode used when tightening budgets.",
+      "oneOf": [
+        {
+          "description": "Tighten budget threshold values.",
+          "type": "string",
+          "const": "threshold"
+        },
+        {
+          "description": "Track improved baseline values in ratchet artifacts.",
+          "type": "string",
+          "const": "baseline_value"
         }
       ]
     },

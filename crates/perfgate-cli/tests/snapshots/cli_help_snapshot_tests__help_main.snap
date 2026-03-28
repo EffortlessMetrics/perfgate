@@ -1,6 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 229
+assertion_line: 241
 expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
@@ -14,6 +14,7 @@ Commands:
   github-annotations Emit GitHub Actions annotations from a compare receipt
   export Export a run or compare receipt to CSV, JSONL, HTML, Prometheus, or JUnit format
   promote Promote a run receipt to become the new baseline
+  ratchet Preview budget ratchet changes from a compare receipt
   report Generate a cockpit-compatible report from a compare receipt
   check Config-driven one-command workflow
   paired Run paired benchmark: interleave baseline and current commands for reduced noise
