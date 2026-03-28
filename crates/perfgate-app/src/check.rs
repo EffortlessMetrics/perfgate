@@ -199,6 +199,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                         )
                     })
                     .transpose()?,
+                tradeoffs: req.config.tradeoffs.clone(),
                 baseline_ref: CompareRef {
                     path: req.baseline_path.as_ref().map(|p| p.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),

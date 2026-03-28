@@ -63,6 +63,9 @@ pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
 pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
+pub const VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED: &str = "tradeoff_rule_not_satisfied";
+pub const VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC: &str =
+    "tradeoff_missing_required_metric";
 
 // Error classification stages.
 pub const STAGE_CONFIG_PARSE: &str = "config_parse";
@@ -1156,6 +1159,11 @@ pub struct ConfigFile {
 
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
+
+    /// Optional tradeoff rules that can downgrade a failed metric when explicit
+    /// compensating improvements are present.
+    #[serde(default, rename = "tradeoff")]
+    pub tradeoffs: Vec<TradeoffRule>,
 }
 
 impl ConfigFile {
@@ -1332,6 +1340,48 @@ pub struct BudgetOverride {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statistic: Option<MetricStatistic>,
+}
+
+/// A required improvement used by a tradeoff rule.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRequirement {
+    /// Metric that must improve sufficiently for the tradeoff to apply.
+    pub metric: Metric,
+
+    /// Minimum required improvement ratio.
+    ///
+    /// For higher-is-better metrics, this is `current / baseline`.
+    /// For lower-is-better metrics, this is `baseline / current`.
+    pub min_improvement_ratio: f64,
+}
+
+/// Target status when a tradeoff rule is satisfied.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum TradeoffDowngrade {
+    #[default]
+    Warn,
+    Pass,
+}
+
+/// A structured tradeoff rule for explicit, auditable budget downgrades.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRule {
+    /// Unique rule name used in reason tokens.
+    pub name: String,
+
+    /// The failed metric that this rule can downgrade.
+    pub if_failed: Metric,
+
+    /// Required compensating improvements.
+    pub require: Vec<TradeoffRequirement>,
+
+    /// Downgrade target when all requirements are satisfied.
+    #[serde(default)]
+    pub downgrade_to: TradeoffDowngrade,
 }
 
 #[cfg(test)]
