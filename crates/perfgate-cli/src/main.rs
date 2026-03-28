@@ -18,8 +18,8 @@ use perfgate_app::{
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
     RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
     SensorReportBuilder, SystemClock, classify_error, github_annotations, is_host_mismatch_reason,
-    preview_lines, render_json_diff, render_markdown, render_markdown_template,
-    render_terminal_diff,
+    preview_lines, redact_command_for_diagnostics, render_json_diff, render_markdown,
+    render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
@@ -41,13 +41,16 @@ use perfgate_scaling::{
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt,
-    CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, PerfgateReport, RatchetConfig,
-    RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    ChangedFilesSummary, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
+    OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
+    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt,
+    SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1048,6 +1051,11 @@ pub struct CheckArgs {
     /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
     #[arg(long, default_value_t = false)]
     pub profile_on_regression: bool,
+
+    /// Force `repair_context.json` emission even on passing checks.
+    /// Warning and failing checks already emit it automatically.
+    #[arg(long, default_value_t = false)]
+    pub emit_repair_context: bool,
 }
 
 #[derive(Debug, Args)]
@@ -2002,6 +2010,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_github,
                 local_db,
                 profile_on_regression,
+                emit_repair_context,
             } = *args;
 
             let req = CheckConfig {
@@ -2026,6 +2035,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 profile_on_regression,
+                emit_repair_context,
                 server_flags,
                 local_db,
             };
@@ -3751,6 +3761,7 @@ struct CheckConfig {
     md_template: Option<PathBuf>,
     output_github: bool,
     profile_on_regression: bool,
+    emit_repair_context: bool,
     server_flags: ServerFlags,
     local_db: bool,
 }
@@ -3944,6 +3955,14 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
             .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+        maybe_write_repair_context(
+            &outcome,
+            Some(&baseline_path),
+            req.emit_repair_context,
+            req.pretty,
+        )
+        .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
         // Profile on regression if requested
         if req.profile_on_regression
@@ -4196,6 +4215,14 @@ fn run_check_cockpit_inner(
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+            maybe_write_repair_context(
+                &check_outcome,
+                Some(&baseline_path),
+                req.emit_repair_context,
+                req.pretty,
+            )
+            .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
             // Profile on regression if requested
             if req.profile_on_regression
@@ -4735,6 +4762,206 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
         .with_context(|| format!("write {}", outcome.markdown_path.display()))?;
 
     Ok(())
+}
+
+fn maybe_write_repair_context(
+    outcome: &CheckOutcome,
+    baseline_path: Option<&Path>,
+    emit_requested: bool,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    let should_emit = emit_requested
+        || matches!(
+            outcome.report.verdict.status,
+            VerdictStatus::Warn | VerdictStatus::Fail
+        );
+    if !should_emit {
+        return Ok(());
+    }
+
+    let repair = build_repair_context(outcome, baseline_path);
+    let out_path = outcome
+        .run_path
+        .parent()
+        .unwrap_or(Path::new(""))
+        .join("repair_context.json");
+    write_json(&out_path, &repair, pretty)?;
+    Ok(())
+}
+
+fn build_repair_context(
+    outcome: &CheckOutcome,
+    baseline_path: Option<&Path>,
+) -> RepairContextReceipt {
+    let breached_metrics = if let Some(compare) = &outcome.compare_receipt {
+        compare
+            .deltas
+            .iter()
+            .filter_map(|(metric, delta)| {
+                if !matches!(delta.status.as_str(), "warn" | "fail" | "skip") {
+                    return None;
+                }
+                let budget = compare.budgets.get(metric)?;
+                Some(RepairMetricBreach {
+                    metric: *metric,
+                    status: delta.status.as_str().to_string(),
+                    baseline: delta.baseline,
+                    current: delta.current,
+                    regression: delta.regression,
+                    fail_threshold: budget.threshold,
+                    warn_threshold: budget.warn_threshold,
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let compare_path = outcome
+        .compare_path
+        .as_ref()
+        .map(|p| p.display().to_string());
+    let report_path = outcome.report_path.display().to_string();
+    let profile_path = outcome.report.profile_path.clone();
+    let otel_span = otel_span_from_env();
+    let git = git_metadata();
+    let changed_files = changed_files_summary();
+    let suggested = recommended_next_commands(outcome, baseline_path);
+
+    RepairContextReceipt {
+        schema: REPAIR_CONTEXT_SCHEMA_V1.to_string(),
+        benchmark: outcome.run_receipt.bench.name.clone(),
+        verdict: outcome.report.verdict.clone(),
+        status: outcome.report.verdict.status,
+        breached_metrics,
+        compare_receipt_path: compare_path,
+        report_path,
+        profile_path,
+        git,
+        changed_files,
+        otel_span,
+        recommended_next_commands: suggested,
+    }
+}
+
+fn recommended_next_commands(outcome: &CheckOutcome, baseline_path: Option<&Path>) -> Vec<String> {
+    let mut cmds = Vec::new();
+    let rerun_cmd = redact_command_for_diagnostics(&outcome.run_receipt.bench.command).join(" ");
+    if !rerun_cmd.is_empty() {
+        cmds.push(format!("rerun current command: {rerun_cmd}"));
+    }
+    if let Some(compare_path) = &outcome.compare_path {
+        cmds.push(format!(
+            "perfgate explain --compare {}",
+            compare_path.display()
+        ));
+    }
+    cmds.push(format!(
+        "perfgate paired --name {} --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat {} --out {}/paired.json",
+        outcome.run_receipt.bench.name,
+        outcome.run_receipt.bench.repeat.max(10),
+        outcome.run_path.parent().unwrap_or(Path::new("")).display()
+    ));
+    if let Some(base) = baseline_path {
+        cmds.push(format!(
+            "perfgate compare --baseline {} --current {} --out {}/recompare.json",
+            base.display(),
+            outcome.run_path.display(),
+            outcome.run_path.parent().unwrap_or(Path::new("")).display()
+        ));
+    }
+    cmds.push(
+        "perfgate bisect --good <good-ref> --bad HEAD --executable <bench-binary>".to_string(),
+    );
+    cmds
+}
+
+fn otel_span_from_env() -> Option<OtelSpanIdentifiers> {
+    let trace_id = std::env::var("OTEL_TRACE_ID").ok();
+    let span_id = std::env::var("OTEL_SPAN_ID").ok();
+    if trace_id.is_none() && span_id.is_none() {
+        None
+    } else {
+        Some(OtelSpanIdentifiers { trace_id, span_id })
+    }
+}
+
+fn git_metadata() -> Option<RepairGitMetadata> {
+    let branch = run_git_capture(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    let sha = run_git_capture(&["rev-parse", "HEAD"]);
+    if branch.is_none() && sha.is_none() {
+        None
+    } else {
+        Some(RepairGitMetadata { branch, sha })
+    }
+}
+
+fn changed_files_summary() -> Option<ChangedFilesSummary> {
+    let output = run_git_capture_bytes(&["status", "--porcelain", "-z"])?;
+    Some(parse_changed_files_summary(&output))
+}
+
+fn parse_changed_files_summary(output: &[u8]) -> ChangedFilesSummary {
+    let mut files = Vec::new();
+    let mut by_top = BTreeMap::new();
+
+    let mut entries = output
+        .split(|byte| *byte == b'\0')
+        .filter(|entry| !entry.is_empty());
+    while let Some(entry) = entries.next() {
+        if entry.len() <= 3 {
+            continue;
+        }
+
+        let status = &entry[..2];
+        let current_path = if status.iter().any(|code| matches!(code, b'R' | b'C')) {
+            entries.next().unwrap_or(&[])
+        } else {
+            &entry[3..]
+        };
+
+        if current_path.is_empty() {
+            continue;
+        }
+
+        let path = String::from_utf8_lossy(current_path).into_owned();
+        files.push(path.clone());
+        let top = path
+            .split(['/', '\\'])
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(".")
+            .to_string();
+        *by_top.entry(top).or_insert(0) += 1;
+    }
+
+    ChangedFilesSummary {
+        file_count: files.len() as u32,
+        files,
+        file_count_by_top_level: by_top,
+    }
+}
+
+fn run_git_capture(args: &[&str]) -> Option<String> {
+    let output = ProcessCommand::new("git").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let trimmed = text.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn run_git_capture_bytes(args: &[&str]) -> Option<Vec<u8>> {
+    let output = ProcessCommand::new("git").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(output.stdout)
 }
 
 fn execute_export(
@@ -5531,6 +5758,176 @@ mod tests {
         assert!(run_path.exists());
         assert!(report_path.exists());
         assert!(markdown_path.exists());
+    }
+
+    #[test]
+    fn maybe_write_repair_context_emits_on_fail() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let compare_receipt: CompareReceipt =
+            serde_json::from_str(&create_compare_receipt_json("fail", "fail")).unwrap();
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: out_dir.join("run.json"),
+            compare_receipt: Some(compare_receipt),
+            compare_path: Some(out_dir.join("compare.json")),
+            report: PerfgateReport {
+                report_type: "perfgate.report.v1".to_string(),
+                verdict: Verdict {
+                    status: VerdictStatus::Fail,
+                    counts: VerdictCounts {
+                        pass: 0,
+                        warn: 0,
+                        fail: 1,
+                        skip: 0,
+                    },
+                    reasons: vec!["wall_ms.fail".to_string()],
+                },
+                compare: None,
+                findings: Vec::new(),
+                summary: ReportSummary {
+                    pass_count: 0,
+                    warn_count: 0,
+                    fail_count: 1,
+                    skip_count: 0,
+                    total_count: 1,
+                },
+                complexity: None,
+                profile_path: Some("profiles/bench.svg".to_string()),
+            },
+            report_path: out_dir.join("report.json"),
+            markdown: String::new(),
+            markdown_path: out_dir.join("comment.md"),
+            warnings: Vec::new(),
+            failed: true,
+            exit_code: 2,
+            suggest_paired: false,
+        };
+
+        maybe_write_repair_context(&outcome, None, false, true).unwrap();
+
+        assert!(out_dir.join("repair_context.json").exists());
+    }
+
+    #[test]
+    fn maybe_write_repair_context_omits_on_pass_without_flag() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: out_dir.join("run.json"),
+            compare_receipt: None,
+            compare_path: None,
+            report: PerfgateReport {
+                report_type: "perfgate.report.v1".to_string(),
+                verdict: Verdict {
+                    status: VerdictStatus::Pass,
+                    counts: VerdictCounts {
+                        pass: 1,
+                        warn: 0,
+                        fail: 0,
+                        skip: 0,
+                    },
+                    reasons: Vec::new(),
+                },
+                compare: None,
+                findings: Vec::new(),
+                summary: ReportSummary {
+                    pass_count: 1,
+                    warn_count: 0,
+                    fail_count: 0,
+                    skip_count: 0,
+                    total_count: 1,
+                },
+                complexity: None,
+                profile_path: None,
+            },
+            report_path: out_dir.join("report.json"),
+            markdown: String::new(),
+            markdown_path: out_dir.join("comment.md"),
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+            suggest_paired: false,
+        };
+
+        maybe_write_repair_context(&outcome, None, false, true).unwrap();
+
+        assert!(!out_dir.join("repair_context.json").exists());
+    }
+
+    #[test]
+    fn maybe_write_repair_context_emits_on_pass_with_flag() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: out_dir.join("run.json"),
+            compare_receipt: None,
+            compare_path: None,
+            report: PerfgateReport {
+                report_type: "perfgate.report.v1".to_string(),
+                verdict: Verdict {
+                    status: VerdictStatus::Pass,
+                    counts: VerdictCounts {
+                        pass: 1,
+                        warn: 0,
+                        fail: 0,
+                        skip: 0,
+                    },
+                    reasons: Vec::new(),
+                },
+                compare: None,
+                findings: Vec::new(),
+                summary: ReportSummary {
+                    pass_count: 1,
+                    warn_count: 0,
+                    fail_count: 0,
+                    skip_count: 0,
+                    total_count: 1,
+                },
+                complexity: None,
+                profile_path: None,
+            },
+            report_path: out_dir.join("report.json"),
+            markdown: String::new(),
+            markdown_path: out_dir.join("comment.md"),
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+            suggest_paired: false,
+        };
+
+        maybe_write_repair_context(&outcome, None, true, true).unwrap();
+
+        assert!(out_dir.join("repair_context.json").exists());
+    }
+
+    #[test]
+    fn parse_changed_files_summary_keeps_spaces_and_renames() {
+        let output = b"M  crates/perfgate-cli/src/main.rs\0R  docs/old name.md\0docs/new name.md\0?? fixtures/file with spaces.json\0";
+
+        let summary = parse_changed_files_summary(output);
+
+        assert_eq!(summary.file_count, 3);
+        assert_eq!(
+            summary.files,
+            vec![
+                "crates/perfgate-cli/src/main.rs".to_string(),
+                "docs/new name.md".to_string(),
+                "fixtures/file with spaces.json".to_string(),
+            ]
+        );
+        assert_eq!(summary.file_count_by_top_level.get("crates"), Some(&1));
+        assert_eq!(summary.file_count_by_top_level.get("docs"), Some(&1));
+        assert_eq!(summary.file_count_by_top_level.get("fixtures"), Some(&1));
     }
 
     #[test]

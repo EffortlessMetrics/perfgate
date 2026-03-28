@@ -15,6 +15,7 @@ const SCHEMA_FILES: [&str; 7] = [
     "perfgate.report.v1.schema.json",
     "perfgate.aggregate.v1.schema.json",
     "perfgate.ratchet.v1.schema.json",
+    "perfgate.repair_context.v1.schema.json",
     "sensor.report.v1.schema.json",
 ];
 
@@ -862,6 +863,12 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
         out_dir,
         SCHEMA_FILES[5],
         schema_for!(perfgate_types::RatchetReceipt),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[5],
+        schema_for!(perfgate_types::RepairContextReceipt),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.

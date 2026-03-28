@@ -273,6 +273,39 @@ fn test_cockpit_mode_artifact_layout() {
     assert_eq!(native_report["report_type"], "perfgate.report.v1");
 }
 
+/// Test cockpit mode honors --emit-repair-context for passing checks.
+#[test]
+fn test_cockpit_mode_emit_repair_context_writes_extras_artifact() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts/perfgate");
+    let config_path = create_config_file(temp_dir.path(), "test-bench");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("test-bench")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--mode")
+        .arg("cockpit")
+        .arg("--emit-repair-context");
+
+    let output = cmd.output().expect("failed to execute check");
+    assert!(
+        output.status.success(),
+        "cockpit mode should exit 0: stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        out_dir.join("extras/repair_context.json").exists(),
+        "extras/repair_context.json should exist when --emit-repair-context is set"
+    );
+}
+
 /// Test cockpit mode exits 0 even on verdict fail
 #[test]
 fn test_cockpit_mode_exits_zero_on_fail() {

@@ -24,6 +24,7 @@
 
 mod defaults_config;
 mod paired;
+mod repair_context;
 
 pub use paired::{
     NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
@@ -31,6 +32,7 @@ pub use paired::{
 };
 
 pub use defaults_config::*;
+pub use repair_context::*;
 
 pub use perfgate_validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
@@ -50,6 +52,7 @@ pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 pub const RATCHET_SCHEMA_V1: &str = "perfgate.ratchet.v1";
+pub const REPAIR_CONTEXT_SCHEMA_V1: &str = "perfgate.repair_context.v1";
 
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
