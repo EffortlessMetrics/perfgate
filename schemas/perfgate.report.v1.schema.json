@@ -15,6 +15,17 @@
         }
       ]
     },
+    "complexity": {
+      "description": "Optional complexity-gating result from scaling validation.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ComplexityGateResult"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "findings": {
       "description": "List of findings (warnings and failures).",
       "type": "array",
@@ -267,6 +278,61 @@
           ]
         }
       }
+    },
+    "ComplexityGateResult": {
+      "description": "Optional complexity-gating result attached to reports.",
+      "type": "object",
+      "properties": {
+        "expected": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "observed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "r_squared": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "r_squared_threshold": {
+          "type": "number",
+          "format": "double"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/ComplexityGateStatus"
+        }
+      },
+      "required": [
+        "status",
+        "r_squared_threshold",
+        "message"
+      ]
+    },
+    "ComplexityGateStatus": {
+      "description": "Complexity gate status produced by scaling validation.",
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ]
     },
     "Delta": {
       "type": "object",

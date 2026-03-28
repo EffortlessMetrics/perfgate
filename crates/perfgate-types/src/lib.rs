@@ -24,6 +24,7 @@
 
 mod defaults_config;
 mod paired;
+mod repair_context;
 
 pub use paired::{
     NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
@@ -31,6 +32,7 @@ pub use paired::{
 };
 
 pub use defaults_config::*;
+pub use repair_context::*;
 
 pub use perfgate_validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
@@ -48,10 +50,13 @@ pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
+pub const RATCHET_SCHEMA_V1: &str = "perfgate.ratchet.v1";
+pub const REPAIR_CONTEXT_SCHEMA_V1: &str = "perfgate.repair_context.v1";
 
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
 pub const CHECK_ID_BASELINE: &str = "perf.baseline";
+pub const CHECK_ID_COMPLEXITY: &str = "perf.complexity";
 pub const CHECK_ID_HOST: &str = "perf.host";
 pub const CHECK_ID_TOOL_RUNTIME: &str = "tool.runtime";
 pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
@@ -59,10 +64,16 @@ pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
 pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
 pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
+pub const FINDING_CODE_COMPLEXITY_FAIL: &str = "complexity_fail";
+pub const FINDING_CODE_COMPLEXITY_INCONCLUSIVE: &str = "complexity_inconclusive";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
 pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
+pub const VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED: &str = "complexity_expected_exceeded";
+pub const VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE: &str = "complexity_fit_low_confidence";
+pub const VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE: &str =
+    "complexity_measurement_incomplete";
 
 // Error classification stages.
 pub const STAGE_CONFIG_PARSE: &str = "config_parse";
@@ -1092,6 +1103,38 @@ fn is_zero_u32(n: &u32) -> bool {
     *n == 0
 }
 
+/// Complexity gate status produced by scaling validation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum ComplexityGateStatus {
+    Pass,
+    Fail,
+    Inconclusive,
+}
+
+/// Optional complexity-gating result attached to reports.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ComplexityGateResult {
+    pub status: ComplexityGateStatus,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r_squared: Option<f64>,
+
+    pub r_squared_threshold: f64,
+    pub message: String,
+}
+
 /// A performance report wrapping compare results in a cockpit-compatible envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -1112,6 +1155,10 @@ pub struct PerfgateReport {
 
     /// Summary counts.
     pub summary: ReportSummary,
+
+    /// Optional complexity-gating result from scaling validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<ComplexityGateResult>,
 
     /// Path to a flamegraph SVG captured when regression was detected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1153,6 +1200,10 @@ pub struct ConfigFile {
     /// Optional baseline server configuration for centralized baseline management.
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
+
+    /// Optional automated budget ratcheting policy.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ratchet: Option<RatchetConfig>,
 
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
@@ -1289,6 +1340,85 @@ pub struct BenchConfigFile {
     /// Optional scaling validation configuration.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub scaling: Option<ScalingConfig>,
+}
+
+/// How ratcheting should update budgets.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum RatchetMode {
+    /// Tighten the configured threshold value.
+    #[default]
+    Threshold,
+}
+
+/// Configuration for conservative automated budget ratcheting.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub mode: RatchetMode,
+    #[serde(default = "default_ratchet_min_improvement")]
+    pub min_improvement: f64,
+    #[serde(default = "default_ratchet_max_tightening")]
+    pub max_tightening: f64,
+    #[serde(default = "default_ratchet_require_significance")]
+    pub require_significance: bool,
+    #[serde(default = "default_ratchet_allow_metrics")]
+    pub allow_metrics: Vec<Metric>,
+}
+
+impl Default for RatchetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: RatchetMode::Threshold,
+            min_improvement: default_ratchet_min_improvement(),
+            max_tightening: default_ratchet_max_tightening(),
+            require_significance: default_ratchet_require_significance(),
+            allow_metrics: default_ratchet_allow_metrics(),
+        }
+    }
+}
+
+fn default_ratchet_min_improvement() -> f64 {
+    0.05
+}
+
+fn default_ratchet_max_tightening() -> f64 {
+    0.10
+}
+
+fn default_ratchet_require_significance() -> bool {
+    true
+}
+
+fn default_ratchet_allow_metrics() -> Vec<Metric> {
+    vec![Metric::WallMs, Metric::CpuMs]
+}
+
+/// Per-metric ratchet change.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetChange {
+    pub metric: Metric,
+    pub field: String,
+    pub old_value: f64,
+    pub new_value: f64,
+    pub reason: String,
+}
+
+/// Machine-readable ratchet artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub bench_name: String,
+    pub compare_path: Option<String>,
+    pub changes: Vec<RatchetChange>,
 }
 
 /// Configuration for computational complexity validation.
@@ -1540,6 +1670,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1629,6 +1760,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2004,6 +2136,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 2,
             },
+            complexity: None,
             profile_path: None,
         };
         let json = serde_json::to_string(&report).unwrap();
@@ -2027,6 +2160,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2064,6 +2198,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3036,6 +3171,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                ratchet: None,
                 benches,
             })
     }
@@ -3678,6 +3814,7 @@ mod property_tests {
                 compare,
                 findings,
                 summary,
+                complexity: None,
                 profile_path: None,
             })
     }

@@ -76,8 +76,8 @@ pub struct BadgeUseCase;
 /// Input that has been parsed from a file — either a compare receipt or a
 /// report.
 pub enum BadgeInput {
-    Compare(CompareReceipt),
-    Report(PerfgateReport),
+    Compare(Box<CompareReceipt>),
+    Report(Box<PerfgateReport>),
 }
 
 impl BadgeUseCase {
@@ -154,7 +154,7 @@ fn metric_badge(input: &BadgeInput, style: BadgeStyle, metric_name: &str) -> any
 
 fn trend_badge(input: &BadgeInput, style: BadgeStyle) -> Badge {
     let compare = match input {
-        BadgeInput::Compare(c) => Some(c),
+        BadgeInput::Compare(c) => Some(c.as_ref()),
         BadgeInput::Report(r) => r.compare.as_ref(),
     };
 
@@ -406,6 +406,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 1,
             },
+            complexity: None,
             profile_path: None,
         }
     }
@@ -528,7 +529,7 @@ mod tests {
     #[test]
     fn status_badge_from_compare_pass() {
         let compare = make_compare(VerdictStatus::Pass, MetricStatus::Pass);
-        let badge = status_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat);
+        let badge = status_badge(&BadgeInput::Compare(Box::new(compare)), BadgeStyle::Flat);
         assert_eq!(badge.label, "performance");
         assert_eq!(badge.message, "passing");
         assert_eq!(badge.color, COLOR_PASS);
@@ -537,7 +538,7 @@ mod tests {
     #[test]
     fn status_badge_from_compare_fail() {
         let compare = make_compare(VerdictStatus::Fail, MetricStatus::Fail);
-        let badge = status_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat);
+        let badge = status_badge(&BadgeInput::Compare(Box::new(compare)), BadgeStyle::Flat);
         assert_eq!(badge.message, "failing");
         assert_eq!(badge.color, COLOR_FAIL);
     }
@@ -545,7 +546,10 @@ mod tests {
     #[test]
     fn status_badge_from_report() {
         let report = make_report(VerdictStatus::Warn);
-        let badge = status_badge(&BadgeInput::Report(report), BadgeStyle::FlatSquare);
+        let badge = status_badge(
+            &BadgeInput::Report(Box::new(report)),
+            BadgeStyle::FlatSquare,
+        );
         assert_eq!(badge.message, "warning");
         assert_eq!(badge.color, COLOR_WARN);
         assert_eq!(badge.style, BadgeStyle::FlatSquare);
@@ -556,8 +560,12 @@ mod tests {
     #[test]
     fn metric_badge_from_compare() {
         let compare = make_compare(VerdictStatus::Warn, MetricStatus::Warn);
-        let badge =
-            metric_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat, "wall_ms").unwrap();
+        let badge = metric_badge(
+            &BadgeInput::Compare(Box::new(compare)),
+            BadgeStyle::Flat,
+            "wall_ms",
+        )
+        .unwrap();
         assert_eq!(badge.label, "wall_ms");
         assert!(badge.message.contains("115"), "missing current value");
         assert!(badge.message.contains("ms"), "missing unit");
@@ -572,14 +580,22 @@ mod tests {
     #[test]
     fn metric_badge_unknown_metric_errors() {
         let compare = make_compare(VerdictStatus::Pass, MetricStatus::Pass);
-        let result = metric_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat, "no_such");
+        let result = metric_badge(
+            &BadgeInput::Compare(Box::new(compare)),
+            BadgeStyle::Flat,
+            "no_such",
+        );
         assert!(result.is_err());
     }
 
     #[test]
     fn metric_badge_missing_delta_errors() {
         let compare = make_compare(VerdictStatus::Pass, MetricStatus::Pass);
-        let result = metric_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat, "cpu_ms");
+        let result = metric_badge(
+            &BadgeInput::Compare(Box::new(compare)),
+            BadgeStyle::Flat,
+            "cpu_ms",
+        );
         assert!(result.is_err());
     }
 
@@ -606,9 +622,14 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
-        let result = metric_badge(&BadgeInput::Report(report), BadgeStyle::Flat, "wall_ms");
+        let result = metric_badge(
+            &BadgeInput::Report(Box::new(report)),
+            BadgeStyle::Flat,
+            "wall_ms",
+        );
         assert!(result.is_err());
     }
 
@@ -617,7 +638,7 @@ mod tests {
     #[test]
     fn trend_badge_stable_when_all_pass() {
         let compare = make_compare(VerdictStatus::Pass, MetricStatus::Pass);
-        let badge = trend_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat);
+        let badge = trend_badge(&BadgeInput::Compare(Box::new(compare)), BadgeStyle::Flat);
         assert_eq!(badge.label, "perf trend");
         assert_eq!(badge.message, "stable");
         assert_eq!(badge.color, COLOR_PASS);
@@ -626,7 +647,7 @@ mod tests {
     #[test]
     fn trend_badge_degraded_when_warn() {
         let compare = make_compare(VerdictStatus::Warn, MetricStatus::Warn);
-        let badge = trend_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat);
+        let badge = trend_badge(&BadgeInput::Compare(Box::new(compare)), BadgeStyle::Flat);
         assert_eq!(badge.message, "degraded");
         assert_eq!(badge.color, COLOR_WARN);
     }
@@ -634,7 +655,7 @@ mod tests {
     #[test]
     fn trend_badge_regressed_when_fail() {
         let compare = make_compare(VerdictStatus::Fail, MetricStatus::Fail);
-        let badge = trend_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat);
+        let badge = trend_badge(&BadgeInput::Compare(Box::new(compare)), BadgeStyle::Flat);
         assert_eq!(badge.message, "regressed");
         assert_eq!(badge.color, COLOR_FAIL);
     }
@@ -662,9 +683,10 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
-        let badge = trend_badge(&BadgeInput::Report(report), BadgeStyle::Flat);
+        let badge = trend_badge(&BadgeInput::Report(Box::new(report)), BadgeStyle::Flat);
         assert_eq!(badge.message, "unknown");
         assert_eq!(badge.color, COLOR_SKIP);
     }
@@ -673,7 +695,7 @@ mod tests {
     fn trend_badge_empty_deltas_is_unknown() {
         let mut compare = make_compare(VerdictStatus::Pass, MetricStatus::Pass);
         compare.deltas.clear();
-        let badge = trend_badge(&BadgeInput::Compare(compare), BadgeStyle::Flat);
+        let badge = trend_badge(&BadgeInput::Compare(Box::new(compare)), BadgeStyle::Flat);
         assert_eq!(badge.message, "unknown");
     }
 
@@ -685,7 +707,7 @@ mod tests {
         let uc = BadgeUseCase;
         let outcome = uc
             .execute(
-                &BadgeInput::Compare(compare),
+                &BadgeInput::Compare(Box::new(compare)),
                 BadgeType::Status,
                 BadgeStyle::Flat,
                 None,
@@ -700,7 +722,7 @@ mod tests {
         let compare = make_compare(VerdictStatus::Pass, MetricStatus::Pass);
         let uc = BadgeUseCase;
         let result = uc.execute(
-            &BadgeInput::Compare(compare),
+            &BadgeInput::Compare(Box::new(compare)),
             BadgeType::Metric,
             BadgeStyle::Flat,
             None,
@@ -714,7 +736,7 @@ mod tests {
         let uc = BadgeUseCase;
         let outcome = uc
             .execute(
-                &BadgeInput::Compare(compare),
+                &BadgeInput::Compare(Box::new(compare)),
                 BadgeType::Metric,
                 BadgeStyle::Flat,
                 Some("wall_ms"),
@@ -729,7 +751,7 @@ mod tests {
         let uc = BadgeUseCase;
         let outcome = uc
             .execute(
-                &BadgeInput::Compare(compare),
+                &BadgeInput::Compare(Box::new(compare)),
                 BadgeType::Trend,
                 BadgeStyle::FlatSquare,
                 None,

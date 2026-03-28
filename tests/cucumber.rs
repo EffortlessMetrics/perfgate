@@ -2913,6 +2913,7 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -2967,6 +2968,7 @@ async fn given_config_file_with_bench_threshold(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3022,6 +3024,7 @@ async fn given_config_file_with_bench_threshold_warn(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3074,6 +3077,7 @@ async fn given_config_file_with_defaults_repeat_warmup(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![],
     };
 
@@ -3110,6 +3114,7 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![],
     };
 
@@ -3200,6 +3205,7 @@ async fn given_config_file_with_bench_baseline_dir(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3253,6 +3259,7 @@ async fn given_config_file_with_bench_baseline_pattern(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3453,6 +3460,7 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -3507,6 +3515,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -3565,6 +3574,7 @@ async fn given_config_file_with_benches_lenient(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -3653,6 +3663,7 @@ async fn given_config_file_with_mixed_thresholds(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -4588,6 +4599,7 @@ async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
             },
             total_count: 4,
         },
+        complexity: None,
         profile_path: None,
     }));
 }

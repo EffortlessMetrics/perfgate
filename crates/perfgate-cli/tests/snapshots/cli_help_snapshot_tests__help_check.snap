@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 244
 expression: "help_output(&[\"check\", \"--help\"])"
 ---
 Config-driven one-command workflow.
@@ -60,6 +59,8 @@ Options:
       --local-db Upload the run result to the local perfgate server (started via `perfgate serve`). Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484)
 
       --profile-on-regression Automatically capture a flamegraph when a regression is detected (warn or fail). Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph
+
+      --emit-repair-context Force `repair_context.json` emission even on passing checks. Warning and failing checks already emit it automatically
 
   -h, --help Print help (see a summary with '-h')
 
