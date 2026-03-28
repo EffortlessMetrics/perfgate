@@ -21,6 +21,17 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "description": "Optional automated budget ratcheting policy.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RatchetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "$defs": {
@@ -357,6 +368,65 @@
           "description": "Demote Pass and Fail to Skip.",
           "type": "string",
           "const": "skip"
+        }
+      ]
+    },
+    "RatchetConfig": {
+      "description": "Configuration for automated budget ratcheting.\n\nRatcheting is conservative by default and only applies on explicit\npromotion/ratchet flows.",
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "description": "Metrics eligible for ratcheting.",
+          "type": "array",
+          "default": [
+            "wall_ms",
+            "cpu_ms"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "description": "Enable ratcheting behavior for explicit ratchet workflows.",
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "description": "Maximum one-step tightening cap (fraction).",
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "description": "Minimum required improvement (fraction) before tightening is considered.",
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "description": "Ratcheting mode.",
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "description": "Require statistical significance evidence before ratcheting.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "description": "Ratcheting policy mode.",
+      "oneOf": [
+        {
+          "description": "Tighten explicit threshold values.",
+          "type": "string",
+          "const": "threshold"
+        },
+        {
+          "description": "Tighten by updating baseline reference values.",
+          "type": "string",
+          "const": "baseline_value"
         }
       ]
     },

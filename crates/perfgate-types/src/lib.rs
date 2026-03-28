@@ -1154,6 +1154,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    /// Optional automated budget ratcheting policy.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ratchet: Option<RatchetConfig>,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 }
@@ -1220,6 +1224,79 @@ pub struct BaselineServerConfig {
     /// Fall back to local storage when server is unavailable.
     #[serde(default = "default_fallback_to_local")]
     pub fallback_to_local: bool,
+}
+
+/// Configuration for automated budget ratcheting.
+///
+/// Ratcheting is conservative by default and only applies on explicit
+/// promotion/ratchet flows.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetConfig {
+    /// Enable ratcheting behavior for explicit ratchet workflows.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Ratcheting mode.
+    #[serde(default)]
+    pub mode: RatchetMode,
+
+    /// Minimum required improvement (fraction) before tightening is considered.
+    #[serde(default = "default_ratchet_min_improvement")]
+    pub min_improvement: f64,
+
+    /// Maximum one-step tightening cap (fraction).
+    #[serde(default = "default_ratchet_max_tightening")]
+    pub max_tightening: f64,
+
+    /// Require statistical significance evidence before ratcheting.
+    #[serde(default = "default_ratchet_require_significance")]
+    pub require_significance: bool,
+
+    /// Metrics eligible for ratcheting.
+    #[serde(default = "default_ratchet_allow_metrics")]
+    pub allow_metrics: Vec<Metric>,
+}
+
+impl Default for RatchetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: RatchetMode::Threshold,
+            min_improvement: default_ratchet_min_improvement(),
+            max_tightening: default_ratchet_max_tightening(),
+            require_significance: default_ratchet_require_significance(),
+            allow_metrics: default_ratchet_allow_metrics(),
+        }
+    }
+}
+
+fn default_ratchet_min_improvement() -> f64 {
+    0.05
+}
+
+fn default_ratchet_max_tightening() -> f64 {
+    0.10
+}
+
+fn default_ratchet_require_significance() -> bool {
+    true
+}
+
+fn default_ratchet_allow_metrics() -> Vec<Metric> {
+    vec![Metric::WallMs, Metric::CpuMs]
+}
+
+/// Ratcheting policy mode.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum RatchetMode {
+    /// Tighten explicit threshold values.
+    #[default]
+    Threshold,
+    /// Tighten by updating baseline reference values.
+    BaselineValue,
 }
 
 fn default_fallback_to_local() -> bool {
@@ -1540,6 +1617,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1629,6 +1707,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2027,6 +2106,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2064,11 +2144,36 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         let back: ConfigFile = serde_json::from_str(&json).unwrap();
         assert_eq!(config, back);
+    }
+
+    #[test]
+    fn config_file_parses_ratchet_block() {
+        let config: ConfigFile = toml::from_str(
+            r#"
+            [ratchet]
+            enabled = true
+            mode = "threshold"
+            min_improvement = 0.05
+            max_tightening = 0.10
+            require_significance = true
+            allow_metrics = ["wall_ms", "cpu_ms"]
+            "#,
+        )
+        .expect("valid ratchet config");
+
+        let ratchet = config.ratchet.expect("ratchet should be parsed");
+        assert!(ratchet.enabled);
+        assert_eq!(ratchet.mode, RatchetMode::Threshold);
+        assert_eq!(ratchet.min_improvement, 0.05);
+        assert_eq!(ratchet.max_tightening, 0.10);
+        assert!(ratchet.require_significance);
+        assert_eq!(ratchet.allow_metrics, vec![Metric::WallMs, Metric::CpuMs]);
     }
 
     #[test]
@@ -3036,6 +3141,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                ratchet: None,
                 benches,
             })
     }
