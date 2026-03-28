@@ -41,7 +41,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 | `check` | **Works** | Config-driven, finds baselines via `baseline_pattern` |
 | `paired` | **Works** | Interleaved execution, produces compare receipt |
 | `summary` | **Works** | Terminal table from compare receipts |
-| `aggregate` | **Works** | Merges run receipts |
+| `aggregate` | **Works** | Emits `perfgate.aggregate.v1` with policy verdicts |
 | `explain` | **Works** | Generates diagnostic text |
 | `blame` | **Works** | Diff two Cargo.lock files |
 | `bisect` | **Not tested** | Wraps git bisect, requires repo with history |
@@ -97,7 +97,7 @@ The **core local gating pipeline** is production-quality:
 - **Baseline server** — works for dev/small-team. Storage backends (SQLite, PostgreSQL, S3) are implemented. Not load-tested. GitHub Actions OIDC is exercised; GitLab and custom OIDC exist but remain lightly exercised.
 - **`bisect`** — wraps git bisect. Works in concept but depends on repo structure and build system. Edge cases likely.
 - **`explain`** — generates prompts, doesn't call an LLM. Useful but the name oversells it.
-- **`aggregate`** — simple merge, no weighting or outlier detection.
+- **`aggregate`** — formal fleet/matrix receipt with all/majority/weighted/quorum/fail-if-n-of-m gating. Weight keys use `os-arch` labels such as `linux-x86_64`.
 
 ## What's Missing / Not Built Yet
 

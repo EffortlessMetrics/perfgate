@@ -40,10 +40,11 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary, CompareReceipt,
-    CompareRef, ConfigFile, HostMismatchPolicy, OtelSpanIdentifiers, PerfgateReport,
-    REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
-    RepairMetricBreach, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary,
+    CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, MetricStatus,
+    OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
+    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, SensorVerdictStatus,
+    ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -263,11 +264,39 @@ enum Command {
         allow_nonzero: bool,
     },
 
-    /// Aggregate multiple run receipts (e.g. from a fleet) into a single run receipt.
+    /// Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt.
     Aggregate {
         /// Paths to run receipts (glob patterns supported)
         #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
+
+        /// Aggregation policy: all, majority, weighted, quorum, fail_if_n_of_m
+        #[arg(long, default_value = "all", value_parser = parse_aggregation_policy)]
+        policy: AggregationPolicy,
+
+        /// Quorum threshold used by quorum/weighted policies (0.0 to 1.0)
+        #[arg(long)]
+        quorum: Option<f64>,
+
+        /// Fail threshold N for fail_if_n_of_m policy
+        #[arg(long)]
+        fail_n: Option<u32>,
+
+        /// Optional expected total runners M for fail_if_n_of_m policy
+        #[arg(long)]
+        fail_m: Option<u32>,
+
+        /// Runner weights as label=value (repeatable), e.g. linux-x86_64=0.5
+        #[arg(long = "weight")]
+        weights: Vec<String>,
+
+        /// Optional runner class/tag added to each input in the aggregate receipt
+        #[arg(long)]
+        runner_class: Option<String>,
+
+        /// Optional benchmark lane/group added to each input in the aggregate receipt
+        #[arg(long)]
+        lane: Option<String>,
 
         /// Output file path
         #[arg(long, default_value = "perfgate-aggregated.json")]
@@ -2114,7 +2143,18 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
 
-        Command::Aggregate { files, out, pretty } => {
+        Command::Aggregate {
+            files,
+            policy,
+            quorum,
+            fail_n,
+            fail_m,
+            weights,
+            runner_class,
+            lane,
+            out,
+            pretty,
+        } => {
             let usecase = perfgate_app::AggregateUseCase;
             let mut resolved_files = Vec::new();
             for pattern in files {
@@ -2122,11 +2162,22 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     resolved_files.push(entry?);
                 }
             }
+            let (quorum, fail_if) = validate_aggregate_options(policy, quorum, fail_n, fail_m)?;
+            let weight_map = parse_weight_map(&weights)?;
             let outcome = usecase.execute(perfgate_app::AggregateRequest {
                 files: resolved_files,
+                policy,
+                quorum,
+                fail_if,
+                weights: weight_map,
+                runner_class,
+                lane,
             })?;
-            write_json(&out, &outcome.receipt, pretty)?;
-            Ok(())
+            write_json(&out, &outcome.aggregate, pretty)?;
+            match outcome.aggregate.verdict.status {
+                MetricStatus::Fail => exit_with_code(2),
+                MetricStatus::Pass | MetricStatus::Warn | MetricStatus::Skip => Ok(()),
+            }
         }
 
         Command::Bisect(args) => {
@@ -5019,6 +5070,83 @@ fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
     }
 }
 
+fn parse_aggregation_policy(s: &str) -> Result<AggregationPolicy, String> {
+    match s {
+        "all" => Ok(AggregationPolicy::All),
+        "majority" => Ok(AggregationPolicy::Majority),
+        "weighted" => Ok(AggregationPolicy::Weighted),
+        "quorum" => Ok(AggregationPolicy::Quorum),
+        "fail_if_n_of_m" => Ok(AggregationPolicy::FailIfNOfM),
+        _ => Err(format!(
+            "invalid aggregation policy: {s} (expected all|majority|weighted|quorum|fail_if_n_of_m)"
+        )),
+    }
+}
+
+fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>> {
+    let mut map = BTreeMap::new();
+    for raw in weights {
+        let (label, weight_raw) = raw
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("invalid --weight '{raw}', expected label=value"))?;
+        if label.trim().is_empty() {
+            anyhow::bail!("invalid --weight '{raw}': label cannot be empty");
+        }
+        let weight: f64 = weight_raw
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid --weight '{raw}': weight must be a number"))?;
+        if !weight.is_finite() || weight < 0.0 {
+            anyhow::bail!("invalid --weight '{raw}': weight must be a non-negative finite number");
+        }
+        map.insert(label.trim().to_string(), weight);
+    }
+    Ok(map)
+}
+
+fn validate_aggregate_options(
+    policy: AggregationPolicy,
+    quorum: Option<f64>,
+    fail_n: Option<u32>,
+    fail_m: Option<u32>,
+) -> anyhow::Result<(Option<f64>, Option<FailIfNOfM>)> {
+    if let Some(quorum) = quorum {
+        if !quorum.is_finite() || !(0.0..=1.0).contains(&quorum) {
+            anyhow::bail!("--quorum must be between 0.0 and 1.0, got {quorum}");
+        }
+        if !matches!(
+            policy,
+            AggregationPolicy::Weighted | AggregationPolicy::Quorum
+        ) {
+            anyhow::bail!("--quorum requires --policy weighted or quorum");
+        }
+    }
+
+    match policy {
+        AggregationPolicy::FailIfNOfM => {
+            let n = fail_n
+                .ok_or_else(|| anyhow::anyhow!("--policy fail_if_n_of_m requires --fail-n"))?;
+            if n == 0 {
+                anyhow::bail!("--fail-n must be at least 1");
+            }
+            if let Some(m) = fail_m {
+                if m == 0 {
+                    anyhow::bail!("--fail-m must be at least 1");
+                }
+                if m < n {
+                    anyhow::bail!("--fail-m must be greater than or equal to --fail-n");
+                }
+            }
+            Ok((quorum, Some(FailIfNOfM { n, m: fail_m })))
+        }
+        _ => {
+            if fail_n.is_some() || fail_m.is_some() {
+                anyhow::bail!("--fail-n and --fail-m require --policy fail_if_n_of_m");
+            }
+            Ok((quorum, None))
+        }
+    }
+}
+
 fn parse_significance_alpha(s: &str) -> Result<f64, String> {
     let alpha: f64 = s.parse().map_err(|_| format!("invalid float value: {s}"))?;
     if !(0.0..=1.0).contains(&alpha) {
@@ -5387,6 +5515,28 @@ mod tests {
         let err = parse_significance_alpha("abc").unwrap_err();
         assert!(
             err.contains("invalid float value"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_weight_map_accepts_non_negative_weights_above_one() {
+        let weights = parse_weight_map(&[
+            "linux-x86_64=2.5".to_string(),
+            "macos-aarch64=0".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(weights.get("linux-x86_64"), Some(&2.5));
+        assert_eq!(weights.get("macos-aarch64"), Some(&0.0));
+    }
+
+    #[test]
+    fn parse_weight_map_rejects_negative_weights() {
+        let err = parse_weight_map(&["linux-x86_64=-0.1".to_string()]).unwrap_err();
+        assert!(
+            err.to_string().contains("non-negative finite number"),
             "unexpected error: {}",
             err
         );

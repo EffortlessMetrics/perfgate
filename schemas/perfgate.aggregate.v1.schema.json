@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AggregateReceipt",
+  "type": "object",
+  "properties": {
+    "benchmark": {
+      "type": "string"
+    },
+    "fail_if": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FailIfNOfM"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AggregateInput"
+      }
+    },
+    "policy": {
+      "$ref": "#/$defs/AggregationPolicy"
+    },
+    "quorum": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double"
+    },
+    "run": {
+      "$ref": "#/$defs/RunMeta"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    },
+    "verdict": {
+      "$ref": "#/$defs/AggregateVerdict"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "format": "double"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "run",
+    "benchmark",
+    "policy",
+    "inputs",
+    "verdict"
+  ],
+  "$defs": {
+    "AggregateInput": {
+      "type": "object",
+      "properties": {
+        "bench_name": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "reasons": {
+          "description": "Optional reasons when status is not pass.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "runner": {
+          "$ref": "#/$defs/AggregateRunnerMeta"
+        },
+        "source": {
+          "description": "Input source path used to load this receipt.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Input status derived from run samples.",
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "source",
+        "run_id",
+        "bench_name",
+        "host",
+        "runner",
+        "status"
+      ]
+    },
+    "AggregateRunnerMeta": {
+      "type": "object",
+      "properties": {
+        "class": {
+          "description": "Optional logical class/tier (for example: \"tier1\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "description": "Matrix label for this runner (for example: \"ubuntu-x86_64\").",
+          "type": "string"
+        },
+        "lane": {
+          "description": "Optional benchmark lane/group.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weight": {
+          "description": "Optional configured runner weight.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "label"
+      ]
+    },
+    "AggregateVerdict": {
+      "type": "object",
+      "properties": {
+        "failed": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "description": "Quorum threshold used by quorum/weighted policies.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        },
+        "total": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "weighted_pass": {
+          "description": "Weighted pass sum (when using weighted policies).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "weighted_total": {
+          "description": "Weighted total sum (when using weighted policies).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "status",
+        "passed",
+        "failed",
+        "total"
+      ]
+    },
+    "AggregationPolicy": {
+      "description": "Fleet-level aggregation policy for matrix CI gating.",
+      "oneOf": [
+        {
+          "description": "Every runner must pass.",
+          "type": "string",
+          "const": "all"
+        },
+        {
+          "description": "More than half of runners must pass.",
+          "type": "string",
+          "const": "majority"
+        },
+        {
+          "description": "Weighted pass score must satisfy quorum.",
+          "type": "string",
+          "const": "weighted"
+        },
+        {
+          "description": "Unweighted pass ratio must satisfy quorum.",
+          "type": "string",
+          "const": "quorum"
+        },
+        {
+          "description": "Fail when failed runners are >= n (optionally out of m expected runners).",
+          "type": "string",
+          "const": "fail_if_n_of_m"
+        }
+      ]
+    },
+    "FailIfNOfM": {
+      "type": "object",
+      "properties": {
+        "m": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "n": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "n"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
+          "type": "string"
+        },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "RunMeta": {
+      "type": "object",
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    }
+  }
+}
