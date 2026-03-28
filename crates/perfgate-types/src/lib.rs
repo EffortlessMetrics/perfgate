@@ -459,6 +459,7 @@ impl F64Summary {
 ///     energy_uj: None,
 ///     binary_bytes: None,
 ///     throughput_per_s: None,
+///     custom_metrics: std::collections::BTreeMap::new(),
 /// };
 /// assert_eq!(stats.wall_ms.median, 100);
 /// assert_eq!(stats.max_rss_kb.unwrap().median, 4096);
@@ -505,6 +506,12 @@ pub struct Stats {
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub throughput_per_s: Option<F64Summary>,
+
+    /// Extensible custom metrics (e.g. ingested OpenTelemetry span durations).
+    ///
+    /// Keys are metric identifiers such as `span.ast_parsing.wall_ms`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub custom_metrics: BTreeMap<String, F64Summary>,
 }
 
 /// A versioned receipt from a single benchmark run (`perfgate.run.v1`).
@@ -537,6 +544,7 @@ pub struct Stats {
 ///         cpu_ms: None, page_faults: None, ctx_switches: None,
 ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
 ///         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
+///         custom_metrics: std::collections::BTreeMap::new(),
 ///     },
 /// };
 ///
@@ -1725,6 +1733,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: Some(U64Summary::new(4096, 4096, 4096)),
                 throughput_per_s: Some(F64Summary::new(10.526, 10.0, 11.111)),
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -1774,6 +1783,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -1839,6 +1849,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(f64::MAX, 0.0, f64::MAX)),
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         };
         let json = serde_json::to_string(&receipt).unwrap();
@@ -2085,6 +2096,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: Some(U64Summary::new(1024, 1024, 1024)),
             throughput_per_s: Some(F64Summary::new(2.0, 1.111, 10.0)),
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let json = serde_json::to_string(&stats).unwrap();
         let back: Stats = serde_json::from_str(&json).unwrap();
@@ -2105,6 +2117,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let json = serde_json::to_string(&stats).unwrap();
         let back: Stats = serde_json::from_str(&json).unwrap();
@@ -2280,6 +2293,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         };
 

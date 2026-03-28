@@ -53,6 +53,7 @@ fn create_test_receipt() -> RunReceipt {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         },
     }
 }

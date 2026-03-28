@@ -9,6 +9,7 @@
 mod criterion;
 mod gobench;
 mod hyperfine;
+mod otel;
 mod pytest;
 
 use perfgate_types::{
@@ -20,6 +21,7 @@ use uuid::Uuid;
 pub use criterion::parse_criterion;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
+pub use otel::parse_otel_json;
 pub use pytest::parse_pytest_benchmark;
 
 /// Supported ingest formats.
@@ -29,6 +31,7 @@ pub enum IngestFormat {
     Hyperfine,
     GoBench,
     PytestBenchmark,
+    OTelJson,
 }
 
 impl IngestFormat {
@@ -39,6 +42,7 @@ impl IngestFormat {
             "hyperfine" => Some(Self::Hyperfine),
             "gobench" | "go" => Some(Self::GoBench),
             "pytest" | "pytest-benchmark" | "pytest_benchmark" => Some(Self::PytestBenchmark),
+            "otel" | "otlp-json" | "opentelemetry" => Some(Self::OTelJson),
             _ => None,
         }
     }
@@ -52,6 +56,10 @@ pub struct IngestRequest {
     pub input: String,
     /// Benchmark name override. If None, derived from the input data.
     pub name: Option<String>,
+    /// Optional list of span names to include (exact match).
+    pub include_spans: Vec<String>,
+    /// Optional list of span names to exclude (exact match).
+    pub exclude_spans: Vec<String>,
 }
 
 /// Perform an ingest operation, returning a `RunReceipt`.
@@ -63,6 +71,12 @@ pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
         IngestFormat::PytestBenchmark => {
             parse_pytest_benchmark(&request.input, request.name.as_deref())
         }
+        IngestFormat::OTelJson => parse_otel_json(
+            &request.input,
+            request.name.as_deref(),
+            &request.include_spans,
+            &request.exclude_spans,
+        ),
     }
 }
 
@@ -179,6 +193,11 @@ mod tests {
             IngestFormat::parse("pytest_benchmark"),
             Some(IngestFormat::PytestBenchmark)
         );
+        assert_eq!(IngestFormat::parse("otel"), Some(IngestFormat::OTelJson));
+        assert_eq!(
+            IngestFormat::parse("opentelemetry"),
+            Some(IngestFormat::OTelJson)
+        );
         assert_eq!(IngestFormat::parse("unknown"), None);
     }
 
@@ -253,6 +272,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let receipt = make_receipt("test-bench", samples, stats);
         assert_eq!(receipt.schema, RUN_SCHEMA_V1);

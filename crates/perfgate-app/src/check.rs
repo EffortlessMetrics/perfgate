@@ -693,6 +693,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         }
     }
@@ -810,6 +811,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         }
     }

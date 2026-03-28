@@ -327,6 +327,7 @@ pub fn compute_stats(
         energy_uj,
         binary_bytes,
         throughput_per_s,
+        custom_metrics: std::collections::BTreeMap::new(),
     })
 }
 
@@ -396,6 +397,7 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 ///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
 ///     energy_uj: None,
 ///     binary_bytes: None, throughput_per_s: None,
+///     custom_metrics: std::collections::BTreeMap::new(),
 /// };
 /// let current = Stats {
 ///     wall_ms: U64Summary::new(105, 95, 115 ),
@@ -404,6 +406,7 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 ///     io_read_bytes: None, io_write_bytes: None, network_packets: None,
 ///     energy_uj: None,
 ///     binary_bytes: None, throughput_per_s: None,
+///     custom_metrics: std::collections::BTreeMap::new(),
 /// };
 ///
 /// let mut budgets = BTreeMap::new();
@@ -1722,6 +1725,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
 
                 let current_stats = Stats {
@@ -1736,6 +1740,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
 
                 // Create budget with the generated thresholds
@@ -1802,6 +1807,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 let current_stats = Stats {
                     wall_ms: U64Summary::new(1000, 1000, 1000),
@@ -1815,6 +1821,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(current, current, current)),                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 // Create budget with the generated thresholds
                 let mut budgets = BTreeMap::new();
@@ -1877,6 +1884,7 @@ mod tests {
                         energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: None,
+                        custom_metrics: std::collections::BTreeMap::new(),
                         };                    let cs = Stats {
                         wall_ms: U64Summary::new(current as u64, current as u64, current as u64),
                         cpu_ms: None,
@@ -1889,6 +1897,7 @@ mod tests {
                         energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: None,
+                        custom_metrics: std::collections::BTreeMap::new(),
                         };                    let mut b = BTreeMap::new();
                     b.insert(Metric::WallMs, Budget {
                         noise_threshold: None,
@@ -1907,6 +1916,7 @@ mod tests {
                         energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                    };
+                        custom_metrics: std::collections::BTreeMap::new(),
                     let cs = Stats {
                         wall_ms: U64Summary::new(1000, 1000, 1000),
                         cpu_ms: None,
@@ -1919,6 +1929,7 @@ mod tests {
                         energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(current, current, current)),                    };
+                        custom_metrics: std::collections::BTreeMap::new(),
                     let mut b = BTreeMap::new();
                     b.insert(Metric::ThroughputPerS, Budget {
                         noise_threshold: None,
@@ -1966,6 +1977,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(baseline, baseline, baseline)),                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 // For Direction::Higher, regression = max(0, (baseline - current) / baseline)
                 // To get regression = threshold, we need: (baseline - current) / baseline = threshold
@@ -1986,6 +1998,7 @@ mod tests {
                         energy_uj: None,
                         binary_bytes: None,
                         throughput_per_s: Some(F64Summary::new(current_at_threshold_higher, current_at_threshold_higher, current_at_threshold_higher)),
+                        custom_metrics: std::collections::BTreeMap::new(),
                     };
 
                     let mut budgets = BTreeMap::new();
@@ -2082,6 +2095,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary {
+                    custom_metrics: std::collections::BTreeMap::new(),
                     median: median as f64,
                     min: median as f64,
                     max: median as f64,
@@ -2211,6 +2225,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 // Compute current values to achieve desired statuses
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
@@ -2243,6 +2258,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
 
                 let mut wall_budget = Budget {
@@ -2315,6 +2331,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput)),                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 // Compute current values to achieve desired statuses
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, wall_ms_status);
@@ -2365,6 +2382,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: Some(F64Summary {
+                    custom_metrics: std::collections::BTreeMap::new(),
                         median: throughput_current,
                         min: throughput_current,
                         max: throughput_current,
@@ -2454,6 +2472,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 // wall_ms will be Fail, max_rss will be the random status
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Fail);
@@ -2471,6 +2490,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
 
                 let mut budgets = BTreeMap::new();
@@ -2535,6 +2555,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,                };
+                    custom_metrics: std::collections::BTreeMap::new(),
 
                 // wall_ms will be Warn, max_rss will be Pass or Warn
                 let wall_ms_current = current_for_status(baseline, threshold, warn_threshold, MetricStatus::Warn);
@@ -2552,6 +2573,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
 
                 let mut budgets = BTreeMap::new();
@@ -2620,6 +2642,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: if num_metrics >= 3 {
+                    custom_metrics: std::collections::BTreeMap::new(),
                         Some(F64Summary::new(baseline_throughput, baseline_throughput, baseline_throughput))
                     } else {
                         None
@@ -2713,6 +2736,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             };
             let current = Stats {
                 wall_ms: U64Summary::new(current_wall, current_wall, current_wall),
@@ -2726,6 +2750,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, Budget {
@@ -3032,6 +3057,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
 
                 let mut budgets = BTreeMap::new();
@@ -3084,6 +3110,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
@@ -3120,6 +3147,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 };
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
@@ -3396,6 +3424,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         // Current has 100% increase in cpu_ms (50 -> 100)
         let current = Stats {
@@ -3410,6 +3439,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
@@ -3451,6 +3481,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         // Current has 50% decrease in cpu_ms (100 -> 50) - improvement!
         let current = Stats {
@@ -3465,6 +3496,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
@@ -3503,6 +3535,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
@@ -3516,6 +3549,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
@@ -3544,6 +3578,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let current = Stats {
             wall_ms: U64Summary::new(100, 100, 100),
@@ -3557,6 +3592,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
@@ -3585,6 +3621,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         // Current has 15% increase in cpu_ms (100 -> 115)
         let current = Stats {
@@ -3599,6 +3636,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
@@ -3632,6 +3670,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let current = Stats {
             wall_ms: U64Summary::new(1100, 1100, 1100),
@@ -3645,6 +3684,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
@@ -3669,6 +3709,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(110.0, 110.0, 110.0)),
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let current = Stats {
             wall_ms: U64Summary::new(1000, 1000, 1000),
@@ -3682,6 +3723,7 @@ mod tests {
             energy_uj: None,
             binary_bytes: None,
             throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
+            custom_metrics: std::collections::BTreeMap::new(),
         };
         let mut budgets = BTreeMap::new();
         budgets.insert(
@@ -3886,6 +3928,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let current = Stats {
@@ -3900,6 +3943,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let mut budgets = BTreeMap::new();
@@ -3930,6 +3974,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(0.0, 0.0, 0.0)),
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let current = Stats {
@@ -3944,6 +3989,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let mut budgets = BTreeMap::new();
@@ -3977,6 +4023,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let current = Stats {
@@ -3991,6 +4038,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let mut budgets = BTreeMap::new();
@@ -4022,6 +4070,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(-10.0, -10.0, -10.0)),
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let current = Stats {
@@ -4036,6 +4085,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
+                custom_metrics: std::collections::BTreeMap::new(),
             };
 
             let mut budgets = BTreeMap::new();

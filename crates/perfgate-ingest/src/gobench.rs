@@ -101,6 +101,7 @@ pub fn parse_gobench(input: &str, name: Option<&str>) -> anyhow::Result<RunRecei
         energy_uj: None,
         binary_bytes: None,
         throughput_per_s: None,
+        custom_metrics: std::collections::BTreeMap::new(),
     };
 
     let mut receipt = make_receipt(&bench_name, vec![sample], stats);

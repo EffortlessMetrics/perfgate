@@ -97,6 +97,7 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
         energy_uj: None,
         binary_bytes: None,
         throughput_per_s: None,
+        custom_metrics: std::collections::BTreeMap::new(),
     };
 
     Ok(make_receipt(&bench_name, samples, full_stats))

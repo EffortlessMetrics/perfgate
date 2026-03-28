@@ -124,6 +124,7 @@ pub fn create_test_receipt(benchmark: &str) -> perfgate_types::RunReceipt {
             ctx_switches: None,
             binary_bytes: None,
             throughput_per_s: None,
+            custom_metrics: std::collections::BTreeMap::new(),
         },
     }
 }

@@ -40,6 +40,7 @@ fn main() {
         energy_uj: None,
         binary_bytes: None,
         throughput_per_s: None,
+        custom_metrics: std::collections::BTreeMap::new(),
     };
 
     // Assemble the receipt

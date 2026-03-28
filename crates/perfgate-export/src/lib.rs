@@ -46,6 +46,7 @@
 //!         cpu_ms: None, page_faults: None, ctx_switches: None,
 //!         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
 //!         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
+//!         custom_metrics: std::collections::BTreeMap::new(),
 //!     },
 //! };
 //!
@@ -245,6 +246,7 @@ impl ExportUseCase {
     ///         cpu_ms: None, page_faults: None, ctx_switches: None,
     ///         max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,
     ///         network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,
+    ///         custom_metrics: std::collections::BTreeMap::new(),
     ///     },
     /// };
     /// let csv = ExportUseCase::export_run(&receipt, ExportFormat::Csv).unwrap();
@@ -877,6 +879,7 @@ mod tests {
                 energy_uj: None,
                 binary_bytes: None,
                 throughput_per_s: None,
+                custom_metrics: std::collections::BTreeMap::new(),
             },
         }
     }
@@ -1176,6 +1179,7 @@ mod tests {
                     energy_uj: None,
                     binary_bytes: None,
                     throughput_per_s: None,
+                    custom_metrics: std::collections::BTreeMap::new(),
                 },
             }
         }
