@@ -275,6 +275,23 @@ pub fn format_pct(pct: f64) -> String {
     format!("{}{:.2}%", sign, pct * 100.0)
 }
 
+/// Render a concise markdown bullet for complexity-gate output.
+pub fn render_complexity_markdown_line(
+    expected: Option<&str>,
+    observed: &str,
+    r_squared: f64,
+    threshold: f64,
+    status: &str,
+) -> String {
+    format!(
+        "{status}: expected `{}` vs observed `{}` (R²={:.3}, threshold {:.2})",
+        expected.unwrap_or("unspecified"),
+        observed,
+        r_squared,
+        threshold
+    )
+}
+
 /// Return a human-readable label for a budget [`Direction`].
 pub fn direction_str(direction: Direction) -> &'static str {
     match direction {
