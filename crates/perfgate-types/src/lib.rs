@@ -1849,6 +1849,7 @@ mod tests {
                 require: Vec::new(),
                 downgrade_to: TradeoffDowngrade::Warn,
             }],
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
