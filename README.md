@@ -185,7 +185,7 @@ perfgate comment --compare artifacts/perfgate/compare.json --repo owner/repo --p
 | `baseline` | Manage baselines on the server |
 | `fleet` | Analyze dependency regressions across projects |
 | `summary` | Summarize multiple comparisons in a table |
-| `aggregate` | Merge run receipts from multiple runners |
+| `aggregate` | Evaluate fleet/matrix receipts into `perfgate.aggregate.v1` |
 | `bisect` | Find the commit that introduced a regression |
 | `blame` | Map regressions to Cargo.lock dependency changes |
 | `explain` | Generate AI-ready regression diagnostics |

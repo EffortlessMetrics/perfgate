@@ -41,10 +41,10 @@ use perfgate_scaling::{
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary,
-    CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, OtelSpanIdentifiers,
-    PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt,
-    RepairGitMetadata, RepairMetricBreach, RunReceipt, SensorVerdictStatus, ToolInfo,
-    VerdictStatus,
+    CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, MetricStatus,
+    OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
+    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt,
+    SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -264,7 +264,7 @@ enum Command {
         allow_nonzero: bool,
     },
 
-    /// Aggregate multiple run receipts (e.g. from a fleet) into a single run receipt.
+    /// Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt.
     Aggregate {
         /// Paths to run receipts (glob patterns supported)
         #[arg(required = true, num_args = 1..)]
@@ -286,7 +286,7 @@ enum Command {
         #[arg(long)]
         fail_m: Option<u32>,
 
-        /// Runner weights as label=value (repeatable), e.g. ubuntu-x86_64=0.5
+        /// Runner weights as label=value (repeatable), e.g. linux-x86_64=0.5
         #[arg(long = "weight")]
         weights: Vec<String>,
 
@@ -2171,8 +2171,11 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 runner_class,
                 lane,
             })?;
-            write_json(&out, &outcome.receipt, pretty)?;
-            Ok(())
+            write_json(&out, &outcome.aggregate, pretty)?;
+            match outcome.aggregate.verdict.status {
+                MetricStatus::Fail => exit_with_code(2),
+                MetricStatus::Pass | MetricStatus::Warn | MetricStatus::Skip => Ok(()),
+            }
         }
 
         Command::Bisect(args) => {
@@ -5473,18 +5476,18 @@ mod tests {
     #[test]
     fn parse_weight_map_accepts_non_negative_weights_above_one() {
         let weights = parse_weight_map(&[
-            "ubuntu-x86_64=2.5".to_string(),
+            "linux-x86_64=2.5".to_string(),
             "macos-aarch64=0".to_string(),
         ])
         .unwrap();
 
-        assert_eq!(weights.get("ubuntu-x86_64"), Some(&2.5));
+        assert_eq!(weights.get("linux-x86_64"), Some(&2.5));
         assert_eq!(weights.get("macos-aarch64"), Some(&0.0));
     }
 
     #[test]
     fn parse_weight_map_rejects_negative_weights() {
-        let err = parse_weight_map(&["ubuntu-x86_64=-0.1".to_string()]).unwrap_err();
+        let err = parse_weight_map(&["linux-x86_64=-0.1".to_string()]).unwrap_err();
         assert!(
             err.to_string().contains("non-negative finite number"),
             "unexpected error: {}",
