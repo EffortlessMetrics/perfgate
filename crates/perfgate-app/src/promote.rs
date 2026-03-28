@@ -56,6 +56,9 @@ impl PromoteUseCase {
                 memory_bytes: receipt.run.host.memory_bytes,
                 hostname_hash: receipt.run.host.hostname_hash,
             },
+            runner: receipt.run.runner,
+            host_fingerprint: receipt.run.host_fingerprint,
+            lane: receipt.run.lane,
         };
         receipt
     }
@@ -84,6 +87,9 @@ mod tests {
                     memory_bytes: Some(8_000_000_000),
                     hostname_hash: Some("testhash123".to_string()),
                 },
+                runner: None,
+                host_fingerprint: None,
+                lane: None,
             },
             bench: BenchMeta {
                 name: "test-benchmark".to_string(),

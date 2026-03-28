@@ -47,6 +47,7 @@ pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
+pub const AGGREGATE_SCHEMA_V1: &str = "perfgate.aggregate.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 
 // Stable contract identifiers and tokens.
@@ -287,13 +288,35 @@ pub struct HostMismatchInfo {
     pub reasons: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RunMeta {
     pub id: String,
     pub started_at: String,
     pub ended_at: String,
     pub host: HostInfo,
+    /// Optional matrix/fleet runner metadata for aggregation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub runner: Option<RunnerMeta>,
+    /// Optional stable host fingerprint for matrix/fleet rollups.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub host_fingerprint: Option<String>,
+    /// Optional benchmark lane/group label for matrix partitioning.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub lane: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RunnerMeta {
+    /// Human-readable runner label (for example "ubuntu-x86_64").
+    pub label: String,
+    /// Optional runner class (for example "self-hosted-large").
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub class: Option<String>,
+    /// Optional policy weight for weighted fleet aggregation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weight: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -553,6 +576,77 @@ pub struct RunReceipt {
     pub bench: BenchMeta,
     pub samples: Vec<Sample>,
     pub stats: Stats,
+}
+
+/// Fleet/matrix aggregation policy for perfgate.aggregate.v1.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum AggregationPolicy {
+    All,
+    Majority,
+    Weighted,
+    Quorum,
+    FailIfNOfM,
+}
+
+impl AggregationPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AggregationPolicy::All => "all",
+            AggregationPolicy::Majority => "majority",
+            AggregationPolicy::Weighted => "weighted",
+            AggregationPolicy::Quorum => "quorum",
+            AggregationPolicy::FailIfNOfM => "fail_if_n_of_m",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregationConfig {
+    pub policy: AggregationPolicy,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub quorum: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub fail_if_n: Option<u32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub weights: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateMember {
+    pub run_id: String,
+    pub bench_name: String,
+    pub runner_label: String,
+    pub host_fingerprint: String,
+    pub status: VerdictStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateStats {
+    pub total: u32,
+    pub pass: u32,
+    pub fail: u32,
+    pub pass_weight: f64,
+    pub fail_weight: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: RunMeta,
+    pub bench: BenchMeta,
+    pub config: AggregationConfig,
+    pub stats: AggregateStats,
+    pub verdict: Verdict,
+    pub members: Vec<AggregateMember>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(

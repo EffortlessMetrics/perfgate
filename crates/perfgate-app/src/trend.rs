@@ -199,6 +199,9 @@ mod tests {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
+                host_fingerprint: None,
+                lane: None,
             },
             bench: BenchMeta {
                 name: name.to_string(),

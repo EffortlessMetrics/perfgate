@@ -650,6 +650,9 @@ mod tests {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
+                host_fingerprint: None,
+                lane: None,
             },
             bench: BenchMeta {
                 name: "test-bench".to_string(),
@@ -787,6 +790,9 @@ mod tests {
                 started_at: "2024-01-01T00:00:00Z".to_string(),
                 ended_at: "2024-01-01T00:00:01Z".to_string(),
                 host,
+                runner: None,
+                host_fingerprint: None,
+                lane: None,
             },
             bench: BenchMeta {
                 name: "bench".to_string(),
