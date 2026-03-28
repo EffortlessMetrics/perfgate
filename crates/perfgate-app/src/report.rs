@@ -109,6 +109,7 @@ impl ReportUseCase {
             verdict: req.compare.verdict.clone(),
             compare: Some(req.compare),
             findings,
+            complexity: None,
             summary,
             profile_path: None,
         };

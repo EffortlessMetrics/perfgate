@@ -15,13 +15,19 @@ use crate::{
 use anyhow::Context;
 use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_domain::SignificancePolicy;
+use perfgate_scaling::{
+    SizeMeasurement, classify_complexity, is_complexity_degraded, parse_complexity,
+};
 use perfgate_types::{
-    BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CompareReceipt, CompareRef,
-    ConfigFile, ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, FindingData, HostMismatchPolicy, Metric, MetricStatistic,
-    MetricStatus, PerfgateError, PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary,
-    RunReceipt, Severity, ToolInfo, VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts,
-    VerdictStatus,
+    BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CHECK_ID_COMPLEXITY,
+    CompareReceipt, CompareRef, ComplexityGateResult, ComplexityGateStatus, ConfigFile,
+    ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_COMPLEXITY_FAIL,
+    FINDING_CODE_COMPLEXITY_WARN, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN, FindingData,
+    HostMismatchPolicy, Metric, MetricStatistic, MetricStatus, PerfgateError, PerfgateReport,
+    REPORT_SCHEMA_V1, ReportFinding, ReportSummary, RunReceipt, Severity, ToolInfo,
+    VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED, VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE,
+    VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE, VERDICT_REASON_NO_BASELINE, Verdict,
+    VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -169,10 +175,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
 
         // 4. Write run receipt
         let run_path = req.out_dir.join("run.json");
+        let complexity = self.run_complexity_gate(bench_config, &req)?;
 
         // 5. Handle baseline
         let report_path = req.out_dir.join("report.json");
-        let (compare_receipt, compare_path, report) = if let Some(baseline) = &req.baseline {
+        let (compare_receipt, compare_path, mut report) = if let Some(baseline) = &req.baseline {
             // Build budgets from config
             let (budgets, metric_statistics) = self.build_budgets(
                 bench_config,
@@ -246,11 +253,15 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             (None, None, report)
         };
 
+        apply_complexity_to_report(&mut report, complexity.clone());
+
         // 6. Generate markdown
         let markdown = if let Some(compare) = &compare_receipt {
-            crate::render_markdown(compare)
+            let mut markdown = crate::render_markdown(compare);
+            append_complexity_markdown(&mut markdown, complexity.as_ref());
+            markdown
         } else {
-            render_no_baseline_markdown(&run_receipt, &warnings)
+            render_no_baseline_markdown(&run_receipt, &warnings, complexity.as_ref())
         };
 
         let markdown_path = req.out_dir.join("comment.md");
@@ -271,6 +282,19 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         } else {
             // No baseline - pass by default (unless require_baseline was set, which already bailed)
             (false, 0)
+        };
+        let (failed, exit_code) = match complexity.as_ref().map(|g| g.status) {
+            Some(ComplexityGateStatus::Fail) => (true, 2),
+            Some(ComplexityGateStatus::Warn | ComplexityGateStatus::Inconclusive) => {
+                if exit_code == 2 {
+                    (true, 2)
+                } else if req.fail_on_warn {
+                    (true, 3)
+                } else {
+                    (false, 0)
+                }
+            }
+            _ => (failed, exit_code),
         };
 
         // 8. Check for high CV and suggest paired mode
@@ -337,6 +361,121 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             allow_nonzero: req.allow_nonzero,
             include_hostname_hash: false,
         })
+    }
+
+    fn run_complexity_gate(
+        &self,
+        bench: &BenchConfigFile,
+        req: &CheckRequest,
+    ) -> anyhow::Result<Option<ComplexityGateResult>> {
+        let Some(scaling) = &bench.scaling else {
+            return Ok(None);
+        };
+        if scaling.sizes.len() < 3 {
+            return Ok(Some(ComplexityGateResult {
+                status: ComplexityGateStatus::Inconclusive,
+                reason: VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE.to_string(),
+                expected: scaling.expected.clone(),
+                observed: None,
+                r_squared: None,
+            }));
+        }
+        let repeat = scaling.repeat.unwrap_or(5);
+        let threshold = scaling.r_squared_threshold.unwrap_or(0.90);
+        let expected = scaling
+            .expected
+            .as_deref()
+            .map(parse_complexity)
+            .transpose()
+            .ok()
+            .flatten();
+
+        let run_usecase = RunBenchUseCase::new(
+            self.runner.clone(),
+            self.host_probe.clone(),
+            self.clock.clone(),
+            req.tool.clone(),
+        );
+
+        let mut measurements = Vec::new();
+        for size in &scaling.sizes {
+            let command = bench
+                .command
+                .iter()
+                .map(|arg| arg.replace("{n}", &size.to_string()))
+                .collect::<Vec<_>>();
+            let outcome = run_usecase.execute(RunBenchRequest {
+                name: format!("{}-scale-{}", bench.name, size),
+                cwd: bench.cwd.as_ref().map(PathBuf::from),
+                command,
+                repeat,
+                warmup: 0,
+                work_units: None,
+                timeout: None,
+                env: req.env.clone(),
+                output_cap_bytes: req.output_cap_bytes,
+                allow_nonzero: req.allow_nonzero,
+                include_hostname_hash: false,
+            });
+            let outcome = match outcome {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    return Ok(Some(ComplexityGateResult {
+                        status: ComplexityGateStatus::Inconclusive,
+                        reason: VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE.to_string(),
+                        expected: scaling.expected.clone(),
+                        observed: None,
+                        r_squared: None,
+                    }));
+                }
+            };
+            measurements.push(SizeMeasurement {
+                input_size: *size,
+                time_ms: outcome.receipt.stats.wall_ms.median as f64,
+            });
+        }
+        let result = match classify_complexity(&measurements, Some(threshold)) {
+            Ok(result) => result,
+            Err(_) => {
+                return Ok(Some(ComplexityGateResult {
+                    status: ComplexityGateStatus::Inconclusive,
+                    reason: VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE.to_string(),
+                    expected: scaling.expected.clone(),
+                    observed: None,
+                    r_squared: None,
+                }));
+            }
+        };
+        if !result.above_threshold {
+            return Ok(Some(ComplexityGateResult {
+                status: ComplexityGateStatus::Warn,
+                reason: VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE.to_string(),
+                expected: scaling.expected.clone(),
+                observed: Some(result.best_fit.to_string()),
+                r_squared: Some(result.r_squared),
+            }));
+        }
+
+        let degraded = expected
+            .map(|class| is_complexity_degraded(class, result.best_fit))
+            .unwrap_or(false);
+        if degraded {
+            return Ok(Some(ComplexityGateResult {
+                status: ComplexityGateStatus::Fail,
+                reason: VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED.to_string(),
+                expected: scaling.expected.clone(),
+                observed: Some(result.best_fit.to_string()),
+                r_squared: Some(result.r_squared),
+            }));
+        }
+
+        Ok(Some(ComplexityGateResult {
+            status: ComplexityGateStatus::Pass,
+            reason: "complexity_ok".to_string(),
+            expected: scaling.expected.clone(),
+            observed: Some(result.best_fit.to_string()),
+            r_squared: Some(result.r_squared),
+        }))
     }
 
     fn build_budgets(
@@ -498,6 +637,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
         verdict: compare.verdict.clone(),
         compare: Some(compare.clone()),
         findings,
+        complexity: None,
         summary,
         profile_path: None,
     }
@@ -539,6 +679,7 @@ fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
         verdict,
         compare: None, // No synthetic compare receipt
         findings: vec![finding],
+        complexity: None,
         summary: ReportSummary {
             pass_count: 0,
             warn_count: 1,
@@ -559,7 +700,11 @@ fn detect_high_cv(run: &RunReceipt) -> bool {
 }
 
 /// Render markdown for the case when there is no baseline.
-fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String {
+fn render_no_baseline_markdown(
+    run: &RunReceipt,
+    warnings: &[String],
+    complexity: Option<&ComplexityGateResult>,
+) -> String {
     let mut out = String::new();
 
     out.push_str("## perfgate: no baseline\n\n");
@@ -617,7 +762,101 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
         }
     }
 
+    append_complexity_markdown(&mut out, complexity);
+
     out
+}
+
+fn apply_complexity_to_report(
+    report: &mut PerfgateReport,
+    complexity: Option<ComplexityGateResult>,
+) {
+    let Some(complexity) = complexity else {
+        return;
+    };
+    report.complexity = Some(complexity.clone());
+    match complexity.status {
+        ComplexityGateStatus::Pass => {}
+        ComplexityGateStatus::Warn => {
+            report.verdict.status = VerdictStatus::Warn;
+            report.verdict.counts.warn += 1;
+            report.verdict.reasons.push(complexity.reason.clone());
+            report.findings.push(ReportFinding {
+                check_id: CHECK_ID_COMPLEXITY.to_string(),
+                code: FINDING_CODE_COMPLEXITY_WARN.to_string(),
+                severity: Severity::Warn,
+                message: format!(
+                    "Complexity low confidence: expected {:?}, observed {:?}, R²={:.3}",
+                    complexity.expected,
+                    complexity.observed,
+                    complexity.r_squared.unwrap_or(0.0)
+                ),
+                data: None,
+            });
+        }
+        ComplexityGateStatus::Inconclusive => {
+            report.verdict.status = VerdictStatus::Warn;
+            report.verdict.counts.warn += 1;
+            report.verdict.reasons.push(complexity.reason.clone());
+            report.findings.push(ReportFinding {
+                check_id: CHECK_ID_COMPLEXITY.to_string(),
+                code: FINDING_CODE_COMPLEXITY_WARN.to_string(),
+                severity: Severity::Warn,
+                message: "Complexity gate inconclusive: measurement incomplete".to_string(),
+                data: None,
+            });
+        }
+        ComplexityGateStatus::Fail => {
+            report.verdict.status = VerdictStatus::Fail;
+            report.verdict.counts.fail += 1;
+            report.verdict.reasons.push(complexity.reason.clone());
+            report.findings.push(ReportFinding {
+                check_id: CHECK_ID_COMPLEXITY.to_string(),
+                code: FINDING_CODE_COMPLEXITY_FAIL.to_string(),
+                severity: Severity::Fail,
+                message: format!(
+                    "Complexity regression: expected {:?}, observed {:?}, R²={:.3}",
+                    complexity.expected,
+                    complexity.observed,
+                    complexity.r_squared.unwrap_or(0.0)
+                ),
+                data: None,
+            });
+        }
+    }
+    report.summary.warn_count = report.verdict.counts.warn;
+    report.summary.fail_count = report.verdict.counts.fail;
+    report.summary.pass_count = report.verdict.counts.pass;
+    report.summary.skip_count = report.verdict.counts.skip;
+    report.summary.total_count = report.summary.pass_count
+        + report.summary.warn_count
+        + report.summary.fail_count
+        + report.summary.skip_count;
+}
+
+fn append_complexity_markdown(out: &mut String, complexity: Option<&ComplexityGateResult>) {
+    let Some(complexity) = complexity else {
+        return;
+    };
+    out.push_str("\n### Complexity Gate\n\n");
+    out.push_str("| expected | observed | status | R² |\n");
+    out.push_str("|---|---|---|---:|\n");
+    out.push_str(&format!(
+        "| `{}` | `{}` | `{}` | {} |\n",
+        complexity.expected.as_deref().unwrap_or("-"),
+        complexity.observed.as_deref().unwrap_or("-"),
+        match complexity.status {
+            ComplexityGateStatus::Pass => "pass",
+            ComplexityGateStatus::Warn => "warn",
+            ComplexityGateStatus::Fail => "fail",
+            ComplexityGateStatus::Inconclusive => "inconclusive",
+        },
+        complexity
+            .r_squared
+            .map(|r| format!("{:.4}", r))
+            .unwrap_or_else(|| "-".to_string())
+    ));
+    out.push_str(&format!("\n- reason: `{}`\n", complexity.reason));
 }
 
 #[cfg(test)]
@@ -626,8 +865,8 @@ mod tests {
     use perfgate_adapters::{AdapterError, CommandSpec, HostProbeOptions, RunResult};
     use perfgate_types::{
         BaselineServerConfig, BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1,
-        CompareReceipt, DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample, Stats,
-        U64Summary, Verdict, VerdictCounts,
+        CompareReceipt, DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample,
+        ScalingConfig, Stats, U64Summary, Verdict, VerdictCounts,
     };
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -919,7 +1158,7 @@ mod tests {
         let run = make_run_receipt(1000);
         let warnings = vec!["no baseline found".to_string()];
 
-        let md = render_no_baseline_markdown(&run, &warnings);
+        let md = render_no_baseline_markdown(&run, &warnings, None);
 
         assert!(md.contains("perfgate: no baseline"));
         assert!(md.contains("test-bench"));
@@ -1508,5 +1747,147 @@ mod tests {
             outcome.compare_receipt.as_ref().unwrap().verdict.status,
             VerdictStatus::Pass
         );
+    }
+
+    #[test]
+    fn execute_with_scaling_degradation_fails_check() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "{n}".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+            scaling: Some(ScalingConfig {
+                sizes: vec![10, 20, 40],
+                expected: Some("O(n)".to_string()),
+                repeat: Some(1),
+                r_squared_threshold: Some(0.90),
+            }),
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
+            benches: vec![bench],
+        };
+        let baseline = make_baseline_receipt(
+            100,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            None,
+        );
+        let runner = TestRunner::new(vec![
+            run_result(100, 0, false),
+            run_result(10, 0, false),
+            run_result(40, 0, false),
+            run_result(160, 0, false),
+        ]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase
+            .execute(make_check_request(
+                config,
+                Some(baseline),
+                HostMismatchPolicy::Warn,
+                false,
+            ))
+            .expect("check should succeed");
+
+        assert_eq!(outcome.exit_code, 2);
+        assert_eq!(
+            outcome.report.complexity.as_ref().map(|c| c.status),
+            Some(ComplexityGateStatus::Fail)
+        );
+        assert!(
+            outcome
+                .report
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED.to_string())
+        );
+    }
+
+    #[test]
+    fn execute_with_low_confidence_scaling_warns() {
+        let bench = BenchConfigFile {
+            name: "bench".to_string(),
+            cwd: None,
+            work: None,
+            timeout: None,
+            command: vec!["echo".to_string(), "{n}".to_string()],
+            repeat: Some(1),
+            warmup: Some(0),
+            metrics: None,
+            budgets: None,
+            scaling: Some(ScalingConfig {
+                sizes: vec![10, 20, 40],
+                expected: Some("O(n)".to_string()),
+                repeat: Some(1),
+                r_squared_threshold: Some(0.99999),
+            }),
+        };
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
+            benches: vec![bench],
+        };
+        let baseline = make_baseline_receipt(
+            100,
+            HostInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+            None,
+        );
+        let runner = TestRunner::new(vec![
+            run_result(100, 0, false),
+            run_result(10, 0, false),
+            run_result(500, 0, false),
+            run_result(30, 0, false),
+        ]);
+        let host_probe = TestHostProbe::new(HostInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        });
+        let clock = TestClock::new("2024-01-01T00:00:00Z");
+        let usecase = CheckUseCase::new(runner, host_probe, clock);
+
+        let outcome = usecase
+            .execute(make_check_request(
+                config,
+                Some(baseline),
+                HostMismatchPolicy::Warn,
+                false,
+            ))
+            .expect("check should succeed");
+
+        assert_eq!(
+            outcome.report.complexity.as_ref().map(|c| c.status),
+            Some(ComplexityGateStatus::Warn)
+        );
+        assert!(outcome.markdown.contains("### Complexity Gate"));
+        assert!(outcome.markdown.contains("R²"));
     }
 }

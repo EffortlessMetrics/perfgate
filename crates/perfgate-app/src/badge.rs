@@ -399,6 +399,7 @@ mod tests {
             verdict: compare.verdict.clone(),
             compare: Some(compare),
             findings: vec![],
+            complexity: None,
             summary: perfgate_types::ReportSummary {
                 pass_count: 1,
                 warn_count: 0,
@@ -599,6 +600,7 @@ mod tests {
             },
             compare: None,
             findings: vec![],
+            complexity: None,
             summary: perfgate_types::ReportSummary {
                 pass_count: 0,
                 warn_count: 0,
@@ -655,6 +657,7 @@ mod tests {
             },
             compare: None,
             findings: vec![],
+            complexity: None,
             summary: perfgate_types::ReportSummary {
                 pass_count: 0,
                 warn_count: 0,
