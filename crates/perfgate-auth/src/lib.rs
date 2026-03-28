@@ -18,6 +18,7 @@ use chrono::{DateTime, Utc};
 use perfgate_error::AuthError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// API key prefix for live keys.
 pub const API_KEY_PREFIX_LIVE: &str = "pg_live_";
@@ -239,6 +240,116 @@ pub fn generate_api_key(test: bool) -> String {
     format!("{}{}", prefix, random)
 }
 
+/// Policy entry with metadata and secret material.
+///
+/// Designed for external secret-manager integration where perfgate consumes
+/// credentials from env/file/command.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ApiCredentialPolicy {
+    /// Stable identifier used for audit and revocation.
+    pub id: String,
+    /// Authorization role.
+    pub role: Role,
+    /// Project scope.
+    pub project: String,
+    /// Optional benchmark regex restriction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark_regex: Option<String>,
+    /// Optional expiration metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    /// Secret material consumed by perfgate.
+    pub secret: String,
+    /// Optional display name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl ApiCredentialPolicy {
+    /// Converts this policy entry into an [`ApiKey`] metadata record.
+    pub fn to_api_key(&self) -> ApiKey {
+        let mut key = ApiKey::new(
+            self.id.clone(),
+            self.name
+                .clone()
+                .unwrap_or_else(|| format!("{} key", self.role)),
+            self.project.clone(),
+            self.role,
+        );
+        key.benchmark_regex = self.benchmark_regex.clone();
+        key.expires_at = self.expires_at;
+        key
+    }
+}
+
+/// Supported policy-document format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolicyFormat {
+    Json,
+    Toml,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlPolicyDocument {
+    entries: Vec<ApiCredentialPolicy>,
+}
+
+/// Parses credential policy entries from a JSON/TOML document.
+pub fn parse_policy_document(
+    document: &str,
+    format: PolicyFormat,
+) -> Result<Vec<ApiCredentialPolicy>, AuthError> {
+    let policies: Vec<ApiCredentialPolicy> = match format {
+        PolicyFormat::Json => serde_json::from_str(document).map_err(|e| {
+            AuthError::InvalidToken(format!("failed to parse JSON key policy document: {}", e))
+        })?,
+        PolicyFormat::Toml => toml::from_str::<TomlPolicyDocument>(document)
+            .map(|doc| doc.entries)
+            .map_err(|e| {
+                AuthError::InvalidToken(format!("failed to parse TOML key policy document: {}", e))
+            })?,
+    };
+    validate_policies(policies)
+}
+
+/// Parses a credential policy document by inferring format from path extension.
+pub fn parse_policy_document_from_path(
+    path: impl AsRef<Path>,
+    document: &str,
+) -> Result<Vec<ApiCredentialPolicy>, AuthError> {
+    let format = match path
+        .as_ref()
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("toml") => PolicyFormat::Toml,
+        _ => PolicyFormat::Json,
+    };
+    parse_policy_document(document, format)
+}
+
+fn validate_policies(
+    policies: Vec<ApiCredentialPolicy>,
+) -> Result<Vec<ApiCredentialPolicy>, AuthError> {
+    for policy in &policies {
+        if policy.id.trim().is_empty() {
+            return Err(AuthError::InvalidToken(
+                "key policy entry has empty id".to_string(),
+            ));
+        }
+        if policy.secret.trim().is_empty() {
+            return Err(AuthError::InvalidToken(format!(
+                "key policy entry '{}' has empty secret",
+                policy.id
+            )));
+        }
+        validate_key_format(&policy.secret)?;
+    }
+    Ok(policies)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +392,57 @@ mod tests {
         let test_key = generate_api_key(true);
         assert!(test_key.starts_with(API_KEY_PREFIX_TEST));
         assert!(test_key.len() >= 40);
+    }
+
+    #[test]
+    fn test_parse_policy_document_json() {
+        let doc = r#"
+        [
+          {
+            "id": "ci-promoter",
+            "role": "promoter",
+            "project": "my-project",
+            "benchmark_regex": ".*",
+            "secret": "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+          }
+        ]
+        "#;
+
+        let parsed = parse_policy_document(doc, PolicyFormat::Json).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "ci-promoter");
+        assert_eq!(parsed[0].role, Role::Promoter);
+    }
+
+    #[test]
+    fn test_parse_policy_document_toml() {
+        let doc = r#"
+        [[entries]]
+        id = "ci-promoter"
+        role = "promoter"
+        project = "my-project"
+        secret = "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+        "#;
+
+        let parsed = parse_policy_document(doc, PolicyFormat::Toml).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].project, "my-project");
+    }
+
+    #[test]
+    fn test_parse_policy_document_rejects_invalid_secret() {
+        let doc = r#"
+        [
+          {
+            "id": "bad",
+            "role": "viewer",
+            "project": "my-project",
+            "secret": "not-a-key"
+          }
+        ]
+        "#;
+
+        let err = parse_policy_document(doc, PolicyFormat::Json).unwrap_err();
+        assert!(matches!(err, AuthError::InvalidKeyFormat));
     }
 }

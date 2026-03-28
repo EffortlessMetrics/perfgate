@@ -69,6 +69,14 @@ For GitHub Actions CI, use OIDC (`--github-oidc org/repo:project-id:contributor`
 GitLab OIDC and custom OIDC providers are also supported. JWT tokens (HS256)
 are supported via `--jwt-secret`.
 
+For external secret-manager integration, perfgate can load key policy docs from:
+- env var: `--api-keys-env PERFGATE_API_KEYS_JSON`
+- file: `--api-keys-file /etc/perfgate/keys.json`
+- command: `--api-keys-command "op read op://perfgate/api-keys/json"`
+
+Command/file sources are the recommended neutral integration path for Vault,
+1Password, and cloud secret wrappers.
+
 ## Configuration
 
 | Flag | Default | Description |
@@ -78,6 +86,10 @@ are supported via `--jwt-secret`.
 | `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
 | `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
 | `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
+| `--api-keys-env` | -- | Env var containing key policy JSON |
+| `--api-keys-file` | -- | File path to key policy JSON/TOML |
+| `--api-keys-command` | -- | Command that prints key policy JSON/TOML |
+| `--reload-interval` | -- | Intended auth-source reload interval (e.g., `60s`) |
 | `--github-oidc` | -- | `org/repo:project_id:role` (repeatable) |
 | `--gitlab-oidc` | -- | `group/project:project_id:role` (repeatable) |
 | `--oidc-provider` | -- | custom OIDC issuer/JWKS/audience mapping |

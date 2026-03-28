@@ -92,6 +92,22 @@ struct Args {
     #[arg(long = "api-keys", value_parser = parse_api_key)]
     api_keys: Vec<ApiKeyConfigArg>,
 
+    /// Environment variable that contains JSON key-policy document.
+    #[arg(long = "api-keys-env")]
+    api_keys_env: Option<String>,
+
+    /// File path to JSON/TOML key-policy document.
+    #[arg(long = "api-keys-file")]
+    api_keys_file: Option<String>,
+
+    /// Command that prints JSON/TOML key-policy document to stdout.
+    #[arg(long = "api-keys-command")]
+    api_keys_command: Option<String>,
+
+    /// Reload interval for auth sources like --api-keys-file/--api-keys-command.
+    #[arg(long = "reload-interval")]
+    reload_interval: Option<String>,
+
     /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
     #[arg(long)]
     jwt_secret: Option<String>,
@@ -302,6 +318,20 @@ async fn main() {
     // Add API keys
     for cfg in args.api_keys {
         config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
+    }
+    if let Some(env_var) = args.api_keys_env {
+        config = config.api_keys_env(env_var);
+    }
+    if let Some(path) = args.api_keys_file {
+        config = config.api_keys_file(path);
+    }
+    if let Some(command) = args.api_keys_command {
+        config = config.api_keys_command(command);
+    }
+    if let Some(interval) = args.reload_interval {
+        let parsed = humantime::parse_duration(&interval)
+            .unwrap_or_else(|_| panic!("Invalid --reload-interval duration: {}", interval));
+        config = config.auth_reload_interval(parsed);
     }
 
     // ----- GitHub OIDC -----

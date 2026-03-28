@@ -5,6 +5,7 @@
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,6 +41,7 @@ use crate::storage::{
     ObjectArtifactStore, PostgresStore, SqliteKeyStore, SqliteStore,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
+use perfgate_auth::parse_policy_document_from_path;
 
 /// Shared application state holding all stores.
 #[derive(Clone)]
@@ -162,6 +164,15 @@ pub struct ServerConfig {
     /// API keys for authentication
     pub api_keys: Vec<ApiKeyConfig>,
 
+    /// Optional environment variable containing key-policy JSON.
+    pub api_keys_env: Option<String>,
+
+    /// Optional file path containing key-policy JSON/TOML.
+    pub api_keys_file: Option<PathBuf>,
+
+    /// Optional shell command that prints key-policy JSON/TOML to stdout.
+    pub api_keys_command: Option<String>,
+
     /// Optional JWT validation settings.
     pub jwt: Option<JwtConfig>,
 
@@ -182,6 +193,9 @@ pub struct ServerConfig {
 
     /// Interval between background cleanup passes (in hours).
     pub cleanup_interval_hours: u64,
+
+    /// Optional interval for reloading command/file key sources.
+    pub auth_reload_interval: Option<Duration>,
 }
 
 impl Default for ServerConfig {
@@ -194,6 +208,9 @@ impl Default for ServerConfig {
             postgres_pool: PostgresPoolConfig::default(),
             artifacts_url: None,
             api_keys: vec![],
+            api_keys_env: None,
+            api_keys_file: None,
+            api_keys_command: None,
             jwt: None,
             oidc_configs: vec![],
             cors: true,
@@ -201,6 +218,7 @@ impl Default for ServerConfig {
             local_mode: false,
             retention_days: 0,
             cleanup_interval_hours: 1,
+            auth_reload_interval: None,
         }
     }
 }
@@ -272,6 +290,24 @@ impl ServerConfig {
         self
     }
 
+    /// Reads key-policy document from an environment variable.
+    pub fn api_keys_env(mut self, env_var: impl Into<String>) -> Self {
+        self.api_keys_env = Some(env_var.into());
+        self
+    }
+
+    /// Reads key-policy document from a file.
+    pub fn api_keys_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.api_keys_file = Some(path.into());
+        self
+    }
+
+    /// Reads key-policy document from command stdout.
+    pub fn api_keys_command(mut self, command: impl Into<String>) -> Self {
+        self.api_keys_command = Some(command.into());
+        self
+    }
+
     /// Enables JWT token authentication.
     pub fn jwt(mut self, jwt: JwtConfig) -> Self {
         self.jwt = Some(jwt);
@@ -307,6 +343,12 @@ impl ServerConfig {
     /// Sets the interval (in hours) between background cleanup passes.
     pub fn cleanup_interval_hours(mut self, hours: u64) -> Self {
         self.cleanup_interval_hours = hours;
+        self
+    }
+
+    /// Sets credential reload interval for command/file auth sources.
+    pub fn auth_reload_interval(mut self, interval: Duration) -> Self {
+        self.auth_reload_interval = Some(interval);
         self
     }
 }
@@ -399,7 +441,71 @@ pub(crate) async fn create_key_store(
         info!(role = ?cfg.role, project = %cfg.project, "Added API key");
     }
 
+    if let Some(env_var) = &config.api_keys_env {
+        let source = std::env::var(env_var).map_err(|e| {
+            ConfigError::InvalidValue(format!(
+                "Failed reading API keys from env var '{}': {}",
+                env_var, e
+            ))
+        })?;
+        add_policy_entries(&store, &source, PathBuf::from("api-keys-env.json")).await?;
+        info!(env_var = %env_var, "Loaded API keys from env var");
+    }
+
+    if let Some(path) = &config.api_keys_file {
+        let source = std::fs::read_to_string(path).map_err(|e| {
+            ConfigError::InvalidValue(format!(
+                "Failed reading API keys file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+        add_policy_entries(&store, &source, path.clone()).await?;
+        info!(path = %path.display(), "Loaded API keys from file");
+    }
+
+    if let Some(command) = &config.api_keys_command {
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| {
+                ConfigError::InvalidValue(format!("Failed executing API keys command: {}", e))
+            })?;
+
+        if !output.status.success() {
+            return Err(ConfigError::InvalidValue(format!(
+                "API keys command exited with status {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        let source = String::from_utf8(output.stdout).map_err(|e| {
+            ConfigError::InvalidValue(format!("API keys command returned non-UTF8 stdout: {}", e))
+        })?;
+        add_policy_entries(&store, &source, PathBuf::from("api-keys-command.json")).await?;
+        info!("Loaded API keys from command output");
+    }
+
     Ok(Arc::new(store))
+}
+
+async fn add_policy_entries(
+    store: &ApiKeyStore,
+    source: &str,
+    path_hint: PathBuf,
+) -> Result<(), ConfigError> {
+    let policies = parse_policy_document_from_path(&path_hint, source)
+        .map_err(|e| ConfigError::InvalidValue(format!("Failed parsing policy document: {}", e)))?;
+    for policy in policies {
+        let key = policy.to_api_key();
+        store.add_key(key, &policy.secret).await;
+    }
+    Ok(())
 }
 
 /// Creates the persistent key store based on the storage backend.
@@ -711,6 +817,7 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn test_server_config_default() {
@@ -809,6 +916,41 @@ mod tests {
         assert_eq!(keys.len(), 2);
         let viewer_key = keys.iter().find(|k| k.role == Role::Viewer).unwrap();
         assert_eq!(viewer_key.project_id, "project-1");
+    }
+
+    #[tokio::test]
+    async fn test_create_key_store_from_env_file_and_command() {
+        let env_doc = r#"[{"id":"env-key","role":"viewer","project":"env","secret":"pg_live_abcdefghijklmnopqrstuvwxyz123456"}]"#;
+        // SAFETY: test-scoped env var mutation.
+        unsafe { std::env::set_var("PERFGATE_TEST_KEYS_ENV", env_doc) };
+
+        let mut temp = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            temp,
+            r#"[{{"id":"file-key","role":"contributor","project":"file","secret":"pg_live_fileabcdefghijklmnopqrstuvwxyz123456"}}]"#
+        )
+        .unwrap();
+
+        let config = ServerConfig::new()
+            .api_keys_env("PERFGATE_TEST_KEYS_ENV")
+            .api_keys_file(temp.path())
+            .api_keys_command(
+                "printf '[{\"id\":\"cmd-key\",\"role\":\"promoter\",\"project\":\"cmd\",\"secret\":\"pg_live_commandabcdefghijklmnopqrstuvwx123456\"}]'",
+            );
+
+        let key_store = create_key_store(&config).await.unwrap();
+        let keys = key_store.list_keys().await;
+        assert_eq!(keys.len(), 3);
+        assert!(keys.iter().any(|k| k.id == "env-key"));
+        assert!(keys.iter().any(|k| k.id == "file-key"));
+        assert!(keys.iter().any(|k| k.id == "cmd-key"));
+    }
+
+    #[tokio::test]
+    async fn test_create_key_store_command_failure_is_clear() {
+        let config = ServerConfig::new().api_keys_command("exit 7");
+        let err = create_key_store(&config).await.unwrap_err();
+        assert!(format!("{}", err).contains("API keys command exited with status"));
     }
 
     #[tokio::test]
