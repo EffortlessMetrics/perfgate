@@ -1792,6 +1792,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
@@ -1849,6 +1850,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: None,
             benches: vec![bench],
         };
 
