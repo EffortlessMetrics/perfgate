@@ -19,6 +19,10 @@ chrono = { version = "0.4.39", features = ["serde"] }
 perfgate-error.workspace = true
 uuid = { workspace = true }
 schemars.workspace = true
+serde_json = { workspace = true }
+toml = { workspace = true }
+shell-words = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-serde_json.workspace = true
+tempfile = { workspace = true }
