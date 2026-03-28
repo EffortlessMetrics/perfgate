@@ -138,43 +138,25 @@ fn shell_command(command: &str) -> Command {
     cmd
 }
 
-pub fn parse_credentials_document(
-    raw: &str,
-) -> Result<Vec<LoadedCredential>, CredentialSourceError> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
+fn unwrap_wrapper_credentials(
+    keys: Vec<RawCredential>,
+    api_keys: Vec<RawCredential>,
+) -> Result<Vec<RawCredential>, CredentialSourceError> {
+    match (keys.is_empty(), api_keys.is_empty()) {
+        (false, true) => Ok(keys),
+        (true, false) => Ok(api_keys),
+        (false, false) => Err(CredentialSourceError::InvalidDocument(
+            "document must not contain both 'keys' and 'api_keys'".to_string(),
+        )),
+        (true, true) => Err(CredentialSourceError::InvalidDocument(
+            "document must contain either 'keys' or 'api_keys'".to_string(),
+        )),
     }
+}
 
-    let parsed = serde_json::from_str::<Vec<RawCredential>>(trimmed)
-        .or_else(|_| {
-            serde_json::from_str::<JsonDocument>(trimmed)
-                .map(|doc| {
-                    if !doc.keys.is_empty() {
-                        doc.keys
-                    } else {
-                        doc.api_keys
-                    }
-                })
-                .map_err(|e| serde_json::Error::io(std::io::Error::other(e.to_string())))
-        })
-        .or_else(|_| {
-            toml::from_str::<Vec<RawCredential>>(trimmed)
-                .map_err(|e| serde_json::Error::io(std::io::Error::other(e.to_string())))
-        })
-        .or_else(|_| {
-            toml::from_str::<TomlDocument>(trimmed)
-                .map(|doc| {
-                    if !doc.keys.is_empty() {
-                        doc.keys
-                    } else {
-                        doc.api_keys
-                    }
-                })
-                .map_err(|e| serde_json::Error::io(std::io::Error::other(e.to_string())))
-        })
-        .map_err(|e| CredentialSourceError::ParseFailure(e.to_string()))?;
-
+fn validate_loaded_credentials(
+    parsed: Vec<RawCredential>,
+) -> Result<Vec<LoadedCredential>, CredentialSourceError> {
     let mut out = Vec::with_capacity(parsed.len());
     for entry in parsed {
         if entry.id.trim().is_empty() {
@@ -202,6 +184,49 @@ pub fn parse_credentials_document(
     }
 
     Ok(out)
+}
+
+pub fn parse_credentials_document(
+    raw: &str,
+) -> Result<Vec<LoadedCredential>, CredentialSourceError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut parse_errors = Vec::new();
+
+    match serde_json::from_str::<Vec<RawCredential>>(trimmed) {
+        Ok(parsed) => return validate_loaded_credentials(parsed),
+        Err(err) => parse_errors.push(err.to_string()),
+    }
+
+    match serde_json::from_str::<JsonDocument>(trimmed) {
+        Ok(doc) => {
+            return validate_loaded_credentials(unwrap_wrapper_credentials(
+                doc.keys,
+                doc.api_keys,
+            )?);
+        }
+        Err(err) => parse_errors.push(err.to_string()),
+    }
+
+    match toml::from_str::<Vec<RawCredential>>(trimmed) {
+        Ok(parsed) => return validate_loaded_credentials(parsed),
+        Err(err) => parse_errors.push(err.to_string()),
+    }
+
+    match toml::from_str::<TomlDocument>(trimmed) {
+        Ok(doc) => {
+            return validate_loaded_credentials(unwrap_wrapper_credentials(
+                doc.keys,
+                doc.api_keys,
+            )?);
+        }
+        Err(err) => parse_errors.push(err.to_string()),
+    }
+
+    Err(CredentialSourceError::ParseFailure(parse_errors.join("; ")))
 }
 
 #[cfg(test)]
@@ -280,6 +305,43 @@ mod tests {
         assert_eq!(creds.len(), 1);
         assert_eq!(creds[0].policy.id, "ci-promoter");
         assert_eq!(creds[0].policy.role, Role::Promoter);
+    }
+
+    #[test]
+    fn parse_json_credentials_wrapper_rejects_missing_expected_fields() {
+        let doc = r#"{
+          "apiKeys": [
+            {
+              "id":"ci-promoter",
+              "role":"promoter",
+              "project":"my-project",
+              "secret":"pg_live_abcdefghijklmnopqrstuvwxyz123456"
+            }
+          ]
+        }"#;
+
+        let err = parse_credentials_document(doc).unwrap_err().to_string();
+        assert!(err.contains("document must contain either 'keys' or 'api_keys'"));
+    }
+
+    #[test]
+    fn parse_toml_credentials_wrapper_rejects_duplicate_wrappers() {
+        let doc = r#"
+          [[keys]]
+          id = "dev"
+          role = "admin"
+          project = "default"
+          secret = "pg_test_abcdefghijklmnopqrstuvwxyz123456"
+
+          [[api_keys]]
+          id = "ci"
+          role = "viewer"
+          project = "default"
+          secret = "pg_test_abcdefghijklmnopqrstuvwxyz123456"
+        "#;
+
+        let err = parse_credentials_document(doc).unwrap_err().to_string();
+        assert!(err.contains("document must not contain both 'keys' and 'api_keys'"));
     }
 
     #[test]
