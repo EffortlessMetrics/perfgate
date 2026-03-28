@@ -43,8 +43,8 @@ use perfgate_types::{
     AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary,
     CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, MetricStatus,
     OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
-    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt,
-    SensorVerdictStatus, ToolInfo, VerdictStatus,
+    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, SensorVerdictStatus,
+    ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
