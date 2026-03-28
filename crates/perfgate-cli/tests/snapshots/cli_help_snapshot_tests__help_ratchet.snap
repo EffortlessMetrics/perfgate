@@ -1,0 +1,20 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 291
+expression: "help_output(&[\"ratchet\", \"--help\"])"
+---
+Preview or apply conservative budget ratcheting from compare evidence
+
+Usage: perfgate ratchet [OPTIONS] <COMMAND>
+
+Commands:
+  preview Show exactly what would change in perfgate.toml
+  help Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable
