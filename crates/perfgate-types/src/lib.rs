@@ -53,16 +53,22 @@ pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
 pub const CHECK_ID_BASELINE: &str = "perf.baseline";
 pub const CHECK_ID_HOST: &str = "perf.host";
+pub const CHECK_ID_COMPLEXITY: &str = "perf.complexity";
 pub const CHECK_ID_TOOL_RUNTIME: &str = "tool.runtime";
 pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
 pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
 pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
 pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
+pub const FINDING_CODE_COMPLEXITY_INCONCLUSIVE: &str = "complexity_inconclusive";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
 pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
+pub const VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED: &str = "complexity_expected_exceeded";
+pub const VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE: &str = "complexity_fit_low_confidence";
+pub const VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE: &str =
+    "complexity_measurement_incomplete";
 
 // Error classification stages.
 pub const STAGE_CONFIG_PARSE: &str = "config_parse";
@@ -1088,6 +1094,36 @@ pub struct ReportSummary {
     pub total_count: u32,
 }
 
+/// Verdict status for optional complexity validation.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum ComplexityStatus {
+    Pass,
+    Warn,
+    Fail,
+    Inconclusive,
+}
+
+/// Optional complexity analysis result attached to a report.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ComplexityResult {
+    /// Expected complexity class from config.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+    /// Observed best-fit complexity class.
+    pub observed: String,
+    /// Best-fit model R².
+    pub r_squared: f64,
+    /// Minimum confidence threshold used.
+    pub r_squared_threshold: f64,
+    /// Complexity gate status.
+    pub status: ComplexityStatus,
+    /// Machine-readable reason token.
+    pub reason: String,
+}
+
 fn is_zero_u32(n: &u32) -> bool {
     *n == 0
 }
@@ -1116,6 +1152,10 @@ pub struct PerfgateReport {
     /// Path to a flamegraph SVG captured when regression was detected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_path: Option<String>,
+
+    /// Optional complexity validation result (check command integration).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<ComplexityResult>,
 }
 
 // ----------------------------
@@ -2005,6 +2045,7 @@ mod tests {
                 total_count: 2,
             },
             profile_path: None,
+            complexity: None,
         };
         let json = serde_json::to_string(&report).unwrap();
         let back: PerfgateReport = serde_json::from_str(&json).unwrap();
@@ -3679,6 +3720,7 @@ mod property_tests {
                 findings,
                 summary,
                 profile_path: None,
+                complexity: None,
             })
     }
 

@@ -23,6 +23,7 @@ perfgate-sha256.workspace = true
 perfgate-render.workspace = true
 perfgate-export.workspace = true
 perfgate-sensor.workspace = true
+perfgate-scaling.workspace = true
 anyhow.workspace = true
 humantime.workspace = true
 serde.workspace = true

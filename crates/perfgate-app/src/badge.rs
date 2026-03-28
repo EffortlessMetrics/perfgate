@@ -407,6 +407,7 @@ mod tests {
                 total_count: 1,
             },
             profile_path: None,
+            complexity: None,
         }
     }
 
@@ -607,6 +608,7 @@ mod tests {
                 total_count: 0,
             },
             profile_path: None,
+            complexity: None,
         };
         let result = metric_badge(&BadgeInput::Report(report), BadgeStyle::Flat, "wall_ms");
         assert!(result.is_err());
@@ -663,6 +665,7 @@ mod tests {
                 total_count: 0,
             },
             profile_path: None,
+            complexity: None,
         };
         let badge = trend_badge(&BadgeInput::Report(report), BadgeStyle::Flat);
         assert_eq!(badge.message, "unknown");

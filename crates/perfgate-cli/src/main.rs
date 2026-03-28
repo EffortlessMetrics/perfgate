@@ -3793,8 +3793,19 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         }
 
         if let Some(compare) = &outcome.compare_receipt {
-            let markdown =
+            let mut markdown =
                 render_markdown_with_optional_template(compare, markdown_template_path.as_deref())?;
+            if let Some(complexity) = &outcome.report.complexity {
+                markdown.push_str(&format!(
+                    "\n### Complexity Gate\n\n- Status: `{}`\n- Expected: `{}`\n- Observed: `{}`\n- R²: `{:.3}` (threshold `{:.3}`)\n- Reason: `{}`\n",
+                    format!("{:?}", complexity.status).to_lowercase(),
+                    complexity.expected.as_deref().unwrap_or("not set"),
+                    complexity.observed,
+                    complexity.r_squared,
+                    complexity.r_squared_threshold,
+                    complexity.reason
+                ));
+            }
             atomic_write(&outcome.markdown_path, markdown.as_bytes())
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
         } else {
@@ -4045,10 +4056,21 @@ fn run_check_cockpit_inner(
             }
 
             let final_markdown = if let Some(compare) = &check_outcome.compare_receipt {
-                let rendered = render_markdown_with_optional_template(
+                let mut rendered = render_markdown_with_optional_template(
                     compare,
                     markdown_template_path.as_deref(),
                 )?;
+                if let Some(complexity) = &check_outcome.report.complexity {
+                    rendered.push_str(&format!(
+                        "\n### Complexity Gate\n\n- Status: `{}`\n- Expected: `{}`\n- Observed: `{}`\n- R²: `{:.3}` (threshold `{:.3}`)\n- Reason: `{}`\n",
+                        format!("{:?}", complexity.status).to_lowercase(),
+                        complexity.expected.as_deref().unwrap_or("not set"),
+                        complexity.observed,
+                        complexity.r_squared,
+                        complexity.r_squared_threshold,
+                        complexity.reason
+                    ));
+                }
                 atomic_write(&check_outcome.markdown_path, rendered.as_bytes())
                     .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
                 rendered
@@ -5226,6 +5248,7 @@ mod tests {
                 total_count: 0,
             },
             profile_path: None,
+            complexity: None,
         };
 
         let outcome = CheckOutcome {
@@ -5241,6 +5264,7 @@ mod tests {
             failed: false,
             exit_code: 0,
             suggest_paired: false,
+            complexity: None,
         };
 
         write_check_artifacts(&outcome, false).unwrap();
@@ -5286,6 +5310,7 @@ mod tests {
                 total_count: 0,
             },
             profile_path: None,
+            complexity: None,
         };
 
         let outcome = CheckOutcome {
@@ -5301,6 +5326,7 @@ mod tests {
             failed: false,
             exit_code: 0,
             suggest_paired: false,
+            complexity: None,
         };
 
         write_check_artifacts(&outcome, false).unwrap();

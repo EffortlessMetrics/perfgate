@@ -111,6 +111,7 @@ impl ReportUseCase {
             findings,
             summary,
             profile_path: None,
+            complexity: None,
         };
 
         ReportResult { report }
