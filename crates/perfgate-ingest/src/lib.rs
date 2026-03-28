@@ -9,6 +9,7 @@
 mod criterion;
 mod gobench;
 mod hyperfine;
+mod otel;
 mod pytest;
 
 use perfgate_types::{
@@ -20,6 +21,7 @@ use uuid::Uuid;
 pub use criterion::parse_criterion;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
+pub use otel::parse_otel;
 pub use pytest::parse_pytest_benchmark;
 
 /// Supported ingest formats.
@@ -28,6 +30,7 @@ pub enum IngestFormat {
     Criterion,
     Hyperfine,
     GoBench,
+    Otel,
     PytestBenchmark,
 }
 
@@ -38,6 +41,7 @@ impl IngestFormat {
             "criterion" => Some(Self::Criterion),
             "hyperfine" => Some(Self::Hyperfine),
             "gobench" | "go" => Some(Self::GoBench),
+            "otel" | "opentelemetry" => Some(Self::Otel),
             "pytest" | "pytest-benchmark" | "pytest_benchmark" => Some(Self::PytestBenchmark),
             _ => None,
         }
@@ -52,6 +56,12 @@ pub struct IngestRequest {
     pub input: String,
     /// Benchmark name override. If None, derived from the input data.
     pub name: Option<String>,
+    /// Optional exact span name filter for OTel ingestion.
+    pub span_name: Option<String>,
+    /// Optional include regex for OTel span names.
+    pub include: Option<String>,
+    /// Optional exclude regex for OTel span names.
+    pub exclude: Option<String>,
 }
 
 /// Perform an ingest operation, returning a `RunReceipt`.
@@ -60,6 +70,13 @@ pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
         IngestFormat::Criterion => parse_criterion(&request.input, request.name.as_deref()),
         IngestFormat::Hyperfine => parse_hyperfine(&request.input, request.name.as_deref()),
         IngestFormat::GoBench => parse_gobench(&request.input, request.name.as_deref()),
+        IngestFormat::Otel => parse_otel(
+            &request.input,
+            request.name.as_deref(),
+            request.span_name.as_deref(),
+            request.include.as_deref(),
+            request.exclude.as_deref(),
+        ),
         IngestFormat::PytestBenchmark => {
             parse_pytest_benchmark(&request.input, request.name.as_deref())
         }
@@ -167,6 +184,7 @@ mod tests {
         );
         assert_eq!(IngestFormat::parse("gobench"), Some(IngestFormat::GoBench));
         assert_eq!(IngestFormat::parse("go"), Some(IngestFormat::GoBench));
+        assert_eq!(IngestFormat::parse("otel"), Some(IngestFormat::Otel));
         assert_eq!(
             IngestFormat::parse("pytest"),
             Some(IngestFormat::PytestBenchmark)

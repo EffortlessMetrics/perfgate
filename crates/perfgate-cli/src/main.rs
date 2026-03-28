@@ -1074,7 +1074,7 @@ pub struct PairedArgs {
 
 #[derive(Debug, Args)]
 pub struct IngestArgs {
-    /// Input format: criterion, hyperfine, gobench, pytest
+    /// Input format: criterion, hyperfine, gobench, pytest, otel
     #[arg(long)]
     pub format: String,
 
@@ -1085,6 +1085,18 @@ pub struct IngestArgs {
     /// Benchmark name (default: derived from input data)
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Exact span name to ingest (OTel only).
+    #[arg(long)]
+    pub span_name: Option<String>,
+
+    /// Include regex for span names (OTel only).
+    #[arg(long)]
+    pub include: Option<String>,
+
+    /// Exclude regex for span names (OTel only).
+    #[arg(long)]
+    pub exclude: Option<String>,
 
     /// Output file path
     #[arg(long, default_value = "perfgate-ingest.json")]
@@ -2039,13 +2051,16 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 format,
                 input,
                 name,
+                span_name,
+                include,
+                exclude,
                 out,
                 pretty,
             } = *args;
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest",
+                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest, otel",
                     format
                 )
             })?;
@@ -2057,6 +2072,9 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 format,
                 input: content,
                 name,
+                span_name,
+                include,
+                exclude,
             };
 
             let receipt = perfgate_ingest::ingest(&request)?;
