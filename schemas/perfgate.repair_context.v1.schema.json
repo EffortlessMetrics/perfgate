@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RepairContextReceipt",
+  "description": "A machine-readable failure package for automated triage.",
+  "type": "object",
+  "properties": {
+    "benchmark": {
+      "description": "Benchmark name associated with the check.",
+      "type": "string"
+    },
+    "breached_metrics": {
+      "description": "Breached metrics (warn/fail/skip due to policy) with thresholds and values.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RepairMetricBreach"
+      }
+    },
+    "changed_files": {
+      "description": "Changed files summary from git working tree.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ChangedFilesSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "compare_receipt_path": {
+      "description": "Path to compare receipt when available.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "git": {
+      "description": "Git metadata (if available).",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RepairGitMetadata"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "otel_span": {
+      "description": "Optional OTel span identifiers.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OtelSpanIdentifiers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "profile_path": {
+      "description": "Optional profile artifact path.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recommended_next_commands": {
+      "description": "Suggested next actions for humans/agents.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "report_path": {
+      "description": "Path to report artifact.",
+      "type": "string"
+    },
+    "schema": {
+      "description": "Schema identifier, always \"perfgate.repair_context.v1\".",
+      "type": "string"
+    },
+    "status": {
+      "description": "Optional top-level status for quick routing.",
+      "$ref": "#/$defs/VerdictStatus"
+    },
+    "verdict": {
+      "description": "Verdict from the check/compare workflow.",
+      "$ref": "#/$defs/Verdict"
+    }
+  },
+  "required": [
+    "schema",
+    "benchmark",
+    "verdict",
+    "status",
+    "breached_metrics",
+    "report_path",
+    "recommended_next_commands"
+  ],
+  "$defs": {
+    "ChangedFilesSummary": {
+      "type": "object",
+      "properties": {
+        "file_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "file_count_by_top_level": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "file_count",
+        "files",
+        "file_count_by_top_level"
+      ]
+    },
+    "Metric": {
+      "type": "string",
+      "enum": [
+        "binary_bytes",
+        "cpu_ms",
+        "ctx_switches",
+        "energy_uj",
+        "io_read_bytes",
+        "io_write_bytes",
+        "max_rss_kb",
+        "network_packets",
+        "page_faults",
+        "throughput_per_s",
+        "wall_ms"
+      ]
+    },
+    "OtelSpanIdentifiers": {
+      "type": "object",
+      "properties": {
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RepairGitMetadata": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RepairMetricBreach": {
+      "type": "object",
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "fail_threshold": {
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "$ref": "#/$defs/Metric"
+        },
+        "regression": {
+          "type": "number",
+          "format": "double"
+        },
+        "status": {
+          "type": "string"
+        },
+        "warn_threshold": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "metric",
+        "status",
+        "baseline",
+        "current",
+        "regression",
+        "fail_threshold",
+        "warn_threshold"
+      ]
+    },
+    "Verdict": {
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus"
+        }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    }
+  }
+}

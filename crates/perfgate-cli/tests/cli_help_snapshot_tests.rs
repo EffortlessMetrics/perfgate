@@ -67,7 +67,8 @@ fn cli_help_check() {
         ))
         .stdout(predicate::str::contains("--config"))
         .stdout(predicate::str::contains("--bench"))
-        .stdout(predicate::str::contains("--out-dir"));
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--emit-repair-context"));
 }
 
 #[test]
