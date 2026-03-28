@@ -60,6 +60,7 @@ mod tests {
                 ..Default::default()
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: Vec::new(),
         };

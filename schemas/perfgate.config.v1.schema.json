@@ -32,6 +32,14 @@
           "type": "null"
         }
       ]
+    },
+    "tradeoff": {
+      "description": "Optional tradeoff rules that can downgrade a failed metric when explicit\ncompensating improvements are present.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TradeoffRule"
+      }
     }
   },
   "$defs": {
@@ -459,6 +467,65 @@
       },
       "required": [
         "sizes"
+      ]
+    },
+    "TradeoffDowngrade": {
+      "description": "Target status when a tradeoff rule is satisfied.",
+      "type": "string",
+      "enum": [
+        "warn",
+        "pass"
+      ]
+    },
+    "TradeoffRequirement": {
+      "description": "A required improvement used by a tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "description": "Metric that must improve sufficiently for the tradeoff to apply.",
+          "$ref": "#/$defs/Metric"
+        },
+        "min_improvement_ratio": {
+          "description": "Minimum required improvement ratio.\n\nFor higher-is-better metrics, this is `current / baseline`.\nFor lower-is-better metrics, this is `baseline / current`.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "metric",
+        "min_improvement_ratio"
+      ]
+    },
+    "TradeoffRule": {
+      "description": "A structured tradeoff rule for explicit, auditable budget downgrades.",
+      "type": "object",
+      "properties": {
+        "downgrade_to": {
+          "description": "Downgrade target when all requirements are satisfied.",
+          "$ref": "#/$defs/TradeoffDowngrade",
+          "default": "warn"
+        },
+        "if_failed": {
+          "description": "The failed metric that this rule can downgrade.",
+          "$ref": "#/$defs/Metric"
+        },
+        "name": {
+          "description": "Unique rule name used in reason tokens.",
+          "type": "string"
+        },
+        "require": {
+          "description": "Required compensating improvements.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffRequirement"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "if_failed",
+        "require"
       ]
     }
   }

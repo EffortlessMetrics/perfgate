@@ -210,6 +210,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                         )
                     })
                     .transpose()?,
+                tradeoffs: req.config.tradeoffs.clone(),
                 baseline_ref: CompareRef {
                     path: req.baseline_path.as_ref().map(|p| p.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),
@@ -1246,6 +1247,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench.clone()],
         };
@@ -1377,6 +1379,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench.clone()],
         };
@@ -1455,6 +1458,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };
@@ -1510,6 +1514,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };
@@ -1582,6 +1587,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };
@@ -1640,6 +1646,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };
@@ -1671,6 +1678,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![],
         };
@@ -1724,6 +1732,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };
@@ -1792,6 +1801,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };
@@ -1850,6 +1860,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![bench],
         };

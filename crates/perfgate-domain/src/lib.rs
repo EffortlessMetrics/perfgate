@@ -30,8 +30,9 @@ pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, su
 
 use perfgate_types::{
     Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, Verdict,
-    VerdictCounts, VerdictStatus,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats,
+    TradeoffDowngrade, TradeoffRule, VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC,
+    VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED, Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 
@@ -190,6 +191,299 @@ mod advanced_analytics_tests {
         .expect("compare enforced");
         let enforced_delta = enforced.deltas.get(&Metric::WallMs).expect("wall delta");
         assert_eq!(enforced_delta.status, MetricStatus::Pass);
+    }
+}
+
+#[cfg(test)]
+mod tradeoff_tests {
+    use super::*;
+    use perfgate_types::{Direction, F64Summary, TradeoffRequirement, U64Summary};
+
+    fn base_stats(wall_ms: u64, max_rss_kb: u64, throughput: u64) -> Stats {
+        Stats {
+            wall_ms: U64Summary::new(wall_ms, wall_ms, wall_ms),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(U64Summary::new(max_rss_kb, max_rss_kb, max_rss_kb)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: Some(F64Summary::new(
+                throughput as f64,
+                throughput as f64,
+                throughput as f64,
+            )),
+        }
+    }
+
+    fn budgets() -> BTreeMap<Metric, Budget> {
+        BTreeMap::from([
+            (Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower)),
+            (
+                Metric::ThroughputPerS,
+                Budget::new(0.20, 0.1, Direction::Higher),
+            ),
+        ])
+    }
+
+    fn memory_for_speed_rule(min_improvement_ratio: f64) -> TradeoffRule {
+        TradeoffRule {
+            name: "memory_for_speed".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::ThroughputPerS,
+                min_improvement_ratio,
+            }],
+            downgrade_to: TradeoffDowngrade::Warn,
+        }
+    }
+
+    #[test]
+    fn tradeoff_downgrades_fail_to_warn_when_satisfied() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+
+        let comparison = compare_stats_with_tradeoffs(
+            &baseline,
+            &current,
+            &budgets(),
+            &[memory_for_speed_rule(1.5)],
+        )
+        .expect("compare with tradeoff");
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Warn);
+        assert_eq!(comparison.verdict.counts.fail, 0);
+        assert_eq!(comparison.verdict.counts.warn, 1);
+        assert_eq!(
+            comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Warn
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Warn))
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_speed_applied".to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Fail))
+        );
+    }
+
+    #[test]
+    fn tradeoff_downgrades_fail_to_pass_when_satisfied() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+
+        let comparison = compare_stats_with_tradeoffs(
+            &baseline,
+            &current,
+            &budgets(),
+            &[TradeoffRule {
+                name: "memory_for_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::ThroughputPerS,
+                    min_improvement_ratio: 1.5,
+                }],
+                downgrade_to: TradeoffDowngrade::Pass,
+            }],
+        )
+        .expect("compare with tradeoff");
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Pass);
+        assert_eq!(comparison.verdict.counts.fail, 0);
+        assert_eq!(comparison.verdict.counts.pass, 2);
+        assert_eq!(comparison.verdict.counts.warn, 0);
+        assert_eq!(
+            comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Pass
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_speed_applied".to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Fail))
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Warn))
+        );
+    }
+
+    #[test]
+    fn tradeoff_keeps_fail_when_rule_not_satisfied() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1200);
+
+        let comparison = compare_stats_with_tradeoffs(
+            &baseline,
+            &current,
+            &budgets(),
+            &[memory_for_speed_rule(1.5)],
+        )
+        .expect("compare with unsatisfied tradeoff");
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
+        assert_eq!(comparison.verdict.counts.fail, 1);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string())
+        );
+    }
+
+    #[test]
+    fn tradeoff_missing_required_metric_is_reported() {
+        let baseline = Stats {
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(U64Summary::new(1000, 1000, 1000)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: None,
+        };
+        let current = Stats {
+            wall_ms: U64Summary::new(100, 100, 100),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: Some(U64Summary::new(1300, 1300, 1300)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: None,
+        };
+
+        let comparison = compare_stats_with_tradeoffs(
+            &baseline,
+            &current,
+            &BTreeMap::from([(Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower))]),
+            &[memory_for_speed_rule(1.2)],
+        )
+        .expect("compare with missing required metric");
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string())
+        );
+    }
+
+    #[test]
+    fn empty_tradeoff_rule_does_not_apply() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+        let rule = TradeoffRule {
+            name: "empty".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: Vec::new(),
+            downgrade_to: TradeoffDowngrade::Warn,
+        };
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets(), &[rule]).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_empty_applied".to_string())
+        );
+    }
+
+    #[test]
+    fn later_satisfied_tradeoff_suppresses_unsatisfied_reason() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+        let rules = vec![memory_for_speed_rule(2.0), memory_for_speed_rule(1.5)];
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets(), &rules).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Warn);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_speed_applied".to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string())
+        );
+    }
+
+    #[test]
+    fn zero_current_for_lower_is_better_requirement_counts_as_improvement() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(0, 1300, 1000);
+        let budgets = BTreeMap::from([
+            (Metric::WallMs, Budget::new(0.20, 0.1, Direction::Lower)),
+            (Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower)),
+        ]);
+        let rule = TradeoffRule {
+            name: "memory_for_latency".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::WallMs,
+                min_improvement_ratio: 1.1,
+            }],
+            downgrade_to: TradeoffDowngrade::Warn,
+        };
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets, &[rule]).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Warn);
+        assert_eq!(
+            comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Warn
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_latency_applied".to_string())
+        );
     }
 }
 
@@ -421,6 +715,16 @@ pub fn compare_stats(
     current: &Stats,
     budgets: &BTreeMap<Metric, Budget>,
 ) -> Result<Comparison, DomainError> {
+    compare_stats_with_tradeoffs(baseline, current, budgets, &[])
+}
+
+/// Compare stats under the provided budgets and optional tradeoff rules.
+pub fn compare_stats_with_tradeoffs(
+    baseline: &Stats,
+    current: &Stats,
+    budgets: &BTreeMap<Metric, Budget>,
+    tradeoffs: &[TradeoffRule],
+) -> Result<Comparison, DomainError> {
     let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
     let mut reasons: Vec<String> = Vec::new();
 
@@ -496,6 +800,7 @@ pub fn compare_stats(
         );
     }
 
+    apply_tradeoffs(&mut deltas, &mut counts, &mut reasons, tradeoffs);
     let verdict = aggregate_verdict_from_counts(counts, reasons);
 
     Ok(Comparison { deltas, verdict })
@@ -512,6 +817,25 @@ pub fn compare_runs(
     budgets: &BTreeMap<Metric, Budget>,
     metric_statistics: &BTreeMap<Metric, MetricStatistic>,
     significance_policy: Option<SignificancePolicy>,
+) -> Result<Comparison, DomainError> {
+    compare_runs_with_tradeoffs(
+        baseline,
+        current,
+        budgets,
+        metric_statistics,
+        significance_policy,
+        &[],
+    )
+}
+
+/// Compare full run receipts under budgets with optional tradeoff rules.
+pub fn compare_runs_with_tradeoffs(
+    baseline: &RunReceipt,
+    current: &RunReceipt,
+    budgets: &BTreeMap<Metric, Budget>,
+    metric_statistics: &BTreeMap<Metric, MetricStatistic>,
+    significance_policy: Option<SignificancePolicy>,
+    tradeoffs: &[TradeoffRule],
 ) -> Result<Comparison, DomainError> {
     let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
     let mut reasons: Vec<String> = Vec::new();
@@ -619,9 +943,122 @@ pub fn compare_runs(
         );
     }
 
+    apply_tradeoffs(&mut deltas, &mut counts, &mut reasons, tradeoffs);
     let verdict = aggregate_verdict_from_counts(counts, reasons);
 
     Ok(Comparison { deltas, verdict })
+}
+
+fn push_unique_reason(reasons: &mut Vec<String>, token: String) {
+    if !reasons.contains(&token) {
+        reasons.push(token);
+    }
+}
+
+fn remove_reason(reasons: &mut Vec<String>, token: &str) {
+    reasons.retain(|reason| reason != token);
+}
+
+fn improvement_ratio(delta: &Delta, metric: Metric) -> Option<f64> {
+    match metric.default_direction() {
+        perfgate_types::Direction::Higher => Some(delta.ratio),
+        perfgate_types::Direction::Lower => Some(if delta.current <= 0.0 {
+            f64::INFINITY
+        } else {
+            delta.baseline / delta.current
+        }),
+    }
+}
+
+fn apply_tradeoffs(
+    deltas: &mut BTreeMap<Metric, Delta>,
+    counts: &mut VerdictCounts,
+    reasons: &mut Vec<String>,
+    tradeoffs: &[TradeoffRule],
+) {
+    let failed_metrics: Vec<Metric> = deltas
+        .iter()
+        .filter_map(|(metric, delta)| (delta.status == MetricStatus::Fail).then_some(*metric))
+        .collect();
+
+    for failed_metric in failed_metrics {
+        let mut applied = false;
+        let mut saw_missing_required_metric = false;
+        let mut saw_unsatisfied_rule = false;
+
+        for rule in tradeoffs
+            .iter()
+            .filter(|rule| rule.if_failed == failed_metric)
+        {
+            let mut missing_required_metric = false;
+            let mut satisfied = !rule.require.is_empty();
+
+            for requirement in &rule.require {
+                let Some(required_delta) = deltas.get(&requirement.metric) else {
+                    missing_required_metric = true;
+                    satisfied = false;
+                    break;
+                };
+
+                let Some(ratio) = improvement_ratio(required_delta, requirement.metric) else {
+                    satisfied = false;
+                    break;
+                };
+
+                if ratio < requirement.min_improvement_ratio {
+                    satisfied = false;
+                }
+            }
+
+            if !satisfied {
+                saw_missing_required_metric |= missing_required_metric;
+                saw_unsatisfied_rule = true;
+                continue;
+            }
+
+            if let Some(delta) = deltas.get_mut(&failed_metric) {
+                let new_status = match rule.downgrade_to {
+                    TradeoffDowngrade::Warn => MetricStatus::Warn,
+                    TradeoffDowngrade::Pass => MetricStatus::Pass,
+                };
+                if delta.status == MetricStatus::Fail && new_status != MetricStatus::Fail {
+                    counts.fail = counts.fail.saturating_sub(1);
+                    match new_status {
+                        MetricStatus::Warn => counts.warn += 1,
+                        MetricStatus::Pass => counts.pass += 1,
+                        MetricStatus::Fail | MetricStatus::Skip => {}
+                    }
+                    delta.status = new_status;
+                    remove_reason(reasons, &reason_token(failed_metric, MetricStatus::Fail));
+                    if new_status == MetricStatus::Warn {
+                        push_unique_reason(
+                            reasons,
+                            reason_token(failed_metric, MetricStatus::Warn),
+                        );
+                    }
+                }
+            }
+
+            push_unique_reason(reasons, format!("tradeoff_{}_applied", rule.name));
+            applied = true;
+            break;
+        }
+
+        if !applied {
+            if saw_missing_required_metric {
+                push_unique_reason(
+                    reasons,
+                    VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string(),
+                );
+            }
+            if saw_unsatisfied_rule {
+                push_unique_reason(
+                    reasons,
+                    VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string(),
+                );
+            }
+        }
+    }
 }
 
 // ============================================================================

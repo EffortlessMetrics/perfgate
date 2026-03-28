@@ -65,11 +65,12 @@ pub use perfgate_export::{CompareExportRow, ExportFormat, ExportUseCase, RunExpo
 
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
 use perfgate_domain::{
-    Comparison, SignificancePolicy, compare_runs, compute_stats, detect_host_mismatch,
+    Comparison, SignificancePolicy, compare_runs_with_tradeoffs, compute_stats,
+    detect_host_mismatch,
 };
 use perfgate_types::{
     BenchMeta, Budget, CompareReceipt, CompareRef, HostMismatchInfo, HostMismatchPolicy, Metric,
-    MetricStatistic, RunMeta, RunReceipt, Sample, ToolInfo,
+    MetricStatistic, RunMeta, RunReceipt, Sample, ToolInfo, TradeoffRule,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -264,6 +265,7 @@ pub struct CompareRequest {
     pub budgets: BTreeMap<Metric, Budget>,
     pub metric_statistics: BTreeMap<Metric, MetricStatistic>,
     pub significance: Option<SignificancePolicy>,
+    pub tradeoffs: Vec<TradeoffRule>,
     pub baseline_ref: CompareRef,
     pub current_ref: CompareRef,
     pub tool: ToolInfo,
@@ -301,12 +303,13 @@ impl CompareUseCase {
             );
         }
 
-        let Comparison { deltas, verdict } = compare_runs(
+        let Comparison { deltas, verdict } = compare_runs_with_tradeoffs(
             &req.baseline,
             &req.current,
             &req.budgets,
             &req.metric_statistics,
             req.significance,
+            &req.tradeoffs,
         )?;
 
         let receipt = CompareReceipt {
@@ -682,6 +685,7 @@ mod tests {
             budgets: budgets.clone(),
             metric_statistics: BTreeMap::new(),
             significance: None,
+            tradeoffs: Vec::new(),
             baseline_ref: CompareRef {
                 path: None,
                 run_id: None,
@@ -705,6 +709,7 @@ mod tests {
             budgets: budgets.clone(),
             metric_statistics: BTreeMap::new(),
             significance: None,
+            tradeoffs: Vec::new(),
             baseline_ref: CompareRef {
                 path: None,
                 run_id: None,
@@ -728,6 +733,7 @@ mod tests {
             budgets,
             metric_statistics: BTreeMap::new(),
             significance: None,
+            tradeoffs: Vec::new(),
             baseline_ref: CompareRef {
                 path: None,
                 run_id: None,

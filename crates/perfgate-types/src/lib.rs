@@ -71,6 +71,9 @@ pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
 pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
+pub const VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED: &str = "tradeoff_rule_not_satisfied";
+pub const VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC: &str =
+    "tradeoff_missing_required_metric";
 pub const VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED: &str = "complexity_expected_exceeded";
 pub const VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE: &str = "complexity_fit_low_confidence";
 pub const VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE: &str =
@@ -1318,6 +1321,11 @@ pub struct ConfigFile {
 
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
+
+    /// Optional tradeoff rules that can downgrade a failed metric when explicit
+    /// compensating improvements are present.
+    #[serde(default, rename = "tradeoff")]
+    pub tradeoffs: Vec<TradeoffRule>,
 }
 
 impl ConfigFile {
@@ -1345,6 +1353,14 @@ impl ConfigFile {
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
             validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
+        }
+        for rule in &self.tradeoffs {
+            if rule.require.is_empty() {
+                return Err(format!(
+                    "tradeoff '{}' must require at least one compensating metric",
+                    rule.name
+                ));
+            }
         }
         Ok(())
     }
@@ -1575,6 +1591,49 @@ pub struct BudgetOverride {
     pub statistic: Option<MetricStatistic>,
 }
 
+/// A required improvement used by a tradeoff rule.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRequirement {
+    /// Metric that must improve sufficiently for the tradeoff to apply.
+    pub metric: Metric,
+
+    /// Minimum required improvement ratio.
+    ///
+    /// For higher-is-better metrics, this is `current / baseline`.
+    /// For lower-is-better metrics, this is `baseline / current`.
+    pub min_improvement_ratio: f64,
+}
+
+/// Target status when a tradeoff rule is satisfied.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum TradeoffDowngrade {
+    #[default]
+    Warn,
+    Pass,
+}
+
+/// A structured tradeoff rule for explicit, auditable budget downgrades.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRule {
+    /// Unique rule name used in reason tokens.
+    pub name: String,
+
+    /// The failed metric that this rule can downgrade.
+    pub if_failed: Metric,
+
+    /// Required compensating improvements.
+    #[schemars(length(min = 1))]
+    pub require: Vec<TradeoffRequirement>,
+
+    /// Downgrade target when all requirements are satisfied.
+    #[serde(default)]
+    pub downgrade_to: TradeoffDowngrade,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1781,6 +1840,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
@@ -1871,6 +1931,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
@@ -1887,6 +1948,35 @@ mod tests {
             }],
         };
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn config_file_validate_rejects_empty_tradeoff_requirements() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![TradeoffRule {
+                name: "empty".to_string(),
+                if_failed: Metric::WallMs,
+                require: Vec::new(),
+                downgrade_to: TradeoffDowngrade::Warn,
+            }],
+            ratchet: None,
+            benches: vec![BenchConfigFile {
+                name: "my-bench".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+                scaling: None,
+            }],
+        };
+
+        assert!(config.validate().is_err());
     }
 
     // ---- Serde round-trip unit tests ----
@@ -2271,6 +2361,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
@@ -2309,6 +2400,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             ratchet: None,
             benches: vec![],
         };
@@ -3282,6 +3374,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                tradeoffs: Vec::new(),
                 ratchet: None,
                 benches,
             })
