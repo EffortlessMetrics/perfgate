@@ -60,7 +60,6 @@ pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
 pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
 pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
-pub const FINDING_CODE_COMPLEXITY_WARN: &str = "complexity_warn";
 pub const FINDING_CODE_COMPLEXITY_FAIL: &str = "complexity_fail";
 pub const FINDING_CODE_COMPLEXITY_INCONCLUSIVE: &str = "complexity_inconclusive";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
@@ -1106,7 +1105,6 @@ fn is_zero_u32(n: &u32) -> bool {
 #[serde(rename_all = "snake_case")]
 pub enum ComplexityGateStatus {
     Pass,
-    Warn,
     Fail,
     Inconclusive,
 }

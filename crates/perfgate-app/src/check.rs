@@ -22,10 +22,10 @@ use perfgate_types::{
     BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CHECK_ID_COMPLEXITY,
     CompareReceipt, CompareRef, ComplexityGateResult, ComplexityGateStatus, ConfigFile,
     ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_COMPLEXITY_FAIL,
-    FINDING_CODE_COMPLEXITY_INCONCLUSIVE, FINDING_CODE_COMPLEXITY_WARN, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, FindingData, HostMismatchPolicy, Metric, MetricStatistic,
-    MetricStatus, PerfgateError, PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary,
-    RunReceipt, ScalingConfig, Severity, ToolInfo, VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED,
+    FINDING_CODE_COMPLEXITY_INCONCLUSIVE, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
+    FindingData, HostMismatchPolicy, Metric, MetricStatistic, MetricStatus, PerfgateError,
+    PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, RunReceipt, ScalingConfig,
+    Severity, ToolInfo, VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED,
     VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE, VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE,
     VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts, VerdictStatus,
 };
@@ -568,22 +568,21 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             });
         }
 
-        if let Some(expected) = &scaling.expected {
-            if let (Ok(expected_class), Ok(observed_class)) =
+        if let Some(expected) = &scaling.expected
+            && let (Ok(expected_class), Ok(observed_class)) =
                 (parse_complexity(expected), parse_complexity(&observed))
-                && is_complexity_degraded(expected_class, observed_class)
-            {
-                return Ok(ComplexityGateResult {
-                    status: ComplexityGateStatus::Fail,
-                    reason: Some(VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED.to_string()),
-                    expected: Some(expected.clone()),
-                    observed: Some(observed),
-                    r_squared: Some(result.r_squared),
-                    r_squared_threshold: threshold,
-                    message: "complexity gate failed: observed complexity exceeds expected class"
-                        .to_string(),
-                });
-            }
+            && is_complexity_degraded(expected_class, observed_class)
+        {
+            return Ok(ComplexityGateResult {
+                status: ComplexityGateStatus::Fail,
+                reason: Some(VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED.to_string()),
+                expected: Some(expected.clone()),
+                observed: Some(observed),
+                r_squared: Some(result.r_squared),
+                r_squared_threshold: threshold,
+                message: "complexity gate failed: observed complexity exceeds expected class"
+                    .to_string(),
+            });
         }
 
         Ok(ComplexityGateResult {
@@ -604,7 +603,7 @@ fn median(values: &mut [f64]) -> Option<f64> {
     }
     values.sort_by(f64::total_cmp);
     let mid = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         Some((values[mid - 1] + values[mid]) / 2.0)
     } else {
         Some(values[mid])
@@ -625,18 +624,14 @@ fn apply_complexity_gate(
         ComplexityGateStatus::Pass => {
             report.summary.pass_count += 1;
         }
-        ComplexityGateStatus::Warn | ComplexityGateStatus::Inconclusive => {
+        ComplexityGateStatus::Inconclusive => {
             report.summary.warn_count += 1;
             if let Some(token) = &token {
                 report.verdict.reasons.push(token.clone());
             }
             report.findings.push(ReportFinding {
                 check_id: CHECK_ID_COMPLEXITY.to_string(),
-                code: if matches!(complexity.status, ComplexityGateStatus::Warn) {
-                    FINDING_CODE_COMPLEXITY_WARN.to_string()
-                } else {
-                    FINDING_CODE_COMPLEXITY_INCONCLUSIVE.to_string()
-                },
+                code: FINDING_CODE_COMPLEXITY_INCONCLUSIVE.to_string(),
                 severity: Severity::Warn,
                 message: complexity.message.clone(),
                 data: None,
@@ -673,9 +668,7 @@ fn apply_complexity_gate(
     if let Some(compare_receipt) = compare.as_mut() {
         match complexity.status {
             ComplexityGateStatus::Pass => compare_receipt.verdict.counts.pass += 1,
-            ComplexityGateStatus::Warn | ComplexityGateStatus::Inconclusive => {
-                compare_receipt.verdict.counts.warn += 1
-            }
+            ComplexityGateStatus::Inconclusive => compare_receipt.verdict.counts.warn += 1,
             ComplexityGateStatus::Fail => compare_receipt.verdict.counts.fail += 1,
         }
         if let Some(token) = token {

@@ -80,7 +80,6 @@ pub fn render_complexity_section(complexity: &ComplexityGateResult) -> String {
     out.push_str("\n### Complexity Gate\n\n");
     let status = match complexity.status {
         ComplexityGateStatus::Pass => "✅ pass",
-        ComplexityGateStatus::Warn => "⚠️ warn",
         ComplexityGateStatus::Fail => "❌ fail",
         ComplexityGateStatus::Inconclusive => "❔ inconclusive",
     };

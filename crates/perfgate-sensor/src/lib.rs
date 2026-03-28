@@ -488,6 +488,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 3,
             },
+            complexity: None,
             profile_path: None,
         }
     }
@@ -530,6 +531,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 3,
             },
+            complexity: None,
             profile_path: None,
         }
     }
@@ -563,6 +565,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 2,
             },
+            complexity: None,
             profile_path: None,
         }
     }
@@ -772,6 +775,7 @@ mod snapshot_tests {
                 skip_count: 0,
                 total_count: 5,
             },
+            complexity: None,
             profile_path: None,
         };
 
