@@ -40,10 +40,10 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, OtelSpanIdentifiers, PerfgateReport, RatchetConfig,
-    REPAIR_CONTEXT_SCHEMA_V1, RepairContextReceipt, RepairGitMetadata, RepairMetricBreach,
-    RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus, ChangedFilesSummary,
+    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary, CompareReceipt,
+    CompareRef, ConfigFile, HostMismatchPolicy, OtelSpanIdentifiers, PerfgateReport,
+    REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
+    RepairMetricBreach, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
