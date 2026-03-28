@@ -256,6 +256,22 @@ enum Command {
         #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
 
+        /// Aggregation policy (all|majority|weighted|quorum|fail-if-n-of-m)
+        #[arg(long, default_value = "all", value_parser = parse_aggregate_policy)]
+        policy: perfgate_types::AggregatePolicy,
+
+        /// Pass quorum ratio for --policy quorum (0.0..=1.0)
+        #[arg(long)]
+        quorum: Option<f64>,
+
+        /// Failure threshold for --policy fail-if-n-of-m
+        #[arg(long)]
+        fail_threshold: Option<u32>,
+
+        /// Runner weight override (repeatable): --weight ubuntu-x86_64=0.5
+        #[arg(long = "weight", value_parser = parse_weight_kv)]
+        weights: Vec<(String, f64)>,
+
         /// Output file path
         #[arg(long, default_value = "perfgate-aggregated.json")]
         out: PathBuf,
@@ -1988,7 +2004,15 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
 
-        Command::Aggregate { files, out, pretty } => {
+        Command::Aggregate {
+            files,
+            policy,
+            quorum,
+            fail_threshold,
+            weights,
+            out,
+            pretty,
+        } => {
             let usecase = perfgate_app::AggregateUseCase;
             let mut resolved_files = Vec::new();
             for pattern in files {
@@ -1996,8 +2020,13 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     resolved_files.push(entry?);
                 }
             }
+            let weights_map = weights.into_iter().collect();
             let outcome = usecase.execute(perfgate_app::AggregateRequest {
                 files: resolved_files,
+                policy,
+                quorum,
+                fail_threshold,
+                weights: weights_map,
             })?;
             write_json(&out, &outcome.receipt, pretty)?;
             Ok(())
@@ -4671,6 +4700,33 @@ fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
     }
 }
 
+fn parse_aggregate_policy(s: &str) -> Result<perfgate_types::AggregatePolicy, String> {
+    match s {
+        "all" => Ok(perfgate_types::AggregatePolicy::All),
+        "majority" => Ok(perfgate_types::AggregatePolicy::Majority),
+        "weighted" => Ok(perfgate_types::AggregatePolicy::Weighted),
+        "quorum" => Ok(perfgate_types::AggregatePolicy::Quorum),
+        "fail-if-n-of-m" => Ok(perfgate_types::AggregatePolicy::FailIfNOfM),
+        _ => Err(format!(
+            "invalid aggregate policy: {} (expected all|majority|weighted|quorum|fail-if-n-of-m)",
+            s
+        )),
+    }
+}
+
+fn parse_weight_kv(s: &str) -> Result<(String, f64), String> {
+    let (k, v) = s
+        .split_once('=')
+        .ok_or_else(|| format!("invalid weight '{s}', expected runner=weight"))?;
+    let weight: f64 = v
+        .parse()
+        .map_err(|_| format!("invalid weight value '{v}', expected number"))?;
+    if weight < 0.0 {
+        return Err("weight must be >= 0".to_string());
+    }
+    Ok((k.to_string(), weight))
+}
+
 fn parse_significance_alpha(s: &str) -> Result<f64, String> {
     let alpha: f64 = s.parse().map_err(|_| format!("invalid float value: {s}"))?;
     if !(0.0..=1.0).contains(&alpha) {
@@ -5000,6 +5056,40 @@ mod tests {
             "unexpected error: {}",
             err
         );
+    }
+
+    #[test]
+    fn parse_aggregate_policy_accepts_and_errors() {
+        assert_eq!(
+            parse_aggregate_policy("all").unwrap(),
+            perfgate_types::AggregatePolicy::All
+        );
+        assert_eq!(
+            parse_aggregate_policy("majority").unwrap(),
+            perfgate_types::AggregatePolicy::Majority
+        );
+        assert_eq!(
+            parse_aggregate_policy("weighted").unwrap(),
+            perfgate_types::AggregatePolicy::Weighted
+        );
+        assert_eq!(
+            parse_aggregate_policy("quorum").unwrap(),
+            perfgate_types::AggregatePolicy::Quorum
+        );
+        assert_eq!(
+            parse_aggregate_policy("fail-if-n-of-m").unwrap(),
+            perfgate_types::AggregatePolicy::FailIfNOfM
+        );
+        assert!(parse_aggregate_policy("sometimes").is_err());
+    }
+
+    #[test]
+    fn parse_weight_kv_parses_and_validates() {
+        let parsed = parse_weight_kv("ubuntu-x86_64=0.5").unwrap();
+        assert_eq!(parsed.0, "ubuntu-x86_64");
+        assert!((parsed.1 - 0.5).abs() < f64::EPSILON);
+        assert!(parse_weight_kv("bad").is_err());
+        assert!(parse_weight_kv("runner=-0.1").is_err());
     }
 
     #[test]

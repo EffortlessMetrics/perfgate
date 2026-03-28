@@ -47,6 +47,7 @@ pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
+pub const AGGREGATE_SCHEMA_V1: &str = "perfgate.aggregate.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 
 // Stable contract identifiers and tokens.
@@ -1001,6 +1002,75 @@ pub struct CompareReceipt {
     pub deltas: BTreeMap<Metric, Delta>,
 
     pub verdict: Verdict,
+}
+
+/// Policy used for fleet/matrix aggregation.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum AggregatePolicy {
+    All,
+    Majority,
+    Weighted,
+    Quorum,
+    FailIfNOfM,
+}
+
+impl AggregatePolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AggregatePolicy::All => "all",
+            AggregatePolicy::Majority => "majority",
+            AggregatePolicy::Weighted => "weighted",
+            AggregatePolicy::Quorum => "quorum",
+            AggregatePolicy::FailIfNOfM => "fail_if_n_of_m",
+        }
+    }
+}
+
+/// One member run included in an aggregate decision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateMember {
+    pub path: String,
+    pub run_id: String,
+    pub bench_name: String,
+    pub runner: String,
+    pub os: String,
+    pub arch: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub host_fingerprint: Option<String>,
+    pub status: VerdictStatus,
+    pub weight: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub reasons: Vec<String>,
+}
+
+/// Summary counts for an aggregate decision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateSummary {
+    pub total: u32,
+    pub pass: u32,
+    pub fail: u32,
+    pub warn: u32,
+    pub skip: u32,
+    pub pass_weight: f64,
+    pub fail_weight: f64,
+}
+
+/// Aggregate receipt for matrix/fleet CI gating (`perfgate.aggregate.v1`).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub policy: AggregatePolicy,
+    pub verdict: Verdict,
+    pub summary: AggregateSummary,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
+    pub members: Vec<AggregateMember>,
 }
 
 // ----------------------------
