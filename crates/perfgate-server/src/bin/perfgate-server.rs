@@ -93,16 +93,25 @@ struct Args {
     #[arg(long = "api-keys", value_parser = parse_api_key)]
     api_keys: Vec<ApiKeyConfigArg>,
 
-    /// Environment variable containing API key policy JSON/TOML.
-    #[arg(long = "api-keys-env")]
+    /// Environment variable containing an API key policy JSON/TOML document.
+    #[arg(
+        long = "api-keys-env",
+        conflicts_with_all = ["api_keys_file", "api_keys_command"]
+    )]
     api_keys_env: Option<String>,
 
-    /// File path containing API key policy JSON/TOML.
-    #[arg(long = "api-keys-file")]
+    /// File path containing an API key policy JSON/TOML document.
+    #[arg(
+        long = "api-keys-file",
+        conflicts_with_all = ["api_keys_env", "api_keys_command"]
+    )]
     api_keys_file: Option<String>,
 
-    /// Command that prints API key policy JSON/TOML to stdout.
-    #[arg(long = "api-keys-command")]
+    /// Command evaluated by the platform shell that prints an API key policy JSON/TOML document to stdout.
+    #[arg(
+        long = "api-keys-command",
+        conflicts_with_all = ["api_keys_env", "api_keys_file"]
+    )]
     api_keys_command: Option<String>,
 
     /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
@@ -225,8 +234,8 @@ fn parse_role(s: &str) -> Result<Role, String> {
     }
 }
 
-fn choose_credential_source(args: &Args) -> Result<Option<CredentialSource>, String> {
-    let source = if let Some(command) = &args.api_keys_command {
+fn choose_credential_source(args: &Args) -> Option<CredentialSource> {
+    if let Some(command) = &args.api_keys_command {
         Some(CredentialSource::Command {
             command: command.clone(),
         })
@@ -236,9 +245,7 @@ fn choose_credential_source(args: &Args) -> Result<Option<CredentialSource>, Str
         args.api_keys_env
             .as_ref()
             .map(|var| CredentialSource::Env { var: var.clone() })
-    };
-
-    Ok(source)
+    }
 }
 
 /// Parses an OIDC identity mapping "identity:project_id:role".
@@ -328,8 +335,8 @@ async fn main() {
         statement_timeout: Duration::from_secs(args.pg_statement_timeout),
     });
 
-    // Add API keys from file/env/command sources (priority: command > file > env)
-    if let Some(source) = choose_credential_source(&args).unwrap_or_else(|e| panic!("{}", e)) {
+    // Add API keys from a single external source, if configured.
+    if let Some(source) = choose_credential_source(&args) {
         let loaded = source.load().unwrap_or_else(|e| panic!("{}", e));
         for entry in loaded {
             config = config.scoped_api_key(
@@ -653,8 +660,8 @@ mod tests {
     }
 
     #[test]
-    fn test_choose_credential_source_precedence() {
-        let args = Args::try_parse_from([
+    fn test_external_source_flags_are_mutually_exclusive() {
+        let err = Args::try_parse_from([
             "perfgate-server",
             "--api-keys-env",
             "PERFGATE_API_KEYS",
@@ -663,10 +670,11 @@ mod tests {
             "--api-keys-command",
             "op read op://perfgate/api-keys/json",
         ])
-        .unwrap();
+        .unwrap_err()
+        .to_string();
 
-        let source = choose_credential_source(&args).unwrap().unwrap();
-        assert!(matches!(source, CredentialSource::Command { .. }));
+        assert!(err.contains("--api-keys-env"));
+        assert!(err.contains("--api-keys-file"));
     }
 
     #[test]

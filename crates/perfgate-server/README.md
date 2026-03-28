@@ -69,6 +69,11 @@ For GitHub Actions CI, use OIDC (`--github-oidc org/repo:project-id:contributor`
 GitLab OIDC and custom OIDC providers are also supported. JWT tokens (HS256)
 are supported via `--jwt-secret`.
 
+You can also load API-key policy documents from exactly one external source:
+`--api-keys-env`, `--api-keys-file`, or `--api-keys-command`. These documents
+may be JSON/TOML arrays or wrapped under `keys` / `api_keys`.
+`--api-keys-command` runs through PowerShell on Windows and `sh` elsewhere.
+
 ## Configuration
 
 | Flag | Default | Description |
@@ -78,6 +83,9 @@ are supported via `--jwt-secret`.
 | `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
 | `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
 | `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
+| `--api-keys-env` | -- | env var containing one API-key policy document |
+| `--api-keys-file` | -- | file containing one API-key policy document |
+| `--api-keys-command` | -- | command that prints one API-key policy document |
 | `--github-oidc` | -- | `org/repo:project_id:role` (repeatable) |
 | `--gitlab-oidc` | -- | `group/project:project_id:role` (repeatable) |
 | `--oidc-provider` | -- | custom OIDC issuer/JWKS/audience mapping |

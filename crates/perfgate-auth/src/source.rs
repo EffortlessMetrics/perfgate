@@ -42,8 +42,8 @@ pub enum CredentialSourceError {
         message: String,
     },
 
-    #[error("command source failed (status {status}){stderr_suffix}")]
-    CommandFailure { status: i32, stderr_suffix: String },
+    #[error("command source failed (status {status})")]
+    CommandFailure { status: i32 },
 
     #[error("key material document parse failed: {0}")]
     ParseFailure(String),
@@ -63,6 +63,14 @@ struct RawCredential {
     #[serde(default)]
     expires_at: Option<DateTime<Utc>>,
     secret: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonDocument {
+    #[serde(default)]
+    keys: Vec<RawCredential>,
+    #[serde(default)]
+    api_keys: Vec<RawCredential>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,40 +101,41 @@ impl CredentialSource {
 }
 
 fn run_command(command: &str) -> Result<String, CredentialSourceError> {
-    let argv = shell_words::split(command).map_err(|e| CredentialSourceError::ReadFailure {
-        source_name: "command".to_string(),
-        message: format!("failed to parse command: {}", e),
-    })?;
-    let Some(program) = argv.first() else {
+    if command.trim().is_empty() {
         return Err(CredentialSourceError::ReadFailure {
             source_name: "command".to_string(),
             message: "command is empty".to_string(),
         });
-    };
+    }
 
-    let output = Command::new(program)
-        .args(argv.iter().skip(1))
-        .output()
-        .map_err(|e| CredentialSourceError::ReadFailure {
-            source_name: "command".to_string(),
-            message: e.to_string(),
-        })?;
+    let output =
+        shell_command(command)
+            .output()
+            .map_err(|e| CredentialSourceError::ReadFailure {
+                source_name: "command".to_string(),
+                message: e.to_string(),
+            })?;
 
     if !output.status.success() {
         let status = output.status.code().unwrap_or(-1);
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stderr_suffix = if stderr.is_empty() {
-            String::new()
-        } else {
-            format!("; stderr: {}", stderr)
-        };
-        return Err(CredentialSourceError::CommandFailure {
-            status,
-            stderr_suffix,
-        });
+        return Err(CredentialSourceError::CommandFailure { status });
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[cfg(windows)]
+fn shell_command(command: &str) -> Command {
+    let mut cmd = Command::new("powershell");
+    cmd.arg("-NoProfile").arg("-Command").arg(command);
+    cmd
+}
+
+#[cfg(not(windows))]
+fn shell_command(command: &str) -> Command {
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c").arg(command);
+    cmd
 }
 
 pub fn parse_credentials_document(
@@ -138,6 +147,17 @@ pub fn parse_credentials_document(
     }
 
     let parsed = serde_json::from_str::<Vec<RawCredential>>(trimmed)
+        .or_else(|_| {
+            serde_json::from_str::<JsonDocument>(trimmed)
+                .map(|doc| {
+                    if !doc.keys.is_empty() {
+                        doc.keys
+                    } else {
+                        doc.api_keys
+                    }
+                })
+                .map_err(|e| serde_json::Error::io(std::io::Error::other(e.to_string())))
+        })
         .or_else(|_| {
             toml::from_str::<Vec<RawCredential>>(trimmed)
                 .map_err(|e| serde_json::Error::io(std::io::Error::other(e.to_string())))
@@ -187,6 +207,28 @@ pub fn parse_credentials_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    #[cfg(windows)]
+    fn read_file_command(path: &Path) -> String {
+        let path = path.display().to_string().replace('\'', "''");
+        format!("Get-Content -Raw -LiteralPath '{}'", path)
+    }
+
+    #[cfg(not(windows))]
+    fn read_file_command(path: &Path) -> String {
+        format!("cat \"{}\"", path.display())
+    }
+
+    #[cfg(windows)]
+    fn failing_command() -> String {
+        "Write-Error 'boom'; exit 9".to_string()
+    }
+
+    #[cfg(not(windows))]
+    fn failing_command() -> String {
+        "echo boom >&2; exit 9".to_string()
+    }
 
     #[test]
     fn parse_json_credentials() {
@@ -222,9 +264,35 @@ mod tests {
     }
 
     #[test]
+    fn parse_json_credentials_object_wrapper() {
+        let doc = r#"{
+          "keys": [
+            {
+              "id":"ci-promoter",
+              "role":"promoter",
+              "project":"my-project",
+              "secret":"pg_live_abcdefghijklmnopqrstuvwxyz123456"
+            }
+          ]
+        }"#;
+
+        let creds = parse_credentials_document(doc).unwrap();
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds[0].policy.id, "ci-promoter");
+        assert_eq!(creds[0].policy.role, Role::Promoter);
+    }
+
+    #[test]
     fn command_source_success() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("keys.json");
+        std::fs::write(
+            &path,
+            "[{\"id\":\"k1\",\"role\":\"viewer\",\"project\":\"p\",\"secret\":\"pg_test_abcdefghijklmnopqrstuvwxyz123456\"}]",
+        )
+        .unwrap();
         let src = CredentialSource::Command {
-            command: "sh -c 'printf \"[{\\\"id\\\":\\\"k1\\\",\\\"role\\\":\\\"viewer\\\",\\\"project\\\":\\\"p\\\",\\\"secret\\\":\\\"pg_test_abcdefghijklmnopqrstuvwxyz123456\\\"}]\"'".to_string(),
+            command: read_file_command(&path),
         };
         let creds = src.load().unwrap();
         assert_eq!(creds.len(), 1);
@@ -232,13 +300,13 @@ mod tests {
     }
 
     #[test]
-    fn command_source_failure_includes_status() {
+    fn command_source_failure_hides_stderr() {
         let src = CredentialSource::Command {
-            command: "sh -c 'echo boom >&2; exit 9'".to_string(),
+            command: failing_command(),
         };
         let err = src.load().unwrap_err().to_string();
         assert!(err.contains("status 9"));
-        assert!(err.contains("boom"));
+        assert!(!err.contains("boom"));
     }
 
     #[test]
