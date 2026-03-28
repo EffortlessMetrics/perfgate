@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-03-28
+
+### Fixed
+- Restored local `perfgate serve` baseline workflows by injecting a synthetic auth context for local-mode API routes.
+- Tightened baseline-service docs so `README`, getting-started guides, and service notes match the current shipped surface instead of historical or aspirational behavior.
+
+### Changed
+- Bumped the workspace and internal crate versions to `0.15.1`.
+- Updated GitHub Action examples to pin `EffortlessMetrics/perfgate@v0.15.1`.
+
 ## [0.15.0] - 2026-03-26
 
 ### Added

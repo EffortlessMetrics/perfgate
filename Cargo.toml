@@ -36,7 +36,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.15.0"
+version = "0.15.1"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
@@ -133,30 +133,30 @@ wiremock = "0.6"
 libc = "0.2.182"
 
 # Internal crates
-perfgate-error = { path = "crates/perfgate-error", version = "0.15.0" }
-perfgate-auth = { path = "crates/perfgate-auth", version = "0.15.0" }
-perfgate-api = { path = "crates/perfgate-api", version = "0.15.0" }
-perfgate-config = { path = "crates/perfgate-config", version = "0.15.0" }
-perfgate-types = { path = "crates/perfgate-types", version = "0.15.0" }
-perfgate-validation = { path = "crates/perfgate-validation", version = "0.15.0" }
-perfgate-stats = { path = "crates/perfgate-stats", version = "0.15.0" }
-perfgate-significance = { path = "crates/perfgate-significance", version = "0.15.0" }
-perfgate-paired = { path = "crates/perfgate-paired", version = "0.15.0" }
-perfgate-budget = { path = "crates/perfgate-budget", version = "0.15.0" }
-perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.0" }
-perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.15.0" }
-perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.15.0" }
-perfgate-render = { path = "crates/perfgate-render", version = "0.15.0" }
-perfgate-export = { path = "crates/perfgate-export", version = "0.15.0" }
-perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.15.0" }
-perfgate-fake = { path = "crates/perfgate-fake", version = "0.15.0" }
-perfgate-summary = { path = "crates/perfgate-summary", version = "0.15.0" }
-perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.15.0" }
-perfgate-ingest = { path = "crates/perfgate-ingest", version = "0.15.0" }
-perfgate-profile = { path = "crates/perfgate-profile", version = "0.15.0" }
-perfgate-app = { path = "crates/perfgate-app", version = "0.15.0" }
-perfgate-server = { path = "crates/perfgate-server", version = "0.15.0" }
-perfgate-client = { path = "crates/perfgate-client", version = "0.15.0" }
-perfgate-scaling = { path = "crates/perfgate-scaling", version = "0.15.0" }
-perfgate-github = { path = "crates/perfgate-github", version = "0.15.0" }
-perfgate = { path = "crates/perfgate", version = "0.15.0" }
+perfgate-error = { path = "crates/perfgate-error", version = "0.15.1" }
+perfgate-auth = { path = "crates/perfgate-auth", version = "0.15.1" }
+perfgate-api = { path = "crates/perfgate-api", version = "0.15.1" }
+perfgate-config = { path = "crates/perfgate-config", version = "0.15.1" }
+perfgate-types = { path = "crates/perfgate-types", version = "0.15.1" }
+perfgate-validation = { path = "crates/perfgate-validation", version = "0.15.1" }
+perfgate-stats = { path = "crates/perfgate-stats", version = "0.15.1" }
+perfgate-significance = { path = "crates/perfgate-significance", version = "0.15.1" }
+perfgate-paired = { path = "crates/perfgate-paired", version = "0.15.1" }
+perfgate-budget = { path = "crates/perfgate-budget", version = "0.15.1" }
+perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.1" }
+perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.15.1" }
+perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.15.1" }
+perfgate-render = { path = "crates/perfgate-render", version = "0.15.1" }
+perfgate-export = { path = "crates/perfgate-export", version = "0.15.1" }
+perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.15.1" }
+perfgate-fake = { path = "crates/perfgate-fake", version = "0.15.1" }
+perfgate-summary = { path = "crates/perfgate-summary", version = "0.15.1" }
+perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.15.1" }
+perfgate-ingest = { path = "crates/perfgate-ingest", version = "0.15.1" }
+perfgate-profile = { path = "crates/perfgate-profile", version = "0.15.1" }
+perfgate-app = { path = "crates/perfgate-app", version = "0.15.1" }
+perfgate-server = { path = "crates/perfgate-server", version = "0.15.1" }
+perfgate-client = { path = "crates/perfgate-client", version = "0.15.1" }
+perfgate-scaling = { path = "crates/perfgate-scaling", version = "0.15.1" }
+perfgate-github = { path = "crates/perfgate-github", version = "0.15.1" }
+perfgate = { path = "crates/perfgate", version = "0.15.1" }

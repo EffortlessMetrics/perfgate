@@ -1,6 +1,15 @@
-# Release Readiness: v0.15.0
+# Release Readiness: v0.15.1
 
-Last verified: 2026-03-27 against commit on main.
+Last verified: 2026-03-28 against the 0.15.1 release-prep branch.
+
+## Patch Scope
+
+This patch release is intentionally narrow:
+- restore local `perfgate serve` baseline workflows (`promote --to-server`,
+  `baseline list`, `baseline history`, `compare --baseline @server:<bench>`)
+- align baseline-service docs with the actual `0.15.x` command and server
+  surface
+- roll examples and release docs forward to `v0.15.1`
 
 ## Tested and Working
 
@@ -26,10 +35,12 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 | `explain` | **Works** | Generates diagnostic text |
 | `blame` | **Works** | Diff two Cargo.lock files |
 | `bisect` | **Not tested** | Wraps git bisect, requires repo with history |
+| `serve` | **Works** | Local SQLite dashboard/server; local baseline workflows re-verified |
 | `baseline upload` | **Works** | Requires `pg_live_` key with 32+ char suffix |
 | `baseline list` | **Works** | Lists uploaded baselines correctly |
 | `baseline download` | **Works** | Note: uses `--output` not `--out` |
-| `baseline delete/history/verdicts` | **Not tested** | Server is functional, these likely work |
+| `baseline history` | **Works** | Local-mode smoke flow re-verified in 0.15.1 prep |
+| `baseline delete/verdicts` | **Not tested** | Server is functional, but these were not re-run for this patch |
 | `check --mode cockpit` | **Works** | Produces sensor.report.v1 envelope + extras |
 
 ## Known Bugs
@@ -73,7 +84,7 @@ The **core local gating pipeline** is production-quality:
 
 ## What's Functional But Needs Hardening
 
-- **Baseline server** — works for dev/small-team. Storage backends (SQLite, PostgreSQL, S3) are implemented. Not load-tested. OIDC is partially implemented (GitHub Actions only). No audit trail.
+- **Baseline server** — works for dev/small-team. Storage backends (SQLite, PostgreSQL, S3) are implemented. Not load-tested. GitHub Actions OIDC is exercised; GitLab and custom OIDC exist but remain lightly exercised.
 - **`bisect`** — wraps git bisect. Works in concept but depends on repo structure and build system. Edge cases likely.
 - **`explain`** — generates prompts, doesn't call an LLM. Useful but the name oversells it.
 - **`aggregate`** — simple merge, no weighting or outlier detection.
@@ -90,7 +101,7 @@ The **core local gating pipeline** is production-quality:
 
 ## Recommended Release Approach
 
-1. **Merge cleanup** (this branch) — version alignment, README, debug prints, stale refs
-2. **Fix doc flag mismatches** (#56) — `paired`, `blame`, `bisect` examples
-3. **Tag v0.15.0** — first published release
-4. **Follow up**: crates.io publish, versioned action tag, server hardening
+1. **Merge local-mode/doc cleanup** — already complete on `main`
+2. **Merge 0.15.1 prep** — version bump, changelog, action example updates
+3. **Tag `v0.15.1`** — trigger the binary release workflow
+4. **Follow up** — crates.io publish, versioned action tag, workflow action runtime upgrades

@@ -59,7 +59,7 @@ perfgate check --config perfgate.toml --bench my-service --profile-on-regression
 
 ```yaml
 # .github/workflows/perf.yml
-- uses: EffortlessMetrics/perfgate@v0.15.0
+- uses: EffortlessMetrics/perfgate@v0.15.1
   with:
     config: perfgate.toml
     all: "true"
