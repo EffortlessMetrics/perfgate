@@ -16,16 +16,18 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    RatchetRequest, RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, render_json_diff,
+    render_markdown, render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     SubmitVerdictRequest, UploadBaselineRequest,
 };
-use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
+use perfgate_config::{
+    ResolvedServerConfig, apply_threshold_ratchets, load_config_file, resolve_server_config,
+};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_github::{CommentOptions, GitHubClient};
@@ -37,7 +39,8 @@ use perfgate_scaling::{
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    HostMismatchPolicy, PerfgateReport, RATCHET_SCHEMA_V1, RunReceipt, SensorVerdictStatus,
+    ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -202,6 +205,9 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Promote(Box<PromoteArgs>),
+
+    /// Preview or apply budget ratcheting updates from a compare receipt.
+    Ratchet(Box<RatchetArgs>),
 
     /// Generate a cockpit-compatible report from a compare receipt.
     ///
@@ -857,6 +863,41 @@ pub struct PromoteArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+
+    /// Enable budget ratcheting after promotion (explicit-only path).
+    #[arg(long, default_value_t = false)]
+    pub ratchet: bool,
+
+    /// Config file for ratchet policy and updates.
+    #[arg(long, default_value = "perfgate.toml", requires = "ratchet")]
+    pub config: PathBuf,
+
+    /// Compare receipt to use as ratchet evidence.
+    #[arg(long, requires = "ratchet")]
+    pub compare: Option<PathBuf>,
+
+    /// Optional output path for ratchet artifact.
+    #[arg(long, requires = "ratchet")]
+    pub ratchet_out: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct RatchetArgs {
+    #[command(subcommand)]
+    pub cmd: RatchetCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RatchetCommand {
+    /// Preview ratchet changes without writing perfgate.toml.
+    Preview {
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+        #[arg(long)]
+        compare: PathBuf,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -1740,6 +1781,10 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 version,
                 normalize,
                 pretty,
+                ratchet,
+                config,
+                compare,
+                ratchet_out,
             } = *args;
 
             let receipt: RunReceipt = read_json_from_location(&current)?;
@@ -1794,8 +1839,117 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 write_json_to_location(&to_path, &result.receipt, pretty)?;
             }
 
+            if ratchet {
+                let compare_path =
+                    compare.ok_or_else(|| anyhow::anyhow!("--ratchet requires --compare"))?;
+                let compare_receipt: CompareReceipt = read_json(&compare_path)?;
+                let cfg = load_config_file(&config)?;
+                let policy = cfg.ratchet.clone().unwrap_or_default();
+                let ratchet_result = RatchetUseCase::execute(RatchetRequest {
+                    compare: compare_receipt.clone(),
+                    policy,
+                    compare_ref: CompareRef {
+                        path: Some(compare_path.display().to_string()),
+                        run_id: None,
+                    },
+                    tool: ToolInfo {
+                        name: "perfgate".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                });
+                let edits = ratchet_result.threshold_edits();
+                if !edits.is_empty() {
+                    apply_threshold_ratchets(&config, &edits)?;
+                    eprintln!(
+                        "Applied {} ratchet threshold edit(s) to {}",
+                        edits.len(),
+                        config.display()
+                    );
+                } else {
+                    eprintln!("No ratchet edits applied");
+                }
+
+                let artifact = ratchet_result.receipt(
+                    CompareRef {
+                        path: Some(compare_path.display().to_string()),
+                        run_id: None,
+                    },
+                    ToolInfo {
+                        name: "perfgate".into(),
+                        version: env!("CARGO_PKG_VERSION").into(),
+                    },
+                );
+                let out_path =
+                    ratchet_out.unwrap_or_else(|| PathBuf::from("perfgate-ratchet.json"));
+                write_json(&out_path, &artifact, true)?;
+            }
+
             Ok(())
         }
+
+        Command::Ratchet(args) => match args.cmd {
+            RatchetCommand::Preview {
+                config,
+                compare,
+                out,
+            } => {
+                let compare_receipt: CompareReceipt = read_json(&compare)?;
+                let cfg = load_config_file(&config)?;
+                let policy = cfg.ratchet.clone().unwrap_or_default();
+                let result = RatchetUseCase::execute(RatchetRequest {
+                    compare: compare_receipt.clone(),
+                    policy,
+                    compare_ref: CompareRef {
+                        path: Some(compare.display().to_string()),
+                        run_id: None,
+                    },
+                    tool: ToolInfo {
+                        name: "perfgate".into(),
+                        version: env!("CARGO_PKG_VERSION").into(),
+                    },
+                });
+
+                println!("Ratchet preview for {}", config.display());
+                if result.changes.is_empty() {
+                    println!("  no config edits");
+                } else {
+                    for ch in &result.changes {
+                        println!(
+                            "  [{}] {}: {:.6} -> {:.6} ({})",
+                            ch.bench,
+                            ch.metric.as_str(),
+                            ch.old_value,
+                            ch.new_value,
+                            ch.reason
+                        );
+                    }
+                }
+                if !result.skipped.is_empty() {
+                    println!("Skipped:");
+                    for line in &result.skipped {
+                        println!("  - {line}");
+                    }
+                }
+
+                if let Some(out_path) = out {
+                    let artifact = result.receipt(
+                        CompareRef {
+                            path: Some(compare.display().to_string()),
+                            run_id: None,
+                        },
+                        ToolInfo {
+                            name: "perfgate".into(),
+                            version: env!("CARGO_PKG_VERSION").into(),
+                        },
+                    );
+                    if artifact.schema != RATCHET_SCHEMA_V1 {
+                        anyhow::bail!("invalid ratchet schema");
+                    }
+                    write_json(&out_path, &artifact, true)?;
+                }
+                Ok(())
+            }
+        },
 
         Command::Report(args) => {
             let ReportArgs {

@@ -17,7 +17,7 @@
 
 use anyhow::Context;
 use perfgate_client::{BaselineClient, ClientConfig, FallbackClient, FallbackStorage};
-use perfgate_types::{BaselineServerConfig, ConfigFile};
+use perfgate_types::{BaselineServerConfig, ConfigFile, Metric};
 use std::fs;
 use std::path::Path;
 
@@ -127,4 +127,67 @@ pub fn resolve_server_config(
         project: flag_project.or_else(|| file_config.resolved_project()),
         fallback_to_local: file_config.fallback_to_local,
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThresholdRatchetEdit {
+    pub bench: String,
+    pub metric: Metric,
+    pub new_threshold: f64,
+}
+
+/// Apply threshold ratchet edits to a TOML config file while preserving formatting/comments.
+pub fn apply_threshold_ratchets(path: &Path, edits: &[ThresholdRatchetEdit]) -> anyhow::Result<()> {
+    if edits.is_empty() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
+    for edit in edits {
+        let mut in_bench = false;
+        let mut bench_match = false;
+        let mut in_metric = false;
+        let mut updated = false;
+        for i in 0..lines.len() {
+            let trimmed = lines[i].trim();
+            if trimmed == "[[bench]]" {
+                in_bench = true;
+                bench_match = false;
+                in_metric = false;
+                continue;
+            }
+            if in_bench
+                && trimmed.starts_with("name")
+                && trimmed.contains(&format!("\"{}\"", edit.bench))
+            {
+                bench_match = true;
+                continue;
+            }
+            if in_bench
+                && bench_match
+                && trimmed == format!("[bench.budgets.{}]", edit.metric.as_str())
+            {
+                in_metric = true;
+                continue;
+            }
+            if in_metric && trimmed.starts_with('[') {
+                in_metric = false;
+            }
+            if in_metric && trimmed.starts_with("threshold") {
+                lines[i] = format!("threshold = {:.6}", edit.new_threshold);
+                updated = true;
+                break;
+            }
+        }
+        if !updated {
+            anyhow::bail!(
+                "could not find editable threshold for bench '{}' metric '{}'",
+                edit.bench,
+                edit.metric.as_str()
+            );
+        }
+    }
+    fs::write(path, format!("{}\n", lines.join("\n")))
+        .with_context(|| format!("write {}", path.display()))?;
+    Ok(())
 }

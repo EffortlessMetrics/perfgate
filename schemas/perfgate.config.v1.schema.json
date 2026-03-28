@@ -21,6 +21,17 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "description": "Optional ratchet policy used by explicit promote/ratchet workflows.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RatchetPolicyConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "$defs": {
@@ -359,6 +370,50 @@
           "const": "skip"
         }
       ]
+    },
+    "RatchetMode": {
+      "type": "string",
+      "enum": [
+        "threshold",
+        "baseline_value"
+      ]
+    },
+    "RatchetPolicyConfig": {
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "type": "array",
+          "default": [
+            "wall_ms",
+            "cpu_ms"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "type": "boolean",
+          "default": true
+        }
+      }
     },
     "ScalingConfig": {
       "description": "Configuration for computational complexity validation.",

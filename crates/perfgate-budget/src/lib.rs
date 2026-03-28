@@ -277,6 +277,33 @@ pub fn determine_status(regression: f64, threshold: f64, warn_threshold: f64) ->
     }
 }
 
+/// Calculates a tighter threshold from an observed improvement.
+///
+/// Returns `None` when the observed result is not an improvement for the metric direction.
+/// The returned threshold is always <= `current_threshold`.
+pub fn tightened_threshold(
+    baseline: f64,
+    current: f64,
+    current_threshold: f64,
+    direction: Direction,
+    max_tightening: f64,
+) -> Option<f64> {
+    if baseline <= 0.0 || current_threshold <= 0.0 {
+        return None;
+    }
+
+    let raw_improvement = match direction {
+        Direction::Lower => (baseline - current) / baseline,
+        Direction::Higher => (current - baseline) / baseline,
+    };
+    if raw_improvement <= 0.0 {
+        return None;
+    }
+
+    let tightening = raw_improvement.min(max_tightening).max(0.0);
+    Some(current_threshold * (1.0 - tightening))
+}
+
 /// Aggregates multiple metric statuses into a final verdict.
 ///
 /// # Verdict Rules
