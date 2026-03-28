@@ -20,6 +20,8 @@ mod explain;
 pub mod init;
 mod paired;
 mod promote;
+mod ratchet;
+mod repair_context;
 mod report;
 mod sensor_report;
 mod trend;
@@ -39,6 +41,8 @@ pub use diff::{
 pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
+pub use ratchet::{RatchetPlan, RatchetUseCase, is_host_mismatch_reason, preview_lines};
+pub use repair_context::redact_command_for_diagnostics;
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
 pub use sensor_report::{
     BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,

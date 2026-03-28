@@ -1,0 +1,18 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 296
+expression: "help_output(&[\"ratchet\", \"preview\", \"--help\"])"
+---
+Show exactly what would change in perfgate.toml
+
+Usage: perfgate ratchet preview [OPTIONS] --compare <COMPARE>
+
+Options:
+      --config <CONFIG> Path to perfgate.toml [default: perfgate.toml]
+      --compare <COMPARE> Compare receipt path
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

@@ -16,8 +16,9 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
+    RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, is_host_mismatch_reason,
+    preview_lines, redact_command_for_diagnostics, render_json_diff, render_markdown,
     render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
@@ -25,7 +26,10 @@ use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     SubmitVerdictRequest, UploadBaselineRequest,
 };
-use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
+use perfgate_config::{
+    ResolvedServerConfig, apply_ratchet_toml_changes, load_config_file,
+    preview_ratchet_toml_changes, resolve_server_config,
+};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_github::{CommentOptions, GitHubClient};
@@ -36,13 +40,16 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary, CompareReceipt,
+    CompareRef, ConfigFile, HostMismatchPolicy, OtelSpanIdentifiers, PerfgateReport,
+    REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
+    RepairMetricBreach, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -202,6 +209,12 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Promote(Box<PromoteArgs>),
+
+    /// Preview or apply conservative budget ratcheting from compare evidence.
+    Ratchet {
+        #[command(subcommand)]
+        action: RatchetAction,
+    },
 
     /// Generate a cockpit-compatible report from a compare receipt.
     ///
@@ -857,6 +870,38 @@ pub struct PromoteArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+
+    /// Enable budget ratcheting on local promote path (never for --to-server).
+    #[arg(long, default_value_t = false)]
+    pub ratchet: bool,
+
+    /// Compare receipt providing trustworthy evidence for ratcheting.
+    #[arg(long, requires = "ratchet")]
+    pub compare: Option<PathBuf>,
+
+    /// Config file to update when --ratchet is enabled.
+    #[arg(long, default_value = "perfgate.toml", requires = "ratchet")]
+    pub config: PathBuf,
+
+    /// Output path for machine-readable ratchet artifact.
+    #[arg(long, default_value = "perfgate.ratchet.v1.json", requires = "ratchet")]
+    pub ratchet_out: PathBuf,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RatchetAction {
+    /// Show exactly what would change in perfgate.toml.
+    Preview(Box<RatchetPreviewArgs>),
+}
+
+#[derive(Debug, Args)]
+pub struct RatchetPreviewArgs {
+    /// Path to perfgate.toml.
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+    /// Compare receipt path.
+    #[arg(long)]
+    pub compare: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -977,6 +1022,11 @@ pub struct CheckArgs {
     /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
     #[arg(long, default_value_t = false)]
     pub profile_on_regression: bool,
+
+    /// Force `repair_context.json` emission even on passing checks.
+    /// Warning and failing checks already emit it automatically.
+    #[arg(long, default_value_t = false)]
+    pub emit_repair_context: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1074,7 +1124,7 @@ pub struct PairedArgs {
 
 #[derive(Debug, Args)]
 pub struct IngestArgs {
-    /// Input format: criterion, hyperfine, gobench, pytest
+    /// Input format: criterion, hyperfine, gobench, pytest, otel
     #[arg(long)]
     pub format: String,
 
@@ -1085,6 +1135,14 @@ pub struct IngestArgs {
     /// Benchmark name (default: derived from input data)
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Include span names when ingesting OTel JSON (exact match, repeatable).
+    #[arg(long = "include-span")]
+    pub include_span: Vec<String>,
+
+    /// Exclude span names when ingesting OTel JSON (exact match, repeatable).
+    #[arg(long = "exclude-span")]
+    pub exclude_span: Vec<String>,
 
     /// Output file path
     #[arg(long, default_value = "perfgate-ingest.json")]
@@ -1741,9 +1799,19 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 version,
                 normalize,
                 pretty,
+                ratchet,
+                compare,
+                config,
+                ratchet_out,
             } = *args;
 
             let receipt: RunReceipt = read_json_from_location(&current)?;
+
+            if to_server && ratchet {
+                anyhow::bail!(
+                    "--ratchet is only supported for local promote (--to), not --to-server"
+                );
+            }
 
             if to_server {
                 let (server_config, _config_file) =
@@ -1793,10 +1861,65 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
                 let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
                 write_json_to_location(&to_path, &result.receipt, pretty)?;
+
+                if ratchet {
+                    let compare_path = compare
+                        .ok_or_else(|| anyhow::anyhow!("--compare is required with --ratchet"))?;
+                    let compare_receipt: CompareReceipt = read_json(&compare_path)?;
+                    let cfg = load_config_file(&config)?;
+                    let policy = cfg.ratchet.unwrap_or_else(RatchetConfig::default);
+                    let host_mismatch = is_host_mismatch_reason(&compare_receipt.verdict.reasons);
+                    let plan = RatchetUseCase::preview(
+                        &compare_receipt,
+                        &policy,
+                        Some(compare_path.display().to_string()),
+                        host_mismatch,
+                        tool_info(),
+                    );
+
+                    for line in preview_lines(&plan.receipt.changes) {
+                        eprintln!("{line}");
+                    }
+                    let _ = preview_ratchet_toml_changes(&plan.receipt.changes);
+                    let updated = apply_ratchet_toml_changes(
+                        &config,
+                        &compare_receipt.bench.name,
+                        &plan.receipt.changes,
+                    )?;
+                    write_json(&ratchet_out, &plan.receipt, pretty)?;
+                    if updated {
+                        eprintln!("Applied ratchet updates to {}", config.display());
+                    } else {
+                        eprintln!("No ratchet updates were applied.");
+                    }
+                }
             }
 
             Ok(())
         }
+
+        Command::Ratchet { action } => match action {
+            RatchetAction::Preview(args) => {
+                let compare_receipt: CompareReceipt = read_json(&args.compare)?;
+                let cfg = load_config_file(&args.config)?;
+                let policy = cfg.ratchet.unwrap_or_else(RatchetConfig::default);
+                let host_mismatch = is_host_mismatch_reason(&compare_receipt.verdict.reasons);
+                let plan = RatchetUseCase::preview(
+                    &compare_receipt,
+                    &policy,
+                    Some(args.compare.display().to_string()),
+                    host_mismatch,
+                    tool_info(),
+                );
+                for line in preview_lines(&plan.receipt.changes) {
+                    println!("{line}");
+                }
+                for line in preview_ratchet_toml_changes(&plan.receipt.changes) {
+                    println!("{line}");
+                }
+                Ok(())
+            }
+        },
 
         Command::Report(args) => {
             let ReportArgs {
@@ -1859,6 +1982,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_github,
                 local_db,
                 profile_on_regression,
+                emit_repair_context,
             } = *args;
 
             let req = CheckConfig {
@@ -1883,6 +2007,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 profile_on_regression,
+                emit_repair_context,
                 server_flags,
                 local_db,
             };
@@ -2040,13 +2165,15 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 format,
                 input,
                 name,
+                include_span,
+                exclude_span,
                 out,
                 pretty,
             } = *args;
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest",
+                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest, otel",
                     format
                 )
             })?;
@@ -2058,6 +2185,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 format,
                 input: content,
                 name,
+                include_spans: include_span,
+                exclude_spans: exclude_span,
             };
 
             let receipt = perfgate_ingest::ingest(&request)?;
@@ -3587,6 +3716,7 @@ struct CheckConfig {
     md_template: Option<PathBuf>,
     output_github: bool,
     profile_on_regression: bool,
+    emit_repair_context: bool,
     server_flags: ServerFlags,
     local_db: bool,
 }
@@ -3780,6 +3910,14 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
             .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+        maybe_write_repair_context(
+            &outcome,
+            Some(&baseline_path),
+            req.emit_repair_context,
+            req.pretty,
+        )
+        .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
         // Profile on regression if requested
         if req.profile_on_regression
@@ -4032,6 +4170,14 @@ fn run_check_cockpit_inner(
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+            maybe_write_repair_context(
+                &check_outcome,
+                Some(&baseline_path),
+                req.emit_repair_context,
+                req.pretty,
+            )
+            .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
             // Profile on regression if requested
             if req.profile_on_regression
@@ -4571,6 +4717,206 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
         .with_context(|| format!("write {}", outcome.markdown_path.display()))?;
 
     Ok(())
+}
+
+fn maybe_write_repair_context(
+    outcome: &CheckOutcome,
+    baseline_path: Option<&Path>,
+    emit_requested: bool,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    let should_emit = emit_requested
+        || matches!(
+            outcome.report.verdict.status,
+            VerdictStatus::Warn | VerdictStatus::Fail
+        );
+    if !should_emit {
+        return Ok(());
+    }
+
+    let repair = build_repair_context(outcome, baseline_path);
+    let out_path = outcome
+        .run_path
+        .parent()
+        .unwrap_or(Path::new(""))
+        .join("repair_context.json");
+    write_json(&out_path, &repair, pretty)?;
+    Ok(())
+}
+
+fn build_repair_context(
+    outcome: &CheckOutcome,
+    baseline_path: Option<&Path>,
+) -> RepairContextReceipt {
+    let breached_metrics = if let Some(compare) = &outcome.compare_receipt {
+        compare
+            .deltas
+            .iter()
+            .filter_map(|(metric, delta)| {
+                if !matches!(delta.status.as_str(), "warn" | "fail" | "skip") {
+                    return None;
+                }
+                let budget = compare.budgets.get(metric)?;
+                Some(RepairMetricBreach {
+                    metric: *metric,
+                    status: delta.status.as_str().to_string(),
+                    baseline: delta.baseline,
+                    current: delta.current,
+                    regression: delta.regression,
+                    fail_threshold: budget.threshold,
+                    warn_threshold: budget.warn_threshold,
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let compare_path = outcome
+        .compare_path
+        .as_ref()
+        .map(|p| p.display().to_string());
+    let report_path = outcome.report_path.display().to_string();
+    let profile_path = outcome.report.profile_path.clone();
+    let otel_span = otel_span_from_env();
+    let git = git_metadata();
+    let changed_files = changed_files_summary();
+    let suggested = recommended_next_commands(outcome, baseline_path);
+
+    RepairContextReceipt {
+        schema: REPAIR_CONTEXT_SCHEMA_V1.to_string(),
+        benchmark: outcome.run_receipt.bench.name.clone(),
+        verdict: outcome.report.verdict.clone(),
+        status: outcome.report.verdict.status,
+        breached_metrics,
+        compare_receipt_path: compare_path,
+        report_path,
+        profile_path,
+        git,
+        changed_files,
+        otel_span,
+        recommended_next_commands: suggested,
+    }
+}
+
+fn recommended_next_commands(outcome: &CheckOutcome, baseline_path: Option<&Path>) -> Vec<String> {
+    let mut cmds = Vec::new();
+    let rerun_cmd = redact_command_for_diagnostics(&outcome.run_receipt.bench.command).join(" ");
+    if !rerun_cmd.is_empty() {
+        cmds.push(format!("rerun current command: {rerun_cmd}"));
+    }
+    if let Some(compare_path) = &outcome.compare_path {
+        cmds.push(format!(
+            "perfgate explain --compare {}",
+            compare_path.display()
+        ));
+    }
+    cmds.push(format!(
+        "perfgate paired --name {} --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat {} --out {}/paired.json",
+        outcome.run_receipt.bench.name,
+        outcome.run_receipt.bench.repeat.max(10),
+        outcome.run_path.parent().unwrap_or(Path::new("")).display()
+    ));
+    if let Some(base) = baseline_path {
+        cmds.push(format!(
+            "perfgate compare --baseline {} --current {} --out {}/recompare.json",
+            base.display(),
+            outcome.run_path.display(),
+            outcome.run_path.parent().unwrap_or(Path::new("")).display()
+        ));
+    }
+    cmds.push(
+        "perfgate bisect --good <good-ref> --bad HEAD --executable <bench-binary>".to_string(),
+    );
+    cmds
+}
+
+fn otel_span_from_env() -> Option<OtelSpanIdentifiers> {
+    let trace_id = std::env::var("OTEL_TRACE_ID").ok();
+    let span_id = std::env::var("OTEL_SPAN_ID").ok();
+    if trace_id.is_none() && span_id.is_none() {
+        None
+    } else {
+        Some(OtelSpanIdentifiers { trace_id, span_id })
+    }
+}
+
+fn git_metadata() -> Option<RepairGitMetadata> {
+    let branch = run_git_capture(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    let sha = run_git_capture(&["rev-parse", "HEAD"]);
+    if branch.is_none() && sha.is_none() {
+        None
+    } else {
+        Some(RepairGitMetadata { branch, sha })
+    }
+}
+
+fn changed_files_summary() -> Option<ChangedFilesSummary> {
+    let output = run_git_capture_bytes(&["status", "--porcelain", "-z"])?;
+    Some(parse_changed_files_summary(&output))
+}
+
+fn parse_changed_files_summary(output: &[u8]) -> ChangedFilesSummary {
+    let mut files = Vec::new();
+    let mut by_top = BTreeMap::new();
+
+    let mut entries = output
+        .split(|byte| *byte == b'\0')
+        .filter(|entry| !entry.is_empty());
+    while let Some(entry) = entries.next() {
+        if entry.len() <= 3 {
+            continue;
+        }
+
+        let status = &entry[..2];
+        let current_path = if status.iter().any(|code| matches!(code, b'R' | b'C')) {
+            entries.next().unwrap_or(&[])
+        } else {
+            &entry[3..]
+        };
+
+        if current_path.is_empty() {
+            continue;
+        }
+
+        let path = String::from_utf8_lossy(current_path).into_owned();
+        files.push(path.clone());
+        let top = path
+            .split(['/', '\\'])
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(".")
+            .to_string();
+        *by_top.entry(top).or_insert(0) += 1;
+    }
+
+    ChangedFilesSummary {
+        file_count: files.len() as u32,
+        files,
+        file_count_by_top_level: by_top,
+    }
+}
+
+fn run_git_capture(args: &[&str]) -> Option<String> {
+    let output = ProcessCommand::new("git").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let trimmed = text.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn run_git_capture_bytes(args: &[&str]) -> Option<Vec<u8>> {
+    let output = ProcessCommand::new("git").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(output.stdout)
 }
 
 fn execute_export(
@@ -5312,6 +5658,176 @@ mod tests {
         assert!(run_path.exists());
         assert!(report_path.exists());
         assert!(markdown_path.exists());
+    }
+
+    #[test]
+    fn maybe_write_repair_context_emits_on_fail() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let compare_receipt: CompareReceipt =
+            serde_json::from_str(&create_compare_receipt_json("fail", "fail")).unwrap();
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: out_dir.join("run.json"),
+            compare_receipt: Some(compare_receipt),
+            compare_path: Some(out_dir.join("compare.json")),
+            report: PerfgateReport {
+                report_type: "perfgate.report.v1".to_string(),
+                verdict: Verdict {
+                    status: VerdictStatus::Fail,
+                    counts: VerdictCounts {
+                        pass: 0,
+                        warn: 0,
+                        fail: 1,
+                        skip: 0,
+                    },
+                    reasons: vec!["wall_ms.fail".to_string()],
+                },
+                compare: None,
+                findings: Vec::new(),
+                summary: ReportSummary {
+                    pass_count: 0,
+                    warn_count: 0,
+                    fail_count: 1,
+                    skip_count: 0,
+                    total_count: 1,
+                },
+                complexity: None,
+                profile_path: Some("profiles/bench.svg".to_string()),
+            },
+            report_path: out_dir.join("report.json"),
+            markdown: String::new(),
+            markdown_path: out_dir.join("comment.md"),
+            warnings: Vec::new(),
+            failed: true,
+            exit_code: 2,
+            suggest_paired: false,
+        };
+
+        maybe_write_repair_context(&outcome, None, false, true).unwrap();
+
+        assert!(out_dir.join("repair_context.json").exists());
+    }
+
+    #[test]
+    fn maybe_write_repair_context_omits_on_pass_without_flag() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: out_dir.join("run.json"),
+            compare_receipt: None,
+            compare_path: None,
+            report: PerfgateReport {
+                report_type: "perfgate.report.v1".to_string(),
+                verdict: Verdict {
+                    status: VerdictStatus::Pass,
+                    counts: VerdictCounts {
+                        pass: 1,
+                        warn: 0,
+                        fail: 0,
+                        skip: 0,
+                    },
+                    reasons: Vec::new(),
+                },
+                compare: None,
+                findings: Vec::new(),
+                summary: ReportSummary {
+                    pass_count: 1,
+                    warn_count: 0,
+                    fail_count: 0,
+                    skip_count: 0,
+                    total_count: 1,
+                },
+                complexity: None,
+                profile_path: None,
+            },
+            report_path: out_dir.join("report.json"),
+            markdown: String::new(),
+            markdown_path: out_dir.join("comment.md"),
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+            suggest_paired: false,
+        };
+
+        maybe_write_repair_context(&outcome, None, false, true).unwrap();
+
+        assert!(!out_dir.join("repair_context.json").exists());
+    }
+
+    #[test]
+    fn maybe_write_repair_context_emits_on_pass_with_flag() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path: out_dir.join("run.json"),
+            compare_receipt: None,
+            compare_path: None,
+            report: PerfgateReport {
+                report_type: "perfgate.report.v1".to_string(),
+                verdict: Verdict {
+                    status: VerdictStatus::Pass,
+                    counts: VerdictCounts {
+                        pass: 1,
+                        warn: 0,
+                        fail: 0,
+                        skip: 0,
+                    },
+                    reasons: Vec::new(),
+                },
+                compare: None,
+                findings: Vec::new(),
+                summary: ReportSummary {
+                    pass_count: 1,
+                    warn_count: 0,
+                    fail_count: 0,
+                    skip_count: 0,
+                    total_count: 1,
+                },
+                complexity: None,
+                profile_path: None,
+            },
+            report_path: out_dir.join("report.json"),
+            markdown: String::new(),
+            markdown_path: out_dir.join("comment.md"),
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+            suggest_paired: false,
+        };
+
+        maybe_write_repair_context(&outcome, None, true, true).unwrap();
+
+        assert!(out_dir.join("repair_context.json").exists());
+    }
+
+    #[test]
+    fn parse_changed_files_summary_keeps_spaces_and_renames() {
+        let output = b"M  crates/perfgate-cli/src/main.rs\0R  docs/old name.md\0docs/new name.md\0?? fixtures/file with spaces.json\0";
+
+        let summary = parse_changed_files_summary(output);
+
+        assert_eq!(summary.file_count, 3);
+        assert_eq!(
+            summary.files,
+            vec![
+                "crates/perfgate-cli/src/main.rs".to_string(),
+                "docs/new name.md".to_string(),
+                "fixtures/file with spaces.json".to_string(),
+            ]
+        );
+        assert_eq!(summary.file_count_by_top_level.get("crates"), Some(&1));
+        assert_eq!(summary.file_count_by_top_level.get("docs"), Some(&1));
+        assert_eq!(summary.file_count_by_top_level.get("fixtures"), Some(&1));
     }
 
     #[test]

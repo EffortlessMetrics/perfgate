@@ -22,6 +22,17 @@
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
     },
+    "ratchet": {
+      "description": "Optional automated budget ratcheting policy.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RatchetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "tradeoff": {
       "description": "Optional tradeoff rules that can downgrade a failed metric when explicit\ncompensating improvements are present.",
       "type": "array",
@@ -365,6 +376,54 @@
           "description": "Demote Pass and Fail to Skip.",
           "type": "string",
           "const": "skip"
+        }
+      ]
+    },
+    "RatchetConfig": {
+      "description": "Configuration for conservative automated budget ratcheting.",
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "type": "array",
+          "default": [
+            "wall_ms",
+            "cpu_ms"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "description": "How ratcheting should update budgets.",
+      "oneOf": [
+        {
+          "description": "Tighten the configured threshold value.",
+          "type": "string",
+          "const": "threshold"
         }
       ]
     },

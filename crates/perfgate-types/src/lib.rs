@@ -24,6 +24,7 @@
 
 mod defaults_config;
 mod paired;
+mod repair_context;
 
 pub use paired::{
     NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
@@ -31,6 +32,7 @@ pub use paired::{
 };
 
 pub use defaults_config::*;
+pub use repair_context::*;
 
 pub use perfgate_validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
@@ -48,6 +50,8 @@ pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
+pub const RATCHET_SCHEMA_V1: &str = "perfgate.ratchet.v1";
+pub const REPAIR_CONTEXT_SCHEMA_V1: &str = "perfgate.repair_context.v1";
 
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
@@ -1200,6 +1204,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    /// Optional automated budget ratcheting policy.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ratchet: Option<RatchetConfig>,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 
@@ -1348,6 +1356,85 @@ pub struct BenchConfigFile {
     /// Optional scaling validation configuration.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub scaling: Option<ScalingConfig>,
+}
+
+/// How ratcheting should update budgets.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum RatchetMode {
+    /// Tighten the configured threshold value.
+    #[default]
+    Threshold,
+}
+
+/// Configuration for conservative automated budget ratcheting.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub mode: RatchetMode,
+    #[serde(default = "default_ratchet_min_improvement")]
+    pub min_improvement: f64,
+    #[serde(default = "default_ratchet_max_tightening")]
+    pub max_tightening: f64,
+    #[serde(default = "default_ratchet_require_significance")]
+    pub require_significance: bool,
+    #[serde(default = "default_ratchet_allow_metrics")]
+    pub allow_metrics: Vec<Metric>,
+}
+
+impl Default for RatchetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: RatchetMode::Threshold,
+            min_improvement: default_ratchet_min_improvement(),
+            max_tightening: default_ratchet_max_tightening(),
+            require_significance: default_ratchet_require_significance(),
+            allow_metrics: default_ratchet_allow_metrics(),
+        }
+    }
+}
+
+fn default_ratchet_min_improvement() -> f64 {
+    0.05
+}
+
+fn default_ratchet_max_tightening() -> f64 {
+    0.10
+}
+
+fn default_ratchet_require_significance() -> bool {
+    true
+}
+
+fn default_ratchet_allow_metrics() -> Vec<Metric> {
+    vec![Metric::WallMs, Metric::CpuMs]
+}
+
+/// Per-metric ratchet change.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetChange {
+    pub metric: Metric,
+    pub field: String,
+    pub old_value: f64,
+    pub new_value: f64,
+    pub reason: String,
+}
+
+/// Machine-readable ratchet artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub bench_name: String,
+    pub compare_path: Option<String>,
+    pub changes: Vec<RatchetChange>,
 }
 
 /// Configuration for computational complexity validation.
@@ -1642,6 +1729,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1732,6 +1820,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2160,6 +2249,7 @@ mod tests {
             },
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
+            ratchet: None,
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2198,6 +2288,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
+            ratchet: None,
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3171,6 +3262,7 @@ mod property_tests {
                 defaults,
                 baseline_server,
                 tradeoffs: Vec::new(),
+                ratchet: None,
                 benches,
             })
     }

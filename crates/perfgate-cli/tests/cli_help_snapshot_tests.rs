@@ -67,7 +67,8 @@ fn cli_help_check() {
         ))
         .stdout(predicate::str::contains("--config"))
         .stdout(predicate::str::contains("--bench"))
-        .stdout(predicate::str::contains("--out-dir"));
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--emit-repair-context"));
 }
 
 #[test]
@@ -112,6 +113,31 @@ fn cli_help_promote() {
         .stdout(predicate::str::contains("Promote a run receipt"))
         .stdout(predicate::str::contains("--current"))
         .stdout(predicate::str::contains("--to"));
+}
+
+#[test]
+fn cli_help_ratchet() {
+    perfgate_cmd()
+        .args(["ratchet", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Preview or apply conservative budget ratcheting",
+        ))
+        .stdout(predicate::str::contains("preview"));
+}
+
+#[test]
+fn cli_help_ratchet_preview() {
+    perfgate_cmd()
+        .args(["ratchet", "preview", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Show exactly what would change in perfgate.toml",
+        ))
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--config"));
 }
 
 #[test]
@@ -259,4 +285,17 @@ fn snapshot_help_check() {
 #[test]
 fn snapshot_help_promote() {
     insta::assert_snapshot!("help_promote", help_output(&["promote", "--help"]));
+}
+
+#[test]
+fn snapshot_help_ratchet() {
+    insta::assert_snapshot!("help_ratchet", help_output(&["ratchet", "--help"]));
+}
+
+#[test]
+fn snapshot_help_ratchet_preview() {
+    insta::assert_snapshot!(
+        "help_ratchet_preview",
+        help_output(&["ratchet", "preview", "--help"])
+    );
 }

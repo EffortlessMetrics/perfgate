@@ -2914,6 +2914,7 @@ async fn given_config_file_with_bench(world: &mut PerfgateWorld, bench_name: Str
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -2969,6 +2970,7 @@ async fn given_config_file_with_bench_threshold(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3025,6 +3027,7 @@ async fn given_config_file_with_bench_threshold_warn(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3078,6 +3081,7 @@ async fn given_config_file_with_defaults_repeat_warmup(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![],
     };
 
@@ -3115,6 +3119,7 @@ async fn given_config_file_with_defaults_repeat(world: &mut PerfgateWorld, repea
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![],
     };
 
@@ -3206,6 +3211,7 @@ async fn given_config_file_with_bench_baseline_dir(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3260,6 +3266,7 @@ async fn given_config_file_with_bench_baseline_pattern(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches: vec![BenchConfigFile {
             name: bench_name,
             cwd: None,
@@ -3461,6 +3468,7 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches,
     };
 
@@ -3516,6 +3524,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches,
     };
 
@@ -3575,6 +3584,7 @@ async fn given_config_file_with_benches_lenient(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches,
     };
 
@@ -3664,6 +3674,7 @@ async fn given_config_file_with_mixed_thresholds(
         },
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
+        ratchet: None,
         benches,
     };
 
