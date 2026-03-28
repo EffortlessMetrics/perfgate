@@ -14,10 +14,14 @@
 //! assert!(key.starts_with(API_KEY_PREFIX_LIVE));
 //! ```
 
+mod credential_source;
+
 use chrono::{DateTime, Utc};
 use perfgate_error::AuthError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+pub use credential_source::{ApiKeyPolicyEntry, PolicyFormat, parse_api_key_policy_document};
 
 /// API key prefix for live keys.
 pub const API_KEY_PREFIX_LIVE: &str = "pg_live_";

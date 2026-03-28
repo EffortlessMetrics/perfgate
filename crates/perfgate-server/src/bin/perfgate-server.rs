@@ -30,7 +30,10 @@
 //! ```
 
 use clap::Parser;
+use perfgate_auth::{PolicyFormat, parse_api_key_policy_document};
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -91,6 +94,22 @@ struct Args {
     /// Example: --api-keys admin:pg_live_abc123,contributor:pg_live_def456:my-project:^bench-.*$
     #[arg(long = "api-keys", value_parser = parse_api_key)]
     api_keys: Vec<ApiKeyConfigArg>,
+
+    /// API key policy document path (JSON/TOML array or `{ keys: [...] }` object).
+    #[arg(long = "api-keys-file")]
+    api_keys_file: Option<PathBuf>,
+
+    /// API key policy document source command. The command stdout must emit JSON/TOML.
+    #[arg(long = "api-keys-command")]
+    api_keys_command: Option<String>,
+
+    /// Environment variable containing API key policy document JSON/TOML.
+    #[arg(long = "api-keys-env", default_value = "PERFGATE_API_KEYS")]
+    api_keys_env: String,
+
+    /// Optional API-key material reload interval hint (for orchestration wrappers).
+    #[arg(long = "reload-interval")]
+    reload_interval: Option<String>,
 
     /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
     #[arg(long)]
@@ -198,6 +217,102 @@ fn parse_api_key(s: &str) -> Result<ApiKeyConfigArg, String> {
     })
 }
 
+fn infer_policy_format(path: Option<&Path>, content: &str) -> PolicyFormat {
+    if let Some(path) = path
+        && let Some(ext) = path.extension()
+    {
+        let ext = ext.to_string_lossy().to_ascii_lowercase();
+        if ext == "toml" {
+            return PolicyFormat::Toml;
+        }
+        if ext == "json" {
+            return PolicyFormat::Json;
+        }
+    }
+
+    let trimmed = content.trim_start();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        PolicyFormat::Json
+    } else {
+        PolicyFormat::Toml
+    }
+}
+
+fn parse_policy_api_keys(
+    content: &str,
+    path_hint: Option<&Path>,
+) -> Result<Vec<ApiKeyConfigArg>, String> {
+    let format = infer_policy_format(path_hint, content);
+    let entries = parse_api_key_policy_document(content, format)?;
+    Ok(entries
+        .into_iter()
+        .map(|entry| ApiKeyConfigArg {
+            role: entry.role,
+            key: entry.secret,
+            project: entry.project,
+            benchmark_regex: entry.benchmark_regex,
+        })
+        .collect())
+}
+
+fn load_api_keys_from_sources(args: &Args) -> Result<Vec<ApiKeyConfigArg>, String> {
+    let mut result = Vec::new();
+
+    if let Ok(raw) = std::env::var(&args.api_keys_env)
+        && !raw.trim().is_empty()
+    {
+        result.extend(parse_policy_api_keys(&raw, None).map_err(|e| {
+            format!(
+                "failed to parse API key policy from env '{}': {}",
+                args.api_keys_env, e
+            )
+        })?);
+    }
+
+    if let Some(path) = &args.api_keys_file {
+        let raw = std::fs::read_to_string(path).map_err(|e| {
+            format!(
+                "failed to read API key policy file '{}': {}",
+                path.display(),
+                e
+            )
+        })?;
+        result.extend(parse_policy_api_keys(&raw, Some(path)).map_err(|e| {
+            format!(
+                "failed to parse API key policy file '{}': {}",
+                path.display(),
+                e
+            )
+        })?);
+    }
+
+    if let Some(command_spec) = &args.api_keys_command {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(command_spec);
+        let output = cmd
+            .output()
+            .map_err(|e| format!("failed to execute --api-keys-command: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "--api-keys-command exited with status {}: {}",
+                output.status,
+                stderr.trim()
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        result.extend(
+            parse_policy_api_keys(&stdout, None)
+                .map_err(|e| format!("failed to parse --api-keys-command output: {}", e))?,
+        );
+    }
+
+    result.extend(args.api_keys.clone());
+    Ok(result)
+}
+
 /// Parses a role string (case-insensitive).
 fn parse_role(s: &str) -> Result<Role, String> {
     match s.to_lowercase().as_str() {
@@ -286,7 +401,7 @@ async fn main() {
     }
 
     // Set PostgreSQL URL and pool configuration if provided
-    if let (StorageBackend::Postgres, Some(url)) = (storage_backend, args.database_url) {
+    if let (StorageBackend::Postgres, Some(url)) = (storage_backend, args.database_url.clone()) {
         config = config.postgres_url(url);
     }
 
@@ -299,8 +414,16 @@ async fn main() {
         statement_timeout: Duration::from_secs(args.pg_statement_timeout),
     });
 
-    // Add API keys
-    for cfg in args.api_keys {
+    if let Some(interval) = &args.reload_interval {
+        info!(
+            reload_interval = %interval,
+            "API key reload interval configured (v1 hint; restart required for changes)"
+        );
+    }
+
+    // Add API keys (env -> file -> command -> inline flag)
+    let api_keys = load_api_keys_from_sources(&args).unwrap_or_else(|e| panic!("{}", e));
+    for cfg in api_keys {
         config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
     }
 
@@ -412,6 +535,8 @@ fn parse_custom_oidc_provider(spec: &str) -> Result<OidcConfig, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_parse_api_key_admin() {
@@ -466,6 +591,119 @@ mod tests {
     fn test_parse_api_key_invalid_format() {
         assert!(parse_api_key("invalid").is_err());
         assert!(parse_api_key("invalidrole:pg_live_abc").is_err());
+    }
+
+    #[test]
+    fn test_load_api_keys_from_file_source() {
+        let dir = tempdir().unwrap();
+        let policy_path = dir.path().join("keys.json");
+        fs::write(
+            &policy_path,
+            r#"[
+  {
+    "id": "ci-promoter",
+    "role": "promoter",
+    "project": "my-project",
+    "benchmark_regex": ".*",
+    "secret": "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+  }
+]"#,
+        )
+        .unwrap();
+
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--api-keys-file",
+            policy_path.to_str().unwrap(),
+        ])
+        .unwrap();
+
+        let keys = load_api_keys_from_sources(&args).unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].role, Role::Promoter);
+        assert_eq!(keys[0].project, "my-project");
+    }
+
+    #[test]
+    fn test_load_api_keys_from_env_source() {
+        let env_name = "PERFGATE_TEST_API_KEYS";
+        unsafe {
+            std::env::set_var(
+                env_name,
+                r#"[{"id":"env-viewer","role":"viewer","project":"env-proj","secret":"pg_live_abcdefghijklmnopqrstuvwxyz123456"}]"#,
+            );
+        }
+
+        let args = Args::try_parse_from(["perfgate-server", "--api-keys-env", env_name]).unwrap();
+        let keys = load_api_keys_from_sources(&args).unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].role, Role::Viewer);
+        assert_eq!(keys[0].project, "env-proj");
+
+        unsafe {
+            std::env::remove_var(env_name);
+        }
+    }
+
+    #[test]
+    fn test_api_keys_command_failure_is_safe() {
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--api-keys-command",
+            "echo boom 1>&2; exit 7",
+        ])
+        .unwrap();
+
+        let err = load_api_keys_from_sources(&args).unwrap_err();
+        assert!(err.contains("status"));
+        assert!(!err.contains("pg_live_"));
+    }
+
+    #[test]
+    fn test_api_keys_source_precedence_order() {
+        let dir = tempdir().unwrap();
+        let policy_path = dir.path().join("keys.toml");
+        fs::write(
+            &policy_path,
+            r#"[[keys]]
+id = "file-contributor"
+role = "contributor"
+project = "file-proj"
+secret = "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+"#,
+        )
+        .unwrap();
+
+        let env_name = "PERFGATE_TEST_API_KEYS_PRECEDENCE";
+        unsafe {
+            std::env::set_var(
+                env_name,
+                r#"[{"id":"env-viewer","role":"viewer","project":"env-proj","secret":"pg_live_abcdefghijklmnopqrstuvwxyz123456"}]"#,
+            );
+        }
+        let args = Args::try_parse_from([
+            "perfgate-server",
+            "--api-keys-env",
+            env_name,
+            "--api-keys-file",
+            policy_path.to_str().unwrap(),
+            "--api-keys-command",
+            "printf '[{\"id\":\"cmd-admin\",\"role\":\"admin\",\"project\":\"cmd-proj\",\"secret\":\"pg_live_abcdefghijklmnopqrstuvwxyz123456\"}]'",
+            "--api-keys",
+            "promoter:pg_live_abcdefghijklmnopqrstuvwxyz123456:inline-proj",
+        ])
+        .unwrap();
+
+        let keys = load_api_keys_from_sources(&args).unwrap();
+        assert_eq!(keys.len(), 4);
+        assert_eq!(keys[0].project, "env-proj");
+        assert_eq!(keys[1].project, "file-proj");
+        assert_eq!(keys[2].project, "cmd-proj");
+        assert_eq!(keys[3].project, "inline-proj");
+
+        unsafe {
+            std::env::remove_var(env_name);
+        }
     }
 
     #[test]

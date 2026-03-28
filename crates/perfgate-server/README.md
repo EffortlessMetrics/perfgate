@@ -69,6 +69,31 @@ For GitHub Actions CI, use OIDC (`--github-oidc org/repo:project-id:contributor`
 GitLab OIDC and custom OIDC providers are also supported. JWT tokens (HS256)
 are supported via `--jwt-secret`.
 
+### External secret manager integration (v1)
+
+`perfgate-server` can consume API key policy documents from:
+
+- `--api-keys-env PERFGATE_API_KEYS` (default env var)
+- `--api-keys-file /etc/perfgate/keys.json`
+- `--api-keys-command "op read op://perfgate/api-keys/json"`
+- `--api-keys` inline flags (dev/test convenience)
+
+Source loading order is: env -> file -> command -> inline flags.
+
+Policy document example (JSON):
+
+```json
+[
+  {
+    "id": "ci-promoter",
+    "role": "promoter",
+    "project": "my-project",
+    "benchmark_regex": ".*",
+    "secret": "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+  }
+]
+```
+
 ## Configuration
 
 | Flag | Default | Description |
@@ -78,6 +103,10 @@ are supported via `--jwt-secret`.
 | `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
 | `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
 | `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
+| `--api-keys-env` | `PERFGATE_API_KEYS` | env var containing API-key policy JSON/TOML |
+| `--api-keys-file` | -- | file path to API-key policy JSON/TOML |
+| `--api-keys-command` | -- | command whose stdout emits API-key policy JSON/TOML |
+| `--reload-interval` | -- | reload interval hint (currently logged; restart required) |
 | `--github-oidc` | -- | `org/repo:project_id:role` (repeatable) |
 | `--gitlab-oidc` | -- | `group/project:project_id:role` (repeatable) |
 | `--oidc-provider` | -- | custom OIDC issuer/JWKS/audience mapping |
