@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::tempdir;
 
@@ -147,4 +148,82 @@ fn aggregate_returns_exit_code_2_and_still_writes_receipt_on_policy_failure() {
             .iter()
             .any(|reason| reason.as_str() == Some("1 runner(s) failed under all-must-pass policy"))
     );
+}
+
+#[test]
+fn aggregate_rejects_out_of_range_quorum() {
+    let temp_dir = tempdir().unwrap();
+    let first = temp_dir.path().join("linux.json");
+    let pass_fixture = fixtures_dir().join("current_pass.json");
+
+    write_receipt_variant(
+        &pass_fixture,
+        &first,
+        "agg-pass-1",
+        "linux",
+        "x86_64",
+        false,
+    );
+
+    perfgate_cmd()
+        .arg("aggregate")
+        .arg(&first)
+        .args(["--policy", "weighted"])
+        .args(["--quorum", "1.5"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "--quorum must be between 0.0 and 1.0",
+        ));
+}
+
+#[test]
+fn aggregate_rejects_fail_m_without_fail_if_policy() {
+    let temp_dir = tempdir().unwrap();
+    let first = temp_dir.path().join("linux.json");
+    let pass_fixture = fixtures_dir().join("current_pass.json");
+
+    write_receipt_variant(
+        &pass_fixture,
+        &first,
+        "agg-pass-1",
+        "linux",
+        "x86_64",
+        false,
+    );
+
+    perfgate_cmd()
+        .arg("aggregate")
+        .arg(&first)
+        .args(["--fail-m", "2"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "--fail-n and --fail-m require --policy fail_if_n_of_m",
+        ));
+}
+
+#[test]
+fn aggregate_rejects_zero_fail_n() {
+    let temp_dir = tempdir().unwrap();
+    let first = temp_dir.path().join("linux.json");
+    let pass_fixture = fixtures_dir().join("current_pass.json");
+
+    write_receipt_variant(
+        &pass_fixture,
+        &first,
+        "agg-pass-1",
+        "linux",
+        "x86_64",
+        false,
+    );
+
+    perfgate_cmd()
+        .arg("aggregate")
+        .arg(&first)
+        .args(["--policy", "fail_if_n_of_m"])
+        .args(["--fail-n", "0"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--fail-n must be at least 1"));
 }

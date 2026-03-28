@@ -2161,12 +2161,13 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     resolved_files.push(entry?);
                 }
             }
+            let (quorum, fail_if) = validate_aggregate_options(policy, quorum, fail_n, fail_m)?;
             let weight_map = parse_weight_map(&weights)?;
             let outcome = usecase.execute(perfgate_app::AggregateRequest {
                 files: resolved_files,
                 policy,
                 quorum,
-                fail_if: fail_n.map(|n| FailIfNOfM { n, m: fail_m }),
+                fail_if,
                 weights: weight_map,
                 runner_class,
                 lane,
@@ -5098,6 +5099,50 @@ fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>>
         map.insert(label.trim().to_string(), weight);
     }
     Ok(map)
+}
+
+fn validate_aggregate_options(
+    policy: AggregationPolicy,
+    quorum: Option<f64>,
+    fail_n: Option<u32>,
+    fail_m: Option<u32>,
+) -> anyhow::Result<(Option<f64>, Option<FailIfNOfM>)> {
+    if let Some(quorum) = quorum {
+        if !quorum.is_finite() || !(0.0..=1.0).contains(&quorum) {
+            anyhow::bail!("--quorum must be between 0.0 and 1.0, got {quorum}");
+        }
+        if !matches!(
+            policy,
+            AggregationPolicy::Weighted | AggregationPolicy::Quorum
+        ) {
+            anyhow::bail!("--quorum requires --policy weighted or quorum");
+        }
+    }
+
+    match policy {
+        AggregationPolicy::FailIfNOfM => {
+            let n = fail_n
+                .ok_or_else(|| anyhow::anyhow!("--policy fail_if_n_of_m requires --fail-n"))?;
+            if n == 0 {
+                anyhow::bail!("--fail-n must be at least 1");
+            }
+            if let Some(m) = fail_m {
+                if m == 0 {
+                    anyhow::bail!("--fail-m must be at least 1");
+                }
+                if m < n {
+                    anyhow::bail!("--fail-m must be greater than or equal to --fail-n");
+                }
+            }
+            Ok((quorum, Some(FailIfNOfM { n, m: fail_m })))
+        }
+        _ => {
+            if fail_n.is_some() || fail_m.is_some() {
+                anyhow::bail!("--fail-n and --fail-m require --policy fail_if_n_of_m");
+            }
+            Ok((quorum, None))
+        }
+    }
 }
 
 fn parse_significance_alpha(s: &str) -> Result<f64, String> {
