@@ -1304,8 +1304,6 @@ pub enum RatchetMode {
     /// Tighten the configured threshold value.
     #[default]
     Threshold,
-    /// Reserved for future baseline-value ratcheting mode.
-    BaselineValue,
 }
 
 /// Configuration for conservative automated budget ratcheting.

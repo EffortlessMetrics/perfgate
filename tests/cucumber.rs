@@ -3460,6 +3460,7 @@ async fn given_config_file_with_benches(world: &mut PerfgateWorld, bench_names_s
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -3514,6 +3515,7 @@ async fn given_config_file_with_benches_tight(world: &mut PerfgateWorld, bench_n
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -3572,6 +3574,7 @@ async fn given_config_file_with_benches_lenient(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 
@@ -3660,6 +3663,7 @@ async fn given_config_file_with_mixed_thresholds(
             markdown_template: None,
         },
         baseline_server: BaselineServerConfig::default(),
+        ratchet: None,
         benches,
     };
 

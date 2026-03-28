@@ -416,11 +416,6 @@
           "description": "Tighten the configured threshold value.",
           "type": "string",
           "const": "threshold"
-        },
-        {
-          "description": "Reserved for future baseline-value ratcheting mode.",
-          "type": "string",
-          "const": "baseline_value"
         }
       ]
     },

@@ -58,8 +58,10 @@ impl RatchetUseCase {
                 continue;
             };
 
-            // Improvement is represented by negative pct for lower-is-better metrics.
-            let improvement = (-delta.pct).max(0.0);
+            let improvement = match current_budget.direction {
+                perfgate_types::Direction::Lower => (-delta.pct).max(0.0),
+                perfgate_types::Direction::Higher => delta.pct.max(0.0),
+            };
             if improvement < policy.min_improvement {
                 continue;
             }
@@ -83,9 +85,6 @@ impl RatchetUseCase {
                             ),
                         });
                     }
-                }
-                RatchetMode::BaselineValue => {
-                    // not yet wired to config baselines; keep preview explicit.
                 }
             }
         }
@@ -252,5 +251,36 @@ mod tests {
         );
 
         assert!(plan.receipt.changes.is_empty());
+    }
+
+    #[test]
+    fn ratchet_tightens_higher_is_better_metrics() {
+        let mut compare = mk_compare();
+        compare
+            .budgets
+            .insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Higher));
+        compare
+            .deltas
+            .get_mut(&Metric::WallMs)
+            .expect("wall delta")
+            .pct = 0.10;
+
+        let policy = RatchetConfig {
+            enabled: true,
+            ..RatchetConfig::default()
+        };
+        let plan = RatchetUseCase::preview(
+            &compare,
+            &policy,
+            None,
+            false,
+            ToolInfo {
+                name: "perfgate".into(),
+                version: "test".into(),
+            },
+        );
+
+        assert_eq!(plan.receipt.changes.len(), 1);
+        assert!(plan.receipt.changes[0].new_value < plan.receipt.changes[0].old_value);
     }
 }
