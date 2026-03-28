@@ -1648,6 +1648,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 budgets,
                 metric_statistics,
                 significance,
+                tradeoff_rules: config_file.tradeoffs.clone(),
                 baseline_ref,
                 current_ref: CompareRef {
                     path: Some(current.display().to_string()),
@@ -2475,6 +2476,7 @@ fn execute_cargo_bench(args: CargoBenchArgs) -> anyhow::Result<()> {
             budgets,
             metric_statistics,
             significance: None,
+            tradeoff_rules: Vec::new(),
             baseline_ref: CompareRef {
                 path: Some(baseline_path.to_string_lossy().to_string()),
                 run_id: None,

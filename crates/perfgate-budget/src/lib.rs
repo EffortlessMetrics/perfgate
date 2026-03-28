@@ -355,6 +355,11 @@ pub fn reason_token(metric: Metric, status: MetricStatus) -> String {
     format!("{}_{}", metric.as_str(), status.as_str())
 }
 
+/// Generates a reason token when a tradeoff rule is applied.
+pub fn tradeoff_applied_reason_token(rule_name: &str) -> String {
+    format!("tradeoff_{}_applied", rule_name)
+}
+
 /// Evaluates multiple metrics against their budgets.
 ///
 /// This function combines individual budget evaluations and aggregates

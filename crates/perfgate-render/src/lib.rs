@@ -199,6 +199,19 @@ pub fn parse_reason_token(token: &str) -> Option<(Metric, MetricStatus)> {
 
 /// Render a single verdict reason token as a human-readable bullet line.
 pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
+    if let Some(rule_name) = token
+        .strip_prefix("tradeoff_")
+        .and_then(|t| t.strip_suffix("_applied"))
+    {
+        return format!("- {token}: tradeoff rule `{rule_name}` applied\n");
+    }
+    if token == "tradeoff_rule_not_satisfied" {
+        return "- tradeoff_rule_not_satisfied: required improvement not met\n".to_string();
+    }
+    if token == "tradeoff_missing_required_metric" {
+        return "- tradeoff_missing_required_metric: required metric missing\n".to_string();
+    }
+
     let context = parse_reason_token(token).and_then(|(metric, status)| {
         compare
             .deltas
@@ -424,5 +437,22 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines.iter().any(|l| l.starts_with("::warning::")));
         assert!(lines.iter().any(|l| l.starts_with("::error::")));
+    }
+
+    #[test]
+    fn render_reason_line_handles_tradeoff_tokens() {
+        let compare = make_compare_receipt(MetricStatus::Warn);
+        assert!(
+            render_reason_line(&compare, "tradeoff_memory_for_speed_applied")
+                .contains("tradeoff rule `memory_for_speed` applied")
+        );
+        assert!(
+            render_reason_line(&compare, "tradeoff_rule_not_satisfied")
+                .contains("required improvement not met")
+        );
+        assert!(
+            render_reason_line(&compare, "tradeoff_missing_required_metric")
+                .contains("required metric missing")
+        );
     }
 }

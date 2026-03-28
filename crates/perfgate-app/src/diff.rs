@@ -282,6 +282,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> DiffUseCa
                 budgets,
                 metric_statistics,
                 significance: None,
+                tradeoff_rules: config.tradeoffs.clone(),
                 baseline_ref: CompareRef {
                     path: Some(baseline_path.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),

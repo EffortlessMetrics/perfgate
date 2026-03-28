@@ -1156,6 +1156,11 @@ pub struct ConfigFile {
 
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
+
+    /// Explicit tradeoff rules that can downgrade metric failures when
+    /// required compensating improvements are present.
+    #[serde(default, rename = "tradeoff")]
+    pub tradeoffs: Vec<TradeoffRule>,
 }
 
 impl ConfigFile {
@@ -1332,6 +1337,42 @@ pub struct BudgetOverride {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statistic: Option<MetricStatistic>,
+}
+
+/// Tradeoff downgrade target when a rule is satisfied.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum TradeoffDowngradeTo {
+    Warn,
+    Pass,
+}
+
+impl TradeoffDowngradeTo {
+    pub fn to_metric_status(self) -> MetricStatus {
+        match self {
+            TradeoffDowngradeTo::Warn => MetricStatus::Warn,
+            TradeoffDowngradeTo::Pass => MetricStatus::Pass,
+        }
+    }
+}
+
+/// A required compensating improvement for a tradeoff rule.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRequirement {
+    pub metric: Metric,
+    pub min_improvement_ratio: f64,
+}
+
+/// Explicit, typed tradeoff rule for governed budget downgrades.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRule {
+    pub name: String,
+    pub if_failed: Metric,
+    pub require: Vec<TradeoffRequirement>,
+    pub downgrade_to: TradeoffDowngradeTo,
 }
 
 #[cfg(test)]
@@ -1553,6 +1594,7 @@ mod tests {
 
                 scaling: None,
             }],
+            tradeoffs: vec![],
         };
         assert!(config.validate().is_err());
     }
@@ -1642,6 +1684,7 @@ mod tests {
 
                 scaling: None,
             }],
+            tradeoffs: vec![],
         };
         assert!(config.validate().is_ok());
     }
@@ -2053,6 +2096,7 @@ mod tests {
                 }),
                 scaling: None,
             }],
+            tradeoffs: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         let back: ConfigFile = serde_json::from_str(&json).unwrap();
@@ -2065,6 +2109,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![],
+            tradeoffs: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         let back: ConfigFile = serde_json::from_str(&json).unwrap();
@@ -3037,6 +3082,7 @@ mod property_tests {
                 defaults,
                 baseline_server,
                 benches,
+                tradeoffs: vec![],
             })
     }
 

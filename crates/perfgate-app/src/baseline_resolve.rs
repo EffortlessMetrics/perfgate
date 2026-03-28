@@ -61,6 +61,7 @@ mod tests {
             },
             baseline_server: BaselineServerConfig::default(),
             benches: Vec::new(),
+            tradeoffs: Vec::new(),
         };
 
         let cli = Some(PathBuf::from("cli.json"));

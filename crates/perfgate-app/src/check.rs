@@ -199,6 +199,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                         )
                     })
                     .transpose()?,
+                tradeoff_rules: req.config.tradeoffs.clone(),
                 baseline_ref: CompareRef {
                     path: req.baseline_path.as_ref().map(|p| p.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),
@@ -995,6 +996,7 @@ mod tests {
             },
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench.clone()],
+            tradeoffs: vec![],
         };
 
         let req = CheckRequest {
@@ -1125,6 +1127,7 @@ mod tests {
             },
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench.clone()],
+            tradeoffs: vec![],
         };
 
         let baseline = make_baseline_receipt(
@@ -1202,6 +1205,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
+            tradeoffs: vec![],
         };
 
         let runner = TestRunner::new(vec![run_result(100, 0, false)]);
@@ -1256,6 +1260,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
+            tradeoffs: vec![],
         };
 
         let baseline = make_baseline_receipt(
@@ -1327,6 +1332,7 @@ mod tests {
             },
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
+            tradeoffs: vec![],
         };
 
         let baseline = make_baseline_receipt(
@@ -1384,6 +1390,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
+            tradeoffs: vec![],
         };
 
         let runner = TestRunner::new(vec![run_result(100, 0, false)]);
@@ -1414,6 +1421,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![],
+            tradeoffs: vec![],
         };
 
         let runner = TestRunner::new(vec![]);
@@ -1466,6 +1474,7 @@ mod tests {
             },
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
+            tradeoffs: vec![],
         };
 
         let baseline = make_baseline_receipt(
