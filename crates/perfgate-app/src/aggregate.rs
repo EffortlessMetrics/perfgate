@@ -141,7 +141,8 @@ fn input_status(receipt: &RunReceipt) -> MetricStatus {
     if receipt
         .samples
         .iter()
-        .any(|s| s.exit_code != 0 || s.timed_out)
+        .filter(|sample| !sample.warmup)
+        .any(|sample| sample.exit_code != 0 || sample.timed_out)
     {
         MetricStatus::Fail
     } else {
@@ -150,8 +151,16 @@ fn input_status(receipt: &RunReceipt) -> MetricStatus {
 }
 
 fn input_reasons(receipt: &RunReceipt) -> Vec<String> {
-    let failed = receipt.samples.iter().filter(|s| s.exit_code != 0).count();
-    let timed_out = receipt.samples.iter().filter(|s| s.timed_out).count();
+    let failed = receipt
+        .samples
+        .iter()
+        .filter(|sample| !sample.warmup && sample.exit_code != 0)
+        .count();
+    let timed_out = receipt
+        .samples
+        .iter()
+        .filter(|sample| !sample.warmup && sample.timed_out)
+        .count();
     let mut reasons = Vec::new();
     if failed > 0 {
         reasons.push(format!("{failed} sample(s) had non-zero exit codes"));
@@ -493,5 +502,49 @@ mod tests {
         );
         assert_eq!(verdict.status, MetricStatus::Pass);
         assert_eq!(verdict.weighted_pass, Some(0.8));
+    }
+
+    #[test]
+    fn input_status_ignores_warmup_failures() {
+        let mut receipt = mk_receipt("1", "linux", "x86_64", 0);
+        receipt.samples = vec![
+            Sample {
+                wall_ms: 10,
+                exit_code: 1,
+                warmup: true,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            },
+            Sample {
+                wall_ms: 10,
+                exit_code: 0,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            },
+        ];
+
+        assert_eq!(input_status(&receipt), MetricStatus::Pass);
+        assert!(input_reasons(&receipt).is_empty());
     }
 }

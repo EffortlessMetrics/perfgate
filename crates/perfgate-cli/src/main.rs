@@ -4743,8 +4743,8 @@ fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>>
         let weight: f64 = weight_raw
             .parse()
             .map_err(|_| anyhow::anyhow!("invalid --weight '{raw}': weight must be a number"))?;
-        if !(0.0..=1.0).contains(&weight) {
-            anyhow::bail!("invalid --weight '{raw}': weight must be within [0.0, 1.0]");
+        if !weight.is_finite() || weight < 0.0 {
+            anyhow::bail!("invalid --weight '{raw}': weight must be a non-negative finite number");
         }
         map.insert(label.trim().to_string(), weight);
     }
@@ -5119,6 +5119,28 @@ mod tests {
         let err = parse_significance_alpha("abc").unwrap_err();
         assert!(
             err.contains("invalid float value"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn parse_weight_map_accepts_non_negative_weights_above_one() {
+        let weights = parse_weight_map(&[
+            "ubuntu-x86_64=2.5".to_string(),
+            "macos-aarch64=0".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(weights.get("ubuntu-x86_64"), Some(&2.5));
+        assert_eq!(weights.get("macos-aarch64"), Some(&0.0));
+    }
+
+    #[test]
+    fn parse_weight_map_rejects_negative_weights() {
+        let err = parse_weight_map(&["ubuntu-x86_64=-0.1".to_string()]).unwrap_err();
+        assert!(
+            err.to_string().contains("non-negative finite number"),
             "unexpected error: {}",
             err
         );
