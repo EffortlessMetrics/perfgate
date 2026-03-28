@@ -164,6 +164,17 @@ fn cli_help_github_annotations() {
 }
 
 #[test]
+fn cli_help_comment() {
+    perfgate_cmd()
+        .args(["comment", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GitHub pull request"))
+        .stdout(predicate::str::contains("--body-file"))
+        .stdout(predicate::str::contains("--compare"));
+}
+
+#[test]
 fn cli_help_cargo_bench() {
     perfgate_cmd()
         .args(["cargo-bench", "--help"])

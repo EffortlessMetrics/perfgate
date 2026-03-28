@@ -425,10 +425,10 @@ enum Command {
 
     /// Post or update a performance report comment on a GitHub pull request.
     ///
-    /// Reads a compare or report receipt and posts a rich Markdown comment
-    /// on the specified PR. If a perfgate comment already exists, it is
-    /// updated (idempotent). Supports both GitHub Actions tokens and
-    /// personal access tokens.
+    /// Reads a compare/report receipt or an existing markdown body file and
+    /// posts a Markdown comment on the specified PR. If a perfgate comment
+    /// already exists, it is updated (idempotent). Supports both GitHub
+    /// Actions tokens and personal access tokens.
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Comment(Box<CommentArgs>),
@@ -663,12 +663,16 @@ pub struct BisectArgs {
 #[derive(Debug, Args)]
 pub struct CommentArgs {
     /// Path to a compare receipt (mutually exclusive with --report)
-    #[arg(long, conflicts_with = "report")]
+    #[arg(long, conflicts_with_all = ["report", "body_file"])]
     pub compare: Option<PathBuf>,
 
     /// Path to a report receipt (mutually exclusive with --compare)
-    #[arg(long, conflicts_with = "compare")]
+    #[arg(long, conflicts_with_all = ["compare", "body_file"])]
     pub report: Option<PathBuf>,
+
+    /// Path to an existing markdown body file, such as artifacts/perfgate/comment.md.
+    #[arg(long, conflicts_with_all = ["compare", "report"])]
+    pub body_file: Option<PathBuf>,
 
     /// GitHub token for API authentication.
     /// Can also be set via GITHUB_TOKEN environment variable.
@@ -690,7 +694,7 @@ pub struct CommentArgs {
     pub github_api_url: String,
 
     /// Optional blame text to include in the comment (output from `perfgate blame`).
-    #[arg(long)]
+    #[arg(long, conflicts_with = "body_file")]
     pub blame_text: Option<String>,
 
     /// Dry-run mode: render the comment to stdout instead of posting to GitHub.
@@ -3076,6 +3080,7 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
     let CommentArgs {
         compare,
         report,
+        body_file,
         github_token,
         repo,
         pr,
@@ -3085,7 +3090,11 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
     } = args;
 
     // Load the receipt data
-    let comment_body = if let Some(compare_path) = compare {
+    let comment_body = if let Some(body_path) = body_file {
+        let markdown = fs::read_to_string(&body_path)
+            .with_context(|| format!("read {}", body_path.display()))?;
+        perfgate_github::prepare_comment_body(&markdown)
+    } else if let Some(compare_path) = compare {
         let receipt: CompareReceipt = read_json(&compare_path)?;
         let options = CommentOptions {
             blame_text,
@@ -3100,7 +3109,7 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
         };
         perfgate_github::render_comment_from_report(&report_receipt, &options)
     } else {
-        anyhow::bail!("Either --compare or --report is required");
+        anyhow::bail!("One of --body-file, --compare, or --report is required");
     };
 
     // Dry-run: print and exit

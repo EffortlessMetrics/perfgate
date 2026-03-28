@@ -460,19 +460,26 @@ jobs:
         run: perfgate check --config {config_path} --all --mode cockpit --out-dir artifacts/perfgate
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perfgate
           path: artifacts/perfgate/
 
       - name: Post PR comment
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         run: |
+          set -euo pipefail
+
           if [ -f artifacts/perfgate/comment.md ]; then
-            gh pr comment ${{{{ github.event.pull_request.number }}}} --body-file artifacts/perfgate/comment.md
+            if ! perfgate comment --body-file artifacts/perfgate/comment.md --pr ${{{{ github.event.pull_request.number }}}}; then
+              echo "warning: failed to post perfgate PR comment" >&2
+            fi
+          else
+            echo "No comment.md artifact found; skipping PR comment." >&2
           fi
         env:
-          GH_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
+          GITHUB_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
 "#
     )
 }
@@ -829,6 +836,9 @@ harness = false
     fn scaffold_github_ci() {
         let content = scaffold_ci(CiPlatform::GitHub, Path::new("perfgate.toml"));
         assert!(content.contains("perfgate check"));
+        assert!(content.contains("if: always()"));
+        assert!(content.contains("perfgate comment --body-file"));
+        assert!(!content.contains("gh pr comment"));
         assert!(content.contains("perfgate.toml"));
         assert!(content.contains("ubuntu-latest"));
     }

@@ -60,7 +60,7 @@ inputs:
     required: false
     default: ""
   comment:
-    description: "Post or update a PR comment with perfgate results (requires GITHUB_TOKEN)"
+    description: "Post or update a sticky PR comment from out_dir/comment.md (requires GITHUB_TOKEN)"
     required: false
     default: "false"
   github_token:
@@ -223,34 +223,15 @@ runs:
       run: |
         set -euo pipefail
 
-        # Find a compare or report receipt to comment on.
-        # In standard mode, report.json is a perfgate.report.v1.
-        # In cockpit mode, report.json is a sensor.report.v1 (not
-        # parseable as --report), so we look for extras/ receipts first.
         out="${{ inputs.out_dir }}"
         pr_num="${{ github.event.pull_request.number }}"
-        posted=false
 
-        # 1. Cockpit single-bench extras
-        if [[ "${posted}" == "false" && -f "${out}/extras/perfgate.report.v1.json" ]]; then
-          perfgate comment --report "${out}/extras/perfgate.report.v1.json" --pr "${pr_num}" || true
-          posted=true
-        fi
-
-        # 2. Standard mode report.json (perfgate.report.v1)
-        if [[ "${posted}" == "false" && -f "${out}/report.json" && "${{ inputs.mode }}" != "cockpit" ]]; then
-          perfgate comment --report "${out}/report.json" --pr "${pr_num}" || true
-          posted=true
-        fi
-
-        # 3. Standard mode compare.json
-        if [[ "${posted}" == "false" && -f "${out}/compare.json" ]]; then
-          perfgate comment --compare "${out}/compare.json" --pr "${pr_num}" || true
-          posted=true
-        fi
-
-        if [[ "${posted}" == "false" ]]; then
-          echo "No compare or report receipt found; skipping PR comment." >&2
+        if [[ -f "${out}/comment.md" ]]; then
+          if ! perfgate comment --body-file "${out}/comment.md" --pr "${pr_num}"; then
+            echo "::warning::failed to post perfgate PR comment" >&2
+          fi
+        else
+          echo "::notice::No comment.md artifact found; skipping PR comment." >&2
         fi
 
     - name: Upload perfgate artifacts
