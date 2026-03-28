@@ -265,11 +265,10 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         };
 
         // Optional complexity gate.
-        let complexity_outcome = if let Some(scaling) = &bench_config.scaling {
-            Some(self.evaluate_scaling_gate(bench_config, scaling, &req))
-        } else {
-            None
-        };
+        let complexity_outcome = bench_config
+            .scaling
+            .as_ref()
+            .map(|scaling| self.evaluate_scaling_gate(bench_config, scaling, &req));
         if let Some(outcome) = &complexity_outcome {
             apply_complexity_outcome(&mut report, outcome);
         }
@@ -575,16 +574,14 @@ fn build_complexity_outcome(
     result: &perfgate_scaling::ScalingResult,
     threshold: f64,
 ) -> ComplexityGateOutcome {
-    let summary = format!(
-        "{}",
-        render_complexity_markdown_line(
-            expected.map(|c| c.to_string()).as_deref(),
-            &result.best_fit.to_string(),
-            result.r_squared,
-            threshold,
-            "complexity"
-        )
-    );
+    let summary = render_complexity_markdown_line(
+        expected.map(|c| c.to_string()).as_deref(),
+        &result.best_fit.to_string(),
+        result.r_squared,
+        threshold,
+        "complexity",
+    )
+    .to_string();
 
     if !result.above_threshold {
         return ComplexityGateOutcome {
@@ -651,10 +648,10 @@ fn apply_complexity_outcome(report: &mut PerfgateReport, outcome: &ComplexityGat
         ComplexityGateStatus::Pass => unreachable!(),
     }
     report.summary.total_count += 1;
-    if let Some(reason) = &outcome.reason {
-        if !report.verdict.reasons.iter().any(|r| r == reason) {
-            report.verdict.reasons.push(reason.clone());
-        }
+    if let Some(reason) = &outcome.reason
+        && !report.verdict.reasons.iter().any(|r| r == reason)
+    {
+        report.verdict.reasons.push(reason.clone());
     }
 }
 
