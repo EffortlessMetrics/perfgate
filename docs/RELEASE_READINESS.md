@@ -1,6 +1,6 @@
 # Release Readiness: v0.15.1
 
-Last verified: 2026-03-28 against the 0.15.1 release-prep branch.
+Last verified: 2026-03-28 on `main` after merging the `0.15.1` prep work.
 
 ## Patch Scope
 
@@ -10,6 +10,13 @@ This patch release is intentionally narrow:
 - align baseline-service docs with the actual `0.15.x` command and server
   surface
 - roll examples and release docs forward to `v0.15.1`
+
+## Current Status
+
+- Workspace and internal crate versions are set to `0.15.1` on `main`.
+- The local-mode baseline fix and doc cleanup are merged on `main`.
+- `cargo run -p xtask -- ci` passed locally on 2026-03-28 against `main`.
+- `v0.15.1` has not been tagged yet.
 
 ## Tested and Working
 
@@ -101,7 +108,6 @@ The **core local gating pipeline** is production-quality:
 
 ## Recommended Release Approach
 
-1. **Merge local-mode/doc cleanup** — already complete on `main`
-2. **Merge 0.15.1 prep** — version bump, changelog, action example updates
-3. **Tag `v0.15.1`** — trigger the binary release workflow
-4. **Follow up** — crates.io publish, versioned action tag, workflow action runtime upgrades
+1. **Tag `v0.15.1`** — trigger the binary release workflow from the verified `main` state
+2. **Verify the GitHub release** — confirm the binary artifacts and checksums upload successfully
+3. **Follow up** — crates.io publish, versioned action tag, workflow action runtime upgrades
