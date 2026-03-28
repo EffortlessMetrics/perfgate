@@ -16,16 +16,20 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, classify_error, github_annotations, is_host_mismatch_reason,
+    preview_lines, render_json_diff, render_markdown, render_markdown_template,
+    render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     SubmitVerdictRequest, UploadBaselineRequest,
 };
-use perfgate_config::{ResolvedServerConfig, load_config_file, resolve_server_config};
+use perfgate_config::{
+    ResolvedServerConfig, apply_ratchet_toml_changes, load_config_file,
+    preview_ratchet_toml_changes, resolve_server_config,
+};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_github::{CommentOptions, GitHubClient};
@@ -37,7 +41,8 @@ use perfgate_scaling::{
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    HostMismatchPolicy, PerfgateReport, RatchetConfig, RunReceipt, SensorVerdictStatus, ToolInfo,
+    VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -202,6 +207,12 @@ enum Command {
     ///
     /// Exit codes: 0 for success, 1 for errors.
     Promote(Box<PromoteArgs>),
+
+    /// Preview or apply conservative budget ratcheting from compare evidence.
+    Ratchet {
+        #[command(subcommand)]
+        action: RatchetAction,
+    },
 
     /// Generate a cockpit-compatible report from a compare receipt.
     ///
@@ -857,6 +868,38 @@ pub struct PromoteArgs {
     /// Pretty-print JSON
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+
+    /// Enable budget ratcheting on local promote path (never for --to-server).
+    #[arg(long, default_value_t = false)]
+    pub ratchet: bool,
+
+    /// Compare receipt providing trustworthy evidence for ratcheting.
+    #[arg(long, requires = "ratchet")]
+    pub compare: Option<PathBuf>,
+
+    /// Config file to update when --ratchet is enabled.
+    #[arg(long, default_value = "perfgate.toml", requires = "ratchet")]
+    pub config: PathBuf,
+
+    /// Output path for machine-readable ratchet artifact.
+    #[arg(long, default_value = "perfgate.ratchet.v1.json", requires = "ratchet")]
+    pub ratchet_out: PathBuf,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RatchetAction {
+    /// Show exactly what would change in perfgate.toml.
+    Preview(Box<RatchetPreviewArgs>),
+}
+
+#[derive(Debug, Args)]
+pub struct RatchetPreviewArgs {
+    /// Path to perfgate.toml.
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+    /// Compare receipt path.
+    #[arg(long)]
+    pub compare: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1748,9 +1791,19 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 version,
                 normalize,
                 pretty,
+                ratchet,
+                compare,
+                config,
+                ratchet_out,
             } = *args;
 
             let receipt: RunReceipt = read_json_from_location(&current)?;
+
+            if to_server && ratchet {
+                anyhow::bail!(
+                    "--ratchet is only supported for local promote (--to), not --to-server"
+                );
+            }
 
             if to_server {
                 let (server_config, _config_file) =
@@ -1800,10 +1853,65 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
                 let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
                 write_json_to_location(&to_path, &result.receipt, pretty)?;
+
+                if ratchet {
+                    let compare_path = compare
+                        .ok_or_else(|| anyhow::anyhow!("--compare is required with --ratchet"))?;
+                    let compare_receipt: CompareReceipt = read_json(&compare_path)?;
+                    let cfg = load_config_file(&config)?;
+                    let policy = cfg.ratchet.unwrap_or_else(RatchetConfig::default);
+                    let host_mismatch = is_host_mismatch_reason(&compare_receipt.verdict.reasons);
+                    let plan = RatchetUseCase::preview(
+                        &compare_receipt,
+                        &policy,
+                        Some(compare_path.display().to_string()),
+                        host_mismatch,
+                        tool_info(),
+                    );
+
+                    for line in preview_lines(&plan.receipt.changes) {
+                        eprintln!("{line}");
+                    }
+                    let _ = preview_ratchet_toml_changes(&plan.receipt.changes);
+                    let updated = apply_ratchet_toml_changes(
+                        &config,
+                        &compare_receipt.bench.name,
+                        &plan.receipt.changes,
+                    )?;
+                    write_json(&ratchet_out, &plan.receipt, pretty)?;
+                    if updated {
+                        eprintln!("Applied ratchet updates to {}", config.display());
+                    } else {
+                        eprintln!("No ratchet updates were applied.");
+                    }
+                }
             }
 
             Ok(())
         }
+
+        Command::Ratchet { action } => match action {
+            RatchetAction::Preview(args) => {
+                let compare_receipt: CompareReceipt = read_json(&args.compare)?;
+                let cfg = load_config_file(&args.config)?;
+                let policy = cfg.ratchet.unwrap_or_else(RatchetConfig::default);
+                let host_mismatch = is_host_mismatch_reason(&compare_receipt.verdict.reasons);
+                let plan = RatchetUseCase::preview(
+                    &compare_receipt,
+                    &policy,
+                    Some(args.compare.display().to_string()),
+                    host_mismatch,
+                    tool_info(),
+                );
+                for line in preview_lines(&plan.receipt.changes) {
+                    println!("{line}");
+                }
+                for line in preview_ratchet_toml_changes(&plan.receipt.changes) {
+                    println!("{line}");
+                }
+                Ok(())
+            }
+        },
 
         Command::Report(args) => {
             let ReportArgs {

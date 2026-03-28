@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RatchetReceipt",
+  "description": "Machine-readable ratchet artifact.",
+  "type": "object",
+  "properties": {
+    "bench_name": {
+      "type": "string"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RatchetChange"
+      }
+    },
+    "compare_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "bench_name",
+    "changes"
+  ],
+  "$defs": {
+    "Metric": {
+      "type": "string",
+      "enum": [
+        "binary_bytes",
+        "cpu_ms",
+        "ctx_switches",
+        "energy_uj",
+        "io_read_bytes",
+        "io_write_bytes",
+        "max_rss_kb",
+        "network_packets",
+        "page_faults",
+        "throughput_per_s",
+        "wall_ms"
+      ]
+    },
+    "RatchetChange": {
+      "description": "Per-metric ratchet change.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "metric": {
+          "$ref": "#/$defs/Metric"
+        },
+        "new_value": {
+          "type": "number",
+          "format": "double"
+        },
+        "old_value": {
+          "type": "number",
+          "format": "double"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "field",
+        "old_value",
+        "new_value",
+        "reason"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    }
+  }
+}
