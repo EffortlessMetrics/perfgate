@@ -65,6 +65,33 @@ Keys are scoped to a project and optionally restricted by benchmark regex:
 --api-keys contributor:pg_live_abc123:my-project:^bench-.*$
 ```
 
+For integration with existing secret tooling, you can load key policy documents from env, file,
+or command output:
+
+```bash
+perfgate-server \
+  --api-keys-file /etc/perfgate/keys.json \
+  --api-keys-command "op read op://perfgate/api-keys/json" \
+  --api-keys-env PERFGATE_API_KEYS_JSON
+```
+
+Source precedence is additive and deterministic: static `--api-keys` entries are loaded first,
+then `--api-keys-env`, then `--api-keys-file`, then `--api-keys-command`.
+
+Policy document shape (JSON):
+
+```json
+[
+  {
+    "id": "ci-promoter",
+    "role": "promoter",
+    "project": "my-project",
+    "benchmark_regex": ".*",
+    "secret": "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+  }
+]
+```
+
 For GitHub Actions CI, use OIDC (`--github-oidc org/repo:project-id:contributor`).
 GitLab OIDC and custom OIDC providers are also supported. JWT tokens (HS256)
 are supported via `--jwt-secret`.
@@ -78,6 +105,10 @@ are supported via `--jwt-secret`.
 | `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
 | `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
 | `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
+| `--api-keys-file` | -- | path to external API key policy document (JSON/TOML) |
+| `--api-keys-env` | -- | env var containing external API key policy document |
+| `--api-keys-command` | -- | shell command returning policy document on stdout |
+| `--api-keys-format` | `json` | format for env/command policy docs (`json`, `toml`) |
 | `--github-oidc` | -- | `org/repo:project_id:role` (repeatable) |
 | `--gitlab-oidc` | -- | `group/project:project_id:role` (repeatable) |
 | `--oidc-provider` | -- | custom OIDC issuer/JWKS/audience mapping |

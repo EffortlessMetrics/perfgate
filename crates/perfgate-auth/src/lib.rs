@@ -18,6 +18,7 @@ use chrono::{DateTime, Utc};
 use perfgate_error::AuthError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// API key prefix for live keys.
 pub const API_KEY_PREFIX_LIVE: &str = "pg_live_";
@@ -239,6 +240,95 @@ pub fn generate_api_key(test: bool) -> String {
     format!("{}{}", prefix, random)
 }
 
+/// External credential source descriptor for server auth material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CredentialMaterialSource {
+    /// Read policy document from an environment variable value.
+    Env { var: String },
+    /// Read policy document from a file path.
+    File { path: String },
+    /// Read policy document from shell command stdout.
+    Command { command: String },
+}
+
+/// Policy document format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyDocFormat {
+    /// JSON format.
+    #[default]
+    Json,
+    /// TOML format.
+    Toml,
+}
+
+/// API key authorization policy entry.
+///
+/// This keeps authorization metadata (role/scope/project/regex) in perfgate while letting
+/// secret origin stay external.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ApiKeyPolicy {
+    /// Stable credential identifier for audit and revocation.
+    pub id: String,
+    /// Role granted to this credential.
+    pub role: Role,
+    /// Project scope ("*" means all projects).
+    pub project: String,
+    /// Optional benchmark restriction regex.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark_regex: Option<String>,
+    /// Optional expiration metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    /// Raw shared secret (material loaded externally by env/file/command).
+    pub secret: String,
+}
+
+/// Parses API key policies from JSON or TOML bytes.
+pub fn parse_api_key_policies(
+    content: &str,
+    format: PolicyDocFormat,
+) -> Result<Vec<ApiKeyPolicy>, String> {
+    let policies: Vec<ApiKeyPolicy> = match format {
+        PolicyDocFormat::Json => serde_json::from_str(content)
+            .map_err(|e| format!("failed to parse API key policy JSON: {e}"))?,
+        PolicyDocFormat::Toml => {
+            #[derive(Deserialize)]
+            struct TomlPolicies {
+                policies: Vec<ApiKeyPolicy>,
+            }
+            toml::from_str::<TomlPolicies>(content)
+                .map(|v| v.policies)
+                .map_err(|e| format!("failed to parse API key policy TOML: {e}"))?
+        }
+    };
+    validate_api_key_policies(&policies)?;
+    Ok(policies)
+}
+
+/// Infers policy format from file extension.
+pub fn infer_policy_doc_format(path: &Path) -> PolicyDocFormat {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("toml") => PolicyDocFormat::Toml,
+        _ => PolicyDocFormat::Json,
+    }
+}
+
+fn validate_api_key_policies(policies: &[ApiKeyPolicy]) -> Result<(), String> {
+    for policy in policies {
+        if policy.id.trim().is_empty() {
+            return Err("policy id must not be empty".to_string());
+        }
+        if policy.project.trim().is_empty() {
+            return Err(format!("policy '{}' project must not be empty", policy.id));
+        }
+        validate_key_format(&policy.secret)
+            .map_err(|e| format!("policy '{}' has invalid secret: {e}", policy.id))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +371,49 @@ mod tests {
         let test_key = generate_api_key(true);
         assert!(test_key.starts_with(API_KEY_PREFIX_TEST));
         assert!(test_key.len() >= 40);
+    }
+
+    #[test]
+    fn parse_policy_json() {
+        let doc = r#"
+[
+  {
+    "id": "ci-promoter",
+    "role": "promoter",
+    "project": "my-project",
+    "benchmark_regex": ".*",
+    "secret": "pg_live_abcdefghijklmnopqrstuvwxyz123456"
+  }
+]
+"#;
+        let parsed = parse_api_key_policies(doc, PolicyDocFormat::Json).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "ci-promoter");
+    }
+
+    #[test]
+    fn parse_policy_toml() {
+        let doc = r#"
+[[policies]]
+id = "ci-viewer"
+role = "viewer"
+project = "my-project"
+secret = "pg_test_abcdefghijklmnopqrstuvwxyz123456"
+"#;
+        #[derive(Deserialize)]
+        struct Wrap {
+            policies: Vec<ApiKeyPolicy>,
+        }
+        let wrap: Wrap = toml::from_str(doc).unwrap();
+        assert_eq!(wrap.policies.len(), 1);
+        assert_eq!(wrap.policies[0].id, "ci-viewer");
+    }
+
+    #[test]
+    fn parse_policy_rejects_invalid_key() {
+        let doc = r#"
+[{"id":"bad","role":"viewer","project":"p","secret":"nope"}]
+"#;
+        assert!(parse_api_key_policies(doc, PolicyDocFormat::Json).is_err());
     }
 }

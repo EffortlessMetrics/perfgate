@@ -30,7 +30,10 @@
 //! ```
 
 use clap::Parser;
+use perfgate_auth::{PolicyDocFormat, infer_policy_doc_format, parse_api_key_policies};
 use std::net::SocketAddr;
+use std::path::Path;
+use std::process::Command;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -91,6 +94,22 @@ struct Args {
     /// Example: --api-keys admin:pg_live_abc123,contributor:pg_live_def456:my-project:^bench-.*$
     #[arg(long = "api-keys", value_parser = parse_api_key)]
     api_keys: Vec<ApiKeyConfigArg>,
+
+    /// API key policy document file (JSON by default, TOML if .toml extension).
+    #[arg(long = "api-keys-file")]
+    api_keys_file: Option<String>,
+
+    /// API key policy document environment variable name.
+    #[arg(long = "api-keys-env")]
+    api_keys_env: Option<String>,
+
+    /// API key policy document command (stdout must be policy JSON/TOML).
+    #[arg(long = "api-keys-command")]
+    api_keys_command: Option<String>,
+
+    /// Policy format override for env/command sources: json|toml (default: json).
+    #[arg(long = "api-keys-format", default_value = "json", value_parser = parse_policy_doc_format)]
+    api_keys_format: PolicyDocFormat,
 
     /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
     #[arg(long)]
@@ -212,6 +231,16 @@ fn parse_role(s: &str) -> Result<Role, String> {
     }
 }
 
+fn parse_policy_doc_format(s: &str) -> Result<PolicyDocFormat, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "json" => Ok(PolicyDocFormat::Json),
+        "toml" => Ok(PolicyDocFormat::Toml),
+        _ => Err(format!(
+            "Unknown api key policy format '{s}'. Expected: json, toml"
+        )),
+    }
+}
+
 /// Parses an OIDC identity mapping "identity:project_id:role".
 fn parse_oidc_mapping(mapping: &str, flag_name: &str) -> Result<(String, String, Role), String> {
     let parts: Vec<&str> = mapping.split(':').collect();
@@ -247,6 +276,47 @@ fn init_logging(level: &str, format: &str) {
                 .init();
         }
     }
+}
+
+fn load_external_api_keys(
+    env_var: Option<&str>,
+    file_path: Option<&str>,
+    command: Option<&str>,
+    default_format: PolicyDocFormat,
+) -> Result<Vec<perfgate_auth::ApiKeyPolicy>, String> {
+    let mut out = Vec::new();
+
+    if let Some(var) = env_var {
+        let value = std::env::var(var)
+            .map_err(|_| format!("Environment variable '{var}' is not set or unreadable"))?;
+        out.extend(parse_api_key_policies(&value, default_format)?);
+    }
+
+    if let Some(path) = file_path {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| format!("Unable to read API keys file '{path}': {e}"))?;
+        let format = infer_policy_doc_format(Path::new(path));
+        out.extend(parse_api_key_policies(&content, format)?);
+    }
+
+    if let Some(cmd) = command {
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .output()
+            .map_err(|e| format!("Failed to execute api-keys command '{cmd}': {e}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "api-keys command '{cmd}' failed with status {}",
+                output.status
+            ));
+        }
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| format!("api-keys command '{cmd}' emitted invalid UTF-8: {e}"))?;
+        out.extend(parse_api_key_policies(&stdout, default_format)?);
+    }
+
+    Ok(out)
 }
 
 #[tokio::main]
@@ -299,9 +369,26 @@ async fn main() {
         statement_timeout: Duration::from_secs(args.pg_statement_timeout),
     });
 
-    // Add API keys
+    // Add static API keys
     for cfg in args.api_keys {
         config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
+    }
+
+    // Add external API key policies loaded via env/file/command.
+    let external_keys = load_external_api_keys(
+        args.api_keys_env.as_deref(),
+        args.api_keys_file.as_deref(),
+        args.api_keys_command.as_deref(),
+        args.api_keys_format,
+    )
+    .unwrap_or_else(|e| panic!("Failed to load external API key policies: {e}"));
+    for policy in external_keys {
+        config = config.scoped_api_key(
+            policy.secret,
+            policy.role,
+            policy.project,
+            policy.benchmark_regex,
+        );
     }
 
     // ----- GitHub OIDC -----
@@ -484,6 +571,7 @@ mod tests {
         assert_eq!(args.pg_max_lifetime, 1800);
         assert_eq!(args.pg_acquire_timeout, 5);
         assert_eq!(args.pg_statement_timeout, 30);
+        assert_eq!(args.api_keys_format, PolicyDocFormat::Json);
     }
 
     #[test]
@@ -516,6 +604,39 @@ mod tests {
         assert_eq!(args.pg_max_lifetime, 3600);
         assert_eq!(args.pg_acquire_timeout, 10);
         assert_eq!(args.pg_statement_timeout, 60);
+    }
+
+    #[test]
+    fn test_policy_doc_format_parser() {
+        assert_eq!(
+            parse_policy_doc_format("json").unwrap(),
+            PolicyDocFormat::Json
+        );
+        assert_eq!(
+            parse_policy_doc_format("toml").unwrap(),
+            PolicyDocFormat::Toml
+        );
+        assert!(parse_policy_doc_format("yaml").is_err());
+    }
+
+    #[test]
+    fn test_load_external_api_keys_from_env() {
+        let env_name = "PERFGATE_TEST_API_KEYS_JSON";
+        // SAFETY: test process controls this env var for the duration of the test.
+        unsafe {
+            std::env::set_var(
+                env_name,
+                r#"[{"id":"env-key","role":"viewer","project":"p","secret":"pg_test_abcdefghijklmnopqrstuvwxyz123456"}]"#,
+            );
+        }
+        let policies =
+            load_external_api_keys(Some(env_name), None, None, PolicyDocFormat::Json).unwrap();
+        assert_eq!(policies.len(), 1);
+        assert_eq!(policies[0].id, "env-key");
+        // SAFETY: cleanup of test-owned env var.
+        unsafe {
+            std::env::remove_var(env_name);
+        }
     }
 
     #[test]

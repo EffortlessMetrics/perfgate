@@ -15,10 +15,11 @@ categories = ["authentication"]
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
 chrono = { version = "0.4.39", features = ["serde"] }
 perfgate-error.workspace = true
 uuid = { workspace = true }
 schemars.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
