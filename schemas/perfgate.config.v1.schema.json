@@ -21,6 +21,17 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "description": "Optional ratchet policy used to tighten budgets during explicit promote flows.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RatchetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "$defs": {
@@ -357,6 +368,62 @@
           "description": "Demote Pass and Fail to Skip.",
           "type": "string",
           "const": "skip"
+        }
+      ]
+    },
+    "RatchetConfig": {
+      "description": "Policy for conservative, opt-in budget ratcheting.",
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "description": "Optional allow-list of metrics eligible for ratcheting.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "description": "Enables ratcheting when explicitly requested by a command.",
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "description": "Maximum one-step tightening ratio.",
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "description": "Minimum required improvement ratio (e.g. 0.05 = 5%).",
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "description": "Ratcheting strategy.",
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "description": "Require significance evidence before tightening.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "description": "Strategy used when applying ratchet updates.",
+      "oneOf": [
+        {
+          "description": "Tighten the budget threshold by a bounded percentage.",
+          "type": "string",
+          "const": "threshold"
+        },
+        {
+          "description": "Update baseline-value references to an improved observed value.",
+          "type": "string",
+          "const": "baseline_value"
         }
       ]
     },
