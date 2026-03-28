@@ -406,6 +406,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 1,
             },
+            complexity: None,
             profile_path: None,
         }
     }
@@ -606,6 +607,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
         let result = metric_badge(&BadgeInput::Report(report), BadgeStyle::Flat, "wall_ms");
@@ -662,6 +664,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
         let badge = trend_badge(&BadgeInput::Report(report), BadgeStyle::Flat);
