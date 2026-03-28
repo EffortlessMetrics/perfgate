@@ -71,6 +71,15 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
     out
 }
 
+/// Append a short repair-context artifact note to markdown output.
+pub fn append_repair_context_note(markdown: &mut String, repair_context_path: &str) {
+    markdown.push_str("\n### Repair Context\n\n");
+    markdown.push_str(&format!(
+        "Machine-readable triage artifact: `{}`\n",
+        repair_context_path
+    ));
+}
+
 /// Render a [`CompareReceipt`] using a custom [Handlebars](https://docs.rs/handlebars) template.
 pub fn render_markdown_template(
     compare: &CompareReceipt,

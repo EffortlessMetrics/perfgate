@@ -16,8 +16,9 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
+    RepairContextOptions, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, append_repair_context_note, build_repair_context,
+    classify_error, github_annotations, render_json_diff, render_markdown,
     render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
@@ -37,7 +38,8 @@ use perfgate_scaling::{
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    HostMismatchPolicy, PerfgateReport, RepairChangedPathSummary, RepairGitContext, RunReceipt,
+    SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -977,6 +979,10 @@ pub struct CheckArgs {
     /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
     #[arg(long, default_value_t = false)]
     pub profile_on_regression: bool,
+
+    /// Emit machine-readable repair context artifact (`repair_context.json`).
+    #[arg(long, default_value_t = false)]
+    pub emit_repair_context: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1858,6 +1864,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_github,
                 local_db,
                 profile_on_regression,
+                emit_repair_context,
             } = *args;
 
             let req = CheckConfig {
@@ -1882,6 +1889,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 profile_on_regression,
+                emit_repair_context,
                 server_flags,
                 local_db,
             };
@@ -3585,6 +3593,7 @@ struct CheckConfig {
     md_template: Option<PathBuf>,
     output_github: bool,
     profile_on_regression: bool,
+    emit_repair_context: bool,
     server_flags: ServerFlags,
     local_db: bool,
 }
@@ -3743,7 +3752,7 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         let clock = SystemClock;
         let usecase = CheckUseCase::new(runner, host_probe, clock);
 
-        let outcome = usecase.execute(CheckRequest {
+        let mut outcome = usecase.execute(CheckRequest {
             config: config_file.clone(),
             bench_name: bench_name.clone(),
             out_dir: bench_out_dir.clone(),
@@ -3792,9 +3801,38 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             );
         }
 
+        let emit_repair_from_config = config_file
+            .defaults
+            .diagnostics
+            .as_ref()
+            .map(|d| d.emit_repair_context)
+            .unwrap_or(false);
+        let should_emit_repair = req.emit_repair_context
+            || (emit_repair_from_config
+                && matches!(
+                    outcome.report.verdict.status,
+                    VerdictStatus::Warn | VerdictStatus::Fail
+                ));
+        if should_emit_repair {
+            let repair_path = bench_out_dir.join("repair_context.json");
+            let repair_context = build_repair_context(
+                &outcome,
+                RepairContextOptions {
+                    git: collect_git_context(),
+                    span_ids: Vec::new(),
+                },
+            );
+            write_json(&repair_path, &repair_context, req.pretty)?;
+            append_repair_context_note(&mut outcome.markdown, &repair_path.display().to_string());
+        }
+
         if let Some(compare) = &outcome.compare_receipt {
             let markdown =
                 render_markdown_with_optional_template(compare, markdown_template_path.as_deref())?;
+            let mut markdown = markdown;
+            if should_emit_repair {
+                append_repair_context_note(&mut markdown, "repair_context.json");
+            }
             atomic_write(&outcome.markdown_path, markdown.as_bytes())
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
         } else {
@@ -4569,6 +4607,56 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
         .with_context(|| format!("write {}", outcome.markdown_path.display()))?;
 
     Ok(())
+}
+
+fn collect_git_context() -> Option<RepairGitContext> {
+    let branch = run_git_capture(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    let sha = run_git_capture(&["rev-parse", "HEAD"]);
+    let changed_files_raw = run_git_capture(&["diff", "--name-only", "HEAD"])?;
+    let changed_files: Vec<String> = changed_files_raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    let mut grouped: BTreeMap<String, u32> = BTreeMap::new();
+    for file in &changed_files {
+        let mut parts = file.split('/');
+        let key = match (parts.next(), parts.next(), parts.next()) {
+            (Some("crates"), Some(crate_name), _) => format!("crates/{crate_name}"),
+            (Some(first), Some(second), _) => format!("{first}/{second}"),
+            (Some(first), None, _) => first.to_string(),
+            _ => "other".to_string(),
+        };
+        *grouped.entry(key).or_insert(0) += 1;
+    }
+    let changed_path_summary = grouped
+        .into_iter()
+        .map(|(path, count)| RepairChangedPathSummary { path, count })
+        .collect();
+
+    Some(RepairGitContext {
+        branch,
+        sha,
+        changed_file_count: changed_files.len() as u32,
+        changed_files,
+        changed_path_summary,
+    })
+}
+
+fn run_git_capture(args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let trimmed = text.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 fn execute_export(

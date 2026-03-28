@@ -47,6 +47,7 @@ pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
+pub const REPAIR_CONTEXT_SCHEMA_V1: &str = "perfgate.repair_context.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 
 // Stable contract identifiers and tokens.
@@ -1118,6 +1119,71 @@ pub struct PerfgateReport {
     pub profile_path: Option<String>,
 }
 
+/// Per-metric breach details for repair automation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairMetricBreach {
+    pub metric: Metric,
+    pub statistic: MetricStatistic,
+    pub status: MetricStatus,
+    pub threshold: f64,
+    pub warn_threshold: f64,
+    pub baseline: f64,
+    pub current: f64,
+    pub regression_pct: f64,
+}
+
+/// Paths to related artifacts for triage tooling.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairArtifactRefs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compare_receipt_path: Option<String>,
+    pub report_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_path: Option<String>,
+}
+
+/// Summary count for changed files grouped by path area.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairChangedPathSummary {
+    pub path: String,
+    pub count: u32,
+}
+
+/// Lightweight git context included in repair artifacts.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairGitContext {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha: Option<String>,
+    pub changed_files: Vec<String>,
+    pub changed_file_count: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changed_path_summary: Vec<RepairChangedPathSummary>,
+}
+
+/// Machine-readable repair package for failed/warned checks.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairContext {
+    pub schema: String,
+    pub benchmark: String,
+    pub verdict: VerdictStatus,
+    pub reasons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breached_metrics: Vec<RepairMetricBreach>,
+    pub artifacts: RepairArtifactRefs,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git: Option<RepairGitContext>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub span_ids: Vec<String>,
+    pub recommended_next_commands: Vec<String>,
+}
+
 // ----------------------------
 // Optional config file schema
 // ----------------------------
@@ -2025,6 +2091,7 @@ mod tests {
                 baseline_dir: Some("baselines".into()),
                 baseline_pattern: Some("baselines/{bench}.json".into()),
                 markdown_template: None,
+                diagnostics: None,
             },
             baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
@@ -3004,6 +3071,7 @@ mod property_tests {
                     baseline_dir,
                     baseline_pattern,
                     markdown_template,
+                    diagnostics: None,
                 },
             )
     }

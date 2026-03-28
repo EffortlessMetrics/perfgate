@@ -20,6 +20,7 @@ mod explain;
 pub mod init;
 mod paired;
 mod promote;
+mod repair_context;
 mod report;
 mod sensor_report;
 mod trend;
@@ -39,6 +40,7 @@ pub use diff::{
 pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
+pub use repair_context::{RepairContextOptions, build_repair_context, redact_sensitive_tokens};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
 pub use sensor_report::{
     BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,
@@ -50,9 +52,10 @@ pub use trend::{
 
 // Re-export rendering functions from perfgate-render for backward compatibility
 pub use perfgate_render::{
-    direction_str, format_metric, format_metric_with_statistic, format_pct, format_value,
-    github_annotations, markdown_template_context, metric_status_icon, metric_status_str,
-    parse_reason_token, render_markdown, render_markdown_template, render_reason_line,
+    append_repair_context_note, direction_str, format_metric, format_metric_with_statistic,
+    format_pct, format_value, github_annotations, markdown_template_context, metric_status_icon,
+    metric_status_str, parse_reason_token, render_markdown, render_markdown_template,
+    render_reason_line,
 };
 
 // Re-export export functionality from perfgate-export for backward compatibility

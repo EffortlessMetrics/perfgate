@@ -37,4 +37,16 @@ pub struct DefaultsConfig {
     /// Optional Handlebars template path for markdown comments.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub markdown_template: Option<String>,
+
+    /// Optional diagnostics behavior configuration.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub diagnostics: Option<DiagnosticsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct DiagnosticsConfig {
+    /// Emit repair_context.json for warn/fail outcomes.
+    #[serde(default)]
+    pub emit_repair_context: bool,
 }
