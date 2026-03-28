@@ -282,6 +282,55 @@ mod tradeoff_tests {
     }
 
     #[test]
+    fn tradeoff_downgrades_fail_to_pass_when_satisfied() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+
+        let comparison = compare_stats_with_tradeoffs(
+            &baseline,
+            &current,
+            &budgets(),
+            &[TradeoffRule {
+                name: "memory_for_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::ThroughputPerS,
+                    min_improvement_ratio: 1.5,
+                }],
+                downgrade_to: TradeoffDowngrade::Pass,
+            }],
+        )
+        .expect("compare with tradeoff");
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Pass);
+        assert_eq!(comparison.verdict.counts.fail, 0);
+        assert_eq!(comparison.verdict.counts.pass, 2);
+        assert_eq!(comparison.verdict.counts.warn, 0);
+        assert_eq!(
+            comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Pass
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_speed_applied".to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Fail))
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&reason_token(Metric::MaxRssKb, MetricStatus::Warn))
+        );
+    }
+
+    #[test]
     fn tradeoff_keeps_fail_when_rule_not_satisfied() {
         let baseline = base_stats(100, 1000, 1000);
         let current = base_stats(100, 1300, 1200);
