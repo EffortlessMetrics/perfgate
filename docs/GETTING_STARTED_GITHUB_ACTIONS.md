@@ -54,6 +54,10 @@ jobs:
           upload_artifact: "true"
 ```
 
+Use `@v0.15.1` when you want an exact patch pin. If you prefer a moving tag,
+the published action aliases `@v0.15` and `@v0` now track the current
+compatible release.
+
 Action outputs are available as:
 - `${{ steps.perfgate.outputs.verdict }}`
 - `${{ steps.perfgate.outputs.pass_count }}`

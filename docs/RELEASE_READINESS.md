@@ -1,6 +1,6 @@
 # Release Readiness: v0.15.1
 
-Last verified: 2026-03-28 on `main` after merging the `0.15.1` prep work.
+Last verified: 2026-03-28 after publishing `v0.15.1` and merging the release workflow recovery.
 
 ## Patch Scope
 
@@ -16,7 +16,8 @@ This patch release is intentionally narrow:
 - Workspace and internal crate versions are set to `0.15.1` on `main`.
 - The local-mode baseline fix and doc cleanup are merged on `main`.
 - `cargo run -p xtask -- ci` passed locally on 2026-03-28 against `main`.
-- `v0.15.1` has not been tagged yet.
+- GitHub release `v0.15.1` is published with platform binaries and `sha256sums.txt`.
+- GitHub Action tags now include the exact release tag `v0.15.1` plus moving aliases `v0.15` and `v0`.
 
 ## Tested and Working
 
@@ -106,8 +107,8 @@ The **core local gating pipeline** is production-quality:
 - **Executable doc tests** — CLI examples aren't validated in CI
 - **`cargo run -p perfgate` ergonomics** — doesn't work without specifying `--bin`
 
-## Recommended Release Approach
+## Post-Release Follow-Up
 
-1. **Tag `v0.15.1`** — trigger the binary release workflow from the verified `main` state
-2. **Verify the GitHub release** — confirm the binary artifacts and checksums upload successfully
-3. **Follow up** — crates.io publish, versioned action tag, workflow action runtime upgrades
+1. **Publish to crates.io** — requires registry credentials, so this remains a manual operator step
+2. **Keep action runtimes current** — first-party actions are on current majors, but future runner/runtime upgrades still need periodic review
+3. **Carry the release workflow repair forward** — future tags should continue using the recovered workflow now merged on `main`

@@ -65,6 +65,9 @@ perfgate check --config perfgate.toml --bench my-service --profile-on-regression
     all: "true"
 ```
 
+Pin `@v0.15.1` for an exact patch release, or use `@v0.15` / `@v0` to follow
+the current compatible action tag.
+
 Exit code `2` = budget violated. That's it.
 
 ## Install
