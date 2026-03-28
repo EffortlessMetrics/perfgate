@@ -1154,6 +1154,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    /// Optional global tradeoff rules applied to all benches.
+    #[serde(default, rename = "tradeoff")]
+    pub tradeoffs: Vec<TradeoffRule>,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 }
@@ -1286,9 +1290,54 @@ pub struct BenchConfigFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budgets: Option<BTreeMap<Metric, BudgetOverride>>,
 
+    /// Optional tradeoff rules scoped to this bench.
+    #[serde(default, rename = "tradeoff")]
+    pub tradeoffs: Vec<TradeoffRule>,
+
     /// Optional scaling validation configuration.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub scaling: Option<ScalingConfig>,
+}
+
+/// Tradeoff downgrade target when a rule is satisfied.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum TradeoffDowngrade {
+    #[default]
+    Warn,
+    Pass,
+}
+
+/// Required improvement condition for a metric in a tradeoff rule.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRequirement {
+    /// Metric that must improve.
+    pub metric: Metric,
+
+    /// Minimum improvement ratio for the required metric.
+    ///
+    /// Example: `1.5` means current must be at least 1.5x baseline.
+    pub min_improvement_ratio: f64,
+}
+
+/// A structured, auditable tradeoff rule.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffRule {
+    /// Human-readable name used in reason tokens and reports.
+    pub name: String,
+
+    /// The failing metric this rule can downgrade.
+    pub if_failed: Metric,
+
+    /// Required metric improvements needed for this tradeoff to apply.
+    pub require: Vec<TradeoffRequirement>,
+
+    /// Downgrade target when the tradeoff is satisfied.
+    #[serde(default)]
+    pub downgrade_to: TradeoffDowngrade,
 }
 
 /// Configuration for computational complexity validation.
@@ -1540,6 +1589,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1551,6 +1601,7 @@ mod tests {
                 metrics: None,
                 budgets: None,
 
+                tradeoffs: vec![],
                 scaling: None,
             }],
         };
@@ -1629,6 +1680,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -1640,6 +1692,7 @@ mod tests {
                 metrics: None,
                 budgets: None,
 
+                tradeoffs: vec![],
                 scaling: None,
             }],
         };
@@ -2027,6 +2080,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2051,6 +2105,7 @@ mod tests {
                     );
                     m
                 }),
+                tradeoffs: vec![],
                 scaling: None,
             }],
         };
@@ -2064,6 +2119,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -2965,6 +3021,7 @@ mod property_tests {
                         warmup,
                         metrics,
                         budgets,
+                        tradeoffs: vec![],
                         scaling: None,
                     }
                 },
@@ -3036,6 +3093,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                tradeoffs: vec![],
                 benches,
             })
     }

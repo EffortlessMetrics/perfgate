@@ -348,12 +348,14 @@ pub fn generate_config(benchmarks: &[DiscoveredBench], preset: Preset) -> Config
             warmup: None,
             metrics: None,
             budgets: None,
+            tradeoffs: vec![],
             scaling: None,
         })
         .collect();
 
     ConfigFile {
         defaults,
+        tradeoffs: vec![],
         benches,
         ..ConfigFile::default()
     }

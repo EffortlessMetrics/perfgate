@@ -68,7 +68,8 @@ fn main() {
         },
     );
 
-    let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).expect("compare");
+    let comparison =
+        compare_stats(&baseline_stats, &current_stats, &budgets, &[]).expect("compare");
     println!("\nVerdict: {:?}", comparison.verdict.status);
 
     if let Some(delta) = comparison.deltas.get(&Metric::WallMs) {

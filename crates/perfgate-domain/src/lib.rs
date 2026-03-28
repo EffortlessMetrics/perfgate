@@ -30,8 +30,8 @@ pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, su
 
 use perfgate_types::{
     Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, FINDING_CODE_METRIC_FAIL,
-    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats, Verdict,
-    VerdictCounts, VerdictStatus,
+    FINDING_CODE_METRIC_WARN, Metric, MetricStatistic, MetricStatus, RunReceipt, Stats,
+    TradeoffDowngrade, TradeoffRule, Verdict, VerdictCounts, VerdictStatus,
 };
 use std::collections::BTreeMap;
 
@@ -137,7 +137,7 @@ mod advanced_analytics_tests {
         stats.insert(Metric::WallMs, MetricStatistic::P95);
 
         let comparison =
-            compare_runs(&baseline, &current, &budgets, &stats, None).expect("compare runs");
+            compare_runs(&baseline, &current, &budgets, &stats, None, &[]).expect("compare runs");
 
         let delta = comparison.deltas.get(&Metric::WallMs).expect("wall delta");
         assert_eq!(delta.statistic, MetricStatistic::P95);
@@ -164,6 +164,7 @@ mod advanced_analytics_tests {
                 min_samples: 8,
                 require_significance: false,
             }),
+            &[],
         )
         .expect("compare advisory");
         let advisory_delta = advisory.deltas.get(&Metric::WallMs).expect("wall delta");
@@ -186,6 +187,7 @@ mod advanced_analytics_tests {
                 min_samples: 8,
                 require_significance: true,
             }),
+            &[],
         )
         .expect("compare enforced");
         let enforced_delta = enforced.deltas.get(&Metric::WallMs).expect("wall delta");
@@ -378,6 +380,106 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
     }
 }
 
+fn metric_improvement_ratio(delta: &Delta, metric: Metric) -> Option<f64> {
+    if delta.baseline <= 0.0 || delta.current <= 0.0 {
+        return None;
+    }
+    Some(match metric.default_direction() {
+        perfgate_types::Direction::Higher => delta.current / delta.baseline,
+        perfgate_types::Direction::Lower => delta.baseline / delta.current,
+    })
+}
+
+fn apply_tradeoffs(
+    deltas: &mut BTreeMap<Metric, Delta>,
+    reasons: &mut Vec<String>,
+    tradeoffs: &[TradeoffRule],
+) {
+    if tradeoffs.is_empty() {
+        return;
+    }
+
+    let mut metrics: Vec<Metric> = deltas
+        .iter()
+        .filter_map(|(metric, delta)| (delta.status == MetricStatus::Fail).then_some(*metric))
+        .collect();
+    metrics.sort_by_key(|metric| metric.as_str());
+
+    for failed_metric in metrics {
+        let matching_rules: Vec<&TradeoffRule> = tradeoffs
+            .iter()
+            .filter(|rule| rule.if_failed == failed_metric)
+            .collect();
+
+        if matching_rules.is_empty() {
+            continue;
+        }
+
+        let mut downgraded = false;
+        let mut missing_required_metric = false;
+        let mut any_rule_unsatisfied = false;
+
+        for rule in matching_rules {
+            let mut rule_satisfied = true;
+            for requirement in &rule.require {
+                let Some(required_delta) = deltas.get(&requirement.metric) else {
+                    missing_required_metric = true;
+                    rule_satisfied = false;
+                    break;
+                };
+                let Some(improvement_ratio) =
+                    metric_improvement_ratio(required_delta, requirement.metric)
+                else {
+                    missing_required_metric = true;
+                    rule_satisfied = false;
+                    break;
+                };
+                if improvement_ratio < requirement.min_improvement_ratio {
+                    any_rule_unsatisfied = true;
+                    rule_satisfied = false;
+                    break;
+                }
+            }
+
+            if rule_satisfied && let Some(delta) = deltas.get_mut(&failed_metric) {
+                delta.status = match rule.downgrade_to {
+                    TradeoffDowngrade::Warn => MetricStatus::Warn,
+                    TradeoffDowngrade::Pass => MetricStatus::Pass,
+                };
+                reasons.push(format!("tradeoff_{}_applied", rule.name));
+                downgraded = true;
+                break;
+            }
+        }
+
+        if !downgraded {
+            if missing_required_metric {
+                reasons.push("tradeoff_missing_required_metric".to_string());
+            } else if any_rule_unsatisfied {
+                reasons.push("tradeoff_rule_not_satisfied".to_string());
+            }
+        }
+    }
+}
+
+fn verdict_from_deltas(deltas: &BTreeMap<Metric, Delta>, reasons: Vec<String>) -> Verdict {
+    let mut counts = VerdictCounts {
+        pass: 0,
+        warn: 0,
+        fail: 0,
+        skip: 0,
+    };
+    for delta in deltas.values() {
+        match delta.status {
+            MetricStatus::Pass => counts.pass += 1,
+            MetricStatus::Warn => counts.warn += 1,
+            MetricStatus::Fail => counts.fail += 1,
+            MetricStatus::Skip => counts.skip += 1,
+        }
+    }
+    aggregate_verdict_from_counts(counts, reasons)
+}
+
 /// Compare stats under the provided budgets.
 ///
 /// Metrics without both baseline+current values are skipped (and therefore do not affect verdict).
@@ -413,23 +515,17 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 ///     threshold: 0.20, warn_threshold: 0.10, direction: Direction::Lower,
 /// });
 ///
-/// let cmp = compare_stats(&baseline, &current, &budgets).unwrap();
+/// let cmp = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 /// assert_eq!(cmp.verdict.status, VerdictStatus::Pass);
 /// ```
 pub fn compare_stats(
     baseline: &Stats,
     current: &Stats,
     budgets: &BTreeMap<Metric, Budget>,
+    tradeoffs: &[TradeoffRule],
 ) -> Result<Comparison, DomainError> {
     let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
     let mut reasons: Vec<String> = Vec::new();
-
-    let mut counts = VerdictCounts {
-        pass: 0,
-        warn: 0,
-        fail: 0,
-        skip: 0,
-    };
 
     for (metric, budget) in budgets {
         let b = metric_value(baseline, *metric);
@@ -456,7 +552,6 @@ pub fn compare_stats(
                     statistic: MetricStatistic::Median,
                 },
             );
-            counts.skip += 1;
             continue;
         }
 
@@ -464,19 +559,10 @@ pub fn compare_stats(
             .expect("evaluate_budget is infallible for bv > 0");
 
         match result.status {
-            MetricStatus::Pass => counts.pass += 1,
-            MetricStatus::Warn => {
-                counts.warn += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Warn));
-            }
-            MetricStatus::Fail => {
-                counts.fail += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Fail));
-            }
-            MetricStatus::Skip => {
-                counts.skip += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Skip));
-            }
+            MetricStatus::Pass => {}
+            MetricStatus::Warn => reasons.push(reason_token(*metric, MetricStatus::Warn)),
+            MetricStatus::Fail => reasons.push(reason_token(*metric, MetricStatus::Fail)),
+            MetricStatus::Skip => reasons.push(reason_token(*metric, MetricStatus::Skip)),
         }
 
         deltas.insert(
@@ -496,7 +582,8 @@ pub fn compare_stats(
         );
     }
 
-    let verdict = aggregate_verdict_from_counts(counts, reasons);
+    apply_tradeoffs(&mut deltas, &mut reasons, tradeoffs);
+    let verdict = verdict_from_deltas(&deltas, reasons);
 
     Ok(Comparison { deltas, verdict })
 }
@@ -512,16 +599,10 @@ pub fn compare_runs(
     budgets: &BTreeMap<Metric, Budget>,
     metric_statistics: &BTreeMap<Metric, MetricStatistic>,
     significance_policy: Option<SignificancePolicy>,
+    tradeoffs: &[TradeoffRule],
 ) -> Result<Comparison, DomainError> {
     let mut deltas: BTreeMap<Metric, Delta> = BTreeMap::new();
     let mut reasons: Vec<String> = Vec::new();
-
-    let mut counts = VerdictCounts {
-        pass: 0,
-        warn: 0,
-        fail: 0,
-        skip: 0,
-    };
 
     for (metric, budget) in budgets {
         let statistic = metric_statistics
@@ -553,7 +634,6 @@ pub fn compare_runs(
                     statistic,
                 },
             );
-            counts.skip += 1;
             continue;
         }
 
@@ -587,19 +667,10 @@ pub fn compare_runs(
         }
 
         match status {
-            MetricStatus::Pass => counts.pass += 1,
-            MetricStatus::Warn => {
-                counts.warn += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Warn));
-            }
-            MetricStatus::Fail => {
-                counts.fail += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Fail));
-            }
-            MetricStatus::Skip => {
-                counts.skip += 1;
-                reasons.push(reason_token(*metric, MetricStatus::Skip));
-            }
+            MetricStatus::Pass => {}
+            MetricStatus::Warn => reasons.push(reason_token(*metric, MetricStatus::Warn)),
+            MetricStatus::Fail => reasons.push(reason_token(*metric, MetricStatus::Fail)),
+            MetricStatus::Skip => reasons.push(reason_token(*metric, MetricStatus::Skip)),
         }
 
         deltas.insert(
@@ -619,7 +690,8 @@ pub fn compare_runs(
         );
     }
 
-    let verdict = aggregate_verdict_from_counts(counts, reasons);
+    apply_tradeoffs(&mut deltas, &mut reasons, tradeoffs);
+    let verdict = verdict_from_deltas(&deltas, reasons);
 
     Ok(Comparison { deltas, verdict })
 }
@@ -1752,7 +1824,7 @@ mod tests {
                 );
 
                 // Compare stats
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed with valid inputs");
 
                 // Get the delta for WallMs
@@ -1830,7 +1902,7 @@ mod tests {
                 );
 
                 // Compare stats
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed with valid inputs");
 
                 // Get the delta for ThroughputPerS
@@ -1927,7 +1999,7 @@ mod tests {
                 };
 
                 // Compare stats
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed with valid inputs");
 
                 // Get the delta
@@ -2000,7 +2072,7 @@ mod tests {
                         },
                     );
 
-                    let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                    let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                         .expect("compare_stats should succeed");
 
                     let delta = comparison.deltas.get(&Metric::ThroughputPerS)
@@ -2171,7 +2243,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
 
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed");
 
                 // Verify the verdict matches the expected aggregation
@@ -2273,7 +2345,7 @@ mod tests {
                 budgets.insert(Metric::WallMs, wall_budget);
                 budgets.insert(Metric::MaxRssKb, rss_budget);
 
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed");
 
                 // Verify the verdict matches the expected aggregation
@@ -2414,7 +2486,7 @@ mod tests {
                 budgets.insert(Metric::MaxRssKb, rss_budget);
                 budgets.insert(Metric::ThroughputPerS, throughput_budget);
 
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed");
 
                 // Verify the verdict matches the expected aggregation
@@ -2495,7 +2567,7 @@ mod tests {
                     },
                 );
 
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed");
 
                 // Verdict should always be Fail when any metric is Fail
@@ -2576,7 +2648,7 @@ mod tests {
                     },
                 );
 
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed");
 
                 // Verdict should be Warn when at least one metric is Warn and none are Fail
@@ -2664,7 +2736,7 @@ mod tests {
                     );
                 }
 
-                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)
+                let comparison = compare_stats(&baseline_stats, &current_stats, &budgets, &[])
                     .expect("compare_stats should succeed");
 
                 // Verdict should be Pass when all metrics are Pass
@@ -2734,8 +2806,8 @@ mod tests {
                     threshold, warn_threshold, direction: Direction::Lower,
                 });
 
-                let r1 = compare_stats(&baseline, &current, &budgets).unwrap();
-                let r2 = compare_stats(&baseline, &current, &budgets).unwrap();
+                let r1 = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
+                let r2 = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
                 prop_assert_eq!(r1, r2, "compare_stats must be deterministic");
             }
         }
@@ -2797,8 +2869,8 @@ mod tests {
                 });
                 let stats_map = BTreeMap::new();
 
-                let c1 = compare_runs(&baseline, &current, &budgets, &stats_map, None).unwrap();
-                let c2 = compare_runs(&baseline, &current, &budgets, &stats_map, None).unwrap();
+                let c1 = compare_runs(&baseline, &current, &budgets, &stats_map, None, &[]).unwrap();
+                let c2 = compare_runs(&baseline, &current, &budgets, &stats_map, None, &[]).unwrap();
                 prop_assert_eq!(c1, c2, "compare_runs must be deterministic");
             }
         }
@@ -3037,8 +3109,8 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
 
-                let fwd = compare_stats(&mk(a), &mk(b), &budgets).unwrap();
-                let rev = compare_stats(&mk(b), &mk(a), &budgets).unwrap();
+                let fwd = compare_stats(&mk(a), &mk(b), &budgets, &[]).unwrap();
+                let rev = compare_stats(&mk(b), &mk(a), &budgets, &[]).unwrap();
 
                 let fwd_reg = fwd.deltas[&Metric::WallMs].regression;
                 let rev_reg = rev.deltas[&Metric::WallMs].regression;
@@ -3088,7 +3160,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
 
-                let cmp = compare_stats(&mk(baseline), &mk(current), &budgets).unwrap();
+                let cmp = compare_stats(&mk(baseline), &mk(current), &budgets, &[]).unwrap();
                 let status = cmp.deltas[&Metric::WallMs].status;
                 prop_assert_eq!(
                     status,
@@ -3124,7 +3196,7 @@ mod tests {
                 let mut budgets = BTreeMap::new();
                 budgets.insert(Metric::WallMs, budget);
 
-                let cmp = compare_stats(&mk(baseline), &mk(current), &budgets).unwrap();
+                let cmp = compare_stats(&mk(baseline), &mk(current), &budgets, &[]).unwrap();
                 let status = cmp.deltas[&Metric::WallMs].status;
                 prop_assert!(
                     status != MetricStatus::Fail,
@@ -3414,7 +3486,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+        let comparison = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
         // Should have cpu_ms delta
         let cpu_delta = comparison
@@ -3469,7 +3541,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+        let comparison = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
         let cpu_delta = comparison
             .deltas
@@ -3520,7 +3592,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+        let comparison = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
         // cpu_ms delta should NOT exist (skipped because current lacks it)
         assert!(
@@ -3561,7 +3633,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+        let comparison = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
         // cpu_ms delta should NOT exist (skipped because baseline lacks it)
         assert!(
@@ -3603,7 +3675,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::CpuMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-        let comparison = compare_stats(&baseline, &current, &budgets).unwrap();
+        let comparison = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
         let cpu_delta = comparison
             .deltas
@@ -3649,7 +3721,7 @@ mod tests {
         let mut budgets = BTreeMap::new();
         budgets.insert(Metric::WallMs, Budget::new(0.20, 0.18, Direction::Lower));
 
-        let c = compare_stats(&baseline, &current, &budgets).unwrap();
+        let c = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
         let d = c.deltas.get(&Metric::WallMs).unwrap();
         assert!(d.pct > 0.0);
         assert_eq!(d.status, MetricStatus::Pass);
@@ -3689,7 +3761,7 @@ mod tests {
             Budget::new(0.15, 0.135, Direction::Higher),
         );
 
-        let c = compare_stats(&baseline, &current, &budgets).unwrap();
+        let c = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
         let d = c.deltas.get(&Metric::ThroughputPerS).unwrap();
         assert!(d.pct < 0.0);
         assert_eq!(d.status, MetricStatus::Pass);
@@ -3905,7 +3977,7 @@ mod tests {
             let mut budgets = BTreeMap::new();
             budgets.insert(Metric::WallMs, Budget::new(0.20, 0.10, Direction::Lower));
 
-            let result = compare_stats(&baseline, &current, &budgets).unwrap();
+            let result = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
             assert_eq!(
                 result.deltas.get(&Metric::WallMs).unwrap().status,
@@ -3952,7 +4024,7 @@ mod tests {
                 Budget::new(0.20, 0.10, Direction::Higher),
             );
 
-            let result = compare_stats(&baseline, &current, &budgets).unwrap();
+            let result = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
             assert_eq!(
                 result.deltas.get(&Metric::ThroughputPerS).unwrap().status,
@@ -3996,7 +4068,7 @@ mod tests {
             let mut budgets = BTreeMap::new();
             budgets.insert(Metric::MaxRssKb, Budget::new(0.20, 0.10, Direction::Lower));
 
-            let result = compare_stats(&baseline, &current, &budgets).unwrap();
+            let result = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
             assert_eq!(
                 result.deltas.get(&Metric::MaxRssKb).unwrap().status,
@@ -4044,7 +4116,7 @@ mod tests {
                 Budget::new(0.20, 0.10, Direction::Higher),
             );
 
-            let result = compare_stats(&baseline, &current, &budgets).unwrap();
+            let result = compare_stats(&baseline, &current, &budgets, &[]).unwrap();
 
             assert_eq!(
                 result.deltas.get(&Metric::ThroughputPerS).unwrap().status,
@@ -4484,5 +4556,115 @@ mod tests {
             assert_eq!(metric_to_string(Metric::MaxRssKb), "max_rss_kb");
             assert_eq!(metric_to_string(Metric::ThroughputPerS), "throughput_per_s");
         }
+    }
+}
+
+#[cfg(test)]
+mod tradeoff_tests {
+    use super::*;
+    use perfgate_types::{Direction, TradeoffDowngrade, TradeoffRequirement, TradeoffRule};
+
+    fn stats(wall_ms: u64, max_rss_kb: Option<u64>, throughput_per_s: Option<u64>) -> Stats {
+        Stats {
+            wall_ms: perfgate_types::U64Summary::new(wall_ms, wall_ms, wall_ms),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: max_rss_kb.map(|v| perfgate_types::U64Summary::new(v, v, v)),
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: throughput_per_s
+                .map(|v| perfgate_types::F64Summary::new(v as f64, v as f64, v as f64)),
+        }
+    }
+
+    fn base_budgets() -> BTreeMap<Metric, Budget> {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(Metric::MaxRssKb, Budget::new(0.2, 0.1, Direction::Lower));
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget::new(0.2, 0.1, Direction::Higher),
+        );
+        budgets
+    }
+
+    fn memory_for_speed_rule() -> TradeoffRule {
+        TradeoffRule {
+            name: "memory_for_speed".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::ThroughputPerS,
+                min_improvement_ratio: 1.5,
+            }],
+            downgrade_to: TradeoffDowngrade::Warn,
+        }
+    }
+
+    #[test]
+    fn fail_is_downgraded_when_tradeoff_satisfied() {
+        let baseline = stats(100, Some(1000), Some(100));
+        let current = stats(100, Some(1300), Some(170));
+        let budgets = base_budgets();
+
+        let comparison = compare_stats(&baseline, &current, &budgets, &[memory_for_speed_rule()])
+            .expect("comparison");
+        assert_eq!(
+            comparison.deltas[&Metric::MaxRssKb].status,
+            MetricStatus::Warn
+        );
+        assert_eq!(comparison.verdict.status, VerdictStatus::Warn);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .iter()
+                .any(|r| r == "tradeoff_memory_for_speed_applied")
+        );
+    }
+
+    #[test]
+    fn fail_remains_fail_when_tradeoff_not_satisfied() {
+        let baseline = stats(100, Some(1000), Some(100));
+        let current = stats(100, Some(1300), Some(120));
+        let budgets = base_budgets();
+
+        let comparison = compare_stats(&baseline, &current, &budgets, &[memory_for_speed_rule()])
+            .expect("comparison");
+        assert_eq!(
+            comparison.deltas[&Metric::MaxRssKb].status,
+            MetricStatus::Fail
+        );
+        assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .iter()
+                .any(|r| r == "tradeoff_rule_not_satisfied")
+        );
+    }
+
+    #[test]
+    fn missing_required_metric_emits_reason() {
+        let baseline = stats(100, Some(1000), None);
+        let current = stats(100, Some(1300), None);
+        let budgets = {
+            let mut b = BTreeMap::new();
+            b.insert(Metric::MaxRssKb, Budget::new(0.2, 0.1, Direction::Lower));
+            b
+        };
+
+        let comparison = compare_stats(&baseline, &current, &budgets, &[memory_for_speed_rule()])
+            .expect("comparison");
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .iter()
+                .any(|r| r == "tradeoff_missing_required_metric")
+        );
     }
 }

@@ -199,6 +199,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
                         )
                     })
                     .transpose()?,
+                tradeoffs: {
+                    let mut rules = req.config.tradeoffs.clone();
+                    rules.extend(bench_config.tradeoffs.clone());
+                    rules
+                },
                 baseline_ref: CompareRef {
                     path: req.baseline_path.as_ref().map(|p| p.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),
@@ -977,6 +982,7 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
 
@@ -994,6 +1000,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench.clone()],
         };
 
@@ -1056,6 +1063,7 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
         let config = ConfigFile::default();
@@ -1107,6 +1115,7 @@ mod tests {
             metrics: None,
             budgets: Some(overrides),
 
+            tradeoffs: vec![],
             scaling: None,
         };
 
@@ -1124,6 +1133,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench.clone()],
         };
 
@@ -1196,11 +1206,13 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench],
         };
 
@@ -1250,11 +1262,13 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench],
         };
 
@@ -1310,6 +1324,7 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
         let config = ConfigFile {
@@ -1326,6 +1341,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench],
         };
 
@@ -1378,11 +1394,13 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench],
         };
 
@@ -1413,6 +1431,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![],
         };
 
@@ -1449,6 +1468,7 @@ mod tests {
             metrics: None,
             budgets: None,
 
+            tradeoffs: vec![],
             scaling: None,
         };
         let config = ConfigFile {
@@ -1465,6 +1485,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![],
             benches: vec![bench],
         };
 

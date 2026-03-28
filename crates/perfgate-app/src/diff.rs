@@ -282,6 +282,11 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> DiffUseCa
                 budgets,
                 metric_statistics,
                 significance: None,
+                tradeoffs: {
+                    let mut rules = config.tradeoffs.clone();
+                    rules.extend(bench.tradeoffs.clone());
+                    rules
+                },
                 baseline_ref: CompareRef {
                     path: Some(baseline_path.display().to_string()),
                     run_id: Some(baseline.run.id.clone()),
