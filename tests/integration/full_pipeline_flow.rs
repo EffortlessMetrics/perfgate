@@ -318,6 +318,7 @@ fn sensor_report_from_run_receipt_pass() {
             skip_count: 0,
             total_count: 1,
         },
+        complexity: None,
         profile_path: None,
     };
 
@@ -366,6 +367,7 @@ fn sensor_report_serializes_to_valid_json() {
             skip_count: 0,
             total_count: 1,
         },
+        complexity: None,
         profile_path: None,
     };
 

@@ -34,6 +34,7 @@ fn main() {
             skip_count: 0,
             total_count: 1,
         },
+        complexity: None,
         profile_path: None,
     };
 

@@ -110,6 +110,7 @@ impl ReportUseCase {
             compare: Some(req.compare),
             findings,
             summary,
+            complexity: None,
             profile_path: None,
         };
 

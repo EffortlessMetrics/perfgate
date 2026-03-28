@@ -54,7 +54,8 @@ pub use trend::{
 pub use perfgate_render::{
     direction_str, format_metric, format_metric_with_statistic, format_pct, format_value,
     github_annotations, markdown_template_context, metric_status_icon, metric_status_str,
-    parse_reason_token, render_markdown, render_markdown_template, render_reason_line,
+    parse_reason_token, render_complexity_section, render_markdown, render_markdown_template,
+    render_reason_line,
 };
 
 // Re-export export functionality from perfgate-export for backward compatibility

@@ -9,4 +9,4 @@ Generating trend variance summary...
 | cli/compare-large | 1 | 7.00 | N/A | N/A | N/A |
 | cli/compare-small | 1 | 7.00 | N/A | N/A | N/A |
 | render/md | 1 | 6.00 | N/A | N/A | N/A |
-| render/report | 1 | 6.00 | N/A | N/A | N/A |
+| render/report | 1 | 7.00 | N/A | N/A | N/A |

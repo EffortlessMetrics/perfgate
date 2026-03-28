@@ -4599,6 +4599,7 @@ async fn given_perfgate_report(world: &mut PerfgateWorld, status: String) {
             },
             total_count: 4,
         },
+        complexity: None,
         profile_path: None,
     }));
 }
