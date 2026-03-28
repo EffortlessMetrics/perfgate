@@ -36,8 +36,9 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt,
+    CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, PerfgateReport, RunReceipt,
+    SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -255,6 +256,34 @@ enum Command {
         /// Paths to run receipts (glob patterns supported)
         #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
+
+        /// Aggregation policy: all, majority, weighted, quorum, fail_if_n_of_m
+        #[arg(long, default_value = "all", value_parser = parse_aggregation_policy)]
+        policy: AggregationPolicy,
+
+        /// Quorum threshold used by quorum/weighted policies (0.0 to 1.0)
+        #[arg(long)]
+        quorum: Option<f64>,
+
+        /// Fail threshold N for fail_if_n_of_m policy
+        #[arg(long)]
+        fail_n: Option<u32>,
+
+        /// Optional expected total runners M for fail_if_n_of_m policy
+        #[arg(long)]
+        fail_m: Option<u32>,
+
+        /// Runner weights as label=value (repeatable), e.g. ubuntu-x86_64=0.5
+        #[arg(long = "weight")]
+        weights: Vec<String>,
+
+        /// Optional runner class/tag added to each input in the aggregate receipt
+        #[arg(long)]
+        runner_class: Option<String>,
+
+        /// Optional benchmark lane/group added to each input in the aggregate receipt
+        #[arg(long)]
+        lane: Option<String>,
 
         /// Output file path
         #[arg(long, default_value = "perfgate-aggregated.json")]
@@ -1988,7 +2017,18 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
 
-        Command::Aggregate { files, out, pretty } => {
+        Command::Aggregate {
+            files,
+            policy,
+            quorum,
+            fail_n,
+            fail_m,
+            weights,
+            runner_class,
+            lane,
+            out,
+            pretty,
+        } => {
             let usecase = perfgate_app::AggregateUseCase;
             let mut resolved_files = Vec::new();
             for pattern in files {
@@ -1996,10 +2036,17 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     resolved_files.push(entry?);
                 }
             }
+            let weight_map = parse_weight_map(&weights)?;
             let outcome = usecase.execute(perfgate_app::AggregateRequest {
                 files: resolved_files,
+                policy,
+                quorum,
+                fail_if: fail_n.map(|n| FailIfNOfM { n, m: fail_m }),
+                weights: weight_map,
+                runner_class,
+                lane,
             })?;
-            write_json(&out, &outcome.receipt, pretty)?;
+            write_json(&out, &outcome.aggregate, pretty)?;
             Ok(())
         }
 
@@ -4669,6 +4716,39 @@ fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
             s
         )),
     }
+}
+
+fn parse_aggregation_policy(s: &str) -> Result<AggregationPolicy, String> {
+    match s {
+        "all" => Ok(AggregationPolicy::All),
+        "majority" => Ok(AggregationPolicy::Majority),
+        "weighted" => Ok(AggregationPolicy::Weighted),
+        "quorum" => Ok(AggregationPolicy::Quorum),
+        "fail_if_n_of_m" => Ok(AggregationPolicy::FailIfNOfM),
+        _ => Err(format!(
+            "invalid aggregation policy: {s} (expected all|majority|weighted|quorum|fail_if_n_of_m)"
+        )),
+    }
+}
+
+fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>> {
+    let mut map = BTreeMap::new();
+    for raw in weights {
+        let (label, weight_raw) = raw
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("invalid --weight '{raw}', expected label=value"))?;
+        if label.trim().is_empty() {
+            anyhow::bail!("invalid --weight '{raw}': label cannot be empty");
+        }
+        let weight: f64 = weight_raw
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid --weight '{raw}': weight must be a number"))?;
+        if !(0.0..=1.0).contains(&weight) {
+            anyhow::bail!("invalid --weight '{raw}': weight must be within [0.0, 1.0]");
+        }
+        map.insert(label.trim().to_string(), weight);
+    }
+    Ok(map)
 }
 
 fn parse_significance_alpha(s: &str) -> Result<f64, String> {
