@@ -21,6 +21,10 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "$ref": "#/$defs/RatchetConfig",
+      "default": {}
     }
   },
   "$defs": {
@@ -401,6 +405,48 @@
       "required": [
         "sizes"
       ]
+    },
+    "RatchetMode": {
+      "type": "string",
+      "enum": [
+        "threshold",
+        "baseline_value"
+      ],
+      "default": "threshold"
+    },
+    "RatchetConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "mode": {
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "min_improvement": {
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "max_tightening": {
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "require_significance": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Metric"
+          },
+          "default": []
+        }
+      }
     }
   }
 }

@@ -17,9 +17,10 @@
 
 use anyhow::Context;
 use perfgate_client::{BaselineClient, ClientConfig, FallbackClient, FallbackStorage};
-use perfgate_types::{BaselineServerConfig, ConfigFile};
+use perfgate_types::{BaselineServerConfig, ConfigFile, RatchetConfig, RatchetMode};
 use std::fs;
 use std::path::Path;
+use toml_edit::{Array, DocumentMut, Item, Table, Value, value};
 
 /// Resolved server configuration with all sources merged.
 #[derive(Debug, Clone, Default)]
@@ -126,5 +127,101 @@ pub fn resolve_server_config(
         api_key: flag_key.or_else(|| file_config.resolved_api_key()),
         project: flag_project.or_else(|| file_config.resolved_project()),
         fallback_to_local: file_config.fallback_to_local,
+    }
+}
+
+/// Upserts `[ratchet]` fields in a TOML config while preserving existing comments
+/// and key ordering for untouched sections.
+pub fn upsert_ratchet_config_toml(
+    content: &str,
+    ratchet: &RatchetConfig,
+) -> anyhow::Result<String> {
+    let mut doc = content
+        .parse::<DocumentMut>()
+        .with_context(|| "parse TOML document for ratchet update")?;
+
+    let ratchet_item = doc.entry("ratchet").or_insert(Item::Table(Table::new()));
+    if !ratchet_item.is_table() {
+        return Err(anyhow::anyhow!(
+            "cannot update [ratchet]: existing `ratchet` key is not a table"
+        ));
+    }
+
+    let table = ratchet_item
+        .as_table_like_mut()
+        .ok_or_else(|| anyhow::anyhow!("internal error: ratchet table missing"))?;
+
+    table.insert("enabled", value(ratchet.enabled));
+    table.insert(
+        "mode",
+        value(match ratchet.mode {
+            RatchetMode::Threshold => "threshold",
+            RatchetMode::BaselineValue => "baseline_value",
+        }),
+    );
+    table.insert("min_improvement", value(ratchet.min_improvement));
+    table.insert("max_tightening", value(ratchet.max_tightening));
+    table.insert("require_significance", value(ratchet.require_significance));
+
+    let mut allow_metrics = Array::default();
+    for metric in &ratchet.allow_metrics {
+        allow_metrics.push(metric.to_string());
+    }
+    table.insert("allow_metrics", Item::Value(Value::Array(allow_metrics)));
+
+    Ok(doc.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use perfgate_types::Metric;
+
+    #[test]
+    fn upsert_ratchet_config_toml_preserves_existing_comments() {
+        let input = r#"# file comment
+[defaults]
+# keep this comment
+repeat = 5
+"#;
+        let ratchet = RatchetConfig {
+            enabled: true,
+            mode: RatchetMode::Threshold,
+            min_improvement: 0.07,
+            max_tightening: 0.1,
+            require_significance: true,
+            allow_metrics: vec![Metric::WallMs, Metric::CpuMs],
+        };
+
+        let output = upsert_ratchet_config_toml(input, &ratchet).expect("update should succeed");
+        assert!(output.contains("# keep this comment"));
+        assert!(output.contains("[ratchet]"));
+        assert!(output.contains("enabled = true"));
+        assert!(output.contains("mode = \"threshold\""));
+        assert!(output.contains("allow_metrics = [\"wall_ms\", \"cpu_ms\"]"));
+    }
+
+    #[test]
+    fn upsert_ratchet_config_toml_updates_existing_section() {
+        let input = r#"[ratchet]
+enabled = false
+mode = "threshold"
+"#;
+        let ratchet = RatchetConfig {
+            enabled: true,
+            mode: RatchetMode::BaselineValue,
+            min_improvement: 0.12,
+            max_tightening: 0.2,
+            require_significance: false,
+            allow_metrics: vec![Metric::WallMs],
+        };
+
+        let output = upsert_ratchet_config_toml(input, &ratchet).expect("update should succeed");
+        assert!(output.contains("enabled = true"));
+        assert!(output.contains("mode = \"baseline_value\""));
+        assert!(output.contains("min_improvement = 0.12"));
+        assert!(output.contains("max_tightening = 0.2"));
+        assert!(output.contains("require_significance = false"));
+        assert!(output.contains("allow_metrics = [\"wall_ms\"]"));
     }
 }

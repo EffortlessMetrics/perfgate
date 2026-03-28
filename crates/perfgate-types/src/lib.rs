@@ -1154,6 +1154,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    /// Optional ratcheting policy for automatic budget tightening on trusted promotes.
+    #[serde(default)]
+    pub ratchet: RatchetConfig,
+
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 }
@@ -1252,6 +1256,72 @@ impl BaselineServerConfig {
             .ok()
             .or_else(|| self.project.clone())
     }
+}
+
+/// Configuration for automatic budget ratcheting.
+///
+/// Ratcheting is conservative by default (`enabled = false`) and should only be
+/// used on explicit promote workflows.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RatchetConfig {
+    /// Whether ratcheting is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// How ratcheting should tighten budget targets.
+    #[serde(default)]
+    pub mode: RatchetMode,
+
+    /// Minimum relative improvement (fraction) required to ratchet.
+    #[serde(default = "default_ratchet_min_improvement")]
+    pub min_improvement: f64,
+
+    /// Maximum one-step tightening (fraction).
+    #[serde(default = "default_ratchet_max_tightening")]
+    pub max_tightening: f64,
+
+    /// Whether statistical significance evidence is required.
+    #[serde(default = "default_ratchet_require_significance")]
+    pub require_significance: bool,
+
+    /// Optional allow-list of metrics that can be ratcheted.
+    #[serde(default)]
+    pub allow_metrics: Vec<Metric>,
+}
+
+impl Default for RatchetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: RatchetMode::Threshold,
+            min_improvement: default_ratchet_min_improvement(),
+            max_tightening: default_ratchet_max_tightening(),
+            require_significance: default_ratchet_require_significance(),
+            allow_metrics: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum RatchetMode {
+    #[default]
+    Threshold,
+    BaselineValue,
+}
+
+fn default_ratchet_min_improvement() -> f64 {
+    0.05
+}
+
+fn default_ratchet_max_tightening() -> f64 {
+    0.10
+}
+
+fn default_ratchet_require_significance() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -1540,6 +1610,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: RatchetConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1629,6 +1700,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: RatchetConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -1644,6 +1716,43 @@ mod tests {
             }],
         };
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn ratchet_config_defaults_are_conservative() {
+        let ratchet = RatchetConfig::default();
+        assert!(!ratchet.enabled);
+        assert_eq!(ratchet.mode, RatchetMode::Threshold);
+        assert_eq!(ratchet.min_improvement, 0.05);
+        assert_eq!(ratchet.max_tightening, 0.10);
+        assert!(ratchet.require_significance);
+        assert!(ratchet.allow_metrics.is_empty());
+    }
+
+    #[test]
+    fn config_file_parses_ratchet_section_from_toml() {
+        let config: ConfigFile = toml::from_str(
+            r#"
+[ratchet]
+enabled = true
+mode = "baseline_value"
+min_improvement = 0.08
+max_tightening = 0.12
+require_significance = false
+allow_metrics = ["wall_ms", "cpu_ms"]
+"#,
+        )
+        .expect("valid ratchet config should parse");
+
+        assert!(config.ratchet.enabled);
+        assert_eq!(config.ratchet.mode, RatchetMode::BaselineValue);
+        assert_eq!(config.ratchet.min_improvement, 0.08);
+        assert_eq!(config.ratchet.max_tightening, 0.12);
+        assert!(!config.ratchet.require_significance);
+        assert_eq!(
+            config.ratchet.allow_metrics,
+            vec![Metric::WallMs, Metric::CpuMs]
+        );
     }
 
     // ---- Serde round-trip unit tests ----
@@ -2027,6 +2136,14 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            ratchet: RatchetConfig {
+                enabled: true,
+                mode: RatchetMode::Threshold,
+                min_improvement: 0.05,
+                max_tightening: 0.10,
+                require_significance: true,
+                allow_metrics: vec![Metric::WallMs, Metric::CpuMs],
+            },
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2064,6 +2181,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            ratchet: RatchetConfig::default(),
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3026,16 +3144,50 @@ mod property_tests {
             )
     }
 
+    // Strategy for RatchetConfig
+    fn ratchet_config_strategy() -> impl Strategy<Value = RatchetConfig> {
+        (
+            proptest::bool::ANY,
+            prop_oneof![
+                Just(RatchetMode::Threshold),
+                Just(RatchetMode::BaselineValue),
+            ],
+            0.0f64..1.0,
+            0.0f64..1.0,
+            proptest::bool::ANY,
+            proptest::collection::vec(metric_strategy(), 0..4),
+        )
+            .prop_map(
+                |(
+                    enabled,
+                    mode,
+                    min_improvement,
+                    max_tightening,
+                    require_significance,
+                    allow_metrics,
+                )| RatchetConfig {
+                    enabled,
+                    mode,
+                    min_improvement,
+                    max_tightening,
+                    require_significance,
+                    allow_metrics,
+                },
+            )
+    }
+
     // Strategy for ConfigFile
     fn config_file_strategy() -> impl Strategy<Value = ConfigFile> {
         (
             defaults_config_strategy(),
             baseline_server_config_strategy(),
+            ratchet_config_strategy(),
             proptest::collection::vec(bench_config_file_strategy(), 0..5),
         )
-            .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
+            .prop_map(|(defaults, baseline_server, ratchet, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                ratchet,
                 benches,
             })
     }
@@ -3097,6 +3249,24 @@ mod property_tests {
                 (None, None) => {}
                 _ => prop_assert!(false, "defaults.warn_factor presence mismatch"),
             }
+
+            // Compare ratchet config
+            prop_assert_eq!(config.ratchet.enabled, deserialized.ratchet.enabled);
+            prop_assert_eq!(config.ratchet.mode, deserialized.ratchet.mode);
+            prop_assert_eq!(config.ratchet.require_significance, deserialized.ratchet.require_significance);
+            prop_assert_eq!(&config.ratchet.allow_metrics, &deserialized.ratchet.allow_metrics);
+            prop_assert!(
+                f64_approx_eq(config.ratchet.min_improvement, deserialized.ratchet.min_improvement),
+                "ratchet.min_improvement mismatch: {} vs {}",
+                config.ratchet.min_improvement,
+                deserialized.ratchet.min_improvement
+            );
+            prop_assert!(
+                f64_approx_eq(config.ratchet.max_tightening, deserialized.ratchet.max_tightening),
+                "ratchet.max_tightening mismatch: {} vs {}",
+                config.ratchet.max_tightening,
+                deserialized.ratchet.max_tightening
+            );
 
             // Compare benches
             prop_assert_eq!(config.benches.len(), deserialized.benches.len());
@@ -3209,6 +3379,24 @@ mod property_tests {
                 (None, None) => {}
                 _ => prop_assert!(false, "defaults.warn_factor presence mismatch"),
             }
+
+            // Compare ratchet config
+            prop_assert_eq!(config.ratchet.enabled, deserialized.ratchet.enabled);
+            prop_assert_eq!(config.ratchet.mode, deserialized.ratchet.mode);
+            prop_assert_eq!(config.ratchet.require_significance, deserialized.ratchet.require_significance);
+            prop_assert_eq!(&config.ratchet.allow_metrics, &deserialized.ratchet.allow_metrics);
+            prop_assert!(
+                f64_approx_eq(config.ratchet.min_improvement, deserialized.ratchet.min_improvement),
+                "ratchet.min_improvement mismatch: {} vs {}",
+                config.ratchet.min_improvement,
+                deserialized.ratchet.min_improvement
+            );
+            prop_assert!(
+                f64_approx_eq(config.ratchet.max_tightening, deserialized.ratchet.max_tightening),
+                "ratchet.max_tightening mismatch: {} vs {}",
+                config.ratchet.max_tightening,
+                deserialized.ratchet.max_tightening
+            );
 
             // Compare benches
             prop_assert_eq!(config.benches.len(), deserialized.benches.len());
