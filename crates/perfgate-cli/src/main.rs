@@ -2187,11 +2187,11 @@ fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {
     let input = match (&args.report, &args.compare) {
         (Some(path), None) => {
             let report: PerfgateReport = read_json(path)?;
-            BadgeInput::Report(report)
+            BadgeInput::Report(Box::new(report))
         }
         (None, Some(path)) => {
             let compare: CompareReceipt = read_json(path)?;
-            BadgeInput::Compare(compare)
+            BadgeInput::Compare(Box::new(compare))
         }
         (None, None) => {
             anyhow::bail!("one of --report or --compare is required");
@@ -5327,6 +5327,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
 
@@ -5387,6 +5388,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
 

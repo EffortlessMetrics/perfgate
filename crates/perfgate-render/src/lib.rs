@@ -6,7 +6,10 @@
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 use anyhow::Context;
-use perfgate_types::{CompareReceipt, Direction, Metric, MetricStatistic, MetricStatus};
+use perfgate_types::{
+    CompareReceipt, ComplexityGateResult, ComplexityGateStatus, Direction, Metric, MetricStatistic,
+    MetricStatus,
+};
 use serde_json::json;
 
 /// Render a [`CompareReceipt`] as a Markdown table for PR comments.
@@ -68,6 +71,32 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
         }
     }
 
+    out
+}
+
+/// Render a complexity-gate section for markdown reports.
+pub fn render_complexity_section(complexity: &ComplexityGateResult) -> String {
+    let mut out = String::new();
+    out.push_str("\n### Complexity Gate\n\n");
+    let status = match complexity.status {
+        ComplexityGateStatus::Pass => "✅ pass",
+        ComplexityGateStatus::Fail => "❌ fail",
+        ComplexityGateStatus::Inconclusive => "❔ inconclusive",
+    };
+    out.push_str(&format!("**Status:** {status}\n\n"));
+    if let Some(expected) = &complexity.expected {
+        out.push_str(&format!("* Expected: `{expected}`\n"));
+    }
+    if let Some(observed) = &complexity.observed {
+        out.push_str(&format!("* Observed: `{observed}`\n"));
+    }
+    if let Some(r_squared) = complexity.r_squared {
+        out.push_str(&format!(
+            "* R²: `{r_squared:.4}` (threshold `{:.4}`)\n",
+            complexity.r_squared_threshold
+        ));
+    }
+    out.push_str(&format!("* Details: {}\n", complexity.message));
     out
 }
 
