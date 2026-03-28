@@ -36,7 +36,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use perfgate_auth::CredentialSource;
 use perfgate_server::{
-    JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend, run_server,
+    ApiKeyMetadata, JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend,
+    run_server,
 };
 use std::time::Duration;
 
@@ -345,9 +346,11 @@ async fn main() {
                 policy.role,
                 policy.project,
                 policy.benchmark_regex,
-                Some(policy.id.clone()),
-                Some(policy.id),
-                policy.expires_at,
+                ApiKeyMetadata {
+                    id: Some(policy.id.clone()),
+                    name: Some(policy.id),
+                    expires_at: policy.expires_at,
+                },
             );
         }
     }

@@ -145,6 +145,14 @@ pub struct ApiKeyConfig {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+/// Optional stable metadata preserved for externally loaded API keys.
+#[derive(Debug, Clone, Default)]
+pub struct ApiKeyMetadata {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 /// Server configuration.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -270,7 +278,13 @@ impl ServerConfig {
         project: impl Into<String>,
         benchmark_regex: Option<String>,
     ) -> Self {
-        self.scoped_api_key_with_metadata(key, role, project, benchmark_regex, None, None, None)
+        self.scoped_api_key_with_metadata(
+            key,
+            role,
+            project,
+            benchmark_regex,
+            ApiKeyMetadata::default(),
+        )
     }
 
     /// Adds a scoped API key with optional stable metadata preserved from an external source.
@@ -280,18 +294,16 @@ impl ServerConfig {
         role: Role,
         project: impl Into<String>,
         benchmark_regex: Option<String>,
-        id: Option<String>,
-        name: Option<String>,
-        expires_at: Option<DateTime<Utc>>,
+        metadata: ApiKeyMetadata,
     ) -> Self {
         self.api_keys.push(ApiKeyConfig {
-            id,
-            name,
+            id: metadata.id,
+            name: metadata.name,
             key: key.into(),
             role,
             project: project.into(),
             benchmark_regex,
-            expires_at,
+            expires_at: metadata.expires_at,
         });
         self
     }
@@ -851,9 +863,11 @@ mod tests {
             Role::Contributor,
             "project-2",
             Some("^bench-.*$".to_string()),
-            Some("external-key-1".to_string()),
-            Some("external-key-1".to_string()),
-            Some(expires_at),
+            ApiKeyMetadata {
+                id: Some("external-key-1".to_string()),
+                name: Some("external-key-1".to_string()),
+                expires_at: Some(expires_at),
+            },
         );
 
         let key_store = create_key_store(&config).await.unwrap();
