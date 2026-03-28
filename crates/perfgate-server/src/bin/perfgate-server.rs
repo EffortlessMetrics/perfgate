@@ -339,11 +339,15 @@ async fn main() {
     if let Some(source) = choose_credential_source(&args) {
         let loaded = source.load().unwrap_or_else(|e| panic!("{}", e));
         for entry in loaded {
-            config = config.scoped_api_key(
+            let policy = entry.policy;
+            config = config.scoped_api_key_with_metadata(
                 entry.secret,
-                entry.policy.role,
-                entry.policy.project,
-                entry.policy.benchmark_regex,
+                policy.role,
+                policy.project,
+                policy.benchmark_regex,
+                Some(policy.id.clone()),
+                Some(policy.id),
+                policy.expires_at,
             );
         }
     }

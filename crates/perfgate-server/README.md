@@ -73,6 +73,8 @@ You can also load API-key policy documents from exactly one external source:
 `--api-keys-env`, `--api-keys-file`, or `--api-keys-command`. These documents
 may be JSON/TOML arrays or wrapped under `keys` / `api_keys`.
 `--api-keys-command` runs through PowerShell on Windows and `sh` elsewhere.
+Loaded policy `id`, `role`, `project`, optional `benchmark_regex`, and optional
+`expires_at` are preserved by the runtime auth path.
 
 ## Configuration
 
