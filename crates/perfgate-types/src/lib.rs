@@ -553,6 +553,9 @@ pub struct RunReceipt {
     pub bench: BenchMeta,
     pub samples: Vec<Sample>,
     pub stats: Stats,
+    /// Extensible metrics keyed by namespaced identifier (e.g. `span.ast_parsing.wall_ms`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub span_metrics: BTreeMap<String, F64Summary>,
 }
 
 #[derive(

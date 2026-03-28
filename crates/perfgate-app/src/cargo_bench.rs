@@ -337,6 +337,7 @@ pub fn benchmarks_to_receipt(
         },
         samples,
         stats,
+        span_metrics: Default::default(),
     })
 }
 
@@ -395,6 +396,7 @@ pub fn benchmarks_to_individual_receipts(
             },
             samples: vec![sample],
             stats,
+            span_metrics: Default::default(),
         });
     }
 

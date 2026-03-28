@@ -1074,12 +1074,12 @@ pub struct PairedArgs {
 
 #[derive(Debug, Args)]
 pub struct IngestArgs {
-    /// Input format: criterion, hyperfine, gobench, pytest
+    /// Input format: criterion, hyperfine, gobench, pytest, otel
     #[arg(long)]
     pub format: String,
 
     /// Path to the input file (or directory for criterion)
-    #[arg(long)]
+    #[arg(long, visible_alias = "file")]
     pub input: PathBuf,
 
     /// Benchmark name (default: derived from input data)
@@ -2045,7 +2045,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest",
+                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest, otel",
                     format
                 )
             })?;
@@ -4899,6 +4899,7 @@ mod tests {
             },
             samples: Vec::new(),
             stats,
+            span_metrics: Default::default(),
         }
     }
 

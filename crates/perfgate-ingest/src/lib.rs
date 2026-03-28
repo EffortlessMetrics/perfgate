@@ -9,6 +9,7 @@
 mod criterion;
 mod gobench;
 mod hyperfine;
+mod otel;
 mod pytest;
 
 use perfgate_types::{
@@ -20,6 +21,7 @@ use uuid::Uuid;
 pub use criterion::parse_criterion;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
+pub use otel::parse_otel;
 pub use pytest::parse_pytest_benchmark;
 
 /// Supported ingest formats.
@@ -28,6 +30,7 @@ pub enum IngestFormat {
     Criterion,
     Hyperfine,
     GoBench,
+    OTel,
     PytestBenchmark,
 }
 
@@ -38,6 +41,7 @@ impl IngestFormat {
             "criterion" => Some(Self::Criterion),
             "hyperfine" => Some(Self::Hyperfine),
             "gobench" | "go" => Some(Self::GoBench),
+            "otel" | "opentelemetry" => Some(Self::OTel),
             "pytest" | "pytest-benchmark" | "pytest_benchmark" => Some(Self::PytestBenchmark),
             _ => None,
         }
@@ -60,6 +64,7 @@ pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
         IngestFormat::Criterion => parse_criterion(&request.input, request.name.as_deref()),
         IngestFormat::Hyperfine => parse_hyperfine(&request.input, request.name.as_deref()),
         IngestFormat::GoBench => parse_gobench(&request.input, request.name.as_deref()),
+        IngestFormat::OTel => parse_otel(&request.input, request.name.as_deref()),
         IngestFormat::PytestBenchmark => {
             parse_pytest_benchmark(&request.input, request.name.as_deref())
         }
@@ -102,6 +107,7 @@ fn make_receipt(name: &str, samples: Vec<Sample>, stats: Stats) -> RunReceipt {
         },
         samples,
         stats,
+        span_metrics: Default::default(),
     }
 }
 
@@ -167,6 +173,11 @@ mod tests {
         );
         assert_eq!(IngestFormat::parse("gobench"), Some(IngestFormat::GoBench));
         assert_eq!(IngestFormat::parse("go"), Some(IngestFormat::GoBench));
+        assert_eq!(IngestFormat::parse("otel"), Some(IngestFormat::OTel));
+        assert_eq!(
+            IngestFormat::parse("opentelemetry"),
+            Some(IngestFormat::OTel)
+        );
         assert_eq!(
             IngestFormat::parse("pytest"),
             Some(IngestFormat::PytestBenchmark)

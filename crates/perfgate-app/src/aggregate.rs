@@ -74,6 +74,7 @@ impl AggregateUseCase {
             bench,
             samples: combined_samples,
             stats,
+            span_metrics: Default::default(),
         };
 
         Ok(AggregateOutcome { receipt })

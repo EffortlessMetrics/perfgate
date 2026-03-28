@@ -207,6 +207,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
             bench,
             samples,
             stats,
+            span_metrics: Default::default(),
         };
 
         let failed = !reasons.is_empty();

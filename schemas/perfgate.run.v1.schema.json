@@ -19,6 +19,13 @@
     "schema": {
       "type": "string"
     },
+    "span_metrics": {
+      "description": "Extensible metrics keyed by namespaced identifier (e.g. `span.ast_parsing.wall_ms`).",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/F64Summary"
+      }
+    },
     "stats": {
       "$ref": "#/$defs/Stats"
     },
