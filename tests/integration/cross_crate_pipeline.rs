@@ -218,6 +218,7 @@ fn domain_to_app_compare_use_case_then_markdown() {
         budgets: default_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: Some("baseline.json".to_string()),
             run_id: None,
@@ -262,6 +263,7 @@ fn domain_derive_report_produces_findings_for_failures() {
         budgets: default_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: None,
             run_id: None,
@@ -307,6 +309,7 @@ fn domain_to_app_pass_produces_no_findings() {
         budgets: default_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: None,
             run_id: None,
@@ -376,6 +379,7 @@ fn compare_receipt_json_roundtrip() {
         budgets: default_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: Some("base.json".to_string()),
             run_id: None,

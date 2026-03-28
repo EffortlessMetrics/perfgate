@@ -52,6 +52,7 @@ pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
 pub const CHECK_ID_BASELINE: &str = "perf.baseline";
+pub const CHECK_ID_COMPLEXITY: &str = "perf.complexity";
 pub const CHECK_ID_HOST: &str = "perf.host";
 pub const CHECK_ID_TOOL_RUNTIME: &str = "tool.runtime";
 pub const FINDING_CODE_METRIC_WARN: &str = "metric_warn";
@@ -59,6 +60,8 @@ pub const FINDING_CODE_METRIC_FAIL: &str = "metric_fail";
 pub const FINDING_CODE_BASELINE_MISSING: &str = "missing";
 pub const FINDING_CODE_HOST_MISMATCH: &str = "host_mismatch";
 pub const FINDING_CODE_RUNTIME_ERROR: &str = "runtime_error";
+pub const FINDING_CODE_COMPLEXITY_FAIL: &str = "complexity_fail";
+pub const FINDING_CODE_COMPLEXITY_INCONCLUSIVE: &str = "complexity_inconclusive";
 pub const VERDICT_REASON_NO_BASELINE: &str = "no_baseline";
 pub const VERDICT_REASON_HOST_MISMATCH: &str = "host_mismatch";
 pub const VERDICT_REASON_TOOL_ERROR: &str = "tool_error";
@@ -66,6 +69,10 @@ pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
 pub const VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED: &str = "tradeoff_rule_not_satisfied";
 pub const VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC: &str =
     "tradeoff_missing_required_metric";
+pub const VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED: &str = "complexity_expected_exceeded";
+pub const VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE: &str = "complexity_fit_low_confidence";
+pub const VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE: &str =
+    "complexity_measurement_incomplete";
 
 // Error classification stages.
 pub const STAGE_CONFIG_PARSE: &str = "config_parse";
@@ -1095,6 +1102,38 @@ fn is_zero_u32(n: &u32) -> bool {
     *n == 0
 }
 
+/// Complexity gate status produced by scaling validation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum ComplexityGateStatus {
+    Pass,
+    Fail,
+    Inconclusive,
+}
+
+/// Optional complexity-gating result attached to reports.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ComplexityGateResult {
+    pub status: ComplexityGateStatus,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r_squared: Option<f64>,
+
+    pub r_squared_threshold: f64,
+    pub message: String,
+}
+
 /// A performance report wrapping compare results in a cockpit-compatible envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -1115,6 +1154,10 @@ pub struct PerfgateReport {
 
     /// Summary counts.
     pub summary: ReportSummary,
+
+    /// Optional complexity-gating result from scaling validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<ComplexityGateResult>,
 
     /// Path to a flamegraph SVG captured when regression was detected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1191,6 +1234,14 @@ impl ConfigFile {
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
             validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
+        }
+        for rule in &self.tradeoffs {
+            if rule.require.is_empty() {
+                return Err(format!(
+                    "tradeoff '{}' must require at least one compensating metric",
+                    rule.name
+                ));
+            }
         }
         Ok(())
     }
@@ -1590,6 +1641,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1679,6 +1731,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -1694,6 +1747,34 @@ mod tests {
             }],
         };
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn config_file_validate_rejects_empty_tradeoff_requirements() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![TradeoffRule {
+                name: "empty".to_string(),
+                if_failed: Metric::WallMs,
+                require: Vec::new(),
+                downgrade_to: TradeoffDowngrade::Warn,
+            }],
+            benches: vec![BenchConfigFile {
+                name: "my-bench".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+                scaling: None,
+            }],
+        };
+
+        assert!(config.validate().is_err());
     }
 
     // ---- Serde round-trip unit tests ----
@@ -2054,6 +2135,7 @@ mod tests {
                 skip_count: 0,
                 total_count: 2,
             },
+            complexity: None,
             profile_path: None,
         };
         let json = serde_json::to_string(&report).unwrap();
@@ -2077,6 +2159,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2114,6 +2197,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            tradeoffs: Vec::new(),
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3086,6 +3170,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                tradeoffs: Vec::new(),
                 benches,
             })
     }
@@ -3728,6 +3813,7 @@ mod property_tests {
                 compare,
                 findings,
                 summary,
+                complexity: None,
                 profile_path: None,
             })
     }

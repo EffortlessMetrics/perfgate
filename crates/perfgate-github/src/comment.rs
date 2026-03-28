@@ -427,6 +427,7 @@ mod tests {
                 fail_count: 0,
                 skip_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
 
@@ -451,6 +452,7 @@ mod tests {
                 fail_count: 0,
                 skip_count: 0,
             },
+            complexity: None,
             profile_path: None,
         };
 

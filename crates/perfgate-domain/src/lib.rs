@@ -337,6 +337,93 @@ mod tradeoff_tests {
                 .contains(&VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string())
         );
     }
+
+    #[test]
+    fn empty_tradeoff_rule_does_not_apply() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+        let rule = TradeoffRule {
+            name: "empty".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: Vec::new(),
+            downgrade_to: TradeoffDowngrade::Warn,
+        };
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets(), &[rule]).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_empty_applied".to_string())
+        );
+    }
+
+    #[test]
+    fn later_satisfied_tradeoff_suppresses_unsatisfied_reason() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(100, 1300, 1700);
+        let rules = vec![memory_for_speed_rule(2.0), memory_for_speed_rule(1.5)];
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets(), &rules).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Warn);
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_speed_applied".to_string())
+        );
+        assert!(
+            !comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string())
+        );
+    }
+
+    #[test]
+    fn zero_current_for_lower_is_better_requirement_counts_as_improvement() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(0, 1300, 1000);
+        let budgets = BTreeMap::from([
+            (Metric::WallMs, Budget::new(0.20, 0.1, Direction::Lower)),
+            (Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower)),
+        ]);
+        let rule = TradeoffRule {
+            name: "memory_for_latency".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::WallMs,
+                min_improvement_ratio: 1.1,
+            }],
+            downgrade_to: TradeoffDowngrade::Warn,
+        };
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets, &[rule]).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Warn);
+        assert_eq!(
+            comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Warn
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&"tradeoff_memory_for_latency_applied".to_string())
+        );
+    }
 }
 
 /// Compute perfgate stats from samples.
@@ -810,13 +897,11 @@ fn push_unique_reason(reasons: &mut Vec<String>, token: String) {
 fn improvement_ratio(delta: &Delta, metric: Metric) -> Option<f64> {
     match metric.default_direction() {
         perfgate_types::Direction::Higher => Some(delta.ratio),
-        perfgate_types::Direction::Lower => {
-            if delta.current <= 0.0 {
-                None
-            } else {
-                Some(delta.baseline / delta.current)
-            }
-        }
+        perfgate_types::Direction::Lower => Some(if delta.current <= 0.0 {
+            f64::INFINITY
+        } else {
+            delta.baseline / delta.current
+        }),
     }
 }
 
@@ -833,13 +918,15 @@ fn apply_tradeoffs(
 
     for failed_metric in failed_metrics {
         let mut applied = false;
+        let mut saw_missing_required_metric = false;
+        let mut saw_unsatisfied_rule = false;
 
         for rule in tradeoffs
             .iter()
             .filter(|rule| rule.if_failed == failed_metric)
         {
             let mut missing_required_metric = false;
-            let mut satisfied = true;
+            let mut satisfied = !rule.require.is_empty();
 
             for requirement in &rule.require {
                 let Some(required_delta) = deltas.get(&requirement.metric) else {
@@ -858,18 +945,9 @@ fn apply_tradeoffs(
                 }
             }
 
-            if missing_required_metric {
-                push_unique_reason(
-                    reasons,
-                    VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string(),
-                );
-            }
-
             if !satisfied {
-                push_unique_reason(
-                    reasons,
-                    VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string(),
-                );
+                saw_missing_required_metric |= missing_required_metric;
+                saw_unsatisfied_rule = true;
                 continue;
             }
 
@@ -894,8 +972,19 @@ fn apply_tradeoffs(
             break;
         }
 
-        if applied {
-            continue;
+        if !applied {
+            if saw_missing_required_metric {
+                push_unique_reason(
+                    reasons,
+                    VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string(),
+                );
+            }
+            if saw_unsatisfied_rule {
+                push_unique_reason(
+                    reasons,
+                    VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string(),
+                );
+            }
         }
     }
 }

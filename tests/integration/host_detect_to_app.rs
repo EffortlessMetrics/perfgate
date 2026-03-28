@@ -205,6 +205,7 @@ fn app_compare_with_host_mismatch_warn_policy() {
         budgets: make_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: None,
             run_id: None,
@@ -247,6 +248,7 @@ fn app_compare_with_host_mismatch_error_policy() {
         budgets: make_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: None,
             run_id: None,
@@ -290,6 +292,7 @@ fn app_compare_with_host_mismatch_ignore_policy() {
         budgets: make_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: None,
             run_id: None,
@@ -325,6 +328,7 @@ fn app_compare_matching_hosts_no_mismatch() {
         budgets: make_budgets(),
         metric_statistics: BTreeMap::new(),
         significance: None,
+        tradeoffs: Vec::new(),
         baseline_ref: CompareRef {
             path: None,
             run_id: None,
