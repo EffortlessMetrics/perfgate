@@ -11,7 +11,6 @@ authors.workspace = true
 readme = "README.md"
 keywords = ["performance", "profiling", "flamegraph", "regression"]
 categories = ["development-tools"]
-publish = false
 
 [dependencies]
 perfgate-error.workspace = true

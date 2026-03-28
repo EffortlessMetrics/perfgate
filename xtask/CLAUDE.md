@@ -8,6 +8,7 @@ Repo automation — schema generation, CI pipeline, and mutation testing. Not pu
 cargo run -p xtask -- schema              # generate JSON schemas
 cargo run -p xtask -- schema-check        # verify committed schemas are locked
 cargo run -p xtask -- ci                   # full CI check
+cargo run -p xtask -- publish-check       # validate publish metadata before release
 cargo run -p xtask -- conform             # validate fixtures against schema
 cargo run -p xtask -- conform --file f.json  # validate a single file
 cargo run -p xtask -- mutants             # run mutation testing
@@ -39,6 +40,12 @@ A single `src/main.rs` with automation commands.
 3. `cargo test --all`
 4. `cargo run -p xtask -- schema-check`
 5. `cargo run -p xtask -- conform`
+6. `cargo run -p xtask -- publish-check`
+
+**`publish-check`** — Performs fast static preflight checks for crates.io packaging:
+- Fails if a publishable workspace crate depends on a `publish = false` workspace crate
+- Fails if a publishable crate declares a `readme` file that does not exist
+- Intended as a release guardrail before `cargo publish`
 
 **`conform`** — Validates JSON fixtures against the vendored `sensor.report.v1` schema:
 - Default: validates all `sensor_report_*.json` files in golden fixture directories

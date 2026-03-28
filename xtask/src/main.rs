@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use glob::glob;
 use regex::Regex;
 use schemars::schema_for;
+use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -111,8 +112,11 @@ enum Command {
         schemas_dir: PathBuf,
     },
 
-    /// Run the "usual" repo checks (fmt, clippy, test, schema-check, conform).
+    /// Run the "usual" repo checks (fmt, clippy, test, schema-check, conform, publish-check).
     Ci,
+
+    /// Validate workspace packaging metadata for crates.io publication.
+    PublishCheck,
 
     /// Validate JSON fixtures against the vendored sensor.report.v1 schema.
     Conform {
@@ -193,6 +197,7 @@ fn main() -> anyhow::Result<()> {
         Command::Schema { out_dir } => cmd_schema(&out_dir),
         Command::SchemaCheck { schemas_dir } => cmd_schema_check(&schemas_dir),
         Command::Ci => cmd_ci(),
+        Command::PublishCheck => cmd_publish_check(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::SyncFixtures => cmd_sync_fixtures(),
         Command::Mutants {
@@ -263,7 +268,132 @@ fn cmd_ci() -> anyhow::Result<()> {
     )?;
     cmd_schema_check(Path::new("schemas"))?;
     cmd_conform(None, None)?;
+    cmd_publish_check()?;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadata {
+    packages: Vec<MetadataPackage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetadataPackage {
+    name: String,
+    manifest_path: PathBuf,
+    publish: Option<Vec<String>>,
+    readme: Option<PathBuf>,
+    dependencies: Vec<MetadataDependency>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetadataDependency {
+    name: String,
+    kind: Option<String>,
+    path: Option<PathBuf>,
+}
+
+fn cmd_publish_check() -> anyhow::Result<()> {
+    let metadata = load_cargo_metadata()?;
+    let errors = collect_publish_errors(&metadata);
+
+    if errors.is_empty() {
+        println!("  OK  publishable workspace packages pass static packaging checks");
+        return Ok(());
+    }
+
+    println!("Found {} publish metadata error(s):", errors.len());
+    for error in &errors {
+        println!("  - {}", error);
+    }
+
+    anyhow::bail!(
+        "{} publish metadata issue(s) found. Fix packaging before release.",
+        errors.len()
+    );
+}
+
+fn load_cargo_metadata() -> anyhow::Result<CargoMetadata> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let output = std::process::Command::new(cargo)
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .output()
+        .context("running cargo metadata")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("cargo metadata failed: {}", stderr.trim());
+    }
+
+    serde_json::from_slice(&output.stdout).context("parsing cargo metadata JSON")
+}
+
+fn collect_publish_errors(metadata: &CargoMetadata) -> Vec<String> {
+    let package_map: BTreeMap<&str, &MetadataPackage> = metadata
+        .packages
+        .iter()
+        .map(|package| (package.name.as_str(), package))
+        .collect();
+
+    let mut errors = Vec::new();
+
+    for package in metadata
+        .packages
+        .iter()
+        .filter(|package| is_publishable(package))
+    {
+        if let Some(readme) = &package.readme {
+            let readme_path = resolve_manifest_relative_path(&package.manifest_path, readme);
+            if !readme_path.exists() {
+                errors.push(format!(
+                    "{} declares readme '{}' but the file does not exist",
+                    package.name,
+                    readme_path.display()
+                ));
+            }
+        }
+
+        for dependency in package
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.kind.as_deref() != Some("dev"))
+        {
+            if dependency.path.is_none() {
+                continue;
+            }
+
+            let Some(dep_package) = package_map.get(dependency.name.as_str()) else {
+                continue;
+            };
+
+            if !is_publishable(dep_package) {
+                errors.push(format!(
+                    "{} depends on workspace crate {} which is not publishable",
+                    package.name, dependency.name
+                ));
+            }
+        }
+    }
+
+    errors
+}
+
+fn is_publishable(package: &MetadataPackage) -> bool {
+    match &package.publish {
+        None => true,
+        Some(registries) => !registries.is_empty(),
+    }
+}
+
+fn resolve_manifest_relative_path(manifest_path: &Path, relative_path: &Path) -> PathBuf {
+    if relative_path.is_absolute() {
+        return relative_path.to_path_buf();
+    }
+
+    match manifest_path.parent() {
+        Some(parent) => parent.join(relative_path),
+        None => relative_path.to_path_buf(),
+    }
 }
 
 fn cmd_conform(fixtures_dir: Option<PathBuf>, single_file: Option<PathBuf>) -> anyhow::Result<()> {
@@ -1825,6 +1955,82 @@ mod tests {
             assert!(run("sh", ["-c", "exit 1"]).is_err());
             assert!(run("sh", ["-c", "exit 0"]).is_ok());
         }
+    }
+
+    #[test]
+    fn collect_publish_errors_reports_missing_readme() {
+        let metadata = CargoMetadata {
+            packages: vec![MetadataPackage {
+                name: "perfgate-missing-readme".to_string(),
+                manifest_path: PathBuf::from("crates/perfgate-missing-readme/Cargo.toml"),
+                publish: None,
+                readme: Some(PathBuf::from("README.md")),
+                dependencies: Vec::new(),
+            }],
+        };
+
+        let errors = collect_publish_errors(&metadata);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("declares readme"));
+    }
+
+    #[test]
+    fn collect_publish_errors_reports_publish_false_workspace_dependency() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                MetadataPackage {
+                    name: "perfgate-cli".to_string(),
+                    manifest_path: PathBuf::from("crates/perfgate-cli/Cargo.toml"),
+                    publish: None,
+                    readme: None,
+                    dependencies: vec![MetadataDependency {
+                        name: "perfgate-profile".to_string(),
+                        kind: None,
+                        path: Some(PathBuf::from("crates/perfgate-profile")),
+                    }],
+                },
+                MetadataPackage {
+                    name: "perfgate-profile".to_string(),
+                    manifest_path: PathBuf::from("crates/perfgate-profile/Cargo.toml"),
+                    publish: Some(Vec::new()),
+                    readme: None,
+                    dependencies: Vec::new(),
+                },
+            ],
+        };
+
+        let errors = collect_publish_errors(&metadata);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("depends on workspace crate perfgate-profile"));
+    }
+
+    #[test]
+    fn collect_publish_errors_ignores_dev_dependencies() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                MetadataPackage {
+                    name: "perfgate-cli".to_string(),
+                    manifest_path: PathBuf::from("crates/perfgate-cli/Cargo.toml"),
+                    publish: None,
+                    readme: None,
+                    dependencies: vec![MetadataDependency {
+                        name: "perfgate-selfbench".to_string(),
+                        kind: Some("dev".to_string()),
+                        path: Some(PathBuf::from("crates/perfgate-selfbench")),
+                    }],
+                },
+                MetadataPackage {
+                    name: "perfgate-selfbench".to_string(),
+                    manifest_path: PathBuf::from("crates/perfgate-selfbench/Cargo.toml"),
+                    publish: Some(Vec::new()),
+                    readme: None,
+                    dependencies: Vec::new(),
+                },
+            ],
+        };
+
+        let errors = collect_publish_errors(&metadata);
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
     }
 
     #[test]
