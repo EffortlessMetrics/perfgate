@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RepairContextReceipt",
+  "type": "object",
+  "properties": {
+    "artifacts": {
+      "$ref": "#/$defs/RepairArtifacts"
+    },
+    "benchmark": {
+      "type": "string"
+    },
+    "breached_metrics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RepairMetricBreach"
+      }
+    },
+    "changed_files": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ChangedFilesSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "git": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GitContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "profile_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recommended_next_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schema": {
+      "type": "string"
+    },
+    "spans": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpanIdentifiers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    }
+  },
+  "required": [
+    "schema",
+    "benchmark",
+    "verdict",
+    "artifacts"
+  ],
+  "$defs": {
+    "ChangedFilesSummary": {
+      "type": "object",
+      "properties": {
+        "count_by_root": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "total_files": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total_files"
+      ]
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "GitContext": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RepairArtifacts": {
+      "type": "object",
+      "properties": {
+        "compare_receipt_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "report_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_path"
+      ]
+    },
+    "RepairMetricBreach": {
+      "type": "object",
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "direction": {
+          "$ref": "#/$defs/Direction"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "threshold": {
+          "type": "number",
+          "format": "double"
+        },
+        "warn_threshold": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "metric",
+        "status",
+        "baseline",
+        "current",
+        "threshold",
+        "warn_threshold",
+        "direction"
+      ]
+    },
+    "SpanIdentifiers": {
+      "type": "object",
+      "properties": {
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Verdict": {
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus"
+        }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    }
+  }
+}

@@ -993,6 +993,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench.clone()],
         };
@@ -1123,6 +1124,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench.clone()],
         };
@@ -1200,6 +1202,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
@@ -1254,6 +1257,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
@@ -1325,6 +1329,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
@@ -1382,6 +1387,7 @@ mod tests {
         };
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };
@@ -1412,6 +1418,7 @@ mod tests {
     fn execute_bench_not_found_returns_error() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![],
         };
@@ -1464,6 +1471,7 @@ mod tests {
                 baseline_pattern: None,
                 markdown_template: None,
             },
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![bench],
         };

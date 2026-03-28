@@ -16,9 +16,9 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    RepairContextOptions, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, build_repair_context, classify_error, github_annotations,
+    render_json_diff, render_markdown, render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
@@ -36,8 +36,10 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary, CompareReceipt,
+    CompareRef, ConfigFile, GitContext, HostMismatchPolicy, PerfgateReport,
+    REPAIR_CONTEXT_SCHEMA_V1, RepairContextReceipt, RunReceipt, SensorVerdictStatus, ToolInfo,
+    VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -977,6 +979,10 @@ pub struct CheckArgs {
     /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
     #[arg(long, default_value_t = false)]
     pub profile_on_regression: bool,
+
+    /// Emit a machine-readable repair artifact at `repair_context.json`.
+    #[arg(long, default_value_t = false)]
+    pub emit_repair_context: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1858,6 +1864,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_github,
                 local_db,
                 profile_on_regression,
+                emit_repair_context,
             } = *args;
 
             let req = CheckConfig {
@@ -1882,6 +1889,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 profile_on_regression,
+                emit_repair_context,
                 server_flags,
                 local_db,
             };
@@ -3585,6 +3593,7 @@ struct CheckConfig {
     md_template: Option<PathBuf>,
     output_github: bool,
     profile_on_regression: bool,
+    emit_repair_context: bool,
     server_flags: ServerFlags,
     local_db: bool,
 }
@@ -3698,7 +3707,7 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
     )?;
     let bench_count = bench_names.len() as u32;
 
-    let markdown_template_path = req.md_template.or_else(|| {
+    let markdown_template_path = req.md_template.clone().or_else(|| {
         config_file
             .defaults
             .markdown_template
@@ -3775,8 +3784,22 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             eprintln!("warning: local-db upload failed: {:#}", e);
         }
 
+        let verdict = outcome.compare_receipt.as_ref().map(|c| c.verdict.status);
+        let repair_context = if should_emit_repair_context(&req, &config_file, verdict) {
+            build_repair_context(
+                &outcome,
+                RepairContextOptions {
+                    changed_files: collect_changed_files_summary(),
+                    git: collect_git_context(),
+                    spans: None,
+                },
+            )
+        } else {
+            None
+        };
+
         // Write artifacts
-        write_check_artifacts(&outcome, req.pretty)
+        write_check_artifacts(&outcome, repair_context.as_ref(), req.pretty)
             .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
         // Profile on regression if requested
@@ -3804,6 +3827,13 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
             } else {
                 all_warnings.push(msg);
             }
+        }
+        if repair_context.is_some() {
+            let mut markdown = fs::read_to_string(&outcome.markdown_path).unwrap_or_default();
+            markdown.push_str("\n\n### Repair Context\n\n");
+            markdown.push_str("- `artifacts/perfgate/repair_context.json`\n");
+            atomic_write(&outcome.markdown_path, markdown.as_bytes())
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
         }
         for warning in &outcome.warnings {
             if req.all {
@@ -4027,8 +4057,25 @@ fn run_check_cockpit_inner(
                 eprintln!("warning: local-db upload failed: {:#}", e);
             }
 
+            let verdict = check_outcome
+                .compare_receipt
+                .as_ref()
+                .map(|c| c.verdict.status);
+            let repair_context = if should_emit_repair_context(req, &config_file, verdict) {
+                build_repair_context(
+                    &check_outcome,
+                    RepairContextOptions {
+                        changed_files: collect_changed_files_summary(),
+                        git: collect_git_context(),
+                        spans: None,
+                    },
+                )
+            } else {
+                None
+            };
+
             // Write native artifacts to extras/
-            write_check_artifacts(&check_outcome, req.pretty)
+            write_check_artifacts(&check_outcome, repair_context.as_ref(), req.pretty)
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
 
             // Profile on regression if requested
@@ -4059,6 +4106,15 @@ fn run_check_cockpit_inner(
                 );
                 check_outcome.markdown.clone()
             };
+
+            if repair_context.is_some() {
+                let mut markdown =
+                    fs::read_to_string(&check_outcome.markdown_path).unwrap_or_default();
+                markdown.push_str("\n\n### Repair Context\n\n");
+                markdown.push_str("- `artifacts/perfgate/repair_context.json`\n");
+                atomic_write(&check_outcome.markdown_path, markdown.as_bytes())
+                    .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+            }
 
             // Rename extras files to versioned names
             rename_extras_to_versioned(&extras_dir)
@@ -4147,6 +4203,98 @@ fn run_check_cockpit_inner(
 
     // Cockpit mode: always exit 0 if we got here
     Ok(())
+}
+
+fn should_emit_repair_context(
+    req: &CheckConfig,
+    config_file: &ConfigFile,
+    verdict: Option<VerdictStatus>,
+) -> bool {
+    if req.emit_repair_context {
+        return true;
+    }
+
+    let diagnostics = &config_file.diagnostics;
+    if diagnostics.emit_repair_context != Some(true) {
+        return false;
+    }
+
+    match verdict {
+        Some(VerdictStatus::Fail) => true,
+        Some(VerdictStatus::Warn) => diagnostics.emit_repair_context_on_warn.unwrap_or(true),
+        _ => false,
+    }
+}
+
+fn collect_git_context() -> Option<GitContext> {
+    fn run_git(args: &[&str]) -> Option<String> {
+        let output = std::process::Command::new("git").args(args).output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8(output.stdout).ok()?;
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    let branch = run_git(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    let sha = run_git(&["rev-parse", "HEAD"]);
+    let reference = run_git(&["describe", "--always", "--dirty"]);
+
+    if branch.is_none() && sha.is_none() && reference.is_none() {
+        None
+    } else {
+        Some(GitContext {
+            branch,
+            sha,
+            reference,
+        })
+    }
+}
+
+fn collect_changed_files_summary() -> Option<ChangedFilesSummary> {
+    fn git_lines(args: &[&str]) -> Vec<String> {
+        let output = match std::process::Command::new("git").args(args).output() {
+            Ok(o) if o.status.success() => o,
+            _ => return Vec::new(),
+        };
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    let mut files = git_lines(&["diff", "--name-only", "HEAD"]);
+    files.extend(git_lines(&["ls-files", "--others", "--exclude-standard"]));
+    files.sort();
+    files.dedup();
+
+    if files.is_empty() {
+        return None;
+    }
+
+    let mut count_by_root: BTreeMap<String, u32> = BTreeMap::new();
+    for file in &files {
+        let root = file
+            .split('/')
+            .next()
+            .filter(|seg| !seg.is_empty())
+            .unwrap_or(".")
+            .to_string();
+        *count_by_root.entry(root).or_default() += 1;
+    }
+
+    Some(ChangedFilesSummary {
+        total_files: files.len() as u32,
+        files,
+        count_by_root,
+    })
 }
 
 fn update_max_exit_code(max_exit_code: &mut i32, outcome_exit_code: i32) {
@@ -4547,7 +4695,11 @@ fn run_watch_iteration(ctx: &WatchIterationCtx<'_>, state: &mut WatchState) {
 }
 
 /// Write all artifacts from a check outcome.
-fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result<()> {
+fn write_check_artifacts(
+    outcome: &CheckOutcome,
+    repair_context: Option<&RepairContextReceipt>,
+    pretty: bool,
+) -> anyhow::Result<()> {
     // Write run receipt
     write_json(&outcome.run_path, &outcome.run_receipt, pretty)?;
 
@@ -4567,6 +4719,17 @@ fn write_check_artifacts(outcome: &CheckOutcome, pretty: bool) -> anyhow::Result
     // Write markdown
     fs::write(&outcome.markdown_path, &outcome.markdown)
         .with_context(|| format!("write {}", outcome.markdown_path.display()))?;
+
+    let parent = outcome.run_path.parent().unwrap_or_else(|| Path::new(""));
+    let repair_path = parent.join("repair_context.json");
+    if let Some(ctx) = repair_context {
+        if ctx.schema != REPAIR_CONTEXT_SCHEMA_V1 {
+            anyhow::bail!("unexpected repair context schema: {}", ctx.schema);
+        }
+        write_json(&repair_path, ctx, pretty)?;
+    } else {
+        remove_stale_file(&repair_path)?;
+    }
 
     Ok(())
 }
@@ -5243,7 +5406,7 @@ mod tests {
             suggest_paired: false,
         };
 
-        write_check_artifacts(&outcome, false).unwrap();
+        write_check_artifacts(&outcome, None, false).unwrap();
 
         assert!(!stale_compare.exists());
         assert!(run_path.exists());
@@ -5303,7 +5466,7 @@ mod tests {
             suggest_paired: false,
         };
 
-        write_check_artifacts(&outcome, false).unwrap();
+        write_check_artifacts(&outcome, None, false).unwrap();
 
         assert!(run_path.exists());
         assert!(report_path.exists());

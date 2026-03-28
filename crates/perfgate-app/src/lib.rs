@@ -20,6 +20,7 @@ mod explain;
 pub mod init;
 mod paired;
 mod promote;
+mod repair_context;
 mod report;
 mod sensor_report;
 mod trend;
@@ -39,6 +40,7 @@ pub use diff::{
 pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
+pub use repair_context::{RepairContextOptions, build_repair_context};
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
 pub use sensor_report::{
     BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,

@@ -24,6 +24,7 @@
 
 mod defaults_config;
 mod paired;
+mod repair_context;
 
 pub use paired::{
     NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
@@ -31,6 +32,7 @@ pub use paired::{
 };
 
 pub use defaults_config::*;
+pub use repair_context::*;
 
 pub use perfgate_validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
@@ -48,6 +50,7 @@ pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
+pub const REPAIR_CONTEXT_SCHEMA_V1: &str = "perfgate.repair_context.v1";
 
 // Stable contract identifiers and tokens.
 pub const CHECK_ID_BUDGET: &str = "perf.budget";
@@ -1150,6 +1153,10 @@ pub struct ConfigFile {
     #[serde(default)]
     pub defaults: DefaultsConfig,
 
+    /// Optional diagnostics configuration for additional machine-readable artifacts.
+    #[serde(default)]
+    pub diagnostics: DiagnosticsConfig,
+
     /// Optional baseline server configuration for centralized baseline management.
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
@@ -1539,6 +1546,7 @@ mod tests {
     fn config_file_validate_catches_bad_bench_name() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
@@ -1628,6 +1636,7 @@ mod tests {
     fn config_file_validate_passes_good_bench_names() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
@@ -2026,6 +2035,7 @@ mod tests {
                 baseline_pattern: Some("baselines/{bench}.json".into()),
                 markdown_template: None,
             },
+            diagnostics: DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
@@ -2063,6 +2073,7 @@ mod tests {
     fn config_file_serde_roundtrip_edge_empty() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
+            diagnostics: DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: vec![],
         };
@@ -3035,6 +3046,7 @@ mod property_tests {
         )
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
+                diagnostics: DiagnosticsConfig::default(),
                 baseline_server,
                 benches,
             })

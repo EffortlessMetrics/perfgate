@@ -59,6 +59,7 @@ mod tests {
                 baseline_dir: Some("bases".to_string()),
                 ..Default::default()
             },
+            diagnostics: perfgate_types::DiagnosticsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
             benches: Vec::new(),
         };

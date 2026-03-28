@@ -21,6 +21,11 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "diagnostics": {
+      "description": "Optional diagnostics configuration for additional machine-readable artifacts.",
+      "$ref": "#/$defs/DiagnosticsConfig",
+      "default": {}
     }
   },
   "$defs": {
@@ -308,6 +313,25 @@
             "null"
           ],
           "format": "double"
+        }
+      }
+    },
+    "DiagnosticsConfig": {
+      "type": "object",
+      "properties": {
+        "emit_repair_context": {
+          "description": "Emit `repair_context.json` artifacts for non-pass verdicts.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "emit_repair_context_on_warn": {
+          "description": "Emit `repair_context.json` for warn verdicts when diagnostics are enabled.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       }
     },
