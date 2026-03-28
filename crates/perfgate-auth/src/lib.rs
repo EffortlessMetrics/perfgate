@@ -19,6 +19,13 @@ use perfgate_error::AuthError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+mod source;
+
+pub use source::{
+    CredentialSource, CredentialSourceError, KeyPolicy, LoadedCredential,
+    parse_credentials_document,
+};
+
 /// API key prefix for live keys.
 pub const API_KEY_PREFIX_LIVE: &str = "pg_live_";
 

@@ -61,7 +61,9 @@ pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
 pub use oidc::{OidcConfig, OidcProvider, OidcProviderType, OidcRegistry};
-pub use server::{AppState, PostgresPoolConfig, ServerConfig, StorageBackend, run_server};
+pub use server::{
+    ApiKeyMetadata, AppState, PostgresPoolConfig, ServerConfig, StorageBackend, run_server,
+};
 pub use storage::{
     AuditStore, BaselineStore, FleetStore, InMemoryFleetStore, InMemoryKeyStore, InMemoryStore,
     KeyRecord, KeyStore, SqliteKeyStore, SqliteStore, StorageHealth,

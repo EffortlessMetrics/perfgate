@@ -604,6 +604,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_auth_middleware_rejects_expired_in_memory_api_key() {
+        let store = Arc::new(ApiKeyStore::new());
+        let key = "pg_test_abcdefghijklmnopqrstuvwxyz123456";
+        let mut api_key = ApiKey::new(
+            "api-key-expired".to_string(),
+            "Expired API Key".to_string(),
+            "project-1".to_string(),
+            Role::Viewer,
+        );
+        api_key.expires_at = Some(chrono::Utc::now() - chrono::Duration::minutes(1));
+        store.add_key(api_key, key).await;
+
+        let response = auth_test_router(AuthState::new(store, None, Default::default()))
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header(header::AUTHORIZATION, format!("Bearer {}", key))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
     async fn test_auth_middleware_accepts_jwt_token() {
         let claims = create_test_claims(
             vec![Scope::Read, Scope::Promote],

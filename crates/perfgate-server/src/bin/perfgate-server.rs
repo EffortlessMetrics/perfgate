@@ -34,8 +34,10 @@ use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use perfgate_auth::CredentialSource;
 use perfgate_server::{
-    JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend, run_server,
+    ApiKeyMetadata, JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend,
+    run_server,
 };
 use std::time::Duration;
 
@@ -91,6 +93,27 @@ struct Args {
     /// Example: --api-keys admin:pg_live_abc123,contributor:pg_live_def456:my-project:^bench-.*$
     #[arg(long = "api-keys", value_parser = parse_api_key)]
     api_keys: Vec<ApiKeyConfigArg>,
+
+    /// Environment variable containing an API key policy JSON/TOML document.
+    #[arg(
+        long = "api-keys-env",
+        conflicts_with_all = ["api_keys_file", "api_keys_command"]
+    )]
+    api_keys_env: Option<String>,
+
+    /// File path containing an API key policy JSON/TOML document.
+    #[arg(
+        long = "api-keys-file",
+        conflicts_with_all = ["api_keys_env", "api_keys_command"]
+    )]
+    api_keys_file: Option<String>,
+
+    /// Command evaluated by the platform shell that prints an API key policy JSON/TOML document to stdout.
+    #[arg(
+        long = "api-keys-command",
+        conflicts_with_all = ["api_keys_env", "api_keys_file"]
+    )]
+    api_keys_command: Option<String>,
 
     /// HS256 secret used to validate `Authorization: Token <jwt>` requests.
     #[arg(long)]
@@ -212,6 +235,20 @@ fn parse_role(s: &str) -> Result<Role, String> {
     }
 }
 
+fn choose_credential_source(args: &Args) -> Option<CredentialSource> {
+    if let Some(command) = &args.api_keys_command {
+        Some(CredentialSource::Command {
+            command: command.clone(),
+        })
+    } else if let Some(path) = &args.api_keys_file {
+        Some(CredentialSource::File { path: path.into() })
+    } else {
+        args.api_keys_env
+            .as_ref()
+            .map(|var| CredentialSource::Env { var: var.clone() })
+    }
+}
+
 /// Parses an OIDC identity mapping "identity:project_id:role".
 fn parse_oidc_mapping(mapping: &str, flag_name: &str) -> Result<(String, String, Role), String> {
     let parts: Vec<&str> = mapping.split(':').collect();
@@ -286,7 +323,7 @@ async fn main() {
     }
 
     // Set PostgreSQL URL and pool configuration if provided
-    if let (StorageBackend::Postgres, Some(url)) = (storage_backend, args.database_url) {
+    if let (StorageBackend::Postgres, Some(url)) = (storage_backend, args.database_url.clone()) {
         config = config.postgres_url(url);
     }
 
@@ -299,7 +336,26 @@ async fn main() {
         statement_timeout: Duration::from_secs(args.pg_statement_timeout),
     });
 
-    // Add API keys
+    // Add API keys from a single external source, if configured.
+    if let Some(source) = choose_credential_source(&args) {
+        let loaded = source.load().unwrap_or_else(|e| panic!("{}", e));
+        for entry in loaded {
+            let policy = entry.policy;
+            config = config.scoped_api_key_with_metadata(
+                entry.secret,
+                policy.role,
+                policy.project,
+                policy.benchmark_regex,
+                ApiKeyMetadata {
+                    id: Some(policy.id.clone()),
+                    name: Some(policy.id),
+                    expires_at: policy.expires_at,
+                },
+            );
+        }
+    }
+
+    // Add explicitly provided API keys
     for cfg in args.api_keys {
         config = config.scoped_api_key(cfg.key, cfg.role, cfg.project, cfg.benchmark_regex);
     }
@@ -484,6 +540,9 @@ mod tests {
         assert_eq!(args.pg_max_lifetime, 1800);
         assert_eq!(args.pg_acquire_timeout, 5);
         assert_eq!(args.pg_statement_timeout, 30);
+        assert!(args.api_keys_env.is_none());
+        assert!(args.api_keys_file.is_none());
+        assert!(args.api_keys_command.is_none());
     }
 
     #[test]
@@ -533,6 +592,8 @@ mod tests {
             "--no-cors",
             "--api-keys",
             "admin:pg_live_abc123",
+            "--api-keys-file",
+            "/etc/perfgate/keys.json",
             "--jwt-secret",
             "super-secret",
             "--jwt-issuer",
@@ -548,6 +609,10 @@ mod tests {
         assert_eq!(args.database_url, Some("/tmp/test.db".to_string()));
         assert!(args.no_cors);
         assert_eq!(args.api_keys.len(), 1);
+        assert_eq!(
+            args.api_keys_file,
+            Some("/etc/perfgate/keys.json".to_string())
+        );
         assert_eq!(args.jwt_secret, Some("super-secret".to_string()));
         assert_eq!(args.jwt_issuer, Some("perfgate".to_string()));
         assert_eq!(args.jwt_audience, Some("perfgate-api".to_string()));
@@ -599,6 +664,24 @@ mod tests {
         .unwrap();
 
         assert_eq!(args.oidc_provider.len(), 1);
+    }
+
+    #[test]
+    fn test_external_source_flags_are_mutually_exclusive() {
+        let err = Args::try_parse_from([
+            "perfgate-server",
+            "--api-keys-env",
+            "PERFGATE_API_KEYS",
+            "--api-keys-file",
+            "/tmp/keys.json",
+            "--api-keys-command",
+            "op read op://perfgate/api-keys/json",
+        ])
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("--api-keys-env"));
+        assert!(err.contains("--api-keys-file"));
     }
 
     #[test]
