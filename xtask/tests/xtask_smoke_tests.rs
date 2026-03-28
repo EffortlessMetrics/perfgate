@@ -24,6 +24,21 @@ fn xtask_schema_command_runs() {
 }
 
 #[test]
+fn xtask_publish_check_command_runs() {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_xtask"));
+    if let Ok(profile) = env::var("LLVM_PROFILE_FILE") {
+        cmd.env("LLVM_PROFILE_FILE", profile);
+    }
+    let status = cmd
+        .current_dir(repo_root())
+        .arg("publish-check")
+        .status()
+        .expect("run xtask publish-check");
+
+    assert!(status.success());
+}
+
+#[test]
 fn xtask_mutants_propagates_exit_code() {
     let fake_dir = unique_temp_dir("perfgate_fake_cargo");
 

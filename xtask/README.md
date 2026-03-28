@@ -6,6 +6,7 @@ Developer automation crate for the perfgate workspace.
 
 - Generates and checks JSON schemas (`schema`, `schema-check`).
 - Runs the standard CI command bundle (`ci`).
+- Validates crates.io packaging metadata before release (`publish-check`).
 - Validates fixtures against vendored contracts (`conform`).
 - Syncs golden fixtures into `contracts/fixtures` (`sync-fixtures`).
 - Runs mutation testing helpers (`mutants`).
@@ -20,6 +21,7 @@ Developer automation crate for the perfgate workspace.
 cargo run -p xtask -- schema
 cargo run -p xtask -- schema-check
 cargo run -p xtask -- ci
+cargo run -p xtask -- publish-check
 cargo run -p xtask -- conform
 cargo run -p xtask -- mutants --crate perfgate-domain --summary
 ```
