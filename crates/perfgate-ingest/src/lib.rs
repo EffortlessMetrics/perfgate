@@ -90,6 +90,7 @@ fn make_receipt(name: &str, samples: Vec<Sample>, stats: Stats) -> RunReceipt {
                 memory_bytes: None,
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: name.to_string(),

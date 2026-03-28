@@ -203,6 +203,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
                 started_at,
                 ended_at,
                 host,
+                runner: None,
             },
             bench,
             samples,
@@ -411,6 +412,7 @@ mod tests {
                 started_at: "2024-01-01T00:00:00Z".to_string(),
                 ended_at: "2024-01-01T00:00:01Z".to_string(),
                 host,
+                runner: None,
             },
             bench: BenchMeta {
                 name: "bench".to_string(),

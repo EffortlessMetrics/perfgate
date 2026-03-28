@@ -58,6 +58,7 @@ fn make_run_receipt(samples: Vec<u64>) -> RunReceipt {
                 memory_bytes: None,
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: "test-bench".to_string(),

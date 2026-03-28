@@ -191,6 +191,7 @@ impl PerfgateWorld {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "test-bench".to_string(),
@@ -284,6 +285,7 @@ impl PerfgateWorld {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "test-bench".to_string(),
@@ -4324,6 +4326,7 @@ async fn given_run_receipt_for_export(world: &mut PerfgateWorld, bench_name: Str
                 memory_bytes: None,
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: bench_name,

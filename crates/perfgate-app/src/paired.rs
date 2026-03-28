@@ -178,6 +178,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
                 started_at,
                 ended_at,
                 host,
+                runner: None,
             },
             bench,
             samples,

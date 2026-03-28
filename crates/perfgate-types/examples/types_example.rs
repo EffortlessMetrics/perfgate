@@ -60,6 +60,7 @@ fn main() {
                 memory_bytes: Some(16_000_000_000),
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: "my-benchmark".to_string(),

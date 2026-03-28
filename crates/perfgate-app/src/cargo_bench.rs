@@ -325,6 +325,7 @@ pub fn benchmarks_to_receipt(
             started_at,
             ended_at,
             host: host.clone(),
+            runner: None,
         },
         bench: BenchMeta {
             name: name.to_string(),
@@ -383,6 +384,7 @@ pub fn benchmarks_to_individual_receipts(
                 started_at: ts.clone(),
                 ended_at: ts,
                 host: host.clone(),
+                runner: None,
             },
             bench: BenchMeta {
                 name: bench.name.clone(),

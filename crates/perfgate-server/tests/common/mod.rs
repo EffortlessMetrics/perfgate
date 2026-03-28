@@ -49,6 +49,7 @@ pub fn create_test_receipt(benchmark: &str) -> perfgate_types::RunReceipt {
                 cpu_count: Some(8),
                 memory_bytes: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: benchmark.to_string(),

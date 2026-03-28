@@ -55,6 +55,7 @@ fn make_run_receipt_from_samples(samples: Vec<Sample>) -> RunReceipt {
                 memory_bytes: None,
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: "pipeline-bench".to_string(),

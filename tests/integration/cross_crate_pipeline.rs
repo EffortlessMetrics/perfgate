@@ -60,6 +60,7 @@ fn run_receipt(name: &str, samples: Vec<Sample>) -> RunReceipt {
                 memory_bytes: Some(16 * 1024 * 1024 * 1024),
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: name.to_string(),
@@ -426,6 +427,7 @@ fn paired_receipt_json_roundtrip() {
                 memory_bytes: Some(16 * 1024 * 1024 * 1024),
                 hostname_hash: Some("abc123".to_string()),
             },
+            runner: None,
         },
         bench: PairedBenchMeta {
             name: "paired-bench".to_string(),

@@ -30,6 +30,7 @@ fn create_test_receipt() -> RunReceipt {
                 memory_bytes: None,
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: "my-bench".into(),

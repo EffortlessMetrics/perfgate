@@ -28,6 +28,7 @@ fn create_run_receipt() -> RunReceipt {
                 memory_bytes: Some(16 * 1024 * 1024 * 1024),
                 hostname_hash: None,
             },
+            runner: None,
         },
         bench: BenchMeta {
             name: "example-bench".to_string(),

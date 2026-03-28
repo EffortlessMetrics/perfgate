@@ -730,6 +730,7 @@ mod tests {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
             },
             samples: vec![],
             stats: Stats {

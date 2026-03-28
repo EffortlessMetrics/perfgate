@@ -380,6 +380,7 @@ mod tests {
                     memory_bytes: Some(16000000000),
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: benchmark.to_string(),

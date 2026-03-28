@@ -44,6 +44,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
+pub const AGGREGATE_SCHEMA_V1: &str = "perfgate.aggregate.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
@@ -287,13 +288,116 @@ pub struct HostMismatchInfo {
     pub reasons: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+/// Optional runner metadata for matrix/fleet execution contexts.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RunnerMeta {
+    /// Stable runner label used for weighting and grouping (e.g. "ubuntu-x86_64").
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub label: Option<String>,
+
+    /// Optional runner class (e.g. "self-hosted", "gha-standard", "metal").
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub class: Option<String>,
+
+    /// Optional runner weight used by weighted aggregation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weight: Option<f64>,
+
+    /// Optional benchmark lane/group for matrix dimensions (e.g. "smoke", "full", "nightly").
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub lane: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RunMeta {
     pub id: String,
     pub started_at: String,
     pub ended_at: String,
     pub host: HostInfo,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub runner: Option<RunnerMeta>,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum AggregationPolicy {
+    All,
+    Majority,
+    Weighted,
+    Quorum,
+    FailIfNOfM,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregatePolicyConfig {
+    pub policy: AggregationPolicy,
+
+    /// Required pass count for `quorum`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub quorum: Option<u32>,
+
+    /// Fail threshold for `fail_if_n_of_m`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub fail_threshold: Option<u32>,
+
+    /// Optional explicit runner-label weights for `weighted`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub weights: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum AggregateStatus {
+    Pass,
+    Fail,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateVerdict {
+    pub status: AggregateStatus,
+    pub reason: String,
+    pub pass_count: u32,
+    pub fail_count: u32,
+    pub total_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub pass_weight: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub fail_weight: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub total_weight: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateRunEvidence {
+    pub run_id: String,
+    pub bench_name: String,
+    pub host: HostInfo,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub runner: Option<RunnerMeta>,
+    pub pass: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: RunMeta,
+    pub bench_name: String,
+    pub policy: AggregatePolicyConfig,
+    pub verdict: AggregateVerdict,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub host_mismatch_warnings: Vec<String>,
+    pub runs: Vec<AggregateRunEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -525,6 +629,7 @@ pub struct Stats {
 ///             os: "linux".into(), arch: "x86_64".into(),
 ///             cpu_count: None, memory_bytes: None, hostname_hash: None,
 ///         },
+///         runner: None,
 ///     },
 ///     bench: BenchMeta {
 ///         name: "my-bench".into(), cwd: None,
@@ -1667,6 +1772,7 @@ mod tests {
                     memory_bytes: Some(16_000_000_000),
                     hostname_hash: Some("cafebabe".into()),
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "my-bench".into(),
@@ -1751,6 +1857,7 @@ mod tests {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "b".into(),
@@ -1800,6 +1907,7 @@ mod tests {
                     memory_bytes: Some(u64::MAX),
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "big".into(),
@@ -2241,6 +2349,7 @@ mod tests {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "minimal".into(),
@@ -2439,6 +2548,7 @@ mod property_tests {
                 started_at,
                 ended_at,
                 host,
+                runner: None,
             })
     }
 

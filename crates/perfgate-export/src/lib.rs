@@ -29,6 +29,7 @@
 //!         ended_at: "2024-01-01T00:00:01Z".into(),
 //!         host: HostInfo { os: "linux".into(), arch: "x86_64".into(),
 //!             cpu_count: None, memory_bytes: None, hostname_hash: None },
+//!         runner: None,
 //!     },
 //!     bench: BenchMeta {
 //!         name: "bench".into(), cwd: None,
@@ -228,6 +229,7 @@ impl ExportUseCase {
     ///         ended_at: "2024-01-01T00:00:01Z".into(),
     ///         host: HostInfo { os: "linux".into(), arch: "x86_64".into(),
     ///             cpu_count: None, memory_bytes: None, hostname_hash: None },
+    ///         runner: None,
     ///     },
     ///     bench: BenchMeta {
     ///         name: "bench".into(), cwd: None,
@@ -819,6 +821,7 @@ mod tests {
                     memory_bytes: None,
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "test-benchmark".to_string(),
@@ -1153,6 +1156,7 @@ mod tests {
                         memory_bytes: None,
                         hostname_hash: None,
                     },
+                    runner: None,
                 },
                 bench: BenchMeta {
                     name: "empty-bench".to_string(),
@@ -1986,6 +1990,7 @@ mod property_tests {
                 started_at,
                 ended_at,
                 host,
+                runner: None,
             })
     }
 

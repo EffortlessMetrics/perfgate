@@ -36,8 +36,9 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt,
+    CompareRef, ConfigFile, HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus,
+    ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -255,6 +256,22 @@ enum Command {
         /// Paths to run receipts (glob patterns supported)
         #[arg(required = true, num_args = 1..)]
         files: Vec<String>,
+
+        /// Aggregation policy: all, majority, weighted, quorum, fail-if-n-of-m
+        #[arg(long, default_value = "all")]
+        policy: String,
+
+        /// Quorum threshold (required with --policy quorum)
+        #[arg(long)]
+        quorum: Option<u32>,
+
+        /// Failure threshold (required with --policy fail-if-n-of-m)
+        #[arg(long)]
+        fail_threshold: Option<u32>,
+
+        /// Policy weights as label=value (repeatable, for --policy weighted)
+        #[arg(long = "weight", value_name = "LABEL=VALUE")]
+        weights: Vec<String>,
 
         /// Output file path
         #[arg(long, default_value = "perfgate-aggregated.json")]
@@ -1988,7 +2005,15 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
 
-        Command::Aggregate { files, out, pretty } => {
+        Command::Aggregate {
+            files,
+            policy,
+            quorum,
+            fail_threshold,
+            weights,
+            out,
+            pretty,
+        } => {
             let usecase = perfgate_app::AggregateUseCase;
             let mut resolved_files = Vec::new();
             for pattern in files {
@@ -1996,8 +2021,13 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     resolved_files.push(entry?);
                 }
             }
+            let weights = parse_aggregate_weights(&weights)?;
             let outcome = usecase.execute(perfgate_app::AggregateRequest {
                 files: resolved_files,
+                policy: parse_aggregation_policy(&policy)?,
+                quorum,
+                fail_threshold,
+                weights,
             })?;
             write_json(&out, &outcome.receipt, pretty)?;
             Ok(())
@@ -4636,6 +4666,31 @@ fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
     Ok((k.to_string(), f))
 }
 
+fn parse_aggregation_policy(s: &str) -> Result<AggregationPolicy, String> {
+    match s.to_lowercase().as_str() {
+        "all" => Ok(AggregationPolicy::All),
+        "majority" => Ok(AggregationPolicy::Majority),
+        "weighted" => Ok(AggregationPolicy::Weighted),
+        "quorum" => Ok(AggregationPolicy::Quorum),
+        "fail-if-n-of-m" | "fail_if_n_of_m" => Ok(AggregationPolicy::FailIfNOfM),
+        _ => Err(format!(
+            "invalid aggregation policy: {s} (expected all|majority|weighted|quorum|fail-if-n-of-m)"
+        )),
+    }
+}
+
+fn parse_aggregate_weights(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>> {
+    let mut parsed = BTreeMap::new();
+    for weight in weights {
+        let (label, value) = parse_key_val_f64(weight)?;
+        if value < 0.0 {
+            anyhow::bail!("weight for '{label}' must be >= 0, got {value}");
+        }
+        parsed.insert(label, value);
+    }
+    Ok(parsed)
+}
+
 fn parse_noise_policy(s: &str) -> Result<perfgate_types::NoisePolicy, String> {
     match s.to_lowercase().as_str() {
         "warn" => Ok(perfgate_types::NoisePolicy::Warn),
@@ -4887,6 +4942,7 @@ mod tests {
                     memory_bytes: Some(8 * 1024 * 1024 * 1024),
                     hostname_hash: None,
                 },
+                runner: None,
             },
             bench: BenchMeta {
                 name: "bench".to_string(),
