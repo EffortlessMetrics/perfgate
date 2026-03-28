@@ -47,6 +47,7 @@ pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
+pub const REPAIR_CONTEXT_SCHEMA_V1: &str = "perfgate.repair_context.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 
 // Stable contract identifiers and tokens.
@@ -1116,6 +1117,76 @@ pub struct PerfgateReport {
     /// Path to a flamegraph SVG captured when regression was detected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_path: Option<String>,
+}
+
+/// Git metadata associated with a repair context artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairGitContext {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub sha: Option<String>,
+}
+
+/// Summary of repository file changes useful for triage automation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairChangedFilesSummary {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub total_count: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub count_by_area: BTreeMap<String, u32>,
+}
+
+/// Optional span identifiers when OTel ingestion is present.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairSpanIdentifiers {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub trace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub span_id: Option<String>,
+}
+
+/// Breached metric details included in repair context.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairBreachedMetric {
+    pub metric: Metric,
+    pub status: MetricStatus,
+    pub threshold: f64,
+    pub warn_threshold: f64,
+    pub baseline: f64,
+    pub current: f64,
+    pub regression_pct: f64,
+}
+
+/// Machine-readable triage package emitted for warn/fail checks.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct RepairContext {
+    pub schema: String,
+    pub benchmark: String,
+    pub verdict: Verdict,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breached_metrics: Vec<RepairBreachedMetric>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub compare_receipt_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub report_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub profile_path: Option<String>,
+    #[serde(default)]
+    pub changed_files: RepairChangedFilesSummary,
+    #[serde(default)]
+    pub git: RepairGitContext,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub spans: Option<RepairSpanIdentifiers>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_commands: Vec<String>,
 }
 
 // ----------------------------

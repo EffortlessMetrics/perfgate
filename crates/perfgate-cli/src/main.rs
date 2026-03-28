@@ -16,9 +16,10 @@ use perfgate_app::{
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    RepairContextOptions, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
+    SensorReportBuilder, SystemClock, build_repair_context, classify_error, github_annotations,
+    render_json_diff, render_markdown, render_markdown_template, render_terminal_diff,
+    summarize_changed_files,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::{
@@ -37,7 +38,8 @@ use perfgate_scaling::{
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, BaselineServerConfig, CompareReceipt, CompareRef, ConfigFile,
-    HostMismatchPolicy, PerfgateReport, RunReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    HostMismatchPolicy, PerfgateReport, RepairGitContext, RunReceipt, SensorVerdictStatus,
+    ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -977,6 +979,12 @@ pub struct CheckArgs {
     /// Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph.
     #[arg(long, default_value_t = false)]
     pub profile_on_regression: bool,
+
+    /// Emit repair_context.json even on PASS verdicts.
+    ///
+    /// By default, repair context is emitted only for WARN/FAIL.
+    #[arg(long, default_value_t = false)]
+    pub emit_repair_context: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1858,6 +1866,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 output_github,
                 local_db,
                 profile_on_regression,
+                emit_repair_context,
             } = *args;
 
             let req = CheckConfig {
@@ -1882,6 +1891,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 md_template,
                 output_github,
                 profile_on_regression,
+                emit_repair_context,
                 server_flags,
                 local_db,
             };
@@ -3585,6 +3595,7 @@ struct CheckConfig {
     md_template: Option<PathBuf>,
     output_github: bool,
     profile_on_regression: bool,
+    emit_repair_context: bool,
     server_flags: ServerFlags,
     local_db: bool,
 }
@@ -3664,6 +3675,76 @@ fn submit_verdict_if_possible(
             Ok::<(), anyhow::Error>(())
         });
     }
+}
+
+fn should_emit_repair_context(status: VerdictStatus, force_emit: bool) -> bool {
+    force_emit || matches!(status, VerdictStatus::Warn | VerdictStatus::Fail)
+}
+
+fn git_output(args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git").args(args).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
+}
+
+fn collect_git_context() -> RepairGitContext {
+    RepairGitContext {
+        branch: git_output(&["rev-parse", "--abbrev-ref", "HEAD"]),
+        sha: git_output(&["rev-parse", "HEAD"]),
+    }
+}
+
+fn collect_changed_files() -> Vec<String> {
+    let Some(raw) = git_output(&["status", "--porcelain"]) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .filter_map(|line| {
+            if line.len() > 3 {
+                Some(line[3..].trim().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn emit_repair_context_artifact(
+    outcome: &CheckOutcome,
+    out_dir: &Path,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    let changed_files = collect_changed_files();
+    let git = collect_git_context();
+    let sha_for_cmd = git.sha.clone().unwrap_or_else(|| "HEAD".to_string());
+    let repair_context = build_repair_context(
+        outcome,
+        RepairContextOptions {
+            compare_receipt_path: outcome
+                .compare_path
+                .as_ref()
+                .map(|p| p.display().to_string()),
+            report_path: Some(outcome.report_path.display().to_string()),
+            profile_path: outcome.report.profile_path.clone(),
+            changed_files: summarize_changed_files(&changed_files),
+            git,
+            spans: None,
+            next_commands: vec![
+                format!("perfgate bisect --good <GOOD_SHA> --bad {}", sha_for_cmd),
+                "perfgate blame --baseline old-Cargo.lock --current Cargo.lock".to_string(),
+                format!(
+                    "perfgate paired --name {} --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat 10 --out artifacts/perfgate/paired.json",
+                    outcome.run_receipt.bench.name
+                ),
+            ],
+        },
+    );
+
+    let repair_path = out_dir.join("repair_context.json");
+    write_json(&repair_path, &repair_context, pretty)
 }
 
 /// Run check in standard mode (exit codes reflect verdict).
@@ -3778,6 +3859,11 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
         // Write artifacts
         write_check_artifacts(&outcome, req.pretty)
             .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+        if should_emit_repair_context(outcome.report.verdict.status, req.emit_repair_context) {
+            emit_repair_context_artifact(&outcome, &bench_out_dir, req.pretty)
+                .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+        }
 
         // Profile on regression if requested
         if req.profile_on_regression
@@ -4030,6 +4116,14 @@ fn run_check_cockpit_inner(
             // Write native artifacts to extras/
             write_check_artifacts(&check_outcome, req.pretty)
                 .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+
+            if should_emit_repair_context(
+                check_outcome.report.verdict.status,
+                req.emit_repair_context,
+            ) {
+                emit_repair_context_artifact(&check_outcome, &extras_dir, req.pretty)
+                    .map_err(|e| PerfgateError::Io(IoError::ArtifactWrite(e.to_string())))?;
+            }
 
             // Profile on regression if requested
             if req.profile_on_regression
@@ -5308,6 +5402,70 @@ mod tests {
         assert!(run_path.exists());
         assert!(report_path.exists());
         assert!(markdown_path.exists());
+    }
+
+    #[test]
+    fn should_emit_repair_context_on_warn_or_fail_by_default() {
+        assert!(should_emit_repair_context(VerdictStatus::Warn, false));
+        assert!(should_emit_repair_context(VerdictStatus::Fail, false));
+        assert!(!should_emit_repair_context(VerdictStatus::Pass, false));
+    }
+
+    #[test]
+    fn should_emit_repair_context_on_pass_when_forced() {
+        assert!(should_emit_repair_context(VerdictStatus::Pass, true));
+    }
+
+    #[test]
+    fn emit_repair_context_writes_artifact() {
+        let dir = tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let run_path = out_dir.join("run.json");
+        let report_path = out_dir.join("report.json");
+        let markdown_path = out_dir.join("comment.md");
+        let compare_path = out_dir.join("compare.json");
+
+        let compare_receipt: CompareReceipt =
+            serde_json::from_str(&create_compare_receipt_json("warn", "warn")).unwrap();
+        let report = PerfgateReport {
+            report_type: "perfgate.report.v1".to_string(),
+            verdict: compare_receipt.verdict.clone(),
+            compare: Some(compare_receipt.clone()),
+            findings: Vec::new(),
+            summary: ReportSummary {
+                pass_count: 0,
+                warn_count: 1,
+                fail_count: 0,
+                skip_count: 0,
+                total_count: 1,
+            },
+            profile_path: Some("profiles/bench.svg".to_string()),
+        };
+        let outcome = CheckOutcome {
+            run_receipt: make_receipt(make_stats_with_wall(100)),
+            run_path,
+            compare_receipt: Some(compare_receipt),
+            compare_path: Some(compare_path),
+            report,
+            report_path,
+            markdown: "hello".to_string(),
+            markdown_path,
+            warnings: Vec::new(),
+            failed: false,
+            exit_code: 0,
+            suggest_paired: false,
+        };
+
+        emit_repair_context_artifact(&outcome, &out_dir, false).unwrap();
+        let path = out_dir.join("repair_context.json");
+        assert!(path.exists());
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(value["schema"], "perfgate.repair_context.v1");
+        assert_eq!(value["benchmark"], "bench");
+        assert_eq!(value["profile_path"], "profiles/bench.svg");
     }
 
     #[test]

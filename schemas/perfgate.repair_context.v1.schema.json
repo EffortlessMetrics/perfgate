@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RepairContext",
+  "description": "Machine-readable triage package emitted for warn/fail checks.",
+  "type": "object",
+  "properties": {
+    "benchmark": {
+      "type": "string"
+    },
+    "breached_metrics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RepairBreachedMetric"
+      }
+    },
+    "changed_files": {
+      "$ref": "#/$defs/RepairChangedFilesSummary",
+      "default": {
+        "total_count": 0
+      }
+    },
+    "compare_receipt_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "git": {
+      "$ref": "#/$defs/RepairGitContext",
+      "default": {}
+    },
+    "next_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "profile_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "report_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema": {
+      "type": "string"
+    },
+    "spans": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RepairSpanIdentifiers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    }
+  },
+  "required": [
+    "schema",
+    "benchmark",
+    "verdict"
+  ],
+  "$defs": {
+    "Metric": {
+      "type": "string",
+      "enum": [
+        "binary_bytes",
+        "cpu_ms",
+        "ctx_switches",
+        "energy_uj",
+        "io_read_bytes",
+        "io_write_bytes",
+        "max_rss_kb",
+        "network_packets",
+        "page_faults",
+        "throughput_per_s",
+        "wall_ms"
+      ]
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "RepairBreachedMetric": {
+      "description": "Breached metric details included in repair context.",
+      "type": "object",
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "$ref": "#/$defs/Metric"
+        },
+        "regression_pct": {
+          "type": "number",
+          "format": "double"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        },
+        "threshold": {
+          "type": "number",
+          "format": "double"
+        },
+        "warn_threshold": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "metric",
+        "status",
+        "threshold",
+        "warn_threshold",
+        "baseline",
+        "current",
+        "regression_pct"
+      ]
+    },
+    "RepairChangedFilesSummary": {
+      "description": "Summary of repository file changes useful for triage automation.",
+      "type": "object",
+      "properties": {
+        "count_by_area": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "total_count": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 0,
+          "minimum": 0
+        }
+      }
+    },
+    "RepairGitContext": {
+      "description": "Git metadata associated with a repair context artifact.",
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RepairSpanIdentifiers": {
+      "description": "Optional span identifiers when OTel ingestion is present.",
+      "type": "object",
+      "properties": {
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Verdict": {
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus"
+        }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    }
+  }
+}
