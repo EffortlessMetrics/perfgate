@@ -18,9 +18,9 @@ use tempfile::TempDir;
 
 // Re-export types we need for fixture creation
 use perfgate_types::{
-    BaselineServerConfig, BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1,
-    CompareReceipt, CompareRef, ConfigFile, DefaultsConfig, Delta, HostInfo, Metric,
-    MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1, PairedRunReceipt, PerfgateReport,
+    AggregateReceipt, BaselineServerConfig, BenchConfigFile, BenchMeta, BudgetOverride,
+    COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile, DefaultsConfig, Delta, HostInfo,
+    Metric, MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1, PairedRunReceipt, PerfgateReport,
     REPORT_SCHEMA_V1, RUN_SCHEMA_V1, ReportSummary, RunMeta, RunReceipt, Sample, SensorReport,
     Stats, ToolInfo, U64Summary, Verdict, VerdictCounts, VerdictStatus,
 };
@@ -5543,22 +5543,24 @@ async fn given_run_receipt_exists_with_median(
     fs::write(path, json).expect("Failed to write run receipt");
 }
 
-#[then(expr = "the aggregated receipt should have {int} samples")]
-async fn then_aggregated_receipt_sample_count(world: &mut PerfgateWorld, expected: usize) {
+#[then(expr = "the aggregate receipt should have {int} inputs")]
+async fn then_aggregate_receipt_input_count(world: &mut PerfgateWorld, expected: usize) {
     world.ensure_temp_dir();
     let path = world.temp_path().join("aggregated.json");
     let content = fs::read_to_string(path).expect("Failed to read aggregated receipt");
-    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse receipt");
-    assert_eq!(receipt.samples.len(), expected);
+    let receipt: AggregateReceipt =
+        serde_json::from_str(&content).expect("Failed to parse aggregate receipt");
+    assert_eq!(receipt.inputs.len(), expected);
 }
 
-#[then(expr = "the aggregated receipt wall_ms median should be {int}")]
-async fn then_aggregated_receipt_wall_ms_median(world: &mut PerfgateWorld, expected: u64) {
+#[then(expr = "the aggregate receipt benchmark should be {string}")]
+async fn then_aggregate_receipt_benchmark(world: &mut PerfgateWorld, expected: String) {
     world.ensure_temp_dir();
     let path = world.temp_path().join("aggregated.json");
     let content = fs::read_to_string(path).expect("Failed to read aggregated receipt");
-    let receipt: RunReceipt = serde_json::from_str(&content).expect("Failed to parse receipt");
-    assert_eq!(receipt.stats.wall_ms.median, expected);
+    let receipt: AggregateReceipt =
+        serde_json::from_str(&content).expect("Failed to parse aggregate receipt");
+    assert_eq!(receipt.benchmark, expected);
 }
 
 // ============================================================================

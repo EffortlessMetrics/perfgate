@@ -46,6 +46,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
+pub const AGGREGATE_SCHEMA_V1: &str = "perfgate.aggregate.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
@@ -564,6 +565,116 @@ pub struct RunReceipt {
     pub bench: BenchMeta,
     pub samples: Vec<Sample>,
     pub stats: Stats,
+}
+
+/// Fleet-level aggregation policy for matrix CI gating.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum AggregationPolicy {
+    /// Every runner must pass.
+    #[default]
+    All,
+    /// More than half of runners must pass.
+    Majority,
+    /// Weighted pass score must satisfy quorum.
+    Weighted,
+    /// Unweighted pass ratio must satisfy quorum.
+    Quorum,
+    /// Fail when failed runners are >= n (optionally out of m expected runners).
+    FailIfNOfM,
+}
+
+impl AggregationPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AggregationPolicy::All => "all",
+            AggregationPolicy::Majority => "majority",
+            AggregationPolicy::Weighted => "weighted",
+            AggregationPolicy::Quorum => "quorum",
+            AggregationPolicy::FailIfNOfM => "fail_if_n_of_m",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateRunnerMeta {
+    /// Matrix label for this runner (for example: "ubuntu-x86_64").
+    pub label: String,
+    /// Optional logical class/tier (for example: "tier1").
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub class: Option<String>,
+    /// Optional benchmark lane/group.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub lane: Option<String>,
+    /// Optional configured runner weight.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weight: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateInput {
+    /// Input source path used to load this receipt.
+    pub source: String,
+    pub run_id: String,
+    pub bench_name: String,
+    pub host: HostInfo,
+    pub runner: AggregateRunnerMeta,
+    /// Input status derived from run samples.
+    pub status: MetricStatus,
+    /// Optional reasons when status is not pass.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateVerdict {
+    pub status: MetricStatus,
+    pub passed: u32,
+    pub failed: u32,
+    pub total: u32,
+    /// Weighted pass sum (when using weighted policies).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weighted_pass: Option<f64>,
+    /// Weighted total sum (when using weighted policies).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub weighted_total: Option<f64>,
+    /// Quorum threshold used by quorum/weighted policies.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub required: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct FailIfNOfM {
+    pub n: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub m: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct AggregateReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: RunMeta,
+    pub benchmark: String,
+    pub policy: AggregationPolicy,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub quorum: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub fail_if: Option<FailIfNOfM>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub weights: BTreeMap<String, f64>,
+    pub inputs: Vec<AggregateInput>,
+    pub verdict: AggregateVerdict,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(

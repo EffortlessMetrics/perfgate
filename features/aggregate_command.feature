@@ -13,5 +13,5 @@ Feature: aggregate command
     Then the exit code should be 0
     And the file "aggregated.json" should exist
     And the file "aggregated.json" should contain valid JSON
-    And the aggregated receipt should have 2 samples
-    And the aggregated receipt wall_ms median should be 105
+    And the aggregate receipt should have 2 inputs
+    And the aggregate receipt benchmark should be "test-bench"

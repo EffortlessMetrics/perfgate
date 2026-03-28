@@ -248,12 +248,13 @@ Summarize one or more compare receipts in a terminal table.
 
 ### aggregate
 
-Merge multiple run receipts (e.g., from a fleet of runners) into a single run receipt.
+Aggregate multiple run receipts (e.g., from a fleet of runners) into a formal aggregate receipt.
 
 **Behavior:**
 - MUST accept one or more file paths as positional arguments
-- MUST produce a valid `perfgate.run.v1` receipt with merged samples
+- MUST produce a valid `perfgate.aggregate.v1` receipt with explicit policy verdict data
 - MUST write output to `--out` path
+- MUST exit `2` when the aggregate policy verdict fails
 
 ### bisect
 
