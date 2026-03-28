@@ -20,7 +20,9 @@ use tower_http::{
 };
 use tracing::info;
 
-use crate::auth::{ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware};
+use crate::auth::{
+    ApiKey, ApiKeyStore, AuthState, JwtConfig, Role, auth_middleware, local_mode_auth_middleware,
+};
 use crate::cleanup::spawn_cleanup_task;
 use crate::error::ConfigError;
 use crate::handlers::{
@@ -519,7 +521,7 @@ pub(crate) fn create_router(
         .route("/audit", get(list_audit_events));
 
     let api_routes = if config.local_mode {
-        api_routes_inner
+        api_routes_inner.layer(middleware::from_fn(local_mode_auth_middleware))
     } else {
         api_routes_inner.layer(middleware::from_fn_with_state(auth_state, auth_middleware))
     };
@@ -831,6 +833,41 @@ mod tests {
             None,
         );
         // Router created successfully
+    }
+
+    #[tokio::test]
+    async fn test_router_local_mode_injects_auth_context_for_api_routes() {
+        let store = Arc::new(InMemoryStore::new());
+        let persistent_key_store: Arc<dyn KeyStore> = Arc::new(InMemoryKeyStore::new());
+        let fleet_store = create_fleet_store();
+        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, Default::default());
+        let config = ServerConfig::new().local_mode(true);
+        let app_state = AppState {
+            store: store.clone(),
+            audit: store,
+        };
+
+        let router = create_router(
+            app_state,
+            persistent_key_store,
+            fleet_store,
+            None,
+            auth_state,
+            &config,
+            None,
+        );
+
+        let response = tower::ServiceExt::oneshot(
+            router,
+            axum::http::Request::builder()
+                .uri("/api/v1/projects/test/baselines")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
     }
 
     #[test]

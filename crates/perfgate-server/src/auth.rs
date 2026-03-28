@@ -376,6 +376,26 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
+/// Local-mode middleware that injects a synthetic admin auth context.
+///
+/// `perfgate serve` runs the server in single-user local mode with
+/// authentication disabled. Many handlers still depend on `AuthContext` for
+/// scope checks and audit metadata, so local mode synthesizes an admin context
+/// instead of skipping the extension entirely.
+pub async fn local_mode_auth_middleware(mut request: Request, next: Next) -> impl IntoResponse {
+    let auth_ctx = AuthContext {
+        api_key: ApiKey::new(
+            "local-mode".to_string(),
+            "Local Mode".to_string(),
+            "local".to_string(),
+            Role::Admin,
+        ),
+        source_ip: source_ip(request.headers()),
+    };
+    request.extensions_mut().insert(auth_ctx);
+    next.run(request).await
+}
+
 /// Checks if the current auth context has the required scope, project access, and benchmark access.
 /// Returns an error response if the scope is not present, project mismatch, or benchmark restricted.
 pub fn check_scope(
@@ -513,6 +533,17 @@ mod tests {
             ))
     }
 
+    fn local_auth_test_router() -> Router {
+        Router::new()
+            .route(
+                "/protected",
+                get(|Extension(auth_ctx): Extension<AuthContext>| async move {
+                    auth_ctx.api_key.role.to_string()
+                }),
+            )
+            .layer(axum::middleware::from_fn(local_mode_auth_middleware))
+    }
+
     #[tokio::test]
     async fn test_api_key_store() {
         let store = ApiKeyStore::new();
@@ -622,6 +653,21 @@ mod tests {
         .unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_local_mode_auth_middleware_injects_admin_context() {
+        let response = local_auth_test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]

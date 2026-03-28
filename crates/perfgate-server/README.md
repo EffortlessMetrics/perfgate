@@ -15,12 +15,12 @@ Performance baselines live on individual CI runners. When different runners exec
 ```bash
 cargo install perfgate-server
 
-# SQLite (recommended for production)
+# Shared SQLite server
 perfgate-server --storage-type sqlite --database-url ./perfgate.db \
-  --api-keys admin:pg_live_<your-key>
+  --api-keys admin:pg_live_<32+alnum>:my-project
 
-# In-memory (development / demos)
-perfgate-server
+# Local single-user sandbox
+cargo run -p perfgate-cli -- serve --no-open
 ```
 
 ## Feature highlights
@@ -28,8 +28,7 @@ perfgate-server
 | Feature | Details |
 |---------|---------|
 | **Storage backends** | In-memory, SQLite, PostgreSQL |
-| **Artifact offload** | S3, GCS, and Azure Blob via `--artifacts-url` |
-| **Auth** | API keys (scoped to project + benchmark regex), JWT (HS256), GitHub Actions OIDC |
+| **Auth** | API keys (scoped to project + benchmark regex), JWT (HS256), GitHub Actions OIDC, GitLab OIDC, custom OIDC |
 | **Role-based access** | Viewer, Contributor, Promoter, Admin |
 | **Web dashboard** | Embedded SPA served at `/` -- no extra deployment needed |
 | **Fleet analytics** | Dependency-change impact tracking and cross-project alerts |
@@ -67,7 +66,8 @@ Keys are scoped to a project and optionally restricted by benchmark regex:
 ```
 
 For GitHub Actions CI, use OIDC (`--github-oidc org/repo:project-id:contributor`).
-JWT tokens (HS256) are also supported via `--jwt-secret`.
+GitLab OIDC and custom OIDC providers are also supported. JWT tokens (HS256)
+are supported via `--jwt-secret`.
 
 ## Configuration
 
@@ -77,9 +77,10 @@ JWT tokens (HS256) are also supported via `--jwt-secret`.
 | `--port` | `8080` | Port |
 | `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
 | `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
-| `--artifacts-url` | -- | Object-store URL (`s3://...`, `gs://...`, `az://...`) |
 | `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
 | `--github-oidc` | -- | `org/repo:project_id:role` (repeatable) |
+| `--gitlab-oidc` | -- | `group/project:project_id:role` (repeatable) |
+| `--oidc-provider` | -- | custom OIDC issuer/JWKS/audience mapping |
 | `--jwt-secret` | -- | HS256 secret for JWT auth |
 | `--no-cors` | `false` | Disable CORS |
 | `--timeout` | `30` | Request timeout (seconds) |
@@ -90,11 +91,9 @@ JWT tokens (HS256) are also supported via `--jwt-secret`.
 
 | Backend | Use case | Persistence | Setup |
 |---------|----------|:-----------:|-------|
-| **memory** | Dev / tests | None | Zero config |
+| **memory** | Tests / short-lived demos | None | Zero config |
 | **sqlite** | Single-node production | Disk | `--database-url ./perfgate.db` |
 | **postgres** | Multi-node / HA | Disk | `--database-url postgresql://host/db` |
-
-Artifact payloads (run receipts) can be offloaded to S3, GCS, or Azure Blob Storage independently of the metadata backend.
 
 ## Library usage
 

@@ -1,444 +1,209 @@
-# Getting Started with Baseline Server
+# Getting Started with the Baseline Server
 
-This guide covers how to set up and use the perfgate Baseline Server for centralized baseline management.
+This guide documents the current, shipped baseline-server workflow in
+`perfgate 0.15.x`. It intentionally focuses on commands and flags that exist
+today.
 
-## Overview
+## Pick a Mode
 
-The perfgate Baseline Server provides:
+Use one of these two entry points:
 
-- **Centralized storage**: Store baselines in a central location accessible by all CI runners
-- **Version history**: Track changes to baselines over time
-- **Access control**: Role-based permissions for uploading, promoting, and deleting baselines
-- **Multi-tenancy**: Isolate baselines by project/namespace
-- **Rich metadata**: Git refs, SHAs, tags, and custom metadata
+- `perfgate serve`: local single-user sandbox with SQLite storage, dashboard,
+  and auth disabled
+- `perfgate-server`: shared service for CI and teams; use API keys from the
+  CLI today
 
-## Prerequisites
+Use `perfgate serve` for local exploration and `perfgate-server` for a real
+shared baseline service.
 
-- Rust 1.92+ (for building from source)
-- SQLite 3.x (for production storage)
+## Local Sandbox
 
-## Installation
-
-### Build from Source
+Start a local server on `127.0.0.1:8484`:
 
 ```bash
-# Build the server
-cargo build --release -p perfgate-server
-
-# The binary will be at target/release/perfgate-server
+cargo run -p perfgate-cli -- serve --no-open --port 8484
 ```
 
-### Install with Cargo
+Point the CLI at the local API:
 
 ```bash
-cargo install --path crates/perfgate-server
-```
-
-## Starting the Server
-
-### Development Mode (In-Memory Storage)
-
-For quick testing and development:
-
-```bash
-perfgate-server
-```
-
-This starts the server with:
-- In-memory storage (data lost on restart)
-- No authentication
-- Default bind address `0.0.0.0:8080`
-
-### Production Mode (SQLite Storage)
-
-For persistent storage:
-
-```bash
-perfgate-server \
-  --storage-type sqlite \
-  --database-url ./perfgate.db \
-  --bind 127.0.0.1 \
-  --port 8080
-```
-
-### With Authentication
-
-Add API keys for authentication:
-
-```bash
-perfgate-server \
-  --storage-type sqlite \
-  --database-url ./perfgate.db \
-  --api-keys admin:pg_live_abc123def456... \
-  --api-keys viewer:pg_live_xyz789...
-```
-
-The format is `role:key` where:
-- `role`: One of `viewer`, `contributor`, `promoter`, `admin`
-- `key`: API key in format `pg_live_<32-chars>` or `pg_test_<32-chars>`
-
-## CLI Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--bind` | `0.0.0.0` | Bind address |
-| `--port` | `8080` | Port number |
-| `--storage-type` | `memory` | Storage backend: `memory`, `sqlite` |
-| `--database-url` | - | Database path (required for sqlite) |
-| `--api-keys` | - | API keys in format `role:key` (can be repeated) |
-| `--no-cors` | false | Disable CORS headers |
-| `--timeout` | `30` | Request timeout in seconds |
-| `--log-level` | `info` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
-| `--log-format` | `json` | Log format: `json`, `pretty` |
-
-## Configuring the CLI
-
-### Environment Variables
-
-Set environment variables to configure the perfgate CLI:
-
-```bash
-export PERFGATE_SERVER_URL=http://localhost:8080
-export PERFGATE_API_KEY=pg_live_abc123def456...
+export PERFGATE_SERVER_URL=http://127.0.0.1:8484/api/v1
 export PERFGATE_PROJECT=my-project
 ```
 
-### Per-Command Configuration
-
-Or specify options per command:
+Create and promote a baseline:
 
 ```bash
-perfgate check --config perfgate.toml --bench my-bench \
-  --baseline-server http://localhost:8080 \
-  --api-key pg_live_abc123... \
-  --project my-project
-```
-
-## Basic Workflow
-
-### 1. Upload a Baseline
-
-After running benchmarks on your main branch:
-
-```bash
-# Run benchmark
 perfgate run --name my-bench --out run.json -- ./my-benchmark
 
-# Upload to server
-perfgate promote --current run.json \
+perfgate promote \
+  --current run.json \
   --to-server \
-  --project my-project \
-  --benchmark my-bench
-```
-
-Or use the `baseline` subcommand:
-
-```bash
-perfgate baseline upload \
-  --baseline-server http://localhost:8080/api/v1 \
-  --api-key pg_live_abc123... \
-  --project my-project \
   --benchmark my-bench \
-  --file run.json
+  --version main-2026-03-28
 ```
 
-### 2. Compare Against Server Baseline
-
-In your CI pipeline:
+Query and compare against the stored baseline:
 
 ```bash
-# Run benchmark on PR
-perfgate run --name my-bench --out run.json -- ./my-benchmark
+perfgate baseline list
+perfgate baseline history --benchmark my-bench
 
-# Compare against server baseline
-perfgate check --config perfgate.toml --bench my-bench \
-  --baseline-server http://localhost:8080 \
-  --api-key pg_live_abc123... \
-  --project my-project
+perfgate run --name my-bench --out current.json -- ./my-benchmark
+perfgate compare \
+  --baseline @server:my-bench \
+  --current current.json \
+  --out compare.json
 ```
 
-### 3. Promote to Server
+`perfgate serve` runs in local mode and is intended for one developer on one
+machine. Do not treat it as a shared or internet-facing deployment.
 
-After merging to main:
+## Shared Server
+
+Install or build the dedicated server:
 
 ```bash
-# Run benchmark on merged code
-perfgate run --name my-bench --out run.json -- ./my-benchmark
-
-# Promote to server
-perfgate promote --current run.json \
-  --to-server \
-  --project my-project \
-  --benchmark my-bench
+cargo install perfgate-server
 ```
 
-## Authentication Setup
-
-### API Key Format
-
-- **Live keys**: `pg_live_<32-char-random>` - for production use
-- **Test keys**: `pg_test_<32-char-random>` - for testing/development
-
-### Generating Keys
-
-Generate secure random keys:
-
-```bash
-# Using openssl
-openssl rand -hex 16
-
-# Using Python
-python3 -c "import secrets; print('pg_live_' + secrets.token_hex(16))"
-```
-
-### Roles and Permissions
-
-| Role | Upload | Read | Promote | Delete |
-|------|--------|------|---------|--------|
-| `viewer` | ❌ | ✅ | ❌ | ❌ |
-| `contributor` | ✅ | ✅ | ❌ | ❌ |
-| `promoter` | ✅ | ✅ | ✅ | ❌ |
-| `admin` | ✅ | ✅ | ✅ | ✅ |
-
-### Example: Setting Up CI Access
-
-1. **Create keys for different purposes:**
+Start a shared SQLite-backed instance:
 
 ```bash
 perfgate-server \
-  --api-keys admin:pg_live_admin_key_here... \
-  --api-keys promoter:pg_live_ci_promoter_key... \
-  --api-keys viewer:pg_live_ci_viewer_key...
+  --storage-type sqlite \
+  --database-url ./perfgate.db \
+  --api-keys promoter:pg_live_<32+alnum>:my-project \
+  --api-keys viewer:pg_live_<32+alnum>:my-project
 ```
 
-2. **Configure CI for PR checks (read-only):**
-
-```yaml
-# GitHub Actions
-env:
-  PERFGATE_SERVER_URL: https://perfgate.example.com
-  PERFGATE_API_KEY: ${{ secrets.PERFGATE_VIEWER_KEY }}
-  PERFGATE_PROJECT: my-project
-```
-
-3. **Configure CI for main branch (promote access):**
-
-```yaml
-# GitHub Actions (on push to main)
-env:
-  PERFGATE_SERVER_URL: https://perfgate.example.com
-  PERFGATE_API_KEY: ${{ secrets.PERFGATE_PROMOTER_KEY }}
-  PERFGATE_PROJECT: my-project
-```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/projects/{project}/baselines` | Upload a baseline |
-| `GET` | `/projects/{project}/baselines/{benchmark}/latest` | Get latest baseline |
-| `GET` | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Get specific version |
-| `GET` | `/projects/{project}/baselines` | List baselines |
-| `DELETE` | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
-| `POST` | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
-| `GET` | `/health` | Health check |
-
-### Example API Calls
-
-**Upload a baseline:**
+Then configure the CLI:
 
 ```bash
-curl -X POST http://localhost:8080/projects/my-project/baselines \
-  -H "Authorization: Bearer pg_live_abc123..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "benchmark": "my-bench",
-    "version": "v1.0.0",
-    "git_ref": "refs/heads/main",
-    "git_sha": "abc123def456",
-    "receipt": { ... }
-  }'
+export PERFGATE_SERVER_URL=http://localhost:8080/api/v1
+export PERFGATE_API_KEY=pg_live_<32+alnum>
+export PERFGATE_PROJECT=my-project
 ```
 
-**Get latest baseline:**
+From there, the workflow is the same:
 
 ```bash
-curl http://localhost:8080/projects/my-project/baselines/my-bench/latest \
-  -H "Authorization: Bearer pg_live_abc123..."
+perfgate run --name my-bench --out run.json -- ./my-benchmark
+
+perfgate promote \
+  --current run.json \
+  --to-server \
+  --benchmark my-bench \
+  --version main-2026-03-28
+
+perfgate compare \
+  --baseline @server:my-bench \
+  --current run.json \
+  --out compare.json
 ```
 
-**List baselines:**
+## `perfgate.toml` Configuration
+
+For config-driven workflows such as `perfgate check`, put server settings in
+`perfgate.toml`:
+
+```toml
+[baseline_server]
+url = "http://127.0.0.1:8484/api/v1"
+api_key = "${PERFGATE_API_KEY}"
+project = "my-project"
+fallback_to_local = true
+```
+
+Then run:
 
 ```bash
-curl "http://localhost:8080/projects/my-project/baselines?limit=10" \
-  -H "Authorization: Bearer pg_live_abc123..."
+perfgate check --config perfgate.toml --bench my-bench
 ```
 
-## Fallback Behavior
+`fallback_to_local = true` allows config-driven workflows to fall back to the
+local `baselines/` directory when the server is unavailable.
 
-The perfgate client supports automatic fallback to local storage when the server is unavailable:
+## Supported CLI Workflows
 
-```bash
-# With fallback to local baselines/ directory
-perfgate check --config perfgate.toml --bench my-bench \
-  --baseline-server http://localhost:8080 \
-  --fallback-dir ./baselines
-```
+The current CLI surfaces that talk to the baseline service are:
 
-This ensures CI pipelines continue to work even if the baseline server is temporarily unavailable.
+| Command | Current behavior |
+|---------|------------------|
+| `promote --to-server` | Upload a run receipt as a new baseline version |
+| `compare --baseline @server:<bench>` | Fetch the latest server baseline for a benchmark |
+| `baseline list` | List baselines for a project |
+| `baseline download` | Download the latest or a specific version |
+| `baseline upload` | Upload a run receipt directly |
+| `baseline delete` | Delete a specific version |
+| `baseline history` | Show version history |
+| `baseline verdicts` | Query pass/warn/fail verdict history |
+| `baseline submit-verdict` | Submit verdict data from a compare receipt |
+| `baseline migrate` | Upload local baseline JSON files to the server |
 
-## Deployment Examples
+## Server Endpoints
 
-### Docker
+The server exposes these top-level surfaces:
 
-```dockerfile
-FROM rust:1.70 as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release -p perfgate-server
+- `GET /health`: health check
+- `GET /`: web dashboard
+- `GET /info`: server info, including local-mode status
+- `POST /api/v1/projects/{project}/baselines`: upload a baseline
+- `GET /api/v1/projects/{project}/baselines`: list baselines
+- `GET /api/v1/projects/{project}/baselines/{benchmark}/latest`: fetch latest
+- `GET /api/v1/projects/{project}/baselines/{benchmark}/versions/{version}`:
+  fetch a specific version
+- `DELETE /api/v1/projects/{project}/baselines/{benchmark}/versions/{version}`:
+  delete a version
+- `POST /api/v1/projects/{project}/baselines/{benchmark}/promote`: promote a
+  version
+- `GET /api/v1/projects/{project}/baselines/{benchmark}/trend`: fetch trend
+  data
+- `POST /api/v1/projects/{project}/verdicts`: submit a verdict
+- `GET /api/v1/projects/{project}/verdicts`: list verdicts
 
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/perfgate-server /usr/local/bin/
-EXPOSE 8080
-CMD ["perfgate-server", "--storage-type", "sqlite", "--database-url", "/data/perfgate.db"]
-```
+Point the CLI at the versioned API root, for example
+`http://localhost:8080/api/v1`, not just `http://localhost:8080`.
 
-### Docker Compose
+## Authentication Notes
 
-```yaml
-version: '3.8'
-services:
-  perfgate-server:
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - perfgate-data:/data
-    environment:
-      - PERFGATE_API_KEYS=admin:pg_live_your_key_here
-    command: >
-      perfgate-server
-      --storage-type sqlite
-      --database-url /data/perfgate.db
-      --api-keys admin:pg_live_your_key_here
+Current auth surfaces are split like this:
 
-volumes:
-  perfgate-data:
-```
+- CLI today: `--api-key` or `PERFGATE_API_KEY`
+- Server binary: API keys, JWT (`--jwt-secret`), GitHub OIDC
+  (`--github-oidc`), GitLab OIDC (`--gitlab-oidc`), and custom OIDC
+  (`--oidc-provider`)
+- Local sandbox: `perfgate serve` disables auth for local use
 
-### Kubernetes
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: perfgate-server
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: perfgate-server
-  template:
-    metadata:
-      labels:
-        app: perfgate-server
-    spec:
-      containers:
-      - name: perfgate-server
-        image: perfgate-server:latest
-        ports:
-        - containerPort: 8080
-        args:
-        - --storage-type
-        - sqlite
-        - --database-url
-        - /data/perfgate.db
-        volumeMounts:
-        - name: data
-          mountPath: /data
-        env:
-        - name: PERFGATE_API_KEYS
-          valueFrom:
-            secretKeyRef:
-              name: perfgate-secrets
-              key: api-keys
-      volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: perfgate-data
-```
-
-## Monitoring
-
-### Health Check
-
-```bash
-curl http://localhost:8080/health
-```
-
-Response:
-```json
-{
-  "status": "healthy",
-  "version": "2.0.0",
-  "storage": {
-    "backend": "sqlite",
-    "status": "healthy"
-  }
-}
-```
-
-### Logging
-
-The server outputs structured JSON logs:
-
-```bash
-# Pretty format for development
-perfgate-server --log-format pretty --log-level debug
-
-# JSON format for production (default)
-perfgate-server --log-format json --log-level info
-```
+If you are using the CLI end to end today, API keys are the supported path.
 
 ## Troubleshooting
 
-### Connection Refused
+`401 Missing authentication header`
 
-Ensure the server is running and the bind address is correct:
+You are talking to `perfgate-server` without an API key. Set
+`PERFGATE_API_KEY` or pass `--api-key`.
 
-```bash
-# Check if server is listening
-netstat -tlnp | grep 8080
+`compare --baseline @server:my-bench` fails immediately
 
-# Try with curl
-curl http://localhost:8080/health
-```
-
-### Authentication Failed
-
-Verify the API key format and role:
+Set the global server configuration first:
 
 ```bash
-# Key format should be: pg_live_<32-chars>
-# Role must be one of: viewer, contributor, promoter, admin
+export PERFGATE_SERVER_URL=http://localhost:8080/api/v1
+export PERFGATE_PROJECT=my-project
 ```
 
-### Database Errors
+Health checks work but baseline commands do not
 
-For SQLite, ensure the database file is writable:
+`/health` lives at the server root. Data endpoints live under `/api/v1`.
 
-```bash
-# Check permissions
-ls -la perfgate.db
+Need a local dashboard without setting up shared auth
 
-# Create database directory if needed
-mkdir -p /data && touch /data/perfgate.db
-```
+Use `perfgate serve`, not bare `perfgate-server`.
 
-## Related Documentation
+## Related Docs
 
-- [Architecture Overview](ARCHITECTURE.md)
-- [perfgate-server README](../crates/perfgate-server/README.md)
-- [perfgate-client README](../crates/perfgate-client/README.md)
 - [Main README](../README.md)
+- [perfgate-server README](../crates/perfgate-server/README.md)
+- [Configuration](CONFIG.md)
+- [Architecture](ARCHITECTURE.md)
