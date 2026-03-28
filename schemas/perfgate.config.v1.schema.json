@@ -21,6 +21,21 @@
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
+    },
+    "ratchet": {
+      "description": "Optional policy for explicit budget ratcheting during promote workflows.",
+      "$ref": "#/$defs/RatchetConfig",
+      "default": {
+        "allow_metrics": [
+          "wall_ms",
+          "cpu_ms"
+        ],
+        "enabled": false,
+        "max_tightening": 0.1,
+        "min_improvement": 0.05,
+        "mode": "threshold",
+        "require_significance": true
+      }
     }
   },
   "$defs": {
@@ -357,6 +372,65 @@
           "description": "Demote Pass and Fail to Skip.",
           "type": "string",
           "const": "skip"
+        }
+      ]
+    },
+    "RatchetConfig": {
+      "description": "Policy for automatic budget ratcheting.\n\nRatcheting is opt-in and intended for explicit promote workflows.\nDefaults are conservative and safe.",
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "description": "Explicit list of metrics that can be ratcheted.",
+          "type": "array",
+          "default": [
+            "wall_ms",
+            "cpu_ms"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "description": "Enables ratcheting logic when explicitly requested by the caller.",
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "description": "Maximum one-step tightening applied to a threshold.",
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "description": "Minimum relative improvement required before tightening is considered.",
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "description": "Ratchet computation mode.",
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "description": "Require significance evidence when configured by compare/check logic.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "description": "Ratcheting mode.",
+      "oneOf": [
+        {
+          "description": "Tighten configured budget threshold by observed improvement (capped).",
+          "type": "string",
+          "const": "threshold"
+        },
+        {
+          "description": "Replace baseline-value references with improved observed values.",
+          "type": "string",
+          "const": "baseline_value"
         }
       ]
     },
