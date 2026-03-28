@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SCHEMA_FILES: [&str; 7] = [
+const SCHEMA_FILES: [&str; 8] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
     "perfgate.config.v1.schema.json",
@@ -867,13 +867,13 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
 
     write_schema(
         out_dir,
-        SCHEMA_FILES[5],
+        SCHEMA_FILES[6],
         schema_for!(perfgate_types::RepairContextReceipt),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.
     let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
-    let dest = out_dir.join(SCHEMA_FILES[6]);
+    let dest = out_dir.join(SCHEMA_FILES[7]);
     fs::copy(&vendored_schema, &dest).with_context(|| {
         format!(
             "copy vendored schema {} -> {}",
