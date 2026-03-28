@@ -12,6 +12,7 @@ use axum::{
     Router, middleware,
     routing::{delete, get, post},
 };
+use chrono::{DateTime, Utc};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -128,6 +129,10 @@ impl Default for PostgresPoolConfig {
 /// API key configuration.
 #[derive(Debug, Clone)]
 pub struct ApiKeyConfig {
+    /// Optional stable identifier for the key.
+    pub id: Option<String>,
+    /// Optional human-readable name/description.
+    pub name: Option<String>,
     /// The actual API key string
     pub key: String,
     /// Assigned role
@@ -136,6 +141,16 @@ pub struct ApiKeyConfig {
     pub project: String,
     /// Optional regex to restrict access to specific benchmarks
     pub benchmark_regex: Option<String>,
+    /// Optional expiration timestamp.
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Optional stable metadata preserved for externally loaded API keys.
+#[derive(Debug, Clone, Default)]
+pub struct ApiKeyMetadata {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// Server configuration.
@@ -257,17 +272,38 @@ impl ServerConfig {
 
     /// Adds a scoped API key restricted to a project and optional benchmark regex.
     pub fn scoped_api_key(
-        mut self,
+        self,
         key: impl Into<String>,
         role: Role,
         project: impl Into<String>,
         benchmark_regex: Option<String>,
     ) -> Self {
+        self.scoped_api_key_with_metadata(
+            key,
+            role,
+            project,
+            benchmark_regex,
+            ApiKeyMetadata::default(),
+        )
+    }
+
+    /// Adds a scoped API key with optional stable metadata preserved from an external source.
+    pub fn scoped_api_key_with_metadata(
+        mut self,
+        key: impl Into<String>,
+        role: Role,
+        project: impl Into<String>,
+        benchmark_regex: Option<String>,
+        metadata: ApiKeyMetadata,
+    ) -> Self {
         self.api_keys.push(ApiKeyConfig {
+            id: metadata.id,
+            name: metadata.name,
             key: key.into(),
             role,
             project: project.into(),
             benchmark_regex,
+            expires_at: metadata.expires_at,
         });
         self
     }
@@ -387,16 +423,24 @@ pub(crate) async fn create_key_store(
 
     // Add configured API keys
     for cfg in &config.api_keys {
+        let key_id = cfg
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let mut api_key = ApiKey::new(
-            uuid::Uuid::new_v4().to_string(),
-            format!("{:?} key for {}", cfg.role, cfg.project),
+            key_id.clone(),
+            cfg.name
+                .clone()
+                .or_else(|| cfg.id.clone())
+                .unwrap_or_else(|| format!("{:?} key for {}", cfg.role, cfg.project)),
             cfg.project.clone(),
             cfg.role,
         );
         api_key.benchmark_regex = cfg.benchmark_regex.clone();
+        api_key.expires_at = cfg.expires_at;
 
         store.add_key(api_key, &cfg.key).await;
-        info!(role = ?cfg.role, project = %cfg.project, "Added API key");
+        info!(key_id = %key_id, role = ?cfg.role, project = %cfg.project, "Added API key");
     }
 
     Ok(Arc::new(store))
@@ -809,6 +853,31 @@ mod tests {
         assert_eq!(keys.len(), 2);
         let viewer_key = keys.iter().find(|k| k.role == Role::Viewer).unwrap();
         assert_eq!(viewer_key.project_id, "project-1");
+    }
+
+    #[tokio::test]
+    async fn test_create_key_store_preserves_external_metadata() {
+        let expires_at = Utc::now() + chrono::Duration::hours(1);
+        let config = ServerConfig::new().scoped_api_key_with_metadata(
+            "pg_live_external123456789012345678901234",
+            Role::Contributor,
+            "project-2",
+            Some("^bench-.*$".to_string()),
+            ApiKeyMetadata {
+                id: Some("external-key-1".to_string()),
+                name: Some("external-key-1".to_string()),
+                expires_at: Some(expires_at),
+            },
+        );
+
+        let key_store = create_key_store(&config).await.unwrap();
+        let keys = key_store.list_keys().await;
+
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].id, "external-key-1");
+        assert_eq!(keys[0].name, "external-key-1");
+        assert_eq!(keys[0].expires_at, Some(expires_at));
+        assert_eq!(keys[0].benchmark_regex.as_deref(), Some("^bench-.*$"));
     }
 
     #[tokio::test]
