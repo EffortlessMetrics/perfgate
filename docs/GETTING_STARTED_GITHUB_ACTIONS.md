@@ -3,6 +3,7 @@
 This guide shows a minimal GitHub Actions setup for `perfgate` with:
 - config-driven checks (`perfgate check`)
 - PR artifact upload
+- sticky PR comments via `artifacts/perfgate/comment.md`
 - workflow branching via `--output-github`
 - optional one-line use of the official `perfgate-action`
 
@@ -41,6 +42,8 @@ on:
 jobs:
   performance:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +55,7 @@ jobs:
           all: "true"
           out_dir: artifacts/perfgate
           upload_artifact: "true"
+          comment: "true"
 ```
 
 Use `@v0.15.1` when you want an exact patch pin. If you prefer a moving tag,
@@ -65,6 +69,10 @@ Action outputs are available as:
 - `${{ steps.perfgate.outputs.fail_count }}`
 - `${{ steps.perfgate.outputs.bench_count }}`
 - `${{ steps.perfgate.outputs.exit_code }}`
+
+When `comment: "true"` is enabled on pull requests, the action reuses
+`artifacts/perfgate/comment.md` and upserts a single sticky PR comment by
+attaching a hidden perfgate marker to the posted body.
 
 ## 3) Manual PR performance gate workflow
 
@@ -80,6 +88,8 @@ on:
 jobs:
   performance:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +115,23 @@ jobs:
           name: perfgate-artifacts
           path: artifacts/perfgate
 
+      - name: Post sticky PR comment
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -f artifacts/perfgate/comment.md ]; then
+            if ! perfgate comment \
+              --body-file artifacts/perfgate/comment.md \
+              --pr "${{ github.event.pull_request.number }}"; then
+              echo "warning: failed to post perfgate PR comment" >&2
+            fi
+          else
+            echo "No comment.md artifact found; skipping PR comment." >&2
+          fi
+
       - name: Print verdict
         if: always()
         run: |
@@ -122,7 +149,7 @@ jobs:
 - `bench_count`
 - `exit_code`
 
-## 4) Optional: comment markdown artifact
+## 4) Comment markdown artifact
 
 If you want a custom PR comment body:
 
@@ -135,6 +162,12 @@ perfgate check \
 ```
 
 This writes `artifacts/perfgate/comment.md`.
+
+Post that artifact as a sticky GitHub PR comment:
+
+```bash
+perfgate comment --body-file artifacts/perfgate/comment.md --repo owner/repo --pr 123
+```
 
 ## Common Pitfalls
 

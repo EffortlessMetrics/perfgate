@@ -3,7 +3,7 @@
 //! Produces rich Markdown that includes a verdict badge, metric comparison table,
 //! trend indicators, optional blame attribution, and collapsible raw data.
 
-use crate::client::COMMENT_MARKER;
+use crate::client::{COMMENT_MARKER, LEGACY_COMMENT_MARKER};
 use perfgate_render::{
     direction_str, format_metric_with_statistic, format_pct, format_value, metric_status_icon,
     render_reason_line,
@@ -19,13 +19,30 @@ pub struct CommentOptions {
     pub explain_text: Option<String>,
 }
 
+/// Wrap a markdown body with the canonical hidden marker used for sticky updates.
+pub fn prepare_comment_body(markdown: &str) -> String {
+    let trimmed = markdown.trim_start();
+
+    if let Some(rest) = trimmed.strip_prefix(COMMENT_MARKER) {
+        return format!(
+            "{COMMENT_MARKER}\n{}",
+            rest.trim_start_matches(['\r', '\n'])
+        );
+    }
+
+    if let Some(rest) = trimmed.strip_prefix(LEGACY_COMMENT_MARKER) {
+        return format!(
+            "{COMMENT_MARKER}\n{}",
+            rest.trim_start_matches(['\r', '\n'])
+        );
+    }
+
+    format!("{COMMENT_MARKER}\n{trimmed}")
+}
+
 /// Render a full PR comment body from a `CompareReceipt`.
 pub fn render_comment(compare: &CompareReceipt, options: &CommentOptions) -> String {
     let mut out = String::new();
-
-    // Marker for idempotent updates
-    out.push_str(COMMENT_MARKER);
-    out.push('\n');
 
     // Verdict header with badge
     out.push_str(&verdict_header(compare.verdict.status));
@@ -107,7 +124,7 @@ pub fn render_comment(compare: &CompareReceipt, options: &CommentOptions) -> Str
     out.push_str("\n---\n");
     out.push_str("*Posted by [perfgate](https://github.com/EffortlessMetrics/perfgate)*\n");
 
-    out
+    prepare_comment_body(&out)
 }
 
 /// Render a full PR comment body from a `PerfgateReport`.
@@ -122,8 +139,6 @@ pub fn render_comment_from_report(report: &PerfgateReport, options: &CommentOpti
     // Minimal report when no compare receipt is available
     let mut out = String::new();
 
-    out.push_str(COMMENT_MARKER);
-    out.push('\n');
     out.push_str(&verdict_header(report.verdict.status));
     out.push_str("\n\n");
 
@@ -150,7 +165,7 @@ pub fn render_comment_from_report(report: &PerfgateReport, options: &CommentOpti
     out.push_str("\n---\n");
     out.push_str("*Posted by [perfgate](https://github.com/EffortlessMetrics/perfgate)*\n");
 
-    out
+    prepare_comment_body(&out)
 }
 
 /// Generate a verdict header line with emoji badge.
@@ -273,7 +288,7 @@ mod tests {
     fn comment_contains_marker() {
         let receipt = make_compare_receipt();
         let body = render_comment(&receipt, &CommentOptions::default());
-        assert!(body.contains(COMMENT_MARKER));
+        assert!(body.starts_with(COMMENT_MARKER));
     }
 
     #[test]
@@ -432,7 +447,7 @@ mod tests {
         };
 
         let body = render_comment_from_report(&report, &CommentOptions::default());
-        assert!(body.contains(COMMENT_MARKER));
+        assert!(body.starts_with(COMMENT_MARKER));
         assert!(body.contains("perfgate: **pass**"));
         assert!(body.contains("1 pass"));
     }
@@ -459,5 +474,19 @@ mod tests {
         let body = render_comment_from_report(&report, &CommentOptions::default());
         assert!(body.contains("`wall_ms`"));
         assert!(body.contains("| Metric |"));
+    }
+
+    #[test]
+    fn prepare_comment_body_adds_marker_to_plain_markdown() {
+        let body = prepare_comment_body("## Summary\n\nBody");
+        assert!(body.starts_with(COMMENT_MARKER));
+        assert!(body.contains("## Summary"));
+    }
+
+    #[test]
+    fn prepare_comment_body_rewrites_legacy_marker() {
+        let body = prepare_comment_body("<!-- perfgate -->\n## Summary");
+        assert!(body.starts_with(COMMENT_MARKER));
+        assert!(!body.contains(LEGACY_COMMENT_MARKER));
     }
 }

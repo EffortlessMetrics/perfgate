@@ -5,8 +5,15 @@ use crate::types::{GitHubComment, GitHubCommentRequest};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use tracing::debug;
 
-/// Marker embedded in PR comments to identify perfgate comments for idempotent updates.
-pub const COMMENT_MARKER: &str = "<!-- perfgate -->";
+/// Canonical marker embedded in PR comments to identify perfgate comments for idempotent updates.
+pub const COMMENT_MARKER: &str = "<!-- perfgate:comment kind=summary -->";
+
+/// Legacy marker still recognized so old comments converge onto the sticky path.
+pub const LEGACY_COMMENT_MARKER: &str = "<!-- perfgate -->";
+
+fn has_comment_marker(body: &str) -> bool {
+    body.contains(COMMENT_MARKER) || body.contains(LEGACY_COMMENT_MARKER)
+}
 
 /// Client for the GitHub REST API, focused on issue/PR comments.
 #[derive(Clone, Debug)]
@@ -184,7 +191,8 @@ impl GitHubClient {
         let comments = self.list_comments(owner, repo, pr_number).await?;
         Ok(comments
             .into_iter()
-            .find(|c| c.body.contains(COMMENT_MARKER)))
+            .rev()
+            .find(|c| has_comment_marker(&c.body)))
     }
 
     /// Create or update the perfgate comment on a PR (idempotent).
@@ -298,7 +306,7 @@ mod tests {
                 },
                 {
                     "id": 2,
-                    "body": "<!-- perfgate -->\nperfgate results",
+                    "body": "<!-- perfgate:comment kind=summary -->\nperfgate results",
                     "html_url": "https://github.com/owner/repo/pull/1#issuecomment-2",
                     "user": { "login": "perfgate-bot" }
                 }
@@ -385,7 +393,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
                 {
                     "id": 50,
-                    "body": "<!-- perfgate -->\nold content",
+                    "body": "<!-- perfgate:comment kind=summary -->\nold content",
                     "html_url": "https://github.com/owner/repo/pull/1#issuecomment-50",
                     "user": { "login": "perfgate-bot" }
                 }
@@ -398,7 +406,7 @@ mod tests {
             .and(path("/repos/owner/repo/issues/comments/50"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": 50,
-                "body": "<!-- perfgate -->\nnew content",
+                "body": "<!-- perfgate:comment kind=summary -->\nnew content",
                 "html_url": "https://github.com/owner/repo/pull/1#issuecomment-50",
                 "user": { "login": "perfgate-bot" }
             })))
@@ -407,12 +415,77 @@ mod tests {
 
         let client = GitHubClient::new(&mock_server.uri(), "test-token").unwrap();
         let (comment, created) = client
-            .upsert_comment("owner", "repo", 1, "<!-- perfgate -->\nnew content")
+            .upsert_comment(
+                "owner",
+                "repo",
+                1,
+                "<!-- perfgate:comment kind=summary -->\nnew content",
+            )
             .await
             .unwrap();
 
         assert!(!created);
         assert_eq!(comment.id, 50);
+    }
+
+    #[tokio::test]
+    async fn test_find_perfgate_comment_accepts_legacy_marker() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/issues/1/comments"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {
+                    "id": 7,
+                    "body": "<!-- perfgate -->\nlegacy content",
+                    "html_url": "https://github.com/owner/repo/pull/1#issuecomment-7",
+                    "user": { "login": "perfgate-bot" }
+                }
+            ])))
+            .mount(&mock_server)
+            .await;
+
+        let client = GitHubClient::new(&mock_server.uri(), "test-token").unwrap();
+        let found = client
+            .find_perfgate_comment("owner", "repo", 1)
+            .await
+            .unwrap();
+
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, 7);
+    }
+
+    #[tokio::test]
+    async fn test_find_perfgate_comment_prefers_newest_marker_match() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/issues/1/comments"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {
+                    "id": 10,
+                    "body": "<!-- perfgate -->\nold content",
+                    "html_url": "https://github.com/owner/repo/pull/1#issuecomment-10",
+                    "user": { "login": "perfgate-bot" }
+                },
+                {
+                    "id": 11,
+                    "body": "<!-- perfgate:comment kind=summary -->\nnew content",
+                    "html_url": "https://github.com/owner/repo/pull/1#issuecomment-11",
+                    "user": { "login": "perfgate-bot" }
+                }
+            ])))
+            .mount(&mock_server)
+            .await;
+
+        let client = GitHubClient::new(&mock_server.uri(), "test-token").unwrap();
+        let found = client
+            .find_perfgate_comment("owner", "repo", 1)
+            .await
+            .unwrap();
+
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, 11);
     }
 
     #[tokio::test]

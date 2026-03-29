@@ -59,14 +59,23 @@ perfgate check --config perfgate.toml --bench my-service --profile-on-regression
 
 ```yaml
 # .github/workflows/perf.yml
-- uses: EffortlessMetrics/perfgate@v0.15.1
-  with:
-    config: perfgate.toml
-    all: "true"
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EffortlessMetrics/perfgate@v0.15.1
+        with:
+          config: perfgate.toml
+          all: "true"
+          comment: "true"
 ```
 
 Pin `@v0.15.1` for an exact patch release, or use `@v0.15` / `@v0` to follow
-the current compatible action tag.
+the current compatible action tag. Set `comment: "true"` to post or update a
+single sticky PR comment from `artifacts/perfgate/comment.md`.
 
 Exit code `2` = budget violated. That's it.
 
@@ -142,10 +151,10 @@ Validate computational complexity for a benchmark command:
 perfgate scale --name parser --command "./target/release/parser-bench --size {n}" --sizes 100,1000,10000 --expected "O(n)"
 ```
 
-Post or update a PR comment from a compare receipt:
+Post or update a sticky PR comment from the generated markdown artifact:
 
 ```bash
-perfgate comment --compare artifacts/perfgate/compare.json --repo owner/repo --pr 123
+perfgate comment --body-file artifacts/perfgate/comment.md --repo owner/repo --pr 123
 ```
 
 **CI Integration**
