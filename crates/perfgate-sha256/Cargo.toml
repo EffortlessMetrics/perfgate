@@ -21,7 +21,7 @@ std = []
 
 [dev-dependencies]
 proptest = "1.7"
-criterion = "0.5"
+criterion = "0.8.2"
 
 [[bench]]
 name = "sha256_bench"
