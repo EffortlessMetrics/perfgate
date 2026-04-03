@@ -3842,10 +3842,14 @@ fn submit_verdict_if_possible(
             git_sha: None,
         };
 
-        let _ = with_tokio_runtime(async {
-            let _ = client.submit_verdict(&project, &request).await;
-            Ok::<(), anyhow::Error>(())
-        });
+        if let Err(e) = with_tokio_runtime(async {
+            client
+                .submit_verdict(&project, &request)
+                .await
+                .map_err(anyhow::Error::from)
+        }) {
+            eprintln!("warning: failed to submit verdict: {:#}", e);
+        }
     }
 }
 
