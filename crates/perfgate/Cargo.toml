@@ -32,3 +32,6 @@ perfgate-sha256.workspace = true
 
 [features]
 default = []
+
+[lints]
+workspace = true

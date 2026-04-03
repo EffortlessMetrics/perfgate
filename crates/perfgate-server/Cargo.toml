@@ -97,3 +97,6 @@ path = "tests/real_server_integration.rs"
 [features]
 default = []
 test-utils = []
+
+[lints]
+workspace = true

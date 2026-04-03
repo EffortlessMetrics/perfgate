@@ -22,3 +22,5 @@ thiserror.workspace = true
 [dev-dependencies]
 proptest = "1.7"
 approx = "0.5"
+[lints]
+workspace = true

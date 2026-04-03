@@ -19,3 +19,6 @@ perfgate-error.workspace = true
 
 [dev-dependencies]
 proptest = "1.7"
+
+[lints]
+workspace = true

@@ -33,3 +33,6 @@ libc.workspace = true
 assert_cmd.workspace = true
 predicates.workspace = true
 proptest = "1"
+
+[lints]
+workspace = true

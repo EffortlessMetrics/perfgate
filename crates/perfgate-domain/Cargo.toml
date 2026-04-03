@@ -29,3 +29,6 @@ schemars.workspace = true
 [dev-dependencies]
 insta.workspace = true
 proptest = "1"
+
+[lints]
+workspace = true

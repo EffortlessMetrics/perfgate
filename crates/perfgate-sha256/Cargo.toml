@@ -26,3 +26,6 @@ criterion = "0.8.2"
 [[bench]]
 name = "sha256_bench"
 harness = false
+
+[lints]
+workspace = true

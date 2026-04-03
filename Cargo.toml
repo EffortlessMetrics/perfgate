@@ -46,6 +46,12 @@ homepage = "https://github.com/EffortlessMetrics/perfgate"
 keywords = ["performance", "benchmarking", "budgets", "baseline", "ci"]
 categories = ["development-tools", "command-line-utilities"]
 
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
 # Root package for workspace-level integration tests (BDD/cucumber)
 [package]
 name = "perfgate-tests"
@@ -97,6 +103,9 @@ harness = false
 [[test]]
 name = "integration"
 path = "tests/integration/mod.rs"
+
+[lints]
+workspace = true
 
 [workspace.dependencies]
 anyhow = "1.0.102"
