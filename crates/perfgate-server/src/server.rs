@@ -368,7 +368,7 @@ pub(crate) async fn create_artifacts(
 /// Creates the storage backend based on configuration.
 ///
 /// Returns both a `BaselineStore` and an `AuditStore` backed by the same backend.
-#[allow(dead_code)]
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) async fn create_storage(
     config: &ServerConfig,
 ) -> Result<(Arc<dyn BaselineStore>, Arc<dyn AuditStore>), ConfigError> {
