@@ -4926,5 +4926,180 @@ mod tests {
             assert_eq!(metric_to_string(Metric::MaxRssKb), "max_rss_kb");
             assert_eq!(metric_to_string(Metric::ThroughputPerS), "throughput_per_s");
         }
+
+        // =================================================================
+        // metric_cv tests
+        // =================================================================
+
+        #[test]
+        fn metric_cv_wall_ms_with_known_values() {
+            let stats = Stats {
+                wall_ms: U64Summary {
+                    median: 100,
+                    min: 80,
+                    max: 120,
+                    mean: Some(100.0),
+                    stddev: Some(10.0),
+                },
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
+            let cv = metric_cv(&stats, Metric::WallMs).expect("should return Some");
+            assert!((cv - 0.1).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn metric_cv_optional_metric_present() {
+            let stats = Stats {
+                wall_ms: U64Summary::new(100, 80, 120),
+                cpu_ms: Some(U64Summary {
+                    median: 200,
+                    min: 180,
+                    max: 220,
+                    mean: Some(200.0),
+                    stddev: Some(20.0),
+                }),
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
+            let cv = metric_cv(&stats, Metric::CpuMs).expect("should return Some");
+            assert!((cv - 0.1).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn metric_cv_optional_metric_absent_returns_none() {
+            let stats = Stats {
+                wall_ms: U64Summary::new(100, 80, 120),
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                throughput_per_s: None,
+            };
+            assert!(metric_cv(&stats, Metric::CpuMs).is_none());
+            assert!(metric_cv(&stats, Metric::MaxRssKb).is_none());
+            assert!(metric_cv(&stats, Metric::ThroughputPerS).is_none());
+        }
+
+        #[test]
+        fn metric_cv_throughput_f64_summary() {
+            let stats = Stats {
+                wall_ms: U64Summary::new(100, 80, 120),
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                throughput_per_s: Some(F64Summary {
+                    median: 1000.0,
+                    min: 900.0,
+                    max: 1100.0,
+                    mean: Some(1000.0),
+                    stddev: Some(50.0),
+                }),
+            };
+            let cv = metric_cv(&stats, Metric::ThroughputPerS).expect("should return Some");
+            assert!((cv - 0.05).abs() < f64::EPSILON);
+        }
+
+        // =================================================================
+        // metric_value_from_run with P95 statistic
+        // =================================================================
+
+        #[test]
+        fn metric_value_from_run_p95_uses_percentile() {
+            // Create a run receipt with enough samples to produce a meaningful P95
+            let samples: Vec<Sample> = (1..=20)
+                .map(|i| Sample {
+                    wall_ms: i * 10, // 10, 20, 30, ..., 200
+                    exit_code: 0,
+                    warmup: false,
+                    timed_out: false,
+                    cpu_ms: None,
+                    page_faults: None,
+                    ctx_switches: None,
+                    max_rss_kb: None,
+                    io_read_bytes: None,
+                    io_write_bytes: None,
+                    network_packets: None,
+                    energy_uj: None,
+                    binary_bytes: None,
+                    stdout: None,
+                    stderr: None,
+                })
+                .collect();
+
+            let stats = compute_stats(&samples, None).expect("compute stats");
+            let run = RunReceipt {
+                schema: perfgate_types::RUN_SCHEMA_V1.to_string(),
+                tool: perfgate_types::ToolInfo {
+                    name: "perfgate".to_string(),
+                    version: "test".to_string(),
+                },
+                run: perfgate_types::RunMeta {
+                    id: "run-test".to_string(),
+                    started_at: "2024-01-01T00:00:00Z".to_string(),
+                    ended_at: "2024-01-01T00:00:01Z".to_string(),
+                    host: perfgate_types::HostInfo {
+                        os: "linux".to_string(),
+                        arch: "x86_64".to_string(),
+                        cpu_count: None,
+                        memory_bytes: None,
+                        hostname_hash: None,
+                    },
+                },
+                bench: perfgate_types::BenchMeta {
+                    name: "test".to_string(),
+                    cwd: None,
+                    command: vec!["echo".to_string()],
+                    repeat: 20,
+                    warmup: 0,
+                    work_units: None,
+                    timeout_ms: None,
+                },
+                samples,
+                stats,
+            };
+
+            let median_val = metric_value_from_run(&run, Metric::WallMs, MetricStatistic::Median)
+                .expect("median should exist");
+            let p95_val = metric_value_from_run(&run, Metric::WallMs, MetricStatistic::P95)
+                .expect("p95 should exist");
+
+            // P95 should be greater than the median for this ascending distribution
+            assert!(
+                p95_val > median_val,
+                "P95 ({p95_val}) should be greater than median ({median_val})"
+            );
+            // P95 of 10,20,...,200 should be around 190-200
+            assert!(
+                p95_val >= 180.0,
+                "P95 ({p95_val}) should be at or above the 95th percentile region"
+            );
+        }
     }
 }
