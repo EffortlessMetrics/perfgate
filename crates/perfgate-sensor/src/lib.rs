@@ -93,7 +93,7 @@ impl SensorReportBuilder {
                 severity: map_severity(f.severity),
                 message: f.message.clone(),
                 fingerprint: None,
-                data: f.data.as_ref().map(|d| serde_json::to_value(d).unwrap()),
+                data: f.data.as_ref().and_then(|d| serde_json::to_value(d).ok()),
             })
             .collect();
 
@@ -261,7 +261,7 @@ impl SensorReportBuilder {
 
                     for f in &report.findings {
                         let mut finding_data =
-                            f.data.as_ref().map(|d| serde_json::to_value(d).unwrap());
+                            f.data.as_ref().and_then(|d| serde_json::to_value(d).ok());
                         if let Some(obj) = finding_data.as_mut().and_then(|v| v.as_object_mut()) {
                             obj.insert("bench_name".to_string(), serde_json::json!(bench_name));
                         } else {
