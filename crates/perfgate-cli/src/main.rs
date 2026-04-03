@@ -5543,32 +5543,32 @@ mod tests {
     }
 
     #[test]
-    fn normalize_paired_cli_command_splits_single_shell_string() {
+    fn normalize_paired_cli_command_splits_single_shell_string() -> anyhow::Result<()> {
         let parsed =
-            normalize_paired_cli_command(vec!["cmd /c exit 0".to_string()], "--baseline-cmd")
-                .expect("parse shell string");
+            normalize_paired_cli_command(vec!["cmd /c exit 0".to_string()], "--baseline-cmd")?;
         assert_eq!(parsed, vec!["cmd", "/c", "exit", "0"]);
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_keeps_argv_tokens() {
+    fn normalize_paired_cli_command_keeps_argv_tokens() -> anyhow::Result<()> {
         let args = vec![
             "cmd".to_string(),
             "/c".to_string(),
             "exit".to_string(),
             "0".to_string(),
         ];
-        let parsed =
-            normalize_paired_cli_command(args.clone(), "--baseline-cmd").expect("parse argv");
+        let parsed = normalize_paired_cli_command(args.clone(), "--baseline-cmd")?;
         assert_eq!(parsed, args);
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_keeps_single_token() {
+    fn normalize_paired_cli_command_keeps_single_token() -> anyhow::Result<()> {
         let args = vec!["true".to_string()];
-        let parsed =
-            normalize_paired_cli_command(args.clone(), "--baseline-cmd").expect("single token");
+        let parsed = normalize_paired_cli_command(args.clone(), "--baseline-cmd")?;
         assert_eq!(parsed, args);
+        Ok(())
     }
 
     #[test]
