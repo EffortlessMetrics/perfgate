@@ -178,7 +178,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> DiffUseCa
                 .benches
                 .iter()
                 .find(|b| &b.name == bench_name)
-                .unwrap();
+                .ok_or_else(|| anyhow::anyhow!("bench '{}' not found in config", bench_name))?;
 
             let outcome = self.run_single_bench(bench_config, &config, &req)?;
 
