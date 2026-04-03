@@ -87,6 +87,7 @@ use statrs::distribution::{ContinuousCDF, StudentsT};
 /// assert!(sig.significant); // Clear performance regression
 /// assert!(sig.p_value.unwrap() < 0.05);
 /// ```
+#[must_use = "pure computation; call site should use the returned Significance"]
 pub fn compute_significance(
     baseline: &[f64],
     current: &[f64],
@@ -171,6 +172,7 @@ pub fn compute_significance(
 /// assert!((mean - 14.0).abs() < 1e-10);
 /// assert!(var > 0.0); // Sample variance with Bessel's correction
 /// ```
+#[must_use = "pure computation; call site should use the returned mean and variance"]
 pub fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
     if values.is_empty() {
         return None;

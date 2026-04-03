@@ -17,6 +17,7 @@ use crate::report::SizeMeasurement;
 /// * `coefficients` - The fitted coefficients for the best model
 /// * `width` - Chart width in characters (default: 60)
 /// * `height` - Chart height in lines (default: 20)
+#[must_use = "pure computation; call site should use the returned chart string"]
 pub fn render_ascii_chart(
     measurements: &[SizeMeasurement],
     best_fit: ComplexityClass,

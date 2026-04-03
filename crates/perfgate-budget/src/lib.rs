@@ -139,6 +139,7 @@ pub struct BudgetResult {
 /// # Errors
 ///
 /// Returns `BudgetError::InvalidBaseline` if baseline is <= 0.
+#[must_use = "pure computation; call site should use the returned BudgetResult"]
 pub fn evaluate_budget(
     baseline: f64,
     current: f64,
@@ -226,6 +227,7 @@ pub fn evaluate_budget(
 /// let reg = calculate_regression(100.0, 90.0, Direction::Higher);
 /// assert!((reg - 0.10).abs() < 1e-10);
 /// ```
+#[must_use = "pure computation; call site should use the returned regression value"]
 pub fn calculate_regression(baseline: f64, current: f64, direction: Direction) -> f64 {
     let pct = (current - baseline) / baseline;
     match direction {
@@ -267,6 +269,7 @@ pub fn calculate_regression(baseline: f64, current: f64, direction: Direction) -
 /// // At exact warn threshold: Warn (not Pass)
 /// assert_eq!(determine_status(0.10, threshold, warn_threshold), MetricStatus::Warn);
 /// ```
+#[must_use = "pure computation; call site should use the returned MetricStatus"]
 pub fn determine_status(regression: f64, threshold: f64, warn_threshold: f64) -> MetricStatus {
     if regression > threshold {
         MetricStatus::Fail
@@ -303,6 +306,7 @@ pub fn determine_status(regression: f64, threshold: f64, warn_threshold: f64) ->
 /// let verdict = aggregate_verdict(&[MetricStatus::Pass, MetricStatus::Pass]);
 /// assert_eq!(verdict.status, VerdictStatus::Pass);
 /// ```
+#[must_use = "pure computation; call site should use the returned Verdict"]
 pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
     let mut counts = VerdictCounts {
         pass: 0,
@@ -351,6 +355,7 @@ pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
 /// assert_eq!(reason_token(Metric::MaxRssKb, MetricStatus::Fail), "max_rss_kb_fail");
 /// assert_eq!(reason_token(Metric::ThroughputPerS, MetricStatus::Pass), "throughput_per_s_pass");
 /// ```
+#[must_use = "pure computation; call site should use the returned token string"]
 pub fn reason_token(metric: Metric, status: MetricStatus) -> String {
     format!("{}_{}", metric.as_str(), status.as_str())
 }
@@ -368,6 +373,7 @@ pub fn reason_token(metric: Metric, status: MetricStatus) -> String {
 /// # Returns
 ///
 /// A tuple of (deltas map, verdict) where deltas contains per-metric results.
+#[must_use = "pure computation; call site should use the returned deltas and verdict"]
 pub fn evaluate_budgets<'a, I>(
     metrics: I,
     budgets: &BTreeMap<Metric, Budget>,

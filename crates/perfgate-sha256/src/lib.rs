@@ -69,6 +69,7 @@ const H0: [u32; 8] = [
 /// assert_eq!(hash.len(), 64);
 /// assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
 /// ```
+#[must_use = "pure computation; call site should use the returned hash string"]
 pub fn sha256_hex(data: &[u8]) -> String {
     let mut h = H0;
 

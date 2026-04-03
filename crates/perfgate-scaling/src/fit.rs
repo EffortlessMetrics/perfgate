@@ -14,6 +14,7 @@ use crate::report::SizeMeasurement;
 ///
 /// Returns `(complexity_class, r_squared, coefficients)`.
 /// Coefficients are `[a, b]` for `y = a * g(n) + b`.
+#[must_use = "pure computation; call site should use the returned fit result"]
 pub fn fit_model(
     measurements: &[SizeMeasurement],
     class: ComplexityClass,
@@ -26,6 +27,7 @@ pub fn fit_model(
 }
 
 /// Fit all complexity models and return results sorted by fit quality.
+#[must_use = "pure computation; call site should use the returned model fits"]
 pub fn fit_all_models(measurements: &[SizeMeasurement]) -> Vec<(ComplexityClass, f64, Vec<f64>)> {
     ComplexityClass::all()
         .iter()
@@ -37,6 +39,7 @@ pub fn fit_all_models(measurements: &[SizeMeasurement]) -> Vec<(ComplexityClass,
 ///
 /// R^2 = 1 - SS_res / SS_tot
 /// where SS_res = sum((y_i - y_hat_i)^2) and SS_tot = sum((y_i - y_mean)^2)
+#[must_use = "pure computation; call site should use the returned R-squared value"]
 pub fn r_squared(actual: &[f64], predicted: &[f64]) -> f64 {
     if actual.len() != predicted.len() || actual.is_empty() {
         return 0.0;

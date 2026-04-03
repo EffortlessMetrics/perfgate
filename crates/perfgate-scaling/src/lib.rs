@@ -58,6 +58,7 @@ pub const DEFAULT_R_SQUARED_THRESHOLD: f64 = 0.90;
 /// let result = classify_complexity(&measurements, None);
 /// assert!(result.is_ok());
 /// ```
+#[must_use = "pure computation; call site should use the returned ScalingResult"]
 pub fn classify_complexity(
     measurements: &[SizeMeasurement],
     r_squared_threshold: Option<f64>,
@@ -107,6 +108,7 @@ pub fn classify_complexity(
 ///
 /// Returns `true` if the detected complexity is worse (higher order)
 /// than the expected complexity.
+#[must_use = "pure computation; call site should use the returned degradation flag"]
 pub fn is_complexity_degraded(expected: ComplexityClass, actual: ComplexityClass) -> bool {
     actual.order() > expected.order()
 }
@@ -122,6 +124,7 @@ pub fn is_complexity_degraded(expected: ComplexityClass, actual: ComplexityClass
 /// assert_eq!(parse_complexity("O(n)").unwrap(), ComplexityClass::ON);
 /// assert_eq!(parse_complexity("O(n^2)").unwrap(), ComplexityClass::ON2);
 /// ```
+#[must_use = "pure computation; call site should use the returned ComplexityClass"]
 pub fn parse_complexity(s: &str) -> Result<ComplexityClass, ScalingError> {
     let normalized = s.trim().to_lowercase().replace(' ', "").replace("o(", "O(");
 
