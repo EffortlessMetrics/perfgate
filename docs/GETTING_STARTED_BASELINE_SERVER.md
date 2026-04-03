@@ -1,8 +1,8 @@
 # Getting Started with the Baseline Server
 
 This guide documents the current, shipped baseline-server workflow in
-`perfgate 0.15.x`. It intentionally focuses on commands and flags that exist
-today.
+`perfgate 0.15.1`. Every CLI example below has been validated against the
+actual binary. It intentionally focuses on commands and flags that exist today.
 
 ## Pick a Mode
 
