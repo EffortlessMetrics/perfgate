@@ -20,3 +20,6 @@ anyhow.workspace = true
 
 [dev-dependencies]
 # No additional dev dependencies needed
+
+[lints]
+workspace = true

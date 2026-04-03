@@ -601,6 +601,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 3 measured; 0 filtered out
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn detect_target_dir_default() {
         // When CARGO_TARGET_DIR is not set, should default to "target"
         // SAFETY: This test is the only thread accessing this env var.

@@ -388,6 +388,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn env_source_loads_credentials() {
         let var = "PERFGATE_AUTH_TEST_KEYS";
         // SAFETY: test-only process-local environment mutation.

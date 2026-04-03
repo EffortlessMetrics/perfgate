@@ -218,6 +218,7 @@ fn run_windows(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
 
 /// Returns `(max_rss_kb, page_faults)` from `GetProcessMemoryInfo`.
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn get_memory_info_windows(handle: std::os::windows::io::RawHandle) -> (Option<u64>, Option<u64>) {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
@@ -242,6 +243,7 @@ fn get_memory_info_windows(handle: std::os::windows::io::RawHandle) -> (Option<u
 }
 
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn get_io_counters_windows(handle: std::os::windows::io::RawHandle) -> (Option<u64>, Option<u64>) {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::Threading::{GetProcessIoCounters, IO_COUNTERS};
@@ -260,6 +262,7 @@ fn get_io_counters_windows(handle: std::os::windows::io::RawHandle) -> (Option<u
 }
 
 #[cfg(unix)]
+#[allow(unsafe_code)]
 fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Command, Stdio};
@@ -420,6 +423,7 @@ impl HostProbe for StdHostProbe {
     }
 }
 
+#[allow(unsafe_code)]
 fn get_total_memory() -> u64 {
     #[cfg(windows)]
     {

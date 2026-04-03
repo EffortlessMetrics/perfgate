@@ -22,3 +22,6 @@ handlebars = "6.3"
 [dev-dependencies]
 proptest = "1.7"
 insta.workspace = true
+
+[lints]
+workspace = true

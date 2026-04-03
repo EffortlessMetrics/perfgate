@@ -29,3 +29,6 @@ axum = { workspace = true, optional = true }
 [features]
 default = []
 server = ["axum"]
+
+[lints]
+workspace = true

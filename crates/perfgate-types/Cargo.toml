@@ -31,3 +31,6 @@ insta.workspace = true
 toml.workspace = true
 proptest = "1"
 proptest-derive = "0.4"
+
+[lints]
+workspace = true
