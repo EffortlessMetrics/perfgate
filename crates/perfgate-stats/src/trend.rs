@@ -108,10 +108,12 @@ pub fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
     }
 
     let n_f = n as f64;
-    let sum_x: f64 = points.iter().map(|(x, _)| x).sum();
-    let sum_y: f64 = points.iter().map(|(_, y)| y).sum();
-    let sum_xy: f64 = points.iter().map(|(x, y)| x * y).sum();
-    let sum_x2: f64 = points.iter().map(|(x, _)| x * x).sum();
+
+    // First pass: accumulate all sums needed for slope/intercept.
+    let (sum_x, sum_y, sum_xy, sum_x2) = points.iter().fold(
+        (0.0f64, 0.0f64, 0.0f64, 0.0f64),
+        |(sx, sy, sxy, sx2), &(x, y)| (sx + x, sy + y, sxy + x * y, sx2 + x * x),
+    );
 
     let denom = n_f * sum_x2 - sum_x * sum_x;
     if denom.abs() < f64::EPSILON {
@@ -122,16 +124,12 @@ pub fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
     let slope = (n_f * sum_xy - sum_x * sum_y) / denom;
     let intercept = (sum_y - slope * sum_x) / n_f;
 
-    // R-squared: coefficient of determination
+    // Second pass: R-squared (coefficient of determination).
     let mean_y = sum_y / n_f;
-    let ss_tot: f64 = points.iter().map(|(_, y)| (y - mean_y).powi(2)).sum();
-    let ss_res: f64 = points
-        .iter()
-        .map(|(x, y)| {
-            let predicted = slope * x + intercept;
-            (y - predicted).powi(2)
-        })
-        .sum();
+    let (ss_tot, ss_res) = points.iter().fold((0.0f64, 0.0f64), |(tot, res), &(x, y)| {
+        let predicted = slope * x + intercept;
+        (tot + (y - mean_y).powi(2), res + (y - predicted).powi(2))
+    });
 
     let r_squared = if ss_tot.abs() < f64::EPSILON {
         // All y values are equal: perfect fit if ss_res is also 0.
