@@ -100,6 +100,7 @@ impl Default for TrendConfig {
 /// assert!((intercept - 1.0).abs() < 1e-10);
 /// assert!((r2 - 1.0).abs() < 1e-10);
 /// ```
+#[must_use = "pure computation; call site should use the returned regression coefficients"]
 pub fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
     let n = points.len();
     if n < 2 {
@@ -158,6 +159,7 @@ pub fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
 /// `direction_lower_is_better` indicates whether lower metric values are desirable.
 /// - `true` (e.g., wall_ms): breach when value rises above threshold.
 /// - `false` (e.g., throughput_per_s): breach when value drops below threshold.
+#[must_use = "pure computation; call site should use the returned breach prediction"]
 pub fn predict_breach_run(
     slope: f64,
     intercept: f64,
@@ -206,6 +208,7 @@ pub fn predict_breach_run(
 /// `current_value` is the metric value at the latest run.
 /// `threshold` is the budget fail threshold (absolute value the metric must not exceed).
 /// `direction_lower_is_better` specifies the metric direction.
+#[must_use = "pure computation; call site should use the returned DriftClass"]
 pub fn classify_drift(
     slope: f64,
     r_squared: f64,
@@ -257,6 +260,7 @@ pub fn classify_drift(
 /// For "higher is better" metrics: headroom = (current - threshold) / threshold * 100.
 ///
 /// Positive headroom means the metric is within budget. Negative means it has exceeded.
+#[must_use = "pure computation; call site should use the returned headroom percentage"]
 pub fn compute_headroom_pct(
     current_value: f64,
     threshold: f64,
@@ -292,6 +296,7 @@ pub fn compute_headroom_pct(
 /// assert_eq!(result.drift, DriftClass::Degrading);
 /// assert!(result.runs_to_breach.is_some());
 /// ```
+#[must_use = "pure computation; call site should use the returned TrendAnalysis"]
 pub fn analyze_trend(
     values: &[f64],
     metric_name: &str,
@@ -364,6 +369,7 @@ pub fn analyze_trend(
 /// let chart = spark_chart(&[1.0, 2.0, 3.0, 4.0, 5.0]);
 /// assert_eq!(chart.len(), 5);
 /// ```
+#[must_use = "pure computation; call site should use the returned spark chart"]
 pub fn spark_chart(values: &[f64]) -> String {
     if values.is_empty() {
         return String::new();

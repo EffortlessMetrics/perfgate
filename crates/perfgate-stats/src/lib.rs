@@ -37,6 +37,7 @@ use std::cmp::Ordering;
 /// assert_eq!(s.min, 10);
 /// assert_eq!(s.max, 30);
 /// ```
+#[must_use = "pure computation; call site should use the returned summary"]
 pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
     if values.is_empty() {
         return Err(StatsError::NoSamples);
@@ -79,6 +80,7 @@ pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
 /// assert_eq!(s.min, 1.0);
 /// assert_eq!(s.max, 3.0);
 /// ```
+#[must_use = "pure computation; call site should use the returned summary"]
 pub fn summarize_f64(values: &[f64]) -> Result<F64Summary, StatsError> {
     if values.is_empty() {
         return Err(StatsError::NoSamples);
@@ -104,6 +106,7 @@ pub fn summarize_f64(values: &[f64]) -> Result<F64Summary, StatsError> {
     })
 }
 
+#[must_use = "pure computation; call site should use the returned median"]
 pub fn median_u64_sorted(sorted: &[u64]) -> u64 {
     debug_assert!(!sorted.is_empty());
     let n = sorted.len();
@@ -115,6 +118,7 @@ pub fn median_u64_sorted(sorted: &[u64]) -> u64 {
     }
 }
 
+#[must_use = "pure computation; call site should use the returned median"]
 pub fn median_f64_sorted(sorted: &[f64]) -> f64 {
     debug_assert!(!sorted.is_empty());
     let n = sorted.len();
@@ -141,6 +145,7 @@ pub fn median_f64_sorted(sorted: &[f64]) -> f64 {
 /// let p0 = percentile(vec![10.0, 20.0, 30.0], 0.0).unwrap();
 /// assert_eq!(p0, 10.0);
 /// ```
+#[must_use = "pure computation; call site should use the returned percentile"]
 pub fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
     if values.is_empty() {
         return None;
@@ -183,6 +188,7 @@ pub fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
 /// assert_eq!(mean, 42.0);
 /// assert_eq!(var, 0.0);
 /// ```
+#[must_use = "pure computation; call site should use the returned mean and variance"]
 pub fn mean_and_variance(values: &[f64]) -> Option<(f64, f64)> {
     if values.is_empty() {
         return None;

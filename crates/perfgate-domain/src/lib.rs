@@ -516,6 +516,7 @@ mod tradeoff_tests {
 /// assert_eq!(stats.wall_ms.min, 100);
 /// assert_eq!(stats.wall_ms.max, 120);
 /// ```
+#[must_use = "pure computation; call site should use the returned Stats"]
 pub fn compute_stats(
     samples: &[perfgate_types::Sample],
     work_units: Option<u64>,
@@ -710,6 +711,7 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
 /// let cmp = compare_stats(&baseline, &current, &budgets).unwrap();
 /// assert_eq!(cmp.verdict.status, VerdictStatus::Pass);
 /// ```
+#[must_use = "pure computation; call site should use the returned Comparison"]
 pub fn compare_stats(
     baseline: &Stats,
     current: &Stats,
@@ -719,6 +721,7 @@ pub fn compare_stats(
 }
 
 /// Compare stats under the provided budgets and optional tradeoff rules.
+#[must_use = "pure computation; call site should use the returned Comparison"]
 pub fn compare_stats_with_tradeoffs(
     baseline: &Stats,
     current: &Stats,
@@ -1145,6 +1148,7 @@ pub struct Report {
 /// assert_eq!(report.verdict, VerdictStatus::Pass);
 /// assert!(report.findings.is_empty());
 /// ```
+#[must_use = "pure computation; call site should use the returned Report"]
 pub fn derive_report(receipt: &CompareReceipt) -> Report {
     let mut findings = Vec::new();
 
@@ -1213,6 +1217,7 @@ fn metric_to_string(metric: Metric) -> String {
     metric.as_str().to_string()
 }
 
+#[must_use = "pure computation; call site should use the returned value"]
 pub fn metric_value(stats: &Stats, metric: Metric) -> Option<f64> {
     match metric {
         Metric::BinaryBytes => stats.binary_bytes.as_ref().map(|s| s.median as f64),
