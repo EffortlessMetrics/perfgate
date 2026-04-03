@@ -71,7 +71,7 @@ async-trait = "0.1.86"
 jsonwebtoken = { version = "10", features = ["rust_crypto", "hmac", "sha2"] }
 object_store = { version = "0.11.0", features = ["aws", "gcp", "azure"] }
 futures = "0.3.31"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
