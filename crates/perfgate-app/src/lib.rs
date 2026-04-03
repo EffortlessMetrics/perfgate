@@ -270,7 +270,6 @@ pub struct CompareRequest {
     pub current_ref: CompareRef,
     pub tool: ToolInfo,
     /// Policy for handling host mismatches.
-    #[allow(dead_code)]
     pub host_mismatch_policy: HostMismatchPolicy,
 }
 
