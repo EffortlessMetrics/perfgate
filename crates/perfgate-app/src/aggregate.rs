@@ -82,7 +82,12 @@ impl AggregateUseCase {
             run: RunMeta {
                 id: uuid::Uuid::new_v4().to_string(),
                 started_at: receipts[0].run.started_at.clone(),
-                ended_at: receipts.last().unwrap().run.ended_at.clone(),
+                ended_at: receipts
+                    .last()
+                    .ok_or_else(|| anyhow::anyhow!("no receipts after aggregation"))?
+                    .run
+                    .ended_at
+                    .clone(),
                 host: HostInfo {
                     os: "fleet".to_string(),
                     arch: "mixed".to_string(),
