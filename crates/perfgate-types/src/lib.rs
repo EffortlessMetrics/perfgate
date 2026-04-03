@@ -2708,6 +2708,120 @@ mod tests {
         assert!(receipt.run.host.memory_bytes.is_none());
         assert!(receipt.run.host.hostname_hash.is_none());
     }
+
+    // =========================================================================
+    // U64Summary::cv() tests
+    // =========================================================================
+
+    #[test]
+    fn u64_summary_cv_normal_case() {
+        let s = U64Summary {
+            median: 100,
+            min: 80,
+            max: 120,
+            mean: Some(100.0),
+            stddev: Some(10.0),
+        };
+        let cv = s.cv().expect("should return Some");
+        assert!((cv - 0.1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn u64_summary_cv_zero_mean_returns_none() {
+        let s = U64Summary {
+            median: 0,
+            min: 0,
+            max: 0,
+            mean: Some(0.0),
+            stddev: Some(5.0),
+        };
+        assert!(s.cv().is_none());
+    }
+
+    #[test]
+    fn u64_summary_cv_zero_stddev() {
+        let s = U64Summary {
+            median: 100,
+            min: 100,
+            max: 100,
+            mean: Some(100.0),
+            stddev: Some(0.0),
+        };
+        let cv = s.cv().expect("should return Some");
+        assert!((cv - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn u64_summary_cv_missing_mean_returns_none() {
+        let s = U64Summary {
+            median: 100,
+            min: 80,
+            max: 120,
+            mean: None,
+            stddev: Some(10.0),
+        };
+        assert!(s.cv().is_none());
+    }
+
+    #[test]
+    fn u64_summary_cv_missing_stddev_returns_none() {
+        let s = U64Summary {
+            median: 100,
+            min: 80,
+            max: 120,
+            mean: Some(100.0),
+            stddev: None,
+        };
+        assert!(s.cv().is_none());
+    }
+
+    // =========================================================================
+    // F64Summary::cv() tests
+    // =========================================================================
+
+    #[test]
+    fn f64_summary_cv_normal_case() {
+        let s = F64Summary {
+            median: 50.0,
+            min: 40.0,
+            max: 60.0,
+            mean: Some(50.0),
+            stddev: Some(5.0),
+        };
+        let cv = s.cv().expect("should return Some");
+        assert!((cv - 0.1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn f64_summary_cv_zero_mean_returns_none() {
+        let s = F64Summary {
+            median: 0.0,
+            min: 0.0,
+            max: 0.0,
+            mean: Some(0.0),
+            stddev: Some(1.0),
+        };
+        assert!(s.cv().is_none());
+    }
+
+    #[test]
+    fn f64_summary_cv_zero_stddev() {
+        let s = F64Summary {
+            median: 50.0,
+            min: 50.0,
+            max: 50.0,
+            mean: Some(50.0),
+            stddev: Some(0.0),
+        };
+        let cv = s.cv().expect("should return Some");
+        assert!((cv - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn f64_summary_cv_missing_fields_returns_none() {
+        let s = F64Summary::new(50.0, 40.0, 60.0);
+        assert!(s.cv().is_none());
+    }
 }
 
 #[cfg(test)]
