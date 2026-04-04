@@ -95,10 +95,16 @@ impl<R: ProcessRunner> BisectUseCase<R> {
 
                 // Regression Blame
                 if let Some(first_word) = stdout.split_whitespace().next() {
-                    let author_out = Command::new("git")
+                    let author_out = match Command::new("git")
                         .args(["show", "-s", "--format=%an <%ae>", first_word])
                         .output()
-                        .ok();
+                    {
+                        Ok(out) => Some(out),
+                        Err(err) => {
+                            eprintln!("warning: git show failed for blame: {err}");
+                            None
+                        }
+                    };
                     if let Some(author_out) = author_out
                         && author_out.status.success()
                     {
