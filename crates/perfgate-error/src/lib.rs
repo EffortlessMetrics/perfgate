@@ -17,6 +17,7 @@
 //! - **IO**: File system and network I/O errors
 //! - **Paired**: Paired benchmark errors
 //! - **Auth**: Authentication and authorization errors
+//! - **Parse**: JSON and TOML deserialization errors
 //!
 //! # Example
 //!
@@ -35,6 +36,7 @@
 //! ```
 
 use std::fmt;
+use std::path::PathBuf;
 
 pub const BENCH_NAME_MAX_LEN: usize = 64;
 pub const BENCH_NAME_PATTERN: &str = r"^[a-z0-9_.\-/]+$";
@@ -192,6 +194,20 @@ pub enum AuthError {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum ParseError {
+    #[error("JSON parse error{}: {source}", path.as_ref().map(|p| format!(" in {}", p.display())).unwrap_or_default())]
+    Json {
+        path: Option<PathBuf>,
+        source: serde_json::Error,
+    },
+    #[error("TOML parse error{}: {source}", path.as_ref().map(|p| format!(" in {}", p.display())).unwrap_or_default())]
+    Toml {
+        path: Option<PathBuf>,
+        source: toml::de::Error,
+    },
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum PerfgateError {
     Validation(#[from] ValidationError),
     Stats(#[from] StatsError),
@@ -200,6 +216,7 @@ pub enum PerfgateError {
     Io(#[from] IoError),
     Paired(#[from] PairedError),
     Auth(#[from] AuthError),
+    Parse(#[from] ParseError),
 }
 
 impl fmt::Display for PerfgateError {
@@ -212,6 +229,7 @@ impl fmt::Display for PerfgateError {
             PerfgateError::Io(e) => write!(f, "{}", e),
             PerfgateError::Paired(e) => write!(f, "{}", e),
             PerfgateError::Auth(e) => write!(f, "{}", e),
+            PerfgateError::Parse(e) => write!(f, "{}", e),
         }
     }
 }
@@ -231,6 +249,7 @@ pub enum ErrorCategory {
     Io,
     Paired,
     Auth,
+    Parse,
 }
 
 impl PerfgateError {
@@ -243,6 +262,7 @@ impl PerfgateError {
             PerfgateError::Io(_) => ErrorCategory::Io,
             PerfgateError::Paired(_) => ErrorCategory::Paired,
             PerfgateError::Auth(_) => ErrorCategory::Auth,
+            PerfgateError::Parse(_) => ErrorCategory::Parse,
         }
     }
 
@@ -259,6 +279,7 @@ impl PerfgateError {
             PerfgateError::Io(_) => true,
             PerfgateError::Paired(PairedError::NoSamples) => false,
             PerfgateError::Auth(_) => false,
+            PerfgateError::Parse(_) => false,
         }
     }
 
@@ -275,6 +296,7 @@ impl PerfgateError {
             PerfgateError::Io(_) => 1,
             PerfgateError::Paired(_) => 1,
             PerfgateError::Auth(_) => 1,
+            PerfgateError::Parse(_) => 1,
         }
     }
 }
@@ -289,6 +311,7 @@ impl ErrorCategory {
             ErrorCategory::Io => "io",
             ErrorCategory::Paired => "paired",
             ErrorCategory::Auth => "auth",
+            ErrorCategory::Parse => "parse",
         }
     }
 }
@@ -454,6 +477,7 @@ mod tests {
         assert_eq!(ErrorCategory::Io.to_string(), "io");
         assert_eq!(ErrorCategory::Paired.to_string(), "paired");
         assert_eq!(ErrorCategory::Auth.to_string(), "auth");
+        assert_eq!(ErrorCategory::Parse.to_string(), "parse");
     }
 
     #[test]
@@ -484,6 +508,11 @@ mod tests {
             IoError::Other("test".to_string()).into(),
             PairedError::NoSamples.into(),
             AuthError::MissingAuth.into(),
+            ParseError::Json {
+                path: None,
+                source: serde_json::from_str::<serde_json::Value>("x").unwrap_err(),
+            }
+            .into(),
         ];
 
         for err in errors {
@@ -691,6 +720,16 @@ mod tests {
             IoError::Other("o".into()).into(),
             PairedError::NoSamples.into(),
             AuthError::MissingAuth.into(),
+            ParseError::Json {
+                path: None,
+                source: serde_json::from_str::<serde_json::Value>("x").unwrap_err(),
+            }
+            .into(),
+            ParseError::Toml {
+                path: None,
+                source: toml::from_str::<toml::Value>("=").unwrap_err(),
+            }
+            .into(),
         ];
         for err in &errors {
             assert_eq!(err.exit_code(), 1, "exit_code for {:?}", err);
@@ -707,6 +746,7 @@ mod tests {
             ErrorCategory::Io,
             ErrorCategory::Paired,
             ErrorCategory::Auth,
+            ErrorCategory::Parse,
         ];
         for cat in &categories {
             assert_eq!(cat.as_str(), cat.to_string());
@@ -765,6 +805,77 @@ mod tests {
     fn is_not_recoverable_paired_no_samples() {
         let err = PerfgateError::Paired(PairedError::NoSamples);
         assert!(!err.is_recoverable());
+    }
+
+    #[test]
+    fn is_not_recoverable_parse_json() {
+        let source = serde_json::from_str::<serde_json::Value>("invalid").unwrap_err();
+        let err = PerfgateError::Parse(ParseError::Json { path: None, source });
+        assert!(!err.is_recoverable());
+    }
+
+    #[test]
+    fn is_not_recoverable_parse_toml() {
+        let source = toml::from_str::<toml::Value>("= invalid").unwrap_err();
+        let err = PerfgateError::Parse(ParseError::Toml { path: None, source });
+        assert!(!err.is_recoverable());
+    }
+
+    #[test]
+    fn parse_error_json_without_path() {
+        let source = serde_json::from_str::<serde_json::Value>("invalid").unwrap_err();
+        let err = ParseError::Json { path: None, source };
+        let msg = err.to_string();
+        assert!(msg.starts_with("JSON parse error:"));
+        assert!(!msg.contains(" in "));
+    }
+
+    #[test]
+    fn parse_error_json_with_path() {
+        let source = serde_json::from_str::<serde_json::Value>("invalid").unwrap_err();
+        let err = ParseError::Json {
+            path: Some(PathBuf::from("run.json")),
+            source,
+        };
+        let msg = err.to_string();
+        assert!(msg.starts_with("JSON parse error in run.json:"));
+    }
+
+    #[test]
+    fn parse_error_toml_without_path() {
+        let source = toml::from_str::<toml::Value>("= invalid").unwrap_err();
+        let err = ParseError::Toml { path: None, source };
+        let msg = err.to_string();
+        assert!(msg.starts_with("TOML parse error:"));
+        assert!(!msg.contains(" in "));
+    }
+
+    #[test]
+    fn parse_error_toml_with_path() {
+        let source = toml::from_str::<toml::Value>("= invalid").unwrap_err();
+        let err = ParseError::Toml {
+            path: Some(PathBuf::from("perfgate.toml")),
+            source,
+        };
+        let msg = err.to_string();
+        assert!(msg.starts_with("TOML parse error in perfgate.toml:"));
+    }
+
+    #[test]
+    fn perfgate_error_from_parse() {
+        let source = serde_json::from_str::<serde_json::Value>("invalid").unwrap_err();
+        let err: PerfgateError = ParseError::Json { path: None, source }.into();
+        assert!(matches!(err, PerfgateError::Parse(ParseError::Json { .. })));
+        assert_eq!(err.category(), ErrorCategory::Parse);
+    }
+
+    #[test]
+    fn perfgate_error_transparent_display_parse() {
+        let source = serde_json::from_str::<serde_json::Value>("invalid").unwrap_err();
+        let inner = ParseError::Json { path: None, source };
+        let inner_msg = inner.to_string();
+        let outer: PerfgateError = inner.into();
+        assert_eq!(outer.to_string(), inner_msg);
     }
 
     #[test]
@@ -828,6 +939,10 @@ mod property_tests {
                 PerfgateError::Io(IoError::Other(msg.clone())),
                 PerfgateError::Paired(PairedError::NoSamples),
                 PerfgateError::Auth(AuthError::MissingAuth),
+                PerfgateError::Parse(ParseError::Json {
+                    path: None,
+                    source: serde_json::from_str::<serde_json::Value>("invalid").unwrap_err(),
+                }),
             ];
 
             for err in errors {
