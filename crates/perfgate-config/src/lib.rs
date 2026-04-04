@@ -101,16 +101,15 @@ pub fn load_config_file(path: &Path) -> anyhow::Result<ConfigFile> {
         return Ok(ConfigFile::default());
     }
 
-    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-
     if path
         .extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext == "json")
     {
-        serde_json::from_str::<ConfigFile>(&content)
-            .with_context(|| format!("parse {}", path.display()))
+        Ok(perfgate_types::read_json_file(path)?)
     } else {
+        let content =
+            fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
         toml::from_str::<ConfigFile>(&content).with_context(|| format!("parse {}", path.display()))
     }
 }

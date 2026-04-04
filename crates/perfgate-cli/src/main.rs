@@ -5297,10 +5297,7 @@ fn load_optional_baseline_receipt(path: &Path) -> anyhow::Result<Option<RunRecei
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
-    let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let v =
-        serde_json::from_slice(&bytes).with_context(|| format!("parse json {}", path.display()))?;
-    Ok(v)
+    Ok(perfgate_types::read_json_file(path)?)
 }
 
 fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bool) -> anyhow::Result<()> {
@@ -5634,7 +5631,11 @@ mod tests {
 
         let err = read_json::<serde_json::Value>(&path).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("parse json"), "unexpected error: {}", msg);
+        assert!(
+            msg.contains("parse JSON") || msg.contains("parse json"),
+            "unexpected error: {}",
+            msg
+        );
     }
 
     #[test]
