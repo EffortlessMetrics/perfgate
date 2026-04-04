@@ -54,6 +54,8 @@
 //! assert!(csv.contains("bench"));
 //! ```
 
+use std::fmt::Write;
+
 use perfgate_types::{CompareReceipt, Metric, MetricStatus, RunReceipt};
 
 /// Supported export formats.
@@ -267,15 +269,17 @@ impl ExportUseCase {
         let mut out = String::new();
         out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         out.push_str("<testsuites name=\"perfgate\">\n");
-        out.push_str(&format!(
-            "  <testsuite name=\"{}\" tests=\"1\" failures=\"0\" errors=\"0\">\n",
+        writeln!(
+            out,
+            "  <testsuite name=\"{}\" tests=\"1\" failures=\"0\" errors=\"0\">",
             html_escape(&receipt.bench.name)
-        ));
-        out.push_str(&format!(
-            "    <testcase name=\"execution\" classname=\"perfgate.{}\" time=\"{}\">\n",
+        )?;
+        writeln!(
+            out,
+            "    <testcase name=\"execution\" classname=\"perfgate.{}\" time=\"{}\">",
             html_escape(&receipt.bench.name),
             receipt.stats.wall_ms.median as f64 / 1000.0
-        ));
+        )?;
         out.push_str("    </testcase>\n");
         out.push_str("  </testsuite>\n");
         out.push_str("</testsuites>\n");
@@ -388,62 +392,33 @@ impl ExportUseCase {
         output.push_str("bench_name,wall_ms_median,wall_ms_min,wall_ms_max,binary_bytes_median,cpu_ms_median,ctx_switches_median,max_rss_kb_median,page_faults_median,io_read_bytes_median,io_write_bytes_median,network_packets_median,energy_uj_median,throughput_median,sample_count,timestamp\n");
 
         output.push_str(&csv_escape(&row.bench_name));
+        write!(
+            output,
+            ",{},{},{},",
+            row.wall_ms_median, row.wall_ms_min, row.wall_ms_max
+        )?;
+        write_opt_u64(&mut output, row.binary_bytes_median);
         output.push(',');
-        output.push_str(&row.wall_ms_median.to_string());
+        write_opt_u64(&mut output, row.cpu_ms_median);
         output.push(',');
-        output.push_str(&row.wall_ms_min.to_string());
+        write_opt_u64(&mut output, row.ctx_switches_median);
         output.push(',');
-        output.push_str(&row.wall_ms_max.to_string());
+        write_opt_u64(&mut output, row.max_rss_kb_median);
         output.push(',');
-        output.push_str(
-            &row.binary_bytes_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
+        write_opt_u64(&mut output, row.page_faults_median);
         output.push(',');
-        output.push_str(&row.cpu_ms_median.map_or(String::new(), |v| v.to_string()));
+        write_opt_u64(&mut output, row.io_read_bytes_median);
         output.push(',');
-        output.push_str(
-            &row.ctx_switches_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
+        write_opt_u64(&mut output, row.io_write_bytes_median);
         output.push(',');
-        output.push_str(
-            &row.max_rss_kb_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
+        write_opt_u64(&mut output, row.network_packets_median);
         output.push(',');
-        output.push_str(
-            &row.page_faults_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
+        write_opt_u64(&mut output, row.energy_uj_median);
         output.push(',');
-        output.push_str(
-            &row.io_read_bytes_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
-        output.push(',');
-        output.push_str(
-            &row.io_write_bytes_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
-        output.push(',');
-        output.push_str(
-            &row.network_packets_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
-        output.push(',');
-        output.push_str(
-            &row.energy_uj_median
-                .map_or(String::new(), |v| v.to_string()),
-        );
-        output.push(',');
-        output.push_str(
-            &row.throughput_median
-                .map_or(String::new(), |v| format!("{:.6}", v)),
-        );
-        output.push(',');
-        output.push_str(&row.sample_count.to_string());
-        output.push(',');
+        if let Some(v) = row.throughput_median {
+            write!(output, "{:.6}", v)?;
+        }
+        write!(output, ",{},", row.sample_count)?;
         output.push_str(&csv_escape(&row.timestamp));
         output.push('\n');
 
@@ -453,7 +428,9 @@ impl ExportUseCase {
     /// Format RunExportRow as JSONL.
     fn run_row_to_jsonl(row: &RunExportRow) -> anyhow::Result<String> {
         let json = serde_json::to_string(row)?;
-        Ok(format!("{}\n", json))
+        let mut out = json;
+        out.push('\n');
+        Ok(out)
     }
 
     /// Format CompareExportRows as CSV (RFC 4180).
@@ -468,17 +445,13 @@ impl ExportUseCase {
             output.push_str(&csv_escape(&row.bench_name));
             output.push(',');
             output.push_str(&csv_escape(&row.metric));
-            output.push(',');
-            output.push_str(&format!("{:.6}", row.baseline_value));
-            output.push(',');
-            output.push_str(&format!("{:.6}", row.current_value));
-            output.push(',');
-            output.push_str(&format!("{:.6}", row.regression_pct));
-            output.push(',');
+            write!(
+                output,
+                ",{:.6},{:.6},{:.6},",
+                row.baseline_value, row.current_value, row.regression_pct
+            )?;
             output.push_str(&csv_escape(&row.status));
-            output.push(',');
-            output.push_str(&format!("{:.6}", row.threshold));
-            output.push('\n');
+            writeln!(output, ",{:.6}", row.threshold)?;
         }
 
         Ok(output)
@@ -490,8 +463,7 @@ impl ExportUseCase {
 
         for row in rows {
             let json = serde_json::to_string(row)?;
-            output.push_str(&json);
-            output.push('\n');
+            writeln!(output, "{}", json)?;
         }
 
         Ok(output)
@@ -549,7 +521,8 @@ impl ExportUseCase {
         );
 
         for row in rows {
-            out.push_str(&format!(
+            write!(
+                out,
                 "<tr><td>{}</td><td>{}</td><td>{:.6}</td><td>{:.6}</td><td>{:.6}</td><td>{}</td><td>{:.6}</td></tr>",
                 html_escape(&row.bench_name),
                 html_escape(&row.metric),
@@ -558,7 +531,7 @@ impl ExportUseCase {
                 row.regression_pct,
                 html_escape(&row.status),
                 row.threshold
-            ));
+            )?;
         }
 
         out.push_str("</tbody></table></body></html>\n");
@@ -568,82 +541,96 @@ impl ExportUseCase {
     fn run_row_to_prometheus(row: &RunExportRow) -> anyhow::Result<String> {
         let bench = prometheus_escape_label_value(&row.bench_name);
         let mut out = String::new();
-        out.push_str(&format!(
-            "perfgate_run_wall_ms_median{{bench=\"{}\"}} {}\n",
+        writeln!(
+            out,
+            "perfgate_run_wall_ms_median{{bench=\"{}\"}} {}",
             bench, row.wall_ms_median
-        ));
-        out.push_str(&format!(
-            "perfgate_run_wall_ms_min{{bench=\"{}\"}} {}\n",
+        )?;
+        writeln!(
+            out,
+            "perfgate_run_wall_ms_min{{bench=\"{}\"}} {}",
             bench, row.wall_ms_min
-        ));
-        out.push_str(&format!(
-            "perfgate_run_wall_ms_max{{bench=\"{}\"}} {}\n",
+        )?;
+        writeln!(
+            out,
+            "perfgate_run_wall_ms_max{{bench=\"{}\"}} {}",
             bench, row.wall_ms_max
-        ));
+        )?;
         if let Some(v) = row.binary_bytes_median {
-            out.push_str(&format!(
-                "perfgate_run_binary_bytes_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_binary_bytes_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.cpu_ms_median {
-            out.push_str(&format!(
-                "perfgate_run_cpu_ms_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_cpu_ms_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.ctx_switches_median {
-            out.push_str(&format!(
-                "perfgate_run_ctx_switches_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_ctx_switches_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.max_rss_kb_median {
-            out.push_str(&format!(
-                "perfgate_run_max_rss_kb_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_max_rss_kb_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.page_faults_median {
-            out.push_str(&format!(
-                "perfgate_run_page_faults_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_page_faults_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.io_read_bytes_median {
-            out.push_str(&format!(
-                "perfgate_run_io_read_bytes_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_io_read_bytes_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.io_write_bytes_median {
-            out.push_str(&format!(
-                "perfgate_run_io_write_bytes_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_io_write_bytes_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.network_packets_median {
-            out.push_str(&format!(
-                "perfgate_run_network_packets_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_network_packets_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.energy_uj_median {
-            out.push_str(&format!(
-                "perfgate_run_energy_uj_median{{bench=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_run_energy_uj_median{{bench=\"{}\"}} {}",
                 bench, v
-            ));
+            )?;
         }
         if let Some(v) = row.throughput_median {
-            out.push_str(&format!(
-                "perfgate_run_throughput_per_s_median{{bench=\"{}\"}} {:.6}\n",
+            writeln!(
+                out,
+                "perfgate_run_throughput_per_s_median{{bench=\"{}\"}} {:.6}",
                 bench, v
-            ));
+            )?;
         }
-        out.push_str(&format!(
-            "perfgate_run_sample_count{{bench=\"{}\"}} {}\n",
+        writeln!(
+            out,
+            "perfgate_run_sample_count{{bench=\"{}\"}} {}",
             bench, row.sample_count
-        ));
+        )?;
         Ok(out)
     }
 
@@ -657,42 +644,51 @@ impl ExportUseCase {
         let errors = rows.iter().filter(|r| r.status == "error").count();
 
         out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        out.push_str(&format!(
-            "<testsuites name=\"perfgate\" tests=\"{}\" failures=\"{}\" errors=\"{}\">\n",
+        writeln!(
+            out,
+            "<testsuites name=\"perfgate\" tests=\"{}\" failures=\"{}\" errors=\"{}\">",
             total, failures, errors
-        ));
+        )?;
 
-        out.push_str(&format!(
-            "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" errors=\"{}\">\n",
+        writeln!(
+            out,
+            "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" errors=\"{}\">",
             html_escape(&receipt.bench.name),
             total,
             failures,
             errors
-        ));
+        )?;
 
         for row in rows {
-            let classname = format!("perfgate.{}", html_escape(&receipt.bench.name));
-            out.push_str(&format!(
-                "    <testcase name=\"{}\" classname=\"{}\" time=\"0.0\">\n",
+            writeln!(
+                out,
+                "    <testcase name=\"{}\" classname=\"perfgate.{}\" time=\"0.0\">",
                 html_escape(&row.metric),
-                classname
-            ));
+                html_escape(&receipt.bench.name)
+            )?;
 
             if row.status == "fail" {
-                out.push_str(&format!(
+                write!(
+                    out,
                     "      <failure message=\"Performance regression detected for {}\">",
                     html_escape(&row.metric)
-                ));
-                out.push_str(&format!(
+                )?;
+                write!(
+                    out,
                     "Metric: {}\nBaseline: {:.6}\nCurrent: {:.6}\nRegression: {:.2}%\nThreshold: {:.2}%",
-                    row.metric, row.baseline_value, row.current_value, row.regression_pct, row.threshold
-                ));
+                    row.metric,
+                    row.baseline_value,
+                    row.current_value,
+                    row.regression_pct,
+                    row.threshold
+                )?;
                 out.push_str("</failure>\n");
             } else if row.status == "error" {
-                out.push_str(&format!(
+                write!(
+                    out,
                     "      <error message=\"Error occurred during performance check for {}\">",
                     html_escape(&row.metric)
-                ));
+                )?;
                 out.push_str("</error>\n");
             }
 
@@ -710,22 +706,26 @@ impl ExportUseCase {
         for row in rows {
             let bench = prometheus_escape_label_value(&row.bench_name);
             let metric = prometheus_escape_label_value(&row.metric);
-            out.push_str(&format!(
-                "perfgate_compare_baseline_value{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+            writeln!(
+                out,
+                "perfgate_compare_baseline_value{{bench=\"{}\",metric=\"{}\"}} {:.6}",
                 bench, metric, row.baseline_value
-            ));
-            out.push_str(&format!(
-                "perfgate_compare_current_value{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+            )?;
+            writeln!(
+                out,
+                "perfgate_compare_current_value{{bench=\"{}\",metric=\"{}\"}} {:.6}",
                 bench, metric, row.current_value
-            ));
-            out.push_str(&format!(
-                "perfgate_compare_regression_pct{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+            )?;
+            writeln!(
+                out,
+                "perfgate_compare_regression_pct{{bench=\"{}\",metric=\"{}\"}} {:.6}",
                 bench, metric, row.regression_pct
-            ));
-            out.push_str(&format!(
-                "perfgate_compare_threshold_pct{{bench=\"{}\",metric=\"{}\"}} {:.6}\n",
+            )?;
+            writeln!(
+                out,
+                "perfgate_compare_threshold_pct{{bench=\"{}\",metric=\"{}\"}} {:.6}",
                 bench, metric, row.threshold
-            ));
+            )?;
 
             let status_code = match row.status.as_str() {
                 "pass" => 0,
@@ -733,13 +733,14 @@ impl ExportUseCase {
                 "fail" => 2,
                 _ => -1,
             };
-            out.push_str(&format!(
-                "perfgate_compare_status{{bench=\"{}\",metric=\"{}\",status=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "perfgate_compare_status{{bench=\"{}\",metric=\"{}\",status=\"{}\"}} {}",
                 bench,
                 metric,
                 prometheus_escape_label_value(&row.status),
                 status_code
-            ));
+            )?;
         }
         Ok(out)
     }
@@ -757,6 +758,14 @@ fn status_to_string(status: MetricStatus) -> String {
         MetricStatus::Warn => "warn".to_string(),
         MetricStatus::Fail => "fail".to_string(),
         MetricStatus::Skip => "skip".to_string(),
+    }
+}
+
+/// Write an optional u64 value to a buffer. Writes nothing if `None`.
+fn write_opt_u64(buf: &mut String, val: Option<u64>) {
+    if let Some(v) = val {
+        // write! to a String is infallible, unwrap is safe
+        let _ = write!(buf, "{}", v);
     }
 }
 
