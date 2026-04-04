@@ -174,6 +174,7 @@ pub fn classify_error(err: &anyhow::Error) -> (&'static str, &'static str) {
             PerfgateError::Stats(_) => (STAGE_RUN_COMMAND, ERROR_KIND_PARSE),
             PerfgateError::Paired(_) => (STAGE_RUN_COMMAND, ERROR_KIND_PARSE),
             PerfgateError::Auth(_) => (STAGE_BASELINE_RESOLVE, ERROR_KIND_IO),
+            PerfgateError::Parse(_) => (STAGE_CONFIG_PARSE, ERROR_KIND_PARSE),
         };
     }
 
