@@ -54,7 +54,6 @@ pub fn read_json_file<T: DeserializeOwned>(path: &Path) -> Result<T, ReadJsonErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn read_json_file_nonexistent_returns_read_error() {
