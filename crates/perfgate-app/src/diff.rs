@@ -261,12 +261,9 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> DiffUseCa
             perfgate_app_baseline_resolve::resolve_baseline_path(&None, &bench.name, config);
 
         let baseline_receipt = if baseline_path.is_file() {
-            let content = std::fs::read_to_string(&baseline_path)
-                .with_context(|| format!("read baseline {}", baseline_path.display()))?;
-            Some(
-                serde_json::from_str::<RunReceipt>(&content)
-                    .with_context(|| format!("parse baseline {}", baseline_path.display()))?,
-            )
+            Some(perfgate_types::read_json_file::<RunReceipt>(
+                &baseline_path,
+            )?)
         } else {
             None
         };

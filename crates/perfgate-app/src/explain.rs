@@ -1,8 +1,6 @@
 use crate::blame::{BlameRequest, BlameUseCase};
-use anyhow::Context;
 use perfgate_domain::{BinaryBlame, DependencyChangeType};
 use perfgate_types::{CompareReceipt, Metric, MetricStatus};
-use std::fs;
 use std::path::PathBuf;
 
 pub struct ExplainRequest {
@@ -19,10 +17,7 @@ pub struct ExplainUseCase;
 
 impl ExplainUseCase {
     pub fn execute(&self, req: ExplainRequest) -> anyhow::Result<ExplainOutcome> {
-        let content = fs::read_to_string(&req.compare)
-            .with_context(|| format!("failed to read {:?}", req.compare))?;
-        let compare: CompareReceipt =
-            serde_json::from_str(&content).context("failed to parse JSON")?;
+        let compare: CompareReceipt = perfgate_types::read_json_file(&req.compare)?;
 
         let mut md = String::new();
         md.push_str(&format!(

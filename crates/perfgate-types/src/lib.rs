@@ -23,6 +23,7 @@
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
 mod defaults_config;
+mod io;
 mod paired;
 mod repair_context;
 
@@ -32,6 +33,7 @@ pub use paired::{
 };
 
 pub use defaults_config::*;
+pub use io::{ReadJsonError, read_json_file};
 pub use repair_context::*;
 
 pub use perfgate_validation::{

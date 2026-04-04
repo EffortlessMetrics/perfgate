@@ -1,11 +1,9 @@
-use anyhow::Context;
 use perfgate_domain::compute_stats;
 use perfgate_types::{
     AGGREGATE_SCHEMA_V1, AggregateInput, AggregateReceipt, AggregateRunnerMeta, AggregateVerdict,
     AggregationPolicy, FailIfNOfM, HostInfo, MetricStatus, RunMeta, RunReceipt,
 };
 use std::collections::{BTreeMap, HashSet};
-use std::fs;
 use std::path::PathBuf;
 
 pub struct AggregateRequest {
@@ -35,10 +33,7 @@ impl AggregateUseCase {
         let mut sources = Vec::new();
         let mut seen_run_ids = HashSet::new();
         for file in &req.files {
-            let content =
-                fs::read_to_string(file).with_context(|| format!("failed to read {:?}", file))?;
-            let receipt: RunReceipt = serde_json::from_str(&content)
-                .with_context(|| format!("failed to parse {:?}", file))?;
+            let receipt: RunReceipt = perfgate_types::read_json_file(file)?;
             if !seen_run_ids.insert(receipt.run.id.clone()) {
                 anyhow::bail!(
                     "duplicate run id detected during aggregation: {}",
