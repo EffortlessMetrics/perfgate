@@ -40,13 +40,16 @@ impl ExplainUseCase {
 
         let blame = if let (Some(base), Some(curr)) = (req.baseline_lock, req.current_lock) {
             let blame_usecase = BlameUseCase;
-            blame_usecase
-                .execute(BlameRequest {
-                    baseline_lock: base,
-                    current_lock: curr,
-                })
-                .ok()
-                .map(|o| o.blame)
+            match blame_usecase.execute(BlameRequest {
+                baseline_lock: base,
+                current_lock: curr,
+            }) {
+                Ok(o) => Some(o.blame),
+                Err(err) => {
+                    eprintln!("warning: blame analysis failed: {err}");
+                    None
+                }
+            }
         } else {
             None
         };
