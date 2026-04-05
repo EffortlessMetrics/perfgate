@@ -39,6 +39,9 @@ The current server binary supports:
 For local development, prefer `perfgate serve`. For a shared deployment,
 prefer `perfgate-server` directly.
 
+For local mode, `perfgate serve` runs with API auth disabled for single-user
+workflows.
+
 ## Authentication
 
 Current auth support is uneven by surface, so it is worth stating explicitly.
@@ -118,6 +121,7 @@ The main server-aware CLI workflows are:
 | `fleet alerts` | list fleet-wide dependency regression alerts |
 | `fleet impact` | inspect the project impact of a dependency |
 | `fleet record-event` | record a dependency change event with performance delta |
+| `serve` | run a local baseline server/dashboard in local mode |
 
 ## Recommended Deployment Shapes
 
