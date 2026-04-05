@@ -8,6 +8,9 @@ ideas. That made it too easy to treat speculative capabilities as current
 product truth. This version keeps the source of truth narrow: what exists in
 the repository today, how it is exposed, and what is still backlog.
 
+For command snippets and flags, prefer checking current `--help` output before
+running in production, especially when upgrading across releases.
+
 ## Current Implementation
 
 The baseline service currently ships as these pieces:
@@ -152,6 +155,7 @@ When in doubt, prefer:
 
 - CLI `--help`
 - `perfgate-server --help`
+- `perfgate baseline --help`
 - the route table in `crates/perfgate-server/src/server.rs`
 - the current crate READMEs
 
