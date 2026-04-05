@@ -115,6 +115,9 @@ The main server-aware CLI workflows are:
 | `baseline verdicts` | inspect pass/warn/fail history |
 | `baseline submit-verdict` | persist compare verdicts |
 | `baseline migrate` | upload local baseline JSON files recursively |
+| `fleet alerts` | list fleet-wide dependency regression alerts |
+| `fleet impact` | inspect the project impact of a dependency |
+| `fleet record-event` | record a dependency change event with performance delta |
 
 ## Recommended Deployment Shapes
 
