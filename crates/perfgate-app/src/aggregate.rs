@@ -317,8 +317,11 @@ fn wall_ms_variance(receipt: &RunReceipt) -> (u32, Option<f64>) {
     }
 
     let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let variance =
-        values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
+    let variance = values
+        .iter()
+        .map(|value| (value - mean).powi(2))
+        .sum::<f64>()
+        / (values.len() - 1) as f64;
     (sample_count, Some(variance))
 }
 
@@ -695,8 +698,10 @@ mod tests {
         let stable_b_path = dir.path().join("stable-b.json");
         let noisy_path = dir.path().join("noisy.json");
 
-        let stable_a = mk_receipt_with_wall_samples("1", "linux", "x86_64", 0, &[100, 100, 100, 100]);
-        let stable_b = mk_receipt_with_wall_samples("2", "linux", "x86_64", 0, &[110, 110, 110, 110]);
+        let stable_a =
+            mk_receipt_with_wall_samples("1", "linux", "x86_64", 0, &[100, 100, 100, 100]);
+        let stable_b =
+            mk_receipt_with_wall_samples("2", "linux", "x86_64", 0, &[110, 110, 110, 110]);
         let noisy = mk_receipt_with_wall_samples("3", "linux", "x86_64", 1, &[80, 140, 60, 160]);
 
         fs::write(&stable_a_path, serde_json::to_string(&stable_a).unwrap()).unwrap();
@@ -737,7 +742,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(inverse.aggregate.verdict.status, MetricStatus::Pass);
-        assert_eq!(inverse.aggregate.weight_mode, AggregateWeightMode::InverseVariance);
+        assert_eq!(
+            inverse.aggregate.weight_mode,
+            AggregateWeightMode::InverseVariance
+        );
         assert_eq!(inverse.aggregate.variance_floor, Some(1.0));
         assert_eq!(inverse.aggregate.verdict.outlier_runners, Some(1));
 
@@ -756,7 +764,8 @@ mod tests {
 
         assert!(noisy_input.runner.outlier_reason.is_some());
         assert!(
-            stable_input.runner.effective_weight.unwrap() > noisy_input.runner.effective_weight.unwrap()
+            stable_input.runner.effective_weight.unwrap()
+                > noisy_input.runner.effective_weight.unwrap()
         );
     }
 
@@ -842,7 +851,10 @@ mod tests {
         assert_eq!(outcome.aggregate.schema, AGGREGATE_SCHEMA_V1);
         assert_eq!(outcome.aggregate.benchmark, "bench");
         assert_eq!(outcome.aggregate.policy, AggregationPolicy::All);
-        assert_eq!(outcome.aggregate.weight_mode, AggregateWeightMode::Configured);
+        assert_eq!(
+            outcome.aggregate.weight_mode,
+            AggregateWeightMode::Configured
+        );
         assert_eq!(outcome.aggregate.variance_floor, None);
         assert_eq!(outcome.aggregate.inputs.len(), 2);
         assert_eq!(outcome.aggregate.verdict.status, MetricStatus::Pass);

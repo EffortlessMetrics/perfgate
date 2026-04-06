@@ -42,7 +42,7 @@ use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
-    MetricStatus, OtelSpanIdentifiers, PerfgateReport, RatchetConfig, REPAIR_CONTEXT_SCHEMA_V1,
+    MetricStatus, OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
     RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, SensorVerdictStatus,
     ToolInfo, VerdictStatus,
 };
