@@ -132,6 +132,7 @@ The current CLI surfaces that talk to the baseline service are:
 |---------|------------------|
 | `promote --to-server` | Upload a run receipt as a new baseline version |
 | `compare --baseline @server:<bench>` | Fetch the latest server baseline for a benchmark |
+| `compare --baseline @server:<bench> --baseline-project <project>` | Fetch a benchmark baseline from another project without changing the global compare project |
 | `baseline list` | List baselines for a project |
 | `baseline download` | Download the latest or a specific version |
 | `baseline upload` | Upload a run receipt directly |
@@ -186,11 +187,22 @@ You are talking to `perfgate-server` without an API key. Set
 
 `compare --baseline @server:my-bench` fails immediately
 
-Set the global server configuration first:
+Set the server configuration first. For same-project lookups, set the default
+project:
 
 ```bash
 export PERFGATE_SERVER_URL=http://localhost:8080/api/v1
 export PERFGATE_PROJECT=my-project
+```
+
+For cross-project compares, keep the benchmark selector and override only the
+baseline lookup project:
+
+```bash
+perfgate compare \
+  --baseline @server:my-bench \
+  --baseline-project other-project \
+  --current artifacts/perfgate/run.json
 ```
 
 Health checks work but baseline commands do not

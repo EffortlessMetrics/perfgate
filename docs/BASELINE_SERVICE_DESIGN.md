@@ -111,6 +111,7 @@ The main server-aware CLI workflows are:
 |-------------|------------------|
 | `promote --to-server` | create a new baseline version from a run receipt |
 | `compare --baseline @server:<bench>` | fetch the latest baseline for a benchmark |
+| `compare --baseline @server:<bench> --baseline-project <project>` | fetch the latest baseline for a benchmark from another project |
 | `baseline upload` | upload a run receipt directly |
 | `baseline download` | fetch a baseline into a local file |
 | `baseline list` | query project baselines |
@@ -122,6 +123,10 @@ The main server-aware CLI workflows are:
 | `fleet impact` | inspect the project impact of a dependency |
 | `fleet record-event` | record a dependency change event with performance delta |
 | `serve` | run a local baseline server/dashboard in local mode |
+
+Cross-project compare is currently a CLI-side lookup override for baseline
+fetches. It does not change server-side auth or the project used by other
+server-backed workflows.
 
 ## Recommended Deployment Shapes
 
