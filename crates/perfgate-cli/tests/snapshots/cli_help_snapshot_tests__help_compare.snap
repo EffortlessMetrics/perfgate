@@ -9,6 +9,7 @@ Usage: perfgate compare [OPTIONS] --baseline <BASELINE> --current <CURRENT>
 
 Options:
       --baseline <BASELINE> Path to baseline receipt, or "@server:benchmark_name" to fetch from server
+      --baseline-project <BASELINE_PROJECT> Project name for server baseline lookup (overrides global --project)
       --current <CURRENT>
       --threshold <THRESHOLD> Global regression threshold (0.20 = 20%) [default: 0.2]
       --warn-factor <WARN_FACTOR> Global warn factor (warn_threshold = threshold * warn_factor) [default: 0.9]

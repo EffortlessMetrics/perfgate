@@ -455,6 +455,60 @@ fn test_compare_server_reference_without_server() {
     assert!(!output.status.success());
 }
 
+/// Test compare with an explicit baseline project override and no global project.
+#[test]
+fn test_compare_server_reference_with_baseline_project_without_global_project() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+
+    let current_content = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": {"name": "perfgate", "version": "0.3.0"},
+        "run": {
+            "id": "current-run",
+            "started_at": "2024-01-15T10:00:00Z",
+            "ended_at": "2024-01-15T10:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "bench": {
+            "name": "test-bench",
+            "command": ["echo", "test"],
+            "repeat": 1,
+            "warmup": 0
+        },
+        "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false, "max_rss_kb": 1024}],
+        "stats": {
+            "wall_ms": {"median": 100, "min": 100, "max": 100},
+            "max_rss_kb": {"median": 1024, "min": 1024, "max": 1024}
+        }
+    });
+    fs::write(
+        &current_path,
+        serde_json::to_string(&current_content).unwrap(),
+    )
+    .unwrap();
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg("@server:test-bench")
+        .arg("--baseline-project")
+        .arg("source-project")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--baseline-server")
+        .arg("http://localhost:9999/api/v1");
+
+    let output = cmd.output().expect("Failed to execute command");
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("--project is required"),
+        "compare should accept --baseline-project as the server lookup scope: {stderr}"
+    );
+}
+
 /// Integration test with a mock server (requires server to be running).
 /// This test is marked with #[ignore] so it doesn't run by default.
 #[test]

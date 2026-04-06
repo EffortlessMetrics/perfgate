@@ -796,6 +796,10 @@ pub struct CompareArgs {
     #[arg(long)]
     pub baseline: String,
 
+    /// Project name for server baseline lookup (overrides global --project).
+    #[arg(long)]
+    pub baseline_project: Option<String>,
+
     #[arg(long)]
     pub current: PathBuf,
 
@@ -1647,6 +1651,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         Command::Compare(args) => {
             let CompareArgs {
                 baseline,
+                baseline_project,
                 current,
                 threshold,
                 warn_factor,
@@ -1675,20 +1680,27 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                         Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
                         BASELINE_SERVER_NOT_CONFIGURED,
                     )?;
-                    let project = server_config.resolve_project(None)?;
+                    let explicit_baseline_project = baseline_project.is_some();
+                    let project = server_config.resolve_project(baseline_project)?;
                     let record = with_tokio_runtime(async {
                         let record: perfgate_api::BaselineRecord = client
                             .get_latest_baseline(&project, &benchmark)
                             .await
                             .with_context(|| {
-                                format!("Failed to fetch baseline '{benchmark}' from server")
+                                format!(
+                                    "Failed to fetch baseline '{benchmark}' from server (project: {project})"
+                                )
                             })?;
                         Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
                     })?;
 
                     let receipt = record.receipt;
                     let ref_info = CompareRef {
-                        path: Some(format!("@server:{benchmark}")),
+                        path: Some(if explicit_baseline_project {
+                            format!("@server:{project}/{benchmark}")
+                        } else {
+                            format!("@server:{benchmark}")
+                        }),
                         run_id: Some(receipt.run.id.clone()),
                     };
                     (receipt, ref_info)

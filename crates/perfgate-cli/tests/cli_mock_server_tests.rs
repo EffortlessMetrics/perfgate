@@ -205,3 +205,105 @@ async fn test_compare_with_server_baseline() {
     assert_eq!(wall_ms_delta["current"].as_f64(), Some(110.0));
     assert_eq!(wall_ms_delta["pct"].as_f64(), Some(0.1));
 }
+
+#[tokio::test]
+async fn test_compare_with_explicit_baseline_project() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().unwrap();
+    let current_path = temp_dir.path().join("current.json");
+
+    let current_content = serde_json::json!({
+        "schema": RUN_SCHEMA_V1,
+        "tool": {"name": "perfgate", "version": "0.3.0"},
+        "run": {
+            "id": "current-run",
+            "started_at": "2026-01-01T10:00:00Z",
+            "ended_at": "2026-01-01T10:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "bench": {
+            "name": "test-bench",
+            "command": ["echo", "test"],
+            "repeat": 1,
+            "warmup": 0
+        },
+        "samples": [{"wall_ms": 110, "exit_code": 0, "warmup": false, "timed_out": false}],
+        "stats": {
+            "wall_ms": {"median": 110, "min": 110, "max": 110}
+        }
+    });
+    fs::write(
+        &current_path,
+        serde_json::to_string(&current_content).unwrap(),
+    )
+    .unwrap();
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/api/v1/projects/source-project/baselines/test-bench/latest",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "schema": BASELINE_SCHEMA_V1,
+            "id": "bl_2",
+            "project": "source-project",
+            "benchmark": "test-bench",
+            "version": "v1.0.0",
+            "receipt": {
+                "schema": RUN_SCHEMA_V1,
+                "tool": {"name": "perfgate", "version": "0.3.0"},
+                "run": {
+                    "id": "source-run",
+                    "started_at": "2026-01-01T10:00:00Z",
+                    "ended_at": "2026-01-01T10:00:01Z",
+                    "host": {"os": "linux", "arch": "x86_64"}
+                },
+                "bench": {
+                    "name": "test-bench",
+                    "command": ["echo", "test"],
+                    "repeat": 1,
+                    "warmup": 0
+                },
+                "samples": [{"wall_ms": 100, "exit_code": 0, "warmup": false, "timed_out": false}],
+                "stats": {
+                    "wall_ms": {"median": 100, "min": 100, "max": 100}
+                }
+            },
+            "metadata": {},
+            "tags": [],
+            "promoted_at": null,
+            "source": "upload",
+            "content_hash": "def",
+            "deleted": false,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    let compare_path = temp_dir.path().join("compare.json");
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg("@server:test-bench")
+        .arg("--baseline-project")
+        .arg("source-project")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--project")
+        .arg("current-project")
+        .arg("--out")
+        .arg(&compare_path);
+
+    cmd.assert().success();
+
+    assert!(compare_path.exists());
+    let compare_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&compare_path).unwrap()).unwrap();
+
+    let wall_ms_delta = &compare_json["deltas"]["wall_ms"];
+    assert_eq!(wall_ms_delta["baseline"].as_f64(), Some(100.0));
+    assert_eq!(wall_ms_delta["current"].as_f64(), Some(110.0));
+    assert_eq!(wall_ms_delta["pct"].as_f64(), Some(0.1));
+}
