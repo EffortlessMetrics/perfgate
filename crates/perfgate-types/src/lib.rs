@@ -602,6 +602,27 @@ impl AggregationPolicy {
     }
 }
 
+/// Weighting mode for runner-aware aggregate verdicts.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum AggregateWeightMode {
+    /// Use configured weights directly, or 1.0 when no explicit weight is set.
+    #[default]
+    Configured,
+    /// Scale configured weights by inverse observed wall-clock variance.
+    InverseVariance,
+}
+
+impl AggregateWeightMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AggregateWeightMode::Configured => "configured",
+            AggregateWeightMode::InverseVariance => "inverse_variance",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct AggregateRunnerMeta {
@@ -616,6 +637,18 @@ pub struct AggregateRunnerMeta {
     /// Optional configured runner weight.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub weight: Option<f64>,
+    /// Number of measured samples considered for runner weighting metadata.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub sample_count: Option<u32>,
+    /// Observed variance of `wall_ms` across measured samples for this runner.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub wall_ms_variance: Option<f64>,
+    /// Effective runner weight after the selected weighting mode is applied.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub effective_weight: Option<f64>,
+    /// Optional note when this runner appears substantially noisier than peers.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub outlier_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -650,6 +683,9 @@ pub struct AggregateVerdict {
     /// Quorum threshold used by quorum/weighted policies.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub required: Option<f64>,
+    /// Number of runners flagged as variance outliers.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub outlier_runners: Option<u32>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub reasons: Vec<String>,
 }
@@ -674,8 +710,11 @@ pub struct AggregateReceipt {
     pub quorum: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub fail_if: Option<FailIfNOfM>,
+    pub weight_mode: AggregateWeightMode,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub weights: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub variance_floor: Option<f64>,
     pub inputs: Vec<AggregateInput>,
     pub verdict: AggregateVerdict,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]

@@ -1,10 +1,14 @@
 use perfgate_domain::compute_stats;
 use perfgate_types::{
     AGGREGATE_SCHEMA_V1, AggregateInput, AggregateReceipt, AggregateRunnerMeta, AggregateVerdict,
-    AggregationPolicy, FailIfNOfM, HostInfo, MetricStatus, RunMeta, RunReceipt,
+    AggregateWeightMode, AggregationPolicy, FailIfNOfM, HostInfo, MetricStatus, RunMeta,
+    RunReceipt,
 };
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+
+const DEFAULT_VARIANCE_FLOOR: f64 = 1.0;
+const OUTLIER_VARIANCE_RATIO: f64 = 4.0;
 
 pub struct AggregateRequest {
     pub files: Vec<PathBuf>,
@@ -12,6 +16,8 @@ pub struct AggregateRequest {
     pub quorum: Option<f64>,
     pub fail_if: Option<FailIfNOfM>,
     pub weights: BTreeMap<String, f64>,
+    pub weight_mode: AggregateWeightMode,
+    pub variance_floor: Option<f64>,
     pub runner_class: Option<String>,
     pub lane: Option<String>,
 }
@@ -22,6 +28,13 @@ pub struct AggregateOutcome {
 }
 
 pub struct AggregateUseCase;
+
+struct RunnerWeightProfile {
+    sample_count: u32,
+    wall_ms_variance: Option<f64>,
+    effective_weight: Option<f64>,
+    outlier_reason: Option<String>,
+}
 
 impl AggregateUseCase {
     pub fn execute(&self, req: AggregateRequest) -> anyhow::Result<AggregateOutcome> {
@@ -66,6 +79,8 @@ impl AggregateUseCase {
         let work_units = receipts[0].bench.work_units;
 
         let stats = compute_stats(&combined_samples, work_units)?;
+        let variance_floor = req.variance_floor.unwrap_or(DEFAULT_VARIANCE_FLOOR);
+        let runner_profiles = build_runner_weight_profiles(&receipts, &req, variance_floor);
 
         // Update bench metadata.
         let mut bench = receipts[0].bench.clone();
@@ -100,6 +115,7 @@ impl AggregateUseCase {
         for (idx, r) in receipts.iter().enumerate() {
             let label = format!("{}-{}", r.run.host.os, r.run.host.arch);
             let status = input_status(r);
+            let profile = &runner_profiles[idx];
             inputs.push(AggregateInput {
                 source: sources[idx].clone(),
                 run_id: r.run.id.clone(),
@@ -110,13 +126,26 @@ impl AggregateUseCase {
                     class: req.runner_class.clone(),
                     lane: req.lane.clone(),
                     weight: req.weights.get(&label).copied(),
+                    sample_count: Some(profile.sample_count),
+                    wall_ms_variance: profile.wall_ms_variance,
+                    effective_weight: profile.effective_weight,
+                    outlier_reason: profile.outlier_reason.clone(),
                 },
                 status,
                 reasons: input_reasons(r),
             });
         }
 
-        let warnings = host_mismatch_warnings(&receipts);
+        let mut warnings = host_mismatch_warnings(&receipts);
+        let outlier_runners = runner_profiles
+            .iter()
+            .filter(|profile| profile.outlier_reason.is_some())
+            .count();
+        if outlier_runners > 0 {
+            warnings.push(format!(
+                "{outlier_runners} runner(s) flagged as wall_ms variance outliers"
+            ));
+        }
         let verdict = evaluate_policy(&inputs, &req);
 
         let aggregate = AggregateReceipt {
@@ -127,7 +156,10 @@ impl AggregateUseCase {
             policy: req.policy,
             quorum: req.quorum,
             fail_if: req.fail_if,
+            weight_mode: req.weight_mode,
             weights: req.weights,
+            variance_floor: matches!(req.weight_mode, AggregateWeightMode::InverseVariance)
+                .then_some(variance_floor),
             inputs,
             verdict,
             warnings,
@@ -216,6 +248,94 @@ fn compare_hosts(a: &HostInfo, b: &HostInfo) -> Vec<String> {
     reasons
 }
 
+fn build_runner_weight_profiles(
+    receipts: &[RunReceipt],
+    req: &AggregateRequest,
+    variance_floor: f64,
+) -> Vec<RunnerWeightProfile> {
+    let normalized_variance_floor = variance_floor.max(f64::EPSILON);
+    let mut profiles: Vec<_> = receipts
+        .iter()
+        .map(|receipt| {
+            let (sample_count, wall_ms_variance) = wall_ms_variance(receipt);
+            let label = format!("{}-{}", receipt.run.host.os, receipt.run.host.arch);
+            let configured_weight = req.weights.get(&label).copied().unwrap_or(1.0);
+            let effective_weight = matches!(req.policy, AggregationPolicy::Weighted).then_some(
+                match req.weight_mode {
+                    AggregateWeightMode::Configured => configured_weight,
+                    AggregateWeightMode::InverseVariance => {
+                        configured_weight
+                            / wall_ms_variance
+                                .unwrap_or(normalized_variance_floor)
+                                .max(normalized_variance_floor)
+                    }
+                },
+            );
+            RunnerWeightProfile {
+                sample_count,
+                wall_ms_variance,
+                effective_weight,
+                outlier_reason: None,
+            }
+        })
+        .collect();
+
+    if matches!(req.weight_mode, AggregateWeightMode::InverseVariance)
+        && let Some(median_variance) = median(
+            &profiles
+                .iter()
+                .filter_map(|profile| profile.wall_ms_variance)
+                .collect::<Vec<_>>(),
+        )
+    {
+        let threshold = median_variance.max(normalized_variance_floor) * OUTLIER_VARIANCE_RATIO;
+        for profile in &mut profiles {
+            if let Some(observed_variance) = profile.wall_ms_variance
+                && observed_variance > threshold
+            {
+                profile.outlier_reason = Some(format!(
+                    "wall_ms variance {:.3} exceeds peer median {:.3}",
+                    observed_variance, median_variance
+                ));
+            }
+        }
+    }
+
+    profiles
+}
+
+fn wall_ms_variance(receipt: &RunReceipt) -> (u32, Option<f64>) {
+    let values: Vec<f64> = receipt
+        .samples
+        .iter()
+        .filter(|sample| !sample.warmup)
+        .map(|sample| sample.wall_ms as f64)
+        .collect();
+    let sample_count = values.len() as u32;
+    if values.len() < 2 {
+        return (sample_count, None);
+    }
+
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let variance =
+        values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
+    (sample_count, Some(variance))
+}
+
+fn median(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let mid = sorted.len() / 2;
+    Some(if sorted.len() % 2 == 0 {
+        (sorted[mid - 1] + sorted[mid]) / 2.0
+    } else {
+        sorted[mid]
+    })
+}
+
 fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> AggregateVerdict {
     let passed = inputs
         .iter()
@@ -226,13 +346,17 @@ fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> Aggrega
 
     let weighted_total: f64 = inputs
         .iter()
-        .map(|i| req.weights.get(&i.runner.label).copied().unwrap_or(1.0))
+        .map(|input| input.runner.effective_weight.unwrap_or(1.0))
         .sum();
     let weighted_pass: f64 = inputs
         .iter()
         .filter(|i| i.status == MetricStatus::Pass)
-        .map(|i| req.weights.get(&i.runner.label).copied().unwrap_or(1.0))
+        .map(|input| input.runner.effective_weight.unwrap_or(1.0))
         .sum();
+    let outlier_runners = inputs
+        .iter()
+        .filter(|input| input.runner.outlier_reason.is_some())
+        .count() as u32;
 
     let mut reasons = Vec::new();
     let status = match req.policy {
@@ -321,6 +445,7 @@ fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> Aggrega
             AggregationPolicy::Weighted | AggregationPolicy::Quorum
         )
         .then_some(req.quorum.unwrap_or(0.5)),
+        outlier_runners: (outlier_runners > 0).then_some(outlier_runners),
         reasons,
     }
 }
@@ -393,6 +518,39 @@ mod tests {
         }
     }
 
+    fn mk_receipt_with_wall_samples(
+        id: &str,
+        os: &str,
+        arch: &str,
+        exit_code: i32,
+        wall_samples: &[u64],
+    ) -> RunReceipt {
+        let mut receipt = mk_receipt(id, os, arch, exit_code);
+        receipt.samples = wall_samples
+            .iter()
+            .map(|wall_ms| Sample {
+                wall_ms: *wall_ms,
+                exit_code,
+                warmup: false,
+                timed_out: false,
+                cpu_ms: None,
+                page_faults: None,
+                ctx_switches: None,
+                max_rss_kb: None,
+                io_read_bytes: None,
+                io_write_bytes: None,
+                network_packets: None,
+                energy_uj: None,
+                binary_bytes: None,
+                stdout: None,
+                stderr: None,
+            })
+            .collect();
+        receipt.bench.repeat = wall_samples.len() as u32;
+        receipt.stats = compute_stats(&receipt.samples, receipt.bench.work_units).unwrap();
+        receipt
+    }
+
     #[test]
     fn majority_policy_passes_when_most_inputs_pass() {
         let inputs = vec![
@@ -406,6 +564,10 @@ mod tests {
                     class: None,
                     lane: None,
                     weight: None,
+                    sample_count: None,
+                    wall_ms_variance: None,
+                    effective_weight: None,
+                    outlier_reason: None,
                 },
                 status: MetricStatus::Pass,
                 reasons: vec![],
@@ -420,6 +582,10 @@ mod tests {
                     class: None,
                     lane: None,
                     weight: None,
+                    sample_count: None,
+                    wall_ms_variance: None,
+                    effective_weight: None,
+                    outlier_reason: None,
                 },
                 status: MetricStatus::Fail,
                 reasons: vec!["non-zero".to_string()],
@@ -434,6 +600,10 @@ mod tests {
                     class: None,
                     lane: None,
                     weight: None,
+                    sample_count: None,
+                    wall_ms_variance: None,
+                    effective_weight: None,
+                    outlier_reason: None,
                 },
                 status: MetricStatus::Pass,
                 reasons: vec![],
@@ -448,6 +618,8 @@ mod tests {
                 quorum: None,
                 fail_if: None,
                 weights: BTreeMap::new(),
+                weight_mode: AggregateWeightMode::Configured,
+                variance_floor: None,
                 runner_class: None,
                 lane: None,
             },
@@ -471,6 +643,10 @@ mod tests {
                     class: None,
                     lane: None,
                     weight: Some(0.8),
+                    sample_count: None,
+                    wall_ms_variance: None,
+                    effective_weight: Some(0.8),
+                    outlier_reason: None,
                 },
                 status: MetricStatus::Pass,
                 reasons: vec![],
@@ -485,6 +661,10 @@ mod tests {
                     class: None,
                     lane: None,
                     weight: Some(0.2),
+                    sample_count: None,
+                    wall_ms_variance: None,
+                    effective_weight: Some(0.2),
+                    outlier_reason: None,
                 },
                 status: MetricStatus::Fail,
                 reasons: vec!["non-zero".to_string()],
@@ -498,12 +678,86 @@ mod tests {
                 quorum: Some(0.7),
                 fail_if: None,
                 weights,
+                weight_mode: AggregateWeightMode::Configured,
+                variance_floor: None,
                 runner_class: None,
                 lane: None,
             },
         );
         assert_eq!(verdict.status, MetricStatus::Pass);
         assert_eq!(verdict.weighted_pass, Some(0.8));
+    }
+
+    #[test]
+    fn inverse_variance_weighting_downranks_noisy_failures_and_marks_outliers() {
+        let dir = tempdir().unwrap();
+        let stable_a_path = dir.path().join("stable-a.json");
+        let stable_b_path = dir.path().join("stable-b.json");
+        let noisy_path = dir.path().join("noisy.json");
+
+        let stable_a = mk_receipt_with_wall_samples("1", "linux", "x86_64", 0, &[100, 100, 100, 100]);
+        let stable_b = mk_receipt_with_wall_samples("2", "linux", "x86_64", 0, &[110, 110, 110, 110]);
+        let noisy = mk_receipt_with_wall_samples("3", "linux", "x86_64", 1, &[80, 140, 60, 160]);
+
+        fs::write(&stable_a_path, serde_json::to_string(&stable_a).unwrap()).unwrap();
+        fs::write(&stable_b_path, serde_json::to_string(&stable_b).unwrap()).unwrap();
+        fs::write(&noisy_path, serde_json::to_string(&noisy).unwrap()).unwrap();
+
+        let configured = AggregateUseCase
+            .execute(AggregateRequest {
+                files: vec![
+                    stable_a_path.clone(),
+                    stable_b_path.clone(),
+                    noisy_path.clone(),
+                ],
+                policy: AggregationPolicy::Weighted,
+                quorum: Some(0.75),
+                fail_if: None,
+                weights: BTreeMap::new(),
+                weight_mode: AggregateWeightMode::Configured,
+                variance_floor: None,
+                runner_class: None,
+                lane: None,
+            })
+            .unwrap();
+        assert_eq!(configured.aggregate.verdict.status, MetricStatus::Fail);
+
+        let inverse = AggregateUseCase
+            .execute(AggregateRequest {
+                files: vec![stable_a_path, stable_b_path, noisy_path],
+                policy: AggregationPolicy::Weighted,
+                quorum: Some(0.75),
+                fail_if: None,
+                weights: BTreeMap::new(),
+                weight_mode: AggregateWeightMode::InverseVariance,
+                variance_floor: Some(1.0),
+                runner_class: None,
+                lane: None,
+            })
+            .unwrap();
+
+        assert_eq!(inverse.aggregate.verdict.status, MetricStatus::Pass);
+        assert_eq!(inverse.aggregate.weight_mode, AggregateWeightMode::InverseVariance);
+        assert_eq!(inverse.aggregate.variance_floor, Some(1.0));
+        assert_eq!(inverse.aggregate.verdict.outlier_runners, Some(1));
+
+        let noisy_input = inverse
+            .aggregate
+            .inputs
+            .iter()
+            .find(|input| input.run_id == "3")
+            .unwrap();
+        let stable_input = inverse
+            .aggregate
+            .inputs
+            .iter()
+            .find(|input| input.run_id == "1")
+            .unwrap();
+
+        assert!(noisy_input.runner.outlier_reason.is_some());
+        assert!(
+            stable_input.runner.effective_weight.unwrap() > noisy_input.runner.effective_weight.unwrap()
+        );
     }
 
     #[test]
@@ -574,6 +828,8 @@ mod tests {
                 quorum: None,
                 fail_if: None,
                 weights: BTreeMap::new(),
+                weight_mode: AggregateWeightMode::Configured,
+                variance_floor: None,
                 runner_class: None,
                 lane: None,
             })
@@ -586,6 +842,8 @@ mod tests {
         assert_eq!(outcome.aggregate.schema, AGGREGATE_SCHEMA_V1);
         assert_eq!(outcome.aggregate.benchmark, "bench");
         assert_eq!(outcome.aggregate.policy, AggregationPolicy::All);
+        assert_eq!(outcome.aggregate.weight_mode, AggregateWeightMode::Configured);
+        assert_eq!(outcome.aggregate.variance_floor, None);
         assert_eq!(outcome.aggregate.inputs.len(), 2);
         assert_eq!(outcome.aggregate.verdict.status, MetricStatus::Pass);
     }

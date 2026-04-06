@@ -40,9 +40,9 @@ use perfgate_scaling::{
 };
 use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
-    AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig, ChangedFilesSummary,
-    CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy, MetricStatus,
-    OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
+    AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
+    ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
+    MetricStatus, OtelSpanIdentifiers, PerfgateReport, RatchetConfig, REPAIR_CONTEXT_SCHEMA_V1,
     RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, SensorVerdictStatus,
     ToolInfo, VerdictStatus,
 };
@@ -289,6 +289,14 @@ enum Command {
         /// Runner weights as label=value (repeatable), e.g. linux-x86_64=0.5
         #[arg(long = "weight")]
         weights: Vec<String>,
+
+        /// Weighting mode for weighted policy: configured or inverse_variance
+        #[arg(long, default_value = "configured", value_parser = parse_aggregate_weight_mode)]
+        weight_mode: AggregateWeightMode,
+
+        /// Minimum variance used by inverse-variance weighting when a runner is extremely stable
+        #[arg(long)]
+        variance_floor: Option<f64>,
 
         /// Optional runner class/tag added to each input in the aggregate receipt
         #[arg(long)]
@@ -2162,6 +2170,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             fail_n,
             fail_m,
             weights,
+            weight_mode,
+            variance_floor,
             runner_class,
             lane,
             out,
@@ -2174,7 +2184,14 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                     resolved_files.push(entry?);
                 }
             }
-            let (quorum, fail_if) = validate_aggregate_options(policy, quorum, fail_n, fail_m)?;
+            let (quorum, fail_if, variance_floor) = validate_aggregate_options(
+                policy,
+                weight_mode,
+                quorum,
+                fail_n,
+                fail_m,
+                variance_floor,
+            )?;
             let weight_map = parse_weight_map(&weights)?;
             let outcome = usecase.execute(perfgate_app::AggregateRequest {
                 files: resolved_files,
@@ -2182,6 +2199,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 quorum,
                 fail_if,
                 weights: weight_map,
+                weight_mode,
+                variance_floor,
                 runner_class,
                 lane,
             })?;
@@ -5099,6 +5118,16 @@ fn parse_aggregation_policy(s: &str) -> Result<AggregationPolicy, String> {
     }
 }
 
+fn parse_aggregate_weight_mode(s: &str) -> Result<AggregateWeightMode, String> {
+    match s {
+        "configured" => Ok(AggregateWeightMode::Configured),
+        "inverse_variance" => Ok(AggregateWeightMode::InverseVariance),
+        _ => Err(format!(
+            "invalid aggregate weight mode: {s} (expected configured|inverse_variance)"
+        )),
+    }
+}
+
 fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>> {
     let mut map = BTreeMap::new();
     for raw in weights {
@@ -5121,10 +5150,12 @@ fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>>
 
 fn validate_aggregate_options(
     policy: AggregationPolicy,
+    weight_mode: AggregateWeightMode,
     quorum: Option<f64>,
     fail_n: Option<u32>,
     fail_m: Option<u32>,
-) -> anyhow::Result<(Option<f64>, Option<FailIfNOfM>)> {
+    variance_floor: Option<f64>,
+) -> anyhow::Result<(Option<f64>, Option<FailIfNOfM>, Option<f64>)> {
     if let Some(quorum) = quorum {
         if !quorum.is_finite() || !(0.0..=1.0).contains(&quorum) {
             anyhow::bail!("--quorum must be between 0.0 and 1.0, got {quorum}");
@@ -5134,6 +5165,23 @@ fn validate_aggregate_options(
             AggregationPolicy::Weighted | AggregationPolicy::Quorum
         ) {
             anyhow::bail!("--quorum requires --policy weighted or quorum");
+        }
+    }
+
+    if matches!(weight_mode, AggregateWeightMode::InverseVariance)
+        && !matches!(policy, AggregationPolicy::Weighted)
+    {
+        anyhow::bail!("--weight-mode inverse_variance requires --policy weighted");
+    }
+
+    if let Some(variance_floor) = variance_floor {
+        if !variance_floor.is_finite() || variance_floor <= 0.0 {
+            anyhow::bail!(
+                "--variance-floor must be a positive finite number, got {variance_floor}"
+            );
+        }
+        if !matches!(weight_mode, AggregateWeightMode::InverseVariance) {
+            anyhow::bail!("--variance-floor requires --weight-mode inverse_variance");
         }
     }
 
@@ -5152,13 +5200,13 @@ fn validate_aggregate_options(
                     anyhow::bail!("--fail-m must be greater than or equal to --fail-n");
                 }
             }
-            Ok((quorum, Some(FailIfNOfM { n, m: fail_m })))
+            Ok((quorum, Some(FailIfNOfM { n, m: fail_m }), variance_floor))
         }
         _ => {
             if fail_n.is_some() || fail_m.is_some() {
                 anyhow::bail!("--fail-n and --fail-m require --policy fail_if_n_of_m");
             }
-            Ok((quorum, None))
+            Ok((quorum, None, variance_floor))
         }
     }
 }
@@ -5552,6 +5600,29 @@ mod tests {
             err.to_string().contains("non-negative finite number"),
             "unexpected error: {}",
             err
+        );
+    }
+
+    #[test]
+    fn parse_aggregate_weight_mode_accepts_inverse_variance() {
+        let mode = parse_aggregate_weight_mode("inverse_variance").unwrap();
+        assert_eq!(mode, AggregateWeightMode::InverseVariance);
+    }
+
+    #[test]
+    fn validate_aggregate_options_rejects_inverse_variance_without_weighted_policy() {
+        let err = validate_aggregate_options(
+            AggregationPolicy::Majority,
+            AggregateWeightMode::InverseVariance,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("requires --policy weighted"),
+            "unexpected error: {err}"
         );
     }
 
