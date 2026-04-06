@@ -8,6 +8,9 @@ ideas. That made it too easy to treat speculative capabilities as current
 product truth. This version keeps the source of truth narrow: what exists in
 the repository today, how it is exposed, and what is still backlog.
 
+For command snippets and flags, prefer checking current `--help` output before
+running in production, especially when upgrading across releases.
+
 ## Current Implementation
 
 The baseline service currently ships as these pieces:
@@ -35,6 +38,9 @@ The current server binary supports:
 
 For local development, prefer `perfgate serve`. For a shared deployment,
 prefer `perfgate-server` directly.
+
+For local mode, `perfgate serve` runs with API auth disabled for single-user
+workflows.
 
 ## Authentication
 
@@ -112,6 +118,10 @@ The main server-aware CLI workflows are:
 | `baseline verdicts` | inspect pass/warn/fail history |
 | `baseline submit-verdict` | persist compare verdicts |
 | `baseline migrate` | upload local baseline JSON files recursively |
+| `fleet alerts` | list fleet-wide dependency regression alerts |
+| `fleet impact` | inspect the project impact of a dependency |
+| `fleet record-event` | record a dependency change event with performance delta |
+| `serve` | run a local baseline server/dashboard in local mode |
 
 ## Recommended Deployment Shapes
 
@@ -152,6 +162,7 @@ When in doubt, prefer:
 
 - CLI `--help`
 - `perfgate-server --help`
+- `perfgate baseline --help`
 - the route table in `crates/perfgate-server/src/server.rs`
 - the current crate READMEs
 
