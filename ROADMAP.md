@@ -4,6 +4,8 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 
 ## Near-Term (0.16.x)
 
+Theme: make the baseline service boring, trustworthy, and well-documented.
+
 ### Storage Hardening
 - [ ] **PostgreSQL connection pooling** ([#65]): Pool tuning, retry logic, and health checks under load.
 - [ ] **S3 lifecycle policies** ([#67]): Retention and cleanup for old receipts in object storage.
@@ -23,6 +25,8 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 
 ## Medium-Term (0.17.x)
 
+Theme: trust the signal before widening the platform surface.
+
 ### Observability & Audit
 - [ ] **Audit logging** ([#68]): Audit trail for baseline promotions, deletions, and key changes.
 - [ ] **Prometheus endpoint** ([#66]): `/metrics` scrape endpoint on the server.
@@ -30,6 +34,7 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 ### Noise & Stability
 - [ ] **Noise policy tuning** ([#78]): Smarter paired retry logic with adaptive sample sizes.
 - [ ] **Flakiness tracking** ([#79]): Cross-run flakiness history and scoring.
+- [ ] **Weighted fleet aggregation** ([#81]): Account for runner variance in `perfgate aggregate`.
 
 ### Dashboard
 - [ ] **Dashboard enhancement** ([#77]): Filtering, drill-down, export, and responsive layout.
@@ -38,14 +43,13 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 - [ ] **CI guides** ([#74]): Bitbucket Pipelines and CircleCI integration guides.
 - [ ] **Schema evolution** ([#75]): Documented policy for v2 schema coexistence.
 - [ ] **Crate READMEs** ([#59]): Expand thin READMEs for api, config, selfbench, summary.
-- [ ] **Baseline server docs** ([#51], [#52]): Validate and trim server documentation.
+- [x] **Baseline server docs** ([#51], [#52]): Validate and trim server documentation.
 
 ## Long-Term (Toward 1.0)
 
 - [ ] **API and schema freeze**: Stabilize all public JSON contracts and REST endpoints before 1.0.
-- [ ] **Pluggable renderers** ([#82]): Generalize template support into a plugin system.
-- [ ] **Cross-project comparisons** ([#80]): Compare benchmarks across project boundaries.
-- [ ] **Weighted fleet aggregation** ([#81]): Account for runner variance in `perfgate aggregate`.
+- [ ] **Cross-project federation**: Build on the shipped compare-time `--baseline-project` lookup without weakening project isolation; reserve server-side multi-project compare/query work for an explicit API and auth design.
+- [ ] **Pluggable renderers** ([#82]): Generalize template support into a plugin system after the core gate and service contracts are stable.
 
 ---
 
@@ -67,7 +71,6 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 [#77]: https://github.com/EffortlessMetrics/perfgate/issues/77
 [#78]: https://github.com/EffortlessMetrics/perfgate/issues/78
 [#79]: https://github.com/EffortlessMetrics/perfgate/issues/79
-[#80]: https://github.com/EffortlessMetrics/perfgate/issues/80
 [#81]: https://github.com/EffortlessMetrics/perfgate/issues/81
 [#82]: https://github.com/EffortlessMetrics/perfgate/issues/82
 [#83]: https://github.com/EffortlessMetrics/perfgate/issues/83
