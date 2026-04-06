@@ -198,6 +198,8 @@ impl PostgresStore {
                 reasons JSONB NOT NULL,
                 git_ref VARCHAR(255),
                 git_sha VARCHAR(40),
+                wall_ms_cv DOUBLE PRECISION,
+                flakiness_score DOUBLE PRECISION,
                 created_at TIMESTAMPTZ NOT NULL
             );
 
@@ -232,6 +234,16 @@ impl PostgresStore {
             .execute(&self.pool)
             .await
             .map_err(|e| StoreError::ConnectionError(format!("Failed to init schema: {}", e)))?;
+        sqlx::query("ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS wall_ms_cv DOUBLE PRECISION")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| StoreError::ConnectionError(format!("Failed to migrate schema: {}", e)))?;
+        sqlx::query(
+            "ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS flakiness_score DOUBLE PRECISION",
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StoreError::ConnectionError(format!("Failed to migrate schema: {}", e)))?;
 
         Ok(())
     }
@@ -648,8 +660,8 @@ impl BaselineStore for PostgresStore {
         let sql = r#"
             INSERT INTO verdicts (
                 id, schema_id, project, benchmark, run_id, status, counts, reasons,
-                git_ref, git_sha, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                git_ref, git_sha, wall_ms_cv, flakiness_score, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#;
 
         let counts_json =
@@ -669,6 +681,8 @@ impl BaselineStore for PostgresStore {
             .bind(reasons_json)
             .bind(&record.git_ref)
             .bind(&record.git_sha)
+            .bind(record.wall_ms_cv)
+            .bind(record.flakiness_score)
             .bind(record.created_at)
             .execute(&self.pool)
             .await
@@ -790,6 +804,8 @@ impl PostgresStore {
             reasons,
             git_ref: row.get("git_ref"),
             git_sha: row.get("git_sha"),
+            wall_ms_cv: row.get("wall_ms_cv"),
+            flakiness_score: row.get("flakiness_score"),
             created_at: row.get("created_at"),
         })
     }

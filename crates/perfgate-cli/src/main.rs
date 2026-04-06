@@ -1387,6 +1387,25 @@ enum BaselineAction {
         status: Option<VerdictStatus>,
     },
 
+    /// Show benchmarks with historically noisy verdicts.
+    Flaky {
+        /// Optional benchmark name to filter by
+        #[arg(long)]
+        benchmark: Option<String>,
+
+        /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Maximum number of recent verdict records to inspect
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
+
+        /// Minimum flakiness score to show (0.0-1.0)
+        #[arg(long, default_value_t = 0.5, value_parser = parse_flakiness_score)]
+        min_score: f64,
+    },
+
     /// Submit a benchmark verdict to the server.
     SubmitVerdict {
         /// Path to a compare receipt
@@ -3448,9 +3467,90 @@ fn execute_baseline_action(
                     );
                     for record in &response.verdicts {
                         let git_ref = record.git_ref.as_deref().unwrap_or("unknown");
+                        let cv_suffix = record
+                            .wall_ms_cv
+                            .map(|cv| format!(", wall_cv={:.2}", cv))
+                            .unwrap_or_default();
+                        let score_suffix = record
+                            .flakiness_score
+                            .map(|score| format!(", flakiness={:.2}", score))
+                            .unwrap_or_default();
                         println!(
-                            "  [{:?}] {} - {} ({})",
-                            record.status, record.benchmark, record.created_at, git_ref
+                            "  [{:?}] {} - {} ({}){}{}",
+                            record.status,
+                            record.benchmark,
+                            record.created_at,
+                            git_ref,
+                            cv_suffix,
+                            score_suffix
+                        );
+                    }
+                }
+
+                Ok::<(), anyhow::Error>(())
+            })?;
+        }
+
+        BaselineAction::Flaky {
+            benchmark,
+            project,
+            limit,
+            min_score,
+        } => {
+            let project = server_config.resolve_project(project)?;
+            let mut query = ListVerdictsQuery::new().with_limit(limit);
+            if let Some(bench) = benchmark {
+                query = query.with_benchmark(bench);
+            }
+
+            rt.block_on(async {
+                let response = client
+                    .list_verdicts(&project, &query)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to get flakiness history for project {}", project)
+                    })?;
+
+                let mut latest_by_benchmark = std::collections::BTreeMap::new();
+                for record in &response.verdicts {
+                    latest_by_benchmark
+                        .entry(record.benchmark.clone())
+                        .or_insert(record);
+                }
+
+                let mut flaky: Vec<_> = latest_by_benchmark
+                    .into_values()
+                    .filter(|record| record.flakiness_score.unwrap_or(0.0) >= min_score)
+                    .collect();
+                flaky.sort_by(|left, right| {
+                    right
+                        .flakiness_score
+                        .unwrap_or(0.0)
+                        .total_cmp(&left.flakiness_score.unwrap_or(0.0))
+                });
+
+                if flaky.is_empty() {
+                    println!(
+                        "No flaky benchmarks found for project '{}' at score >= {:.2}.",
+                        project, min_score
+                    );
+                } else {
+                    println!(
+                        "Flaky benchmarks for {} (score >= {:.2}):",
+                        project, min_score
+                    );
+                    for record in flaky {
+                        let cv = record
+                            .wall_ms_cv
+                            .map(|value| format!("{:.2}", value))
+                            .unwrap_or_else(|| "n/a".to_string());
+                        println!(
+                            "  {:.2}  {}  latest_cv={}  {:?}  {}",
+                            record.flakiness_score.unwrap_or(0.0),
+                            record.benchmark,
+                            cv,
+                            record.status,
+                            record.created_at
                         );
                     }
                 }
@@ -3480,6 +3580,10 @@ fn execute_baseline_action(
                 reasons: compare_receipt.verdict.reasons.clone(),
                 git_ref,
                 git_sha,
+                wall_ms_cv: compare_receipt
+                    .deltas
+                    .get(&perfgate_types::Metric::WallMs)
+                    .and_then(|delta| delta.cv),
             };
 
             rt.block_on(async {
@@ -3871,6 +3975,10 @@ fn submit_verdict_if_possible(
             reasons: compare_receipt.verdict.reasons.clone(),
             git_ref: None, // Could be extracted if needed
             git_sha: None,
+            wall_ms_cv: compare_receipt
+                .deltas
+                .get(&perfgate_types::Metric::WallMs)
+                .and_then(|delta| delta.cv),
         };
 
         if let Err(e) = with_tokio_runtime(async {
@@ -5079,6 +5187,16 @@ fn parse_noise_policy(s: &str) -> Result<perfgate_types::NoisePolicy, String> {
             "invalid noise policy: {s} (expected warn|skip|ignore)"
         )),
     }
+}
+
+fn parse_flakiness_score(s: &str) -> Result<f64, String> {
+    let score: f64 = s
+        .parse()
+        .map_err(|_| "flakiness score must be a number".to_string())?;
+    if !score.is_finite() || !(0.0..=1.0).contains(&score) {
+        return Err("flakiness score must be between 0.0 and 1.0".to_string());
+    }
+    Ok(score)
 }
 
 fn parse_verdict_status(s: &str) -> Result<VerdictStatus, String> {

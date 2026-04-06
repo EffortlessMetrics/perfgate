@@ -136,6 +136,8 @@ impl SqliteStore {
                 reasons TEXT NOT NULL,
                 git_ref TEXT,
                 git_sha TEXT,
+                wall_ms_cv REAL,
+                flakiness_score REAL,
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark ON verdicts(project, benchmark);
@@ -156,6 +158,8 @@ impl SqliteStore {
             CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(action);
             "#,
         )?;
+        let _ = conn.execute("ALTER TABLE verdicts ADD COLUMN wall_ms_cv REAL", []);
+        let _ = conn.execute("ALTER TABLE verdicts ADD COLUMN flakiness_score REAL", []);
         Ok(())
     }
 
@@ -537,8 +541,8 @@ impl BaselineStore for SqliteStore {
             r#"
             INSERT INTO verdicts (
                 id, schema_id, project, benchmark, run_id, status, counts, reasons,
-                git_ref, git_sha, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                git_ref, git_sha, wall_ms_cv, flakiness_score, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             params![
                 record.id,
@@ -551,6 +555,8 @@ impl BaselineStore for SqliteStore {
                 reasons_json,
                 record.git_ref,
                 record.git_sha,
+                record.wall_ms_cv,
+                record.flakiness_score,
                 created_at_str
             ],
         )?;
@@ -650,7 +656,7 @@ impl SqliteStore {
         let reasons_json: String = row.get(7)?;
         let reasons = serde_json::from_str(&reasons_json).unwrap_or_default();
 
-        let created_at_str: String = row.get(10)?;
+        let created_at_str: String = row.get(12)?;
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .unwrap_or_else(|_| chrono::Utc::now());
@@ -666,6 +672,8 @@ impl SqliteStore {
             reasons,
             git_ref: row.get(8)?,
             git_sha: row.get(9)?,
+            wall_ms_cv: row.get(10)?,
+            flakiness_score: row.get(11)?,
             created_at,
         })
     }
