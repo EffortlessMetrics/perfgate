@@ -41,6 +41,13 @@
     "tool": {
       "$ref": "#/$defs/ToolInfo"
     },
+    "variance_floor": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double"
+    },
     "verdict": {
       "$ref": "#/$defs/AggregateVerdict"
     },
@@ -49,6 +56,9 @@
       "items": {
         "type": "string"
       }
+    },
+    "weight_mode": {
+      "$ref": "#/$defs/AggregateWeightMode"
     },
     "weights": {
       "type": "object",
@@ -64,6 +74,7 @@
     "run",
     "benchmark",
     "policy",
+    "weight_mode",
     "inputs",
     "verdict"
   ],
@@ -118,6 +129,14 @@
             "null"
           ]
         },
+        "effective_weight": {
+          "description": "Effective runner weight after the selected weighting mode is applied.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "label": {
           "description": "Matrix label for this runner (for example: \"ubuntu-x86_64\").",
           "type": "string"
@@ -128,6 +147,30 @@
             "string",
             "null"
           ]
+        },
+        "outlier_reason": {
+          "description": "Optional note when this runner appears substantially noisier than peers.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_count": {
+          "description": "Number of measured samples considered for runner weighting metadata.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "wall_ms_variance": {
+          "description": "Observed variance of `wall_ms` across measured samples for this runner.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "weight": {
           "description": "Optional configured runner weight.",
@@ -147,6 +190,15 @@
       "properties": {
         "failed": {
           "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "outlier_runners": {
+          "description": "Number of runners flagged as variance outliers.",
+          "type": [
+            "integer",
+            "null"
+          ],
           "format": "uint32",
           "minimum": 0
         },
@@ -199,6 +251,21 @@
         "passed",
         "failed",
         "total"
+      ]
+    },
+    "AggregateWeightMode": {
+      "description": "Weighting mode for runner-aware aggregate verdicts.",
+      "oneOf": [
+        {
+          "description": "Use configured weights directly, or 1.0 when no explicit weight is set.",
+          "type": "string",
+          "const": "configured"
+        },
+        {
+          "description": "Scale configured weights by inverse observed wall-clock variance.",
+          "type": "string",
+          "const": "inverse_variance"
+        }
       ]
     },
     "AggregationPolicy": {
