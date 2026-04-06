@@ -15,6 +15,69 @@ use crate::models::{
 };
 use crate::server::AppState;
 
+const HIGH_FLAKINESS_CV_THRESHOLD: f64 = 0.30;
+const FLAKINESS_HISTORY_LIMIT: u32 = 20;
+
+fn score_flakiness_history(cv_history: &[f64]) -> Option<f64> {
+    let filtered: Vec<f64> = cv_history
+        .iter()
+        .copied()
+        .filter(|cv| cv.is_finite() && *cv >= 0.0)
+        .collect();
+    if filtered.is_empty() {
+        return None;
+    }
+
+    let noisy_ratio = filtered
+        .iter()
+        .filter(|cv| **cv > HIGH_FLAKINESS_CV_THRESHOLD)
+        .count() as f64
+        / filtered.len() as f64;
+    let mean_severity = filtered
+        .iter()
+        .map(|cv| (cv / HIGH_FLAKINESS_CV_THRESHOLD).min(2.0) / 2.0)
+        .sum::<f64>()
+        / filtered.len() as f64;
+
+    Some((noisy_ratio * 0.7 + mean_severity * 0.3).min(1.0))
+}
+
+async fn compute_flakiness_score(
+    state: &AppState,
+    project: &str,
+    benchmark: &str,
+    current_wall_ms_cv: Option<f64>,
+) -> Option<f64> {
+    let mut cv_history = Vec::new();
+    if let Some(cv) = current_wall_ms_cv.filter(|cv| cv.is_finite() && *cv >= 0.0) {
+        cv_history.push(cv);
+    }
+
+    let query = ListVerdictsQuery::new()
+        .with_benchmark(benchmark.to_string())
+        .with_limit(FLAKINESS_HISTORY_LIMIT.saturating_sub(1));
+    match state.store.list_verdicts(project, &query).await {
+        Ok(response) => {
+            cv_history.extend(
+                response
+                    .verdicts
+                    .into_iter()
+                    .filter_map(|record| record.wall_ms_cv),
+            );
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                project = %project,
+                benchmark = %benchmark,
+                "Failed to load verdict history for flakiness scoring"
+            );
+        }
+    }
+
+    score_flakiness_history(&cv_history)
+}
+
 /// Submit a new benchmark verdict.
 pub async fn submit_verdict(
     Path(project): Path<String>,
@@ -39,6 +102,8 @@ pub async fn submit_verdict(
         ));
     }
 
+    let flakiness_score =
+        compute_flakiness_score(&state, &project, &request.benchmark, request.wall_ms_cv).await;
     let record = VerdictRecord {
         schema: VERDICT_SCHEMA_V1.to_string(),
         id: generate_ulid(),
@@ -50,6 +115,8 @@ pub async fn submit_verdict(
         reasons: request.reasons,
         git_ref: request.git_ref,
         git_sha: request.git_sha,
+        wall_ms_cv: request.wall_ms_cv,
+        flakiness_score,
         created_at: chrono::Utc::now(),
     };
 

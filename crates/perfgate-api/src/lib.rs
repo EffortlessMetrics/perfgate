@@ -118,6 +118,12 @@ pub struct VerdictRecord {
     /// Git commit SHA
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git_sha: Option<String>,
+    /// Coefficient of variation for benchmark wall time in this verdict.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wall_ms_cv: Option<f64>,
+    /// Historical flakiness score derived from recent wall-time CV samples.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flakiness_score: Option<f64>,
     /// Creation timestamp
     pub created_at: DateTime<Utc>,
 }
@@ -132,6 +138,8 @@ pub struct SubmitVerdictRequest {
     pub reasons: Vec<String>,
     pub git_ref: Option<String>,
     pub git_sha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wall_ms_cv: Option<f64>,
 }
 
 /// Request for verdict list operation.
