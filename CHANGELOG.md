@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed clippy warnings by replacing `sort_by` with `sort_by_key` and `std::cmp::Reverse` for descending sorts in storage backends.
+
 ## [0.15.1] - 2026-03-28
 
 ### Fixed
