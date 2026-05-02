@@ -116,7 +116,7 @@ impl KeyStore for InMemoryKeyStore {
     async fn list_keys(&self) -> Result<Vec<KeyRecord>, StoreError> {
         let records = self.records.read().await;
         let mut keys: Vec<_> = records.values().cloned().collect();
-        keys.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        keys.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         Ok(keys)
     }
 

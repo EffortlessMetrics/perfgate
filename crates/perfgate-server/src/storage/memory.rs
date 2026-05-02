@@ -154,7 +154,7 @@ impl BaselineStore for InMemoryStore {
             })
             .collect();
 
-        filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        filtered.sort_by_key(|b| std::cmp::Reverse(b.created_at));
 
         let total = filtered.len() as u64;
         let offset = query.offset as usize;
@@ -253,7 +253,7 @@ impl BaselineStore for InMemoryStore {
             })
             .collect();
 
-        versions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        versions.sort_by_key(|b| std::cmp::Reverse(b.created_at));
 
         if let Some(first) = versions.first_mut() {
             first.is_current = true;
@@ -319,7 +319,7 @@ impl BaselineStore for InMemoryStore {
             .cloned()
             .collect();
 
-        filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        filtered.sort_by_key(|b| std::cmp::Reverse(b.created_at));
 
         let total = filtered.len() as u64;
         let offset = query.offset as usize;
@@ -399,7 +399,7 @@ impl AuditStore for InMemoryStore {
             .cloned()
             .collect();
 
-        filtered.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        filtered.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
         let total = filtered.len() as u64;
         let offset = query.offset as usize;
