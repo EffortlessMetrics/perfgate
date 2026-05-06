@@ -2280,6 +2280,7 @@ struct DocDataSnippet {
 enum DocDataKind {
     Toml,
     Json,
+    Yaml,
 }
 
 impl DocDataKind {
@@ -2294,6 +2295,7 @@ impl DocDataKind {
         match info.as_str() {
             "toml" => Some(Self::Toml),
             "json" => Some(Self::Json),
+            "yaml" | "yml" => Some(Self::Yaml),
             _ => None,
         }
     }
@@ -2302,6 +2304,7 @@ impl DocDataKind {
         match self {
             Self::Toml => "TOML",
             Self::Json => "JSON",
+            Self::Yaml => "YAML",
         }
     }
 }
@@ -2798,6 +2801,10 @@ fn validate_data_snippet(snippet: &DocDataSnippet) -> anyhow::Result<Option<&'st
             let value: serde_json::Value =
                 serde_json::from_str(&snippet.raw).context("parse JSON")?;
             validate_versioned_json_example(value)
+        }
+        DocDataKind::Yaml => {
+            yaml_serde::from_str::<yaml_serde::Value>(&snippet.raw).context("parse YAML")?;
+            Ok(None)
         }
     }
 }
@@ -3676,14 +3683,21 @@ repeat = 3
 {"status": "healthy"}
 ```
 
+```yaml
+name: perfgate
+on:
+  pull_request:
+```
+
 ```bash
 perfgate --help
 ```
 "#;
         let snippets = extract_data_snippets(Path::new("test.md"), md);
-        assert_eq!(snippets.len(), 2);
+        assert_eq!(snippets.len(), 3);
         assert_eq!(snippets[0].kind, DocDataKind::Toml);
         assert_eq!(snippets[1].kind, DocDataKind::Json);
+        assert_eq!(snippets[2].kind, DocDataKind::Yaml);
     }
 
     #[test]
@@ -3697,6 +3711,19 @@ perfgate --help
 
         let err = validate_data_snippet(&snippet).expect_err("invalid TOML should fail");
         assert!(err.to_string().contains("parse TOML"));
+    }
+
+    #[test]
+    fn validate_data_snippet_rejects_invalid_yaml() {
+        let snippet = DocDataSnippet {
+            file: PathBuf::from("test.md"),
+            line: 1,
+            kind: DocDataKind::Yaml,
+            raw: "name: perfgate\njobs:\n  - broken: [unterminated\n".to_string(),
+        };
+
+        let err = validate_data_snippet(&snippet).expect_err("invalid YAML should fail");
+        assert!(err.to_string().contains("parse YAML"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ Developer automation crate for the perfgate workspace.
 - Validates crates.io packaging metadata before release (`publish-check`).
 - Validates public crate dispositions and compatibility-wrapper isolation (`public-surface`).
 - Enforces workspace architecture dependency rules (`arch`).
-- Validates documentation CLI examples plus TOML and JSON snippets (`doc-test`).
+- Validates documentation CLI examples plus TOML, JSON, and YAML snippets (`doc-test`).
 - Validates fixtures against vendored contracts (`conform`).
 - Syncs golden fixtures into `contracts/fixtures` (`sync-fixtures`).
 - Runs mutation testing helpers (`mutants`).

@@ -125,6 +125,7 @@ notify = { version = "7.0", default-features = false, features = ["macos_kqueue"
 ctrlc = "3.4"
 url = "2.5.4"
 regex = "1.12"
+yaml_serde = "0.10.4"
 
 # Test deps
 assert_cmd = "2.1.2"
