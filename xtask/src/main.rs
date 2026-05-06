@@ -2262,6 +2262,50 @@ struct DocCommand {
     flags: Vec<String>,
 }
 
+/// A structured data snippet extracted from a documentation file.
+#[derive(Debug, Clone)]
+struct DocDataSnippet {
+    /// Source file
+    file: PathBuf,
+    /// Line number (1-based) where the fenced block starts
+    line: usize,
+    /// Fence language
+    kind: DocDataKind,
+    /// Fenced block contents
+    raw: String,
+}
+
+/// Structured documentation snippet formats that `doc-test` can validate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DocDataKind {
+    Toml,
+    Json,
+}
+
+impl DocDataKind {
+    fn from_fence(fence: &str) -> Option<Self> {
+        let info = fence
+            .trim_start_matches("```")
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        match info.as_str() {
+            "toml" => Some(Self::Toml),
+            "json" => Some(Self::Json),
+            _ => None,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Toml => "TOML",
+            Self::Json => "JSON",
+        }
+    }
+}
+
 /// Collect default current-user docs.
 fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -2367,6 +2411,43 @@ fn extract_commands(file: &Path, content: &str) -> Vec<DocCommand> {
     }
 
     commands
+}
+
+/// Extract structured data snippets from markdown fenced code blocks.
+fn extract_data_snippets(file: &Path, content: &str) -> Vec<DocDataSnippet> {
+    let mut snippets = Vec::new();
+    let mut in_code_block = false;
+    let mut active: Option<(DocDataKind, usize, String)> = None;
+
+    for (idx, line) in content.lines().enumerate() {
+        let line_num = idx + 1;
+        let trimmed_start = line.trim_start();
+
+        if trimmed_start.starts_with("```") {
+            if in_code_block {
+                if let Some((kind, start_line, raw)) = active.take() {
+                    snippets.push(DocDataSnippet {
+                        file: file.to_path_buf(),
+                        line: start_line,
+                        kind,
+                        raw,
+                    });
+                }
+            } else if let Some(kind) = DocDataKind::from_fence(trimmed_start) {
+                active = Some((kind, line_num, String::new()));
+            }
+
+            in_code_block = !in_code_block;
+            continue;
+        }
+
+        if let Some((_, _, raw)) = active.as_mut() {
+            raw.push_str(line);
+            raw.push('\n');
+        }
+    }
+
+    snippets
 }
 
 fn is_shell_code_fence(fence: &str) -> bool {
@@ -2579,91 +2660,121 @@ fn cmd_doc_test(extra_files: Vec<PathBuf>) -> anyhow::Result<()> {
 
     // Extract all commands from all files
     let mut all_commands = Vec::new();
+    let mut all_data_snippets = Vec::new();
     for file in &files {
         let content =
             fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
         let cmds = extract_commands(file, &content);
         all_commands.extend(cmds);
+        let snippets = extract_data_snippets(file, &content);
+        all_data_snippets.extend(snippets);
     }
 
     println!(
-        "Found {} CLI examples in {} files\n",
+        "Found {} CLI examples and {} structured snippets in {} files\n",
         all_commands.len(),
+        all_data_snippets.len(),
         files.len()
     );
-
-    if all_commands.is_empty() {
-        println!("No perfgate CLI examples found in documentation.");
-        return Ok(());
-    }
-
-    // Get valid subcommands from the binary
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let valid_subcommands = get_valid_subcommands(&cargo)?;
-
-    println!(
-        "Valid subcommands: {}\n",
-        valid_subcommands
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    // For each unique subcommand, get valid flags (caching)
-    let mut flag_cache: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
     let mut errors: Vec<String> = Vec::new();
     let mut checked = 0u32;
 
-    for cmd in &all_commands {
-        checked += 1;
-        let first_subcmd = &cmd.subcommand[0];
+    if all_commands.is_empty() {
+        println!("No perfgate CLI examples found in documentation.");
+    } else {
+        // Get valid subcommands from the binary
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+        let valid_subcommands = get_valid_subcommands(&cargo)?;
 
-        // Check if the top-level subcommand is valid
-        if !valid_subcommands.contains(first_subcmd) {
-            errors.push(format!(
-                "  {}:{}: unknown subcommand '{}'\n    {}",
-                cmd.file.display(),
-                cmd.line,
-                first_subcmd,
-                cmd.raw
-            ));
-            continue;
-        }
+        println!(
+            "Valid subcommands: {}\n",
+            valid_subcommands
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
 
-        // Determine the effective subcommand path for --help.
-        // For subcommands like "baseline list", we need to pass both words.
-        // We try the longest prefix that is a valid sub-subcommand.
-        let subcmd_path = resolve_subcommand_path(&cargo, &cmd.subcommand, &mut flag_cache)?;
+        // For each unique subcommand, get valid flags (caching)
+        let mut flag_cache: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
-        // Get valid flags for this subcommand
-        let cache_key = subcmd_path.join(" ");
-        if !flag_cache.contains_key(&cache_key) {
-            let flags = get_valid_flags(&cargo, &subcmd_path)?;
-            flag_cache.insert(cache_key.clone(), flags);
-        }
-        let valid_flags = &flag_cache[&cache_key];
+        for cmd in &all_commands {
+            checked += 1;
+            let first_subcmd = &cmd.subcommand[0];
 
-        // Check each flag
-        for flag in &cmd.flags {
-            if !valid_flags.contains(flag) {
+            // Check if the top-level subcommand is valid
+            if !valid_subcommands.contains(first_subcmd) {
                 errors.push(format!(
-                    "  {}:{}: unknown flag '{}' for 'perfgate {}'\n    {}",
+                    "  {}:{}: unknown subcommand '{}'\n    {}",
                     cmd.file.display(),
                     cmd.line,
-                    flag,
-                    cache_key,
+                    first_subcmd,
                     cmd.raw
                 ));
+                continue;
+            }
+
+            // Determine the effective subcommand path for --help.
+            // For subcommands like "baseline list", we need to pass both words.
+            // We try the longest prefix that is a valid sub-subcommand.
+            let subcmd_path = resolve_subcommand_path(&cargo, &cmd.subcommand, &mut flag_cache)?;
+
+            // Get valid flags for this subcommand
+            let cache_key = subcmd_path.join(" ");
+            if !flag_cache.contains_key(&cache_key) {
+                let flags = get_valid_flags(&cargo, &subcmd_path)?;
+                flag_cache.insert(cache_key.clone(), flags);
+            }
+            let valid_flags = &flag_cache[&cache_key];
+
+            // Check each flag
+            for flag in &cmd.flags {
+                if !valid_flags.contains(flag) {
+                    errors.push(format!(
+                        "  {}:{}: unknown flag '{}' for 'perfgate {}'\n    {}",
+                        cmd.file.display(),
+                        cmd.line,
+                        flag,
+                        cache_key,
+                        cmd.raw
+                    ));
+                }
             }
         }
     }
 
-    println!("Checked {} examples", checked);
+    let mut structured_checked = 0u32;
+    let mut schema_checked = 0u32;
+    for snippet in &all_data_snippets {
+        structured_checked += 1;
+        match validate_data_snippet(snippet) {
+            Ok(Some(_schema)) => {
+                schema_checked += 1;
+            }
+            Ok(None) => {}
+            Err(err) => errors.push(format!(
+                "  {}:{}: invalid {} snippet: {err:#}",
+                snippet.file.display(),
+                snippet.line,
+                snippet.kind.label()
+            )),
+        }
+    }
+
+    println!(
+        "Checked {} CLI examples and {} structured snippets",
+        checked, structured_checked
+    );
+    if schema_checked > 0 {
+        println!(
+            "Validated {} versioned JSON schema example(s)",
+            schema_checked
+        );
+    }
 
     if errors.is_empty() {
-        println!("\n  OK  all CLI examples are valid");
+        println!("\n  OK  all documentation examples are valid");
         Ok(())
     } else {
         println!("\nFound {} error(s):\n", errors.len());
@@ -2671,9 +2782,72 @@ fn cmd_doc_test(extra_files: Vec<PathBuf>) -> anyhow::Result<()> {
             println!("{}\n", err);
         }
         anyhow::bail!(
-            "{} documentation example(s) have invalid subcommands or flags",
+            "{} documentation example(s) failed validation",
             errors.len()
         );
+    }
+}
+
+fn validate_data_snippet(snippet: &DocDataSnippet) -> anyhow::Result<Option<&'static str>> {
+    match snippet.kind {
+        DocDataKind::Toml => {
+            toml::from_str::<toml::Value>(&snippet.raw).context("parse TOML")?;
+            Ok(None)
+        }
+        DocDataKind::Json => {
+            let value: serde_json::Value =
+                serde_json::from_str(&snippet.raw).context("parse JSON")?;
+            validate_versioned_json_example(value)
+        }
+    }
+}
+
+fn validate_versioned_json_example(
+    value: serde_json::Value,
+) -> anyhow::Result<Option<&'static str>> {
+    let schema = value.get("schema").and_then(serde_json::Value::as_str);
+    match schema {
+        Some(perfgate_types::RUN_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::RunReceipt>(value)
+                .context("deserialize perfgate.run.v1 example")?;
+            Ok(Some(perfgate_types::RUN_SCHEMA_V1))
+        }
+        Some(perfgate_types::COMPARE_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::CompareReceipt>(value)
+                .context("deserialize perfgate.compare.v1 example")?;
+            Ok(Some(perfgate_types::COMPARE_SCHEMA_V1))
+        }
+        Some(perfgate_types::AGGREGATE_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::AggregateReceipt>(value)
+                .context("deserialize perfgate.aggregate.v1 example")?;
+            Ok(Some(perfgate_types::AGGREGATE_SCHEMA_V1))
+        }
+        Some(perfgate_types::RATCHET_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::RatchetReceipt>(value)
+                .context("deserialize perfgate.ratchet.v1 example")?;
+            Ok(Some(perfgate_types::RATCHET_SCHEMA_V1))
+        }
+        Some(perfgate_types::REPAIR_CONTEXT_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::RepairContextReceipt>(value)
+                .context("deserialize perfgate.repair_context.v1 example")?;
+            Ok(Some(perfgate_types::REPAIR_CONTEXT_SCHEMA_V1))
+        }
+        Some(perfgate_types::SENSOR_REPORT_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::SensorReport>(value)
+                .context("deserialize sensor.report.v1 example")?;
+            Ok(Some(perfgate_types::SENSOR_REPORT_SCHEMA_V1))
+        }
+        _ => {
+            if value.get("report_type").and_then(serde_json::Value::as_str)
+                == Some(perfgate_types::REPORT_SCHEMA_V1)
+            {
+                serde_json::from_value::<perfgate_types::PerfgateReport>(value)
+                    .context("deserialize perfgate.report.v1 example")?;
+                Ok(Some(perfgate_types::REPORT_SCHEMA_V1))
+            } else {
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -3488,6 +3662,85 @@ let command = "perfgate run --name bench";
 "#;
         let cmds = extract_commands(Path::new("test.md"), md);
         assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn extract_data_snippets_from_toml_and_json_blocks() {
+        let md = r#"
+```toml
+[defaults]
+repeat = 3
+```
+
+```json
+{"status": "healthy"}
+```
+
+```bash
+perfgate --help
+```
+"#;
+        let snippets = extract_data_snippets(Path::new("test.md"), md);
+        assert_eq!(snippets.len(), 2);
+        assert_eq!(snippets[0].kind, DocDataKind::Toml);
+        assert_eq!(snippets[1].kind, DocDataKind::Json);
+    }
+
+    #[test]
+    fn validate_data_snippet_rejects_invalid_toml() {
+        let snippet = DocDataSnippet {
+            file: PathBuf::from("test.md"),
+            line: 1,
+            kind: DocDataKind::Toml,
+            raw: "[defaults\nrepeat = 3\n".to_string(),
+        };
+
+        let err = validate_data_snippet(&snippet).expect_err("invalid TOML should fail");
+        assert!(err.to_string().contains("parse TOML"));
+    }
+
+    #[test]
+    fn validate_versioned_json_example_deserializes_run_receipt() {
+        let value = serde_json::json!({
+            "schema": perfgate_types::RUN_SCHEMA_V1,
+            "tool": {"name": "perfgate", "version": "0.16.0"},
+            "run": {
+                "id": "run-1",
+                "started_at": "2026-01-01T00:00:00Z",
+                "ended_at": "2026-01-01T00:00:01Z",
+                "host": {"os": "linux", "arch": "x86_64"}
+            },
+            "bench": {
+                "name": "bench",
+                "command": ["echo", "ok"],
+                "repeat": 1,
+                "warmup": 0
+            },
+            "samples": [
+                {"wall_ms": 1, "exit_code": 0, "warmup": false, "timed_out": false}
+            ],
+            "stats": {"wall_ms": {"median": 1, "min": 1, "max": 1}}
+        });
+
+        assert_eq!(
+            validate_versioned_json_example(value).expect("valid run receipt"),
+            Some(perfgate_types::RUN_SCHEMA_V1)
+        );
+    }
+
+    #[test]
+    fn validate_versioned_json_example_rejects_schema_shape_mismatch() {
+        let value = serde_json::json!({
+            "schema": perfgate_types::RUN_SCHEMA_V1,
+            "tool": {"name": "perfgate", "version": "0.16.0"}
+        });
+
+        let err =
+            validate_versioned_json_example(value).expect_err("incomplete run receipt should fail");
+        assert!(
+            err.to_string()
+                .contains("deserialize perfgate.run.v1 example")
+        );
     }
 
     #[test]
