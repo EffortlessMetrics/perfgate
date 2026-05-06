@@ -2,6 +2,12 @@
 
 Last verified: 2026-03-28 after publishing `v0.15.1`, publishing crates.io packages, and merging the release workflow and publish-preflight fixes.
 
+Current-main note: this file is the historical readiness record for `v0.15.1`.
+Since that release, `main` has added API key management CLI support, audit
+logging, and executable documentation example validation. For the current
+baseline-service surface, see [Baseline Service Notes](BASELINE_SERVICE_DESIGN.md)
+and [Getting Started with the Baseline Server](GETTING_STARTED_BASELINE_SERVER.md).
+
 ## Patch Scope
 
 This patch release is intentionally narrow:
@@ -99,15 +105,22 @@ The **core local gating pipeline** is production-quality:
 - **`explain`** — generates prompts, doesn't call an LLM. Useful but the name oversells it.
 - **`aggregate`** — formal fleet/matrix receipt with all/majority/weighted/quorum/fail-if-n-of-m gating. Weight keys use `os-arch` labels such as `linux-x86_64`.
 
-## What's Missing / Not Built Yet
+## What's Still Missing / Deferred
 
 - **Windows timeout support** — returns `AdapterError::TimeoutUnsupported`
 - **Windows page_faults/ctx_switches** — not collected
-- **API key management CLI** — auth types exist, no key CRUD
-- **Audit logging** — verdict history exists, no modification audit trail
 - **OIDC beyond GitHub Actions** — GitLab/Okta not tested
-- **Executable doc tests** — CLI examples aren't validated in CI
 - **`cargo run -p perfgate` ergonomics** — doesn't work without specifying `--bin`
+
+## Added After v0.15.1 on Main
+
+- **API key management CLI** — `admin keys create|list|revoke|rotate`
+  manages server API keys through the CLI.
+- **Audit logging** — baseline, verdict, and key mutations write audit events;
+  `GET /api/v1/audit` exposes the audit log.
+- **Executable doc tests** — `cargo run -p xtask -- doc-test` validates
+  documentation CLI examples plus TOML, JSON, and YAML snippets, and runs from
+  `xtask ci`.
 
 ## Post-Release Follow-Up
 
