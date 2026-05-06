@@ -41,7 +41,7 @@ perfgate-github -> perfgate::integrations::github
 perfgate-ingest -> perfgate::integrations::ingest
 
 # Dev-only packages.
-perfgate-fake -> perfgate::test_support or private dev crate
+perfgate-fake -> private workspace crate [publish=false]
 perfgate-selfbench -> private workspace crate
 perfgate-tests -> private workspace root package
 xtask -> private workspace automation crate

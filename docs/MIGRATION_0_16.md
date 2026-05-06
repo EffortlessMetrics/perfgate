@@ -77,7 +77,7 @@ Use this table to find the new import path for any old crate:
 | `perfgate-auth` | `perfgate_api::auth` now; final owner TBD | `use perfgate_api::auth::*;` |
 | `perfgate-config` | `perfgate_types::config` | `use perfgate_types::config::*;` |
 | `perfgate-api` | `perfgate_types::baseline_service` | `use perfgate_types::baseline_service::*;` |
-| `perfgate-fake` | `perfgate::test_support` | `use perfgate::test_support::*;` (requires `test-support` feature) |
+| `perfgate-fake` | private workspace crate | No public replacement yet; keep local test helpers in your own crate. |
 | `perfgate-adapters` | `perfgate::runtime` | `use perfgate::runtime::*;` |
 | `perfgate-app` | `perfgate::app` | `use perfgate::app::*;` |
 
@@ -126,7 +126,6 @@ Available features:
 - `sensor` - Cockpit mode and sensor reports
 - `github` - GitHub annotations and integration
 - `ingest` - Data ingestion adapters
-- `test-support` - Test data generators (dev-only)
 
 ---
 
@@ -217,22 +216,24 @@ fn test_my_thing() {
 }
 ```
 
-**Target after the corresponding absorption PR**:
+**After the public-surface collapse**:
+
+`perfgate-fake` is a workspace-private crate. There is no supported public
+replacement in 0.16 yet. If you depended on it, copy the small fixture helpers
+you need into your own test module or build receipts directly with
+`perfgate-types`.
+
+For example:
+
 ```rust
 #[cfg(test)]
-use perfgate::test_support::fake_run;
+mod test_support;
 
 #[test]
 fn test_my_thing() {
-    let run = fake_run();
+    let run = test_support::fake_run();
     assert!(!run.samples.is_empty());
 }
-```
-
-Or add `test-support` feature to your dev-dependencies:
-```toml
-[dev-dependencies]
-perfgate = { version = "0.16", features = ["test-support"] }
 ```
 
 ---

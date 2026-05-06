@@ -1,8 +1,10 @@
 # perfgate-fake
 
-Test utilities and fake implementations for perfgate testing.
+Private test utilities and fake implementations for perfgate testing.
 
-Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate)
+workspace. This crate is workspace-private and is not part of the public
+package surface.
 
 ## Overview
 
