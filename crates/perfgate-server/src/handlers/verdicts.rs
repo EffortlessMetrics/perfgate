@@ -18,6 +18,10 @@ use crate::server::AppState;
 const HIGH_FLAKINESS_CV_THRESHOLD: f64 = 0.30;
 const FLAKINESS_HISTORY_LIMIT: u32 = 20;
 
+/// Scores recent wall-time CV history from 0.0 (stable) to 1.0 (highly noisy).
+///
+/// The score combines frequency and severity so a benchmark is not marked flaky
+/// from one small wobble, but repeated high-CV verdicts become visible quickly.
 fn score_flakiness_history(cv_history: &[f64]) -> Option<f64> {
     let filtered: Vec<f64> = cv_history
         .iter()
@@ -176,5 +180,42 @@ pub async fn list_verdicts(
                 Json(ApiError::internal_error(&e.to_string())),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(actual: Option<f64>, expected: f64) {
+        let actual = actual.expect("score should be present");
+        assert!(
+            (actual - expected).abs() < 0.000_001,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn flakiness_score_ignores_missing_invalid_and_negative_cv_values() {
+        assert_eq!(score_flakiness_history(&[]), None);
+        assert_eq!(
+            score_flakiness_history(&[f64::NAN, f64::INFINITY, -0.01]),
+            None
+        );
+    }
+
+    #[test]
+    fn flakiness_score_stays_low_for_stable_history() {
+        assert_close(score_flakiness_history(&[0.06, 0.09, 0.12]), 0.045);
+    }
+
+    #[test]
+    fn flakiness_score_combines_noisy_frequency_and_severity() {
+        assert_close(score_flakiness_history(&[0.60, 0.12]), 0.53);
+    }
+
+    #[test]
+    fn flakiness_score_caps_extreme_cv_at_one() {
+        assert_close(score_flakiness_history(&[0.90, 1.20]), 1.0);
     }
 }

@@ -1,15 +1,24 @@
 //! Integration tests with a real in-memory server.
 
 use perfgate_client::types::{
-    AuditAction, AuditResourceType, CreateKeyRequest, ListAuditEventsResponse,
+    AuditAction, AuditResourceType, CreateKeyRequest, ListAuditEventsResponse, SubmitVerdictRequest,
 };
 use perfgate_client::{BaselineClient, ClientConfig};
 use perfgate_server::auth::Role;
 use perfgate_server::server::{ServerConfig, StorageBackend};
 use perfgate_server::testing::spawn_test_server;
+use perfgate_types::{VerdictCounts, VerdictStatus};
 
 mod common;
 use common::{ADMIN_KEY, CONTRIBUTOR_KEY, create_test_upload_request};
+
+fn assert_score_close(actual: Option<f64>, expected: f64) {
+    let actual = actual.expect("flakiness score should be present");
+    assert!(
+        (actual - expected).abs() < 0.000_001,
+        "expected flakiness score {expected}, got {actual}"
+    );
+}
 
 #[tokio::test]
 async fn test_server_end_to_end_workflow() {
@@ -142,4 +151,61 @@ async fn test_key_management_writes_audit_events() {
     assert_eq!(revoke_event.resource_type, AuditResourceType::Key);
     assert_eq!(revoke_event.project, "test-proj");
     assert_eq!(revoke_event.metadata["source"].as_str(), Some("api_key"));
+}
+
+#[tokio::test]
+async fn test_verdict_submission_scores_flakiness_from_recent_cv_history() {
+    let config = ServerConfig::new()
+        .storage_backend(StorageBackend::Memory)
+        .scoped_api_key(CONTRIBUTOR_KEY, Role::Contributor, "test-proj", None);
+
+    let server = spawn_test_server(config).await;
+    let client =
+        BaselineClient::new(ClientConfig::new(&server.url).with_api_key(CONTRIBUTOR_KEY)).unwrap();
+
+    let first = client
+        .submit_verdict(
+            "test-proj",
+            &SubmitVerdictRequest {
+                benchmark: "flaky-bench".to_string(),
+                run_id: "run-1".to_string(),
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: vec![],
+                git_ref: Some("main".to_string()),
+                git_sha: Some("abc123".to_string()),
+                wall_ms_cv: Some(0.12),
+            },
+        )
+        .await
+        .expect("first verdict should submit");
+    assert_score_close(first.flakiness_score, 0.06);
+
+    let second = client
+        .submit_verdict(
+            "test-proj",
+            &SubmitVerdictRequest {
+                benchmark: "flaky-bench".to_string(),
+                run_id: "run-2".to_string(),
+                status: VerdictStatus::Warn,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 1,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: vec!["wall_ms.noisy".to_string()],
+                git_ref: Some("main".to_string()),
+                git_sha: Some("def456".to_string()),
+                wall_ms_cv: Some(0.60),
+            },
+        )
+        .await
+        .expect("second verdict should submit");
+    assert_score_close(second.flakiness_score, 0.53);
 }

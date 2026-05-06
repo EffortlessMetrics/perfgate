@@ -24,6 +24,7 @@ The baseline service currently ships as these pieces:
   - `baseline list|download|upload|delete|history|verdicts|submit-verdict|migrate`
   - `admin keys create|list|revoke|rotate`
   - config-driven use via `[baseline_server]` in `perfgate.toml`
+- verdict history with wall-time CV and historical flakiness scores
 - `perfgate serve`: local single-user dashboard/server wrapper around
   `perfgate-server` with local mode enabled
 - `/health` and `/metrics` for basic production observability
@@ -141,6 +142,7 @@ The main server-aware CLI workflows are:
 | `baseline list` | query project baselines |
 | `baseline history` | inspect versions for one benchmark |
 | `baseline verdicts` | inspect pass/warn/fail history |
+| `baseline flaky` | inspect benchmarks with elevated historical noise |
 | `baseline submit-verdict` | persist compare verdicts |
 | `baseline migrate` | upload local baseline JSON files recursively |
 | `fleet alerts` | list fleet-wide dependency regression alerts |
@@ -247,6 +249,7 @@ not current guaranteed surface:
 ## Related Docs
 
 - [Getting Started with Baseline Server](GETTING_STARTED_BASELINE_SERVER.md)
+- [Flakiness History](FLAKINESS.md)
 - [perfgate-server README](../crates/perfgate-server/README.md)
 - [Configuration](CONFIG.md)
 - [Architecture](ARCHITECTURE.md)

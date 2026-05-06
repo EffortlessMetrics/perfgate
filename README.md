@@ -204,6 +204,7 @@ Exit codes: `0` pass, `1` error, `2` fail, `3` warn (with `--fail-on-warn`).
 
 **How-To Guides** -- solve specific problems:
 - [Paired Benchmarking](docs/PAIRED_BENCHMARKING.md) -- reduce noise in flaky CI
+- [Flakiness History](docs/FLAKINESS.md) -- interpret historical benchmark noise
 - [Fleet Aggregation](docs/FLEET_AGGREGATION.md) -- combine matrix or fleet receipts into one gate
 - [Cockpit Integration](docs/COCKPIT_MODE.md) -- dashboard integration via sensor.report.v1
 - [Exporting Data](docs/EXPORT.md) -- CSV, JSONL, HTML, Prometheus, JUnit

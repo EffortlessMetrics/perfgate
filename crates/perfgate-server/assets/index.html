@@ -286,6 +286,9 @@
         .badge-warn { background: #fff8c5; color: #735c0f; }
         .badge-fail { background: #ffdce0; color: #9e1c23; }
         .badge-skip { background: #e1e4e8; color: #586069; }
+        .badge-noise-low { background: #dcffe4; color: #176328; }
+        .badge-noise-elevated { background: #fff8c5; color: #735c0f; }
+        .badge-noise-high { background: #ffdce0; color: #9e1c23; }
 
         code {
             font-family: var(--font-mono);
@@ -672,6 +675,7 @@
                     <label><input type="checkbox" id="verdictWarn" checked onchange="loadVerdicts()"> Warn</label>
                     <label><input type="checkbox" id="verdictFail" checked onchange="loadVerdicts()"> Fail</label>
                     <label><input type="checkbox" id="verdictSkip" onchange="loadVerdicts()"> Skip</label>
+                    <label><input type="checkbox" id="verdictFlakyOnly" onchange="loadVerdicts()"> Flaky</label>
                 </div>
             </div>
 
@@ -684,11 +688,13 @@
                             <th>Pass</th>
                             <th>Warn</th>
                             <th>Fail</th>
+                            <th>CV</th>
+                            <th>Flakiness</th>
                             <th>Created</th>
                         </tr>
                     </thead>
                     <tbody id="verdictsBody">
-                        <tr><td colspan="6" class="empty-state"><p>Load a project to see verdicts</p></td></tr>
+                        <tr><td colspan="8" class="empty-state"><p>Load a project to see verdicts</p></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -817,6 +823,11 @@
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         }
 
+        function fmtPercentRatio(value) {
+            if (typeof value !== 'number' || !isFinite(value)) return '-';
+            return (value * 100).toFixed(0) + '%';
+        }
+
         function getMetricValue(receipt, metric) {
             if (!receipt || !receipt.stats) return null;
             const stat = receipt.stats[metric];
@@ -828,6 +839,20 @@
             const safe = escHtml(status);
             const cls = 'badge badge-' + safe;
             return '<span class="' + cls + '">' + safe + '</span>';
+        }
+
+        function flakinessBadge(score) {
+            if (typeof score !== 'number' || !isFinite(score)) return '-';
+            var label = 'low';
+            var cls = 'badge-noise-low';
+            if (score >= 0.75) {
+                label = 'high';
+                cls = 'badge-noise-high';
+            } else if (score >= 0.50) {
+                label = 'elevated';
+                cls = 'badge-noise-elevated';
+            }
+            return '<span class="badge ' + cls + '">' + score.toFixed(2) + ' ' + label + '</span>';
         }
 
         /* ======= API fetch ======= */
@@ -974,13 +999,14 @@
         async function loadVerdicts() {
             var project = getProject();
             var body = document.getElementById('verdictsBody');
-            body.innerHTML = loadingRow(6);
+            body.innerHTML = loadingRow(8);
 
             var statusFilters = [];
             if (document.getElementById('verdictPass').checked) statusFilters.push('pass');
             if (document.getElementById('verdictWarn').checked) statusFilters.push('warn');
             if (document.getElementById('verdictFail').checked) statusFilters.push('fail');
             if (document.getElementById('verdictSkip').checked) statusFilters.push('skip');
+            var flakyOnly = document.getElementById('verdictFlakyOnly').checked;
 
             // Fetch all verdicts (the API supports status filter one at a time)
             // We'll fetch without status filter and filter client-side
@@ -990,18 +1016,20 @@
 
             var data = await fetchApi(url);
             if (!data) {
-                body.innerHTML = emptyRow(6, 'Failed to load verdicts.');
+                body.innerHTML = emptyRow(8, 'Failed to load verdicts.');
                 document.getElementById('verdictPagination').style.display = 'none';
                 return;
             }
 
             var verdicts = (data.verdicts || []).filter(function(v) {
-                return statusFilters.indexOf(v.status) !== -1;
+                if (statusFilters.indexOf(v.status) === -1) return false;
+                if (flakyOnly && (!v.flakiness_score || v.flakiness_score < 0.50)) return false;
+                return true;
             });
             totalVerdicts = data.pagination ? data.pagination.total : verdicts.length;
 
             if (verdicts.length === 0) {
-                body.innerHTML = emptyRow(6, 'No verdicts match your filters.');
+                body.innerHTML = emptyRow(8, 'No verdicts match your filters.');
                 document.getElementById('verdictPagination').style.display = 'none';
                 return;
             }
@@ -1009,12 +1037,15 @@
             body.innerHTML = '';
             verdicts.forEach(function(v) {
                 var row = document.createElement('tr');
+                var cv = fmtPercentRatio(v.wall_ms_cv);
                 row.innerHTML =
                     '<td><strong>' + escHtml(v.benchmark) + '</strong></td>'
                     + '<td>' + verdictBadge(v.status) + '</td>'
                     + '<td>' + v.counts.pass + '</td>'
                     + '<td>' + v.counts.warn + '</td>'
                     + '<td>' + v.counts.fail + '</td>'
+                    + '<td><code>' + cv + '</code></td>'
+                    + '<td>' + flakinessBadge(v.flakiness_score) + '</td>'
                     + '<td>' + fmtDate(v.created_at) + '</td>';
                 body.appendChild(row);
             });
