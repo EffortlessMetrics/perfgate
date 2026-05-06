@@ -10,6 +10,9 @@ environmental noise affects both sides equally and cancels out in the paired
 difference.
 
 Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+The implementation now lives in `perfgate_domain::paired`; this crate is a
+workspace-only migration shim and is not part of the target public package
+surface.
 
 ## How it works
 

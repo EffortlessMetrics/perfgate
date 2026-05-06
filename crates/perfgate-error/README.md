@@ -7,8 +7,8 @@ Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 ## Status
 
 The concrete error types have moved to `perfgate_types::error` as part of the
-0.16 public-surface collapse. This crate temporarily re-exports that module so
-existing `perfgate_error` imports keep compiling during the migration.
+0.16 public-surface collapse. This crate is now a workspace-only migration shim
+for internal tests and is not part of the target public package surface.
 
 ## Error Categories
 
@@ -45,7 +45,7 @@ assert_eq!(unified.exit_code(), 1);
 assert!(!unified.is_recoverable());
 ```
 
-New code should prefer:
+Use the public contract path instead:
 
 ```rust
 use perfgate_types::error::{PerfgateError, ValidationError, validate_bench_name};

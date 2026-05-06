@@ -12,6 +12,7 @@ readme = "README.md"
 documentation = "https://docs.rs/perfgate-paired"
 keywords = ["paired", "benchmarking", "statistics", "ab-testing"]
 categories = ["mathematics", "development-tools"]
+publish = false
 
 [dependencies]
 perfgate-domain.workspace = true

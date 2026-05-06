@@ -12,6 +12,7 @@ readme = "README.md"
 documentation = "https://docs.rs/perfgate-error"
 keywords = ["error", "error-handling", "performance", "benchmarking"]
 categories = ["development-tools"]
+publish = false
 
 [dependencies]
 perfgate-types.workspace = true

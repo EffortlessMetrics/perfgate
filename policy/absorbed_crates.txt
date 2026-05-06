@@ -13,8 +13,8 @@ perfgate-validation -> perfgate_types::validation [deleted]
 perfgate-auth -> perfgate_api::auth [deleted]
 perfgate-summary -> perfgate_render::summary [deleted]
 perfgate-stats -> perfgate_domain::stats [deleted]
-perfgate-paired -> perfgate_domain::paired [compatibility wrapper]
-perfgate-error -> perfgate_types::error [compatibility wrapper]
+perfgate-paired -> perfgate_domain::paired [compatibility wrapper] [publish=false]
+perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
 
 # Contract-adjacent.
 perfgate-config -> perfgate_types::config

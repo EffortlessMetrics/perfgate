@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a `perfgate-error` compatibility wrapper, and the profiling implementation now lives under `perfgate::runtime::profile`. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, and the profiling implementation now lives under `perfgate::runtime::profile`. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -38,7 +38,7 @@ These are contract-adjacent and belong with the public receipt/config model:
 | `perfgate-config` | `perfgate_types::config` | Config model is a receipt type |
 | `perfgate-api` (shared DTOs) | `perfgate_types::baseline_service` | Wire format for baseline service |
 
-**Current state**: `perfgate-validation` has been deleted, and `perfgate-error` now re-exports `perfgate_types::error` as a compatibility wrapper. `perfgate-config` and shared baseline-service DTOs are the remaining contract-adjacent seams.
+**Current state**: `perfgate-validation` has been deleted, and `perfgate-error` now re-exports `perfgate_types::error` as a workspace-only compatibility wrapper. `perfgate-config` and shared baseline-service DTOs are the remaining contract-adjacent seams.
 
 **Why first**: The types crate must be standalone and self-describing. Absorbing these dependencies first unblocks all downstream refactoring.
 

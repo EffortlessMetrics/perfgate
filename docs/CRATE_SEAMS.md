@@ -42,8 +42,8 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-auth` | `perfgate_api::auth` | crate deleted |
 | `perfgate-summary` | `perfgate_render::summary` | crate deleted |
 | `perfgate-stats` | `perfgate_domain::stats` | crate deleted |
-| `perfgate-paired` | `perfgate_domain::paired` | compatibility wrapper remains |
-| `perfgate-error` | `perfgate_types::error` | compatibility wrapper remains |
+| `perfgate-paired` | `perfgate_domain::paired` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-error` | `perfgate_types::error` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 
