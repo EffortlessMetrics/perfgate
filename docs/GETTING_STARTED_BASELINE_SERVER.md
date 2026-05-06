@@ -81,6 +81,22 @@ SQLite file storage is configured for single-node service use: the server
 enables WAL mode and applies a 5 second busy timeout on its SQLite connections.
 Use PostgreSQL instead when multiple server instances need to share storage.
 
+For PostgreSQL-backed deployments, tune the built-in pool explicitly instead of
+relying on database defaults:
+
+```bash
+perfgate-server \
+  --storage-type postgres \
+  --database-url postgresql://perfgate:secret@db.example.com/perfgate \
+  --pg-max-connections 20 \
+  --pg-min-connections 4 \
+  --pg-idle-timeout 300 \
+  --pg-max-lifetime 1800 \
+  --pg-acquire-timeout 10 \
+  --pg-statement-timeout 30 \
+  --api-keys promoter:pg_live_<32+alnum>:my-project
+```
+
 Then configure the CLI:
 
 ```bash
@@ -151,8 +167,9 @@ The current CLI surfaces that talk to the baseline service are:
 The server exposes these top-level surfaces:
 
 - `GET /health`: health check
+- `GET /metrics`: Prometheus metrics
 - `GET /`: web dashboard
-- `GET /info`: server info, including local-mode status
+- `GET /api/v1/info`: server info, including local-mode status
 - `POST /api/v1/projects/{project}/baselines`: upload a baseline
 - `GET /api/v1/projects/{project}/baselines`: list baselines
 - `GET /api/v1/projects/{project}/baselines/{benchmark}/latest`: fetch latest
@@ -166,9 +183,46 @@ The server exposes these top-level surfaces:
   data
 - `POST /api/v1/projects/{project}/verdicts`: submit a verdict
 - `GET /api/v1/projects/{project}/verdicts`: list verdicts
+- `GET /api/v1/audit`: list audit events
+- `POST /api/v1/keys`: create an API key
+- `GET /api/v1/keys`: list API keys
+- `DELETE /api/v1/keys/{id}`: revoke an API key
+- `DELETE /api/v1/admin/cleanup`: run artifact cleanup
 
 Point the CLI at the versioned API root, for example
 `http://localhost:8080/api/v1`, not just `http://localhost:8080`.
+
+## Operational Checks
+
+Use `/health` for liveness and storage readiness. PostgreSQL deployments also
+include current pool occupancy:
+
+```json
+{
+  "status": "healthy",
+  "version": "0.15.1",
+  "storage": {
+    "backend": "postgres",
+    "status": "healthy"
+  },
+  "pool": {
+    "idle": 2,
+    "active": 1,
+    "max": 20
+  }
+}
+```
+
+`/metrics` exposes Prometheus counters and histograms for request volume,
+request latency, storage operations, upload failures, auth failures, and
+storage errors.
+
+The server binary accepts `--retention-days` and
+`--cleanup-interval-hours` for background artifact cleanup. Cleanup only runs
+when an artifact store exists; embedded deployments configure that with
+`ServerConfig::artifacts_url`. For managed object stores such as S3, GCS, or
+Azure Blob Storage, keep provider lifecycle rules enabled as the durable
+retention backstop.
 
 ## Authentication Notes
 

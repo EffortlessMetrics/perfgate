@@ -2,7 +2,7 @@
 //!
 //! This crate provides a REST API server for storing and managing performance
 //! baselines. It supports multiple storage backends (in-memory, SQLite, PostgreSQL)
-//! and includes authentication via API keys.
+//! and includes authentication via API keys, JWT, and OIDC mappings.
 //!
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 //!
@@ -12,7 +12,7 @@
 //! - **Version history**: Track baseline versions over time
 //! - **Rich metadata**: Git refs, tags, custom metadata
 //! - **Access control**: Role-based permissions (Viewer, Contributor, Promoter, Admin)
-//! - **Multiple backends**: In-memory, SQLite, PostgreSQL (planned)
+//! - **Multiple backends**: In-memory, SQLite, PostgreSQL
 //!
 //! # Quick Start
 //!
@@ -34,13 +34,17 @@
 //!
 //! | Method | Path | Description |
 //! |--------|------|-------------|
-//! | POST | `/projects/{project}/baselines` | Upload a baseline |
-//! | GET | `/projects/{project}/baselines/{benchmark}/latest` | Get latest baseline |
-//! | GET | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Get specific version |
-//! | GET | `/projects/{project}/baselines` | List baselines |
-//! | DELETE | `/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
-//! | POST | `/projects/{project}/baselines/{benchmark}/promote` | Promote version |
-//! | GET | `/audit` | List audit events (admin only) |
+//! | POST | `/api/v1/projects/{project}/baselines` | Upload a baseline |
+//! | GET | `/api/v1/projects/{project}/baselines/{benchmark}/latest` | Get latest baseline |
+//! | GET | `/api/v1/projects/{project}/baselines/{benchmark}/versions/{version}` | Get specific version |
+//! | GET | `/api/v1/projects/{project}/baselines` | List baselines |
+//! | DELETE | `/api/v1/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
+//! | POST | `/api/v1/projects/{project}/baselines/{benchmark}/promote` | Promote version |
+//! | GET | `/api/v1/audit` | List audit events (admin only) |
+//! | POST | `/api/v1/keys` | Create an API key (admin only) |
+//! | GET | `/api/v1/keys` | List API keys (admin only) |
+//! | DELETE | `/api/v1/keys/{id}` | Revoke an API key (admin only) |
+//! | DELETE | `/api/v1/admin/cleanup` | Run artifact cleanup (admin only) |
 //! | GET | `/health` | Health check |
 //! | GET | `/metrics` | Prometheus metrics |
 

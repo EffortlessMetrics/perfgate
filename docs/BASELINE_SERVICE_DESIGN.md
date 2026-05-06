@@ -22,9 +22,11 @@ The baseline service currently ships as these pieces:
   - `promote --to-server`
   - `compare --baseline @server:<bench>`
   - `baseline list|download|upload|delete|history|verdicts|submit-verdict|migrate`
+  - `admin keys create|list|revoke|rotate`
   - config-driven use via `[baseline_server]` in `perfgate.toml`
 - `perfgate serve`: local single-user dashboard/server wrapper around
   `perfgate-server` with local mode enabled
+- `/health` and `/metrics` for basic production observability
 
 ## Storage Backends
 
@@ -44,6 +46,20 @@ connections are configured with WAL mode and a 5 second busy timeout so normal
 dashboard reads and CI writes can proceed without immediate lock failures.
 In-memory SQLite is still supported for tests and local sandboxing, but WAL is
 not applicable there.
+
+The PostgreSQL backend is intended for multi-node or managed database
+deployments. The server binary exposes pool-size, idle-timeout,
+connection-lifetime, acquire-timeout, and statement-timeout flags. The storage
+layer pings pooled connections before reuse, retries transient connection
+failures, and reports pool metrics from `/health`.
+
+Artifact retention is implemented for deployments with an object artifact
+store. The binary exposes `--retention-days` and
+`--cleanup-interval-hours`, and embedded deployments can attach an object store
+through `ServerConfig::artifacts_url`. If retention is configured without an
+artifact store, the server logs that cleanup is skipped. Provider-side lifecycle
+rules should still be used for managed stores such as S3, GCS, or Azure Blob
+Storage.
 
 For local mode, `perfgate serve` runs with API auth disabled for single-user
 workflows.
@@ -90,8 +106,9 @@ Public routes currently exposed by the server are:
 | Route | Purpose |
 |-------|---------|
 | `GET /health` | health check |
-| `GET /info` | server info and local-mode flag |
+| `GET /metrics` | Prometheus metrics |
 | `GET /` | dashboard |
+| `GET /api/v1/info` | server info and local-mode flag |
 | `POST /api/v1/projects/{project}/baselines` | upload a baseline |
 | `GET /api/v1/projects/{project}/baselines` | list baselines |
 | `GET /api/v1/projects/{project}/baselines/{benchmark}/latest` | fetch latest baseline |
@@ -105,6 +122,7 @@ Public routes currently exposed by the server are:
 | `POST /api/v1/keys` | create an API key |
 | `GET /api/v1/keys` | list API keys |
 | `DELETE /api/v1/keys/{id}` | revoke an API key |
+| `DELETE /api/v1/admin/cleanup` | run artifact cleanup |
 | `POST /api/v1/fleet/dependency-event` | record dependency events |
 | `GET /api/v1/fleet/alerts` | list fleet alerts |
 | `GET /api/v1/fleet/dependency/{dep_name}/impact` | query dependency impact |
@@ -128,6 +146,10 @@ The main server-aware CLI workflows are:
 | `fleet alerts` | list fleet-wide dependency regression alerts |
 | `fleet impact` | inspect the project impact of a dependency |
 | `fleet record-event` | record a dependency change event with performance delta |
+| `admin keys create` | create a scoped API key |
+| `admin keys list` | list scoped API keys |
+| `admin keys revoke` | revoke an API key |
+| `admin keys rotate` | create a replacement key and revoke the old key |
 | `serve` | run a local baseline server/dashboard in local mode |
 
 Cross-project compare is currently a CLI-side lookup override for baseline
@@ -159,6 +181,24 @@ perfgate-server \
 
 Or PostgreSQL instead of SQLite when you need a shared database layer.
 
+For PostgreSQL, start with a small bounded pool and raise it only when CI
+parallelism requires it:
+
+```bash
+perfgate-server \
+  --storage-type postgres \
+  --database-url postgresql://perfgate:secret@db.example.com/perfgate \
+  --pg-max-connections 20 \
+  --pg-min-connections 4 \
+  --pg-acquire-timeout 10 \
+  --pg-statement-timeout 30 \
+  --api-keys promoter:pg_live_<32+alnum>:my-project
+```
+
+Use `/health` to verify storage readiness and PostgreSQL pool occupancy before
+making the server a required CI dependency. Use `/metrics` for Prometheus
+scraping once the service is shared by more than one workflow.
+
 ## What This Document No Longer Claims
 
 This document intentionally does not treat the following as current product
@@ -183,7 +223,6 @@ These remain reasonable follow-up items, but they should be treated as backlog,
 not current guaranteed surface:
 
 - expose non-API-key auth flows more directly in the CLI
-- add stronger operator docs for key management and audit review
 - tighten shared-server deployment guides and examples
 - continue aligning crate READMEs, docs, and `--help` output from one source of
   truth

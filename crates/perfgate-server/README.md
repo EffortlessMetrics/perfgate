@@ -33,7 +33,7 @@ cargo run -p perfgate-cli -- serve --no-open
 | **Web dashboard** | Embedded SPA served at `/` -- no extra deployment needed |
 | **Fleet analytics** | Dependency-change impact tracking and cross-project alerts |
 | **Verdict history** | Record and query pass/warn/fail verdicts over time |
-| **Observability** | Structured JSON logging, request IDs, `/health` endpoint |
+| **Observability** | Structured JSON logging, request IDs, `/health`, `/metrics` |
 | **Graceful shutdown** | Handles SIGTERM / Ctrl-C cleanly |
 
 ## REST API
@@ -43,7 +43,9 @@ All data endpoints live under `/api/v1`. The health check and dashboard are at t
 | Method | Path | Auth | Description |
 |--------|------|:----:|-------------|
 | `GET` | `/health` | -- | Health check with storage status |
+| `GET` | `/metrics` | -- | Prometheus metrics |
 | `GET` | `/` | -- | Web dashboard |
+| `GET` | `/api/v1/info` | -- | Server info and local-mode status |
 | `POST` | `/api/v1/projects/{project}/baselines` | Y | Upload a baseline |
 | `GET` | `/api/v1/projects/{project}/baselines` | Y | List baselines (filterable) |
 | `GET` | `/api/v1/projects/{project}/baselines/{bench}/latest` | Y | Get latest baseline |
@@ -52,6 +54,11 @@ All data endpoints live under `/api/v1`. The health check and dashboard are at t
 | `POST` | `/api/v1/projects/{project}/baselines/{bench}/promote` | Y | Promote a version |
 | `POST` | `/api/v1/projects/{project}/verdicts` | Y | Submit a verdict |
 | `GET` | `/api/v1/projects/{project}/verdicts` | Y | List verdicts |
+| `GET` | `/api/v1/audit` | Y | List audit events |
+| `POST` | `/api/v1/keys` | Y | Create an API key |
+| `GET` | `/api/v1/keys` | Y | List API keys |
+| `DELETE` | `/api/v1/keys/{id}` | Y | Revoke an API key |
+| `DELETE` | `/api/v1/admin/cleanup` | Y | Run artifact cleanup |
 | `POST` | `/api/v1/fleet/dependency-event` | Y | Record dependency change events |
 | `GET` | `/api/v1/fleet/alerts` | Y | List fleet-wide alerts |
 | `GET` | `/api/v1/fleet/dependency/{dep}/impact` | Y | Query dependency impact |
@@ -84,6 +91,12 @@ Loaded policy `id`, `role`, `project`, optional `benchmark_regex`, and optional
 | `--port` | `8080` | Port |
 | `--storage-type` | `memory` | `memory`, `sqlite`, or `postgres` |
 | `--database-url` | -- | DB path (SQLite) or connection string (Postgres) |
+| `--pg-max-connections` | `10` | Maximum PostgreSQL pool connections |
+| `--pg-min-connections` | `2` | Minimum idle PostgreSQL pool connections |
+| `--pg-idle-timeout` | `300` | Idle connection timeout in seconds |
+| `--pg-max-lifetime` | `1800` | Maximum connection lifetime in seconds |
+| `--pg-acquire-timeout` | `5` | Timeout for acquiring a pooled connection in seconds |
+| `--pg-statement-timeout` | `30` | PostgreSQL statement timeout set on new connections in seconds |
 | `--api-keys` | -- | `role:key[:project[:benchmark_regex]]` (repeatable) |
 | `--api-keys-env` | -- | env var containing one API-key policy document |
 | `--api-keys-file` | -- | file containing one API-key policy document |
@@ -96,6 +109,8 @@ Loaded policy `id`, `role`, `project`, optional `benchmark_regex`, and optional
 | `--timeout` | `30` | Request timeout (seconds) |
 | `--log-level` | `info` | `trace`, `debug`, `info`, `warn`, `error` |
 | `--log-format` | `json` | `json` or `pretty` |
+| `--retention-days` | `0` | Artifact retention period; `0` disables background cleanup |
+| `--cleanup-interval-hours` | `1` | Interval between background artifact cleanup passes |
 
 ## Storage backends
 
@@ -109,6 +124,28 @@ SQLite file databases are opened with `journal_mode=WAL` and a 5 second
 `busy_timeout` on every server-managed connection. This keeps readers from
 blocking writers in normal single-node deployments. In-memory SQLite databases
 skip WAL because SQLite reports `journal_mode=memory` for those connections.
+
+PostgreSQL storage uses a sqlx connection pool. The pool pings connections
+before reuse, applies `statement_timeout` on new connections, retries transient
+connection failures, and exposes pool occupancy from `/health`:
+
+```bash
+perfgate-server \
+  --storage-type postgres \
+  --database-url postgresql://perfgate:secret@db.example.com/perfgate \
+  --pg-max-connections 20 \
+  --pg-min-connections 4 \
+  --pg-acquire-timeout 10 \
+  --pg-statement-timeout 30
+```
+
+For artifact object storage, embedded deployments can set
+`ServerConfig::artifacts_url` to an `object_store` URL such as `s3://...`,
+`gs://...`, `az://...`, or `file://...`. The server binary exposes retention
+cadence flags, but cleanup only runs when an artifact store is configured. When
+using S3, GCS, Azure, or another managed object store, configure provider-side
+lifecycle policies as the durable retention backstop and use perfgate cleanup
+as application-level hygiene.
 
 ## Library usage
 
