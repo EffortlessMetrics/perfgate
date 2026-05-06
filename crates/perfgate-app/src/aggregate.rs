@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 const DEFAULT_VARIANCE_FLOOR: f64 = 1.0;
 const OUTLIER_VARIANCE_RATIO: f64 = 4.0;
+const MIN_INVERSE_VARIANCE_SAMPLE_COUNT: u32 = 5;
 
 pub struct AggregateRequest {
     pub files: Vec<PathBuf>,
@@ -145,6 +146,27 @@ impl AggregateUseCase {
             warnings.push(format!(
                 "{outlier_runners} runner(s) flagged as wall_ms variance outliers"
             ));
+        }
+        if matches!(req.weight_mode, AggregateWeightMode::InverseVariance) {
+            let low_sample_runners = runner_profiles
+                .iter()
+                .filter(|profile| profile.sample_count < MIN_INVERSE_VARIANCE_SAMPLE_COUNT)
+                .count();
+            if low_sample_runners > 0 {
+                warnings.push(format!(
+                    "{low_sample_runners} runner(s) have fewer than {MIN_INVERSE_VARIANCE_SAMPLE_COUNT} measured sample(s); inverse-variance weights may be unstable"
+                ));
+            }
+
+            let missing_variance_runners = runner_profiles
+                .iter()
+                .filter(|profile| profile.wall_ms_variance.is_none())
+                .count();
+            if missing_variance_runners > 0 {
+                warnings.push(format!(
+                    "{missing_variance_runners} runner(s) do not have enough wall_ms samples to estimate variance; using variance floor"
+                ));
+            }
         }
         let verdict = evaluate_policy(&inputs, &req);
 
@@ -766,6 +788,48 @@ mod tests {
         assert!(
             stable_input.runner.effective_weight.unwrap()
                 > noisy_input.runner.effective_weight.unwrap()
+        );
+    }
+
+    #[test]
+    fn inverse_variance_warns_when_sample_counts_are_low() {
+        let dir = tempdir().unwrap();
+        let first_path = dir.path().join("first.json");
+        let second_path = dir.path().join("second.json");
+
+        let first = mk_receipt_with_wall_samples("1", "linux", "x86_64", 0, &[100]);
+        let second = mk_receipt_with_wall_samples("2", "linux", "x86_64", 0, &[110]);
+
+        fs::write(&first_path, serde_json::to_string(&first).unwrap()).unwrap();
+        fs::write(&second_path, serde_json::to_string(&second).unwrap()).unwrap();
+
+        let outcome = AggregateUseCase
+            .execute(AggregateRequest {
+                files: vec![first_path, second_path],
+                policy: AggregationPolicy::Weighted,
+                quorum: Some(0.5),
+                fail_if: None,
+                weights: BTreeMap::new(),
+                weight_mode: AggregateWeightMode::InverseVariance,
+                variance_floor: Some(1.0),
+                runner_class: None,
+                lane: None,
+            })
+            .unwrap();
+
+        assert!(
+            outcome
+                .aggregate
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("fewer than 5 measured sample(s)"))
+        );
+        assert!(
+            outcome
+                .aggregate
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("using variance floor"))
         );
     }
 

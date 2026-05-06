@@ -2269,6 +2269,7 @@ fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
     for name in [
         "README.md",
         "docs/CONFIG.md",
+        "docs/FLEET_AGGREGATION.md",
         "docs/PIPELINE.md",
         "docs/BASELINE_SERVICE_DESIGN.md",
     ] {
