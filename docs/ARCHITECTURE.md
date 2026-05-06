@@ -60,19 +60,52 @@ Significant architectural changes are documented in [ADRs](adrs/). See:
 
 ## Crate Boundaries
 
-perfgate follows a highly modular micro-crate architecture with strictly layered dependencies. The workspace is split into 26 crates to enforce boundaries and improve build times.
+perfgate keeps strict clean-architecture boundaries, but those boundaries are
+no longer intended to map one-to-one to public crates. The 0.16 public-surface
+contract is:
+
+| Public package | Role |
+|----------------|------|
+| `perfgate` | Main embeddable facade |
+| `perfgate-cli` | Installs the `perfgate` binary |
+| `perfgate-types` | Stable receipts, schemas, config, and API contracts |
+| `perfgate-client` | Baseline service client |
+| `perfgate-server` | Baseline service binary/library |
+
+The remaining workspace packages are internal seams, transition packages, or
+compatibility wrappers until the public-surface collapse finishes. The current
+policy files are:
+
+- [`policy/public_crates.txt`](../policy/public_crates.txt)
+- [`policy/absorbed_crates.txt`](../policy/absorbed_crates.txt)
+- [`docs/CRATE_SEAMS.md`](CRATE_SEAMS.md)
+
+Architecture enforcement is executable:
+
+```bash
+cargo run -p xtask -- public-surface
+cargo run -p xtask -- arch
+```
+
+`cargo run -p xtask -- public-surface --strict` is the final release gate. It
+is expected to fail until absorbed/internal transition packages are deleted,
+marked `publish = false`, or reduced to intentional compatibility shims.
 
 ### Component Layers
 
+The current source layout still has named crates for several internal seams.
+Treat this diagram as the enforced dependency direction, not as a public API
+promise:
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        perfgate-cli                              │
-│                (User Interface, CLI parsing)                    │
+│                    perfgate-cli / perfgate-server                │
+│                    (outer adapters and binaries)                 │
 ├─────────────────────────────────────────────────────────────────┤
 │       perfgate-render | perfgate-export | perfgate-sensor        │
 │                    (Presentation Layer)                         │
 ├─────────────────────────────────────────────────────────────────┤
-│                perfgate-app | perfgate-paired                    │
+│                  perfgate-app | perfgate-client                  │
 │                    (Use-Case Orchestration)                     │
 ├─────────────────────────────────────────────────────────────────┤
 │            perfgate-adapters | perfgate-host-detect             │
@@ -97,7 +130,7 @@ Dependencies flow inward toward the core types and domain logic:
 5. **Presentation**: `perfgate-render`, `perfgate-export`, and `perfgate-sensor` format the results for various consumers.
 6. **CLI**: `perfgate-cli` is the thin entry point.
 
-### Crate Responsibilities (Updated)
+### Internal Seam Responsibilities
 
 - **perfgate-domain::stats**: Pure statistical aggregators (U64Summary, F64Summary).
 - **perfgate-budget**: Logic for comparing metrics against thresholds.
@@ -107,12 +140,12 @@ Dependencies flow inward toward the core types and domain logic:
 - **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.
 - **perfgate-sha256**: High-performance fingerprinting for reports.
 
-### Client/Server Stack (v2.0)
+### Baseline Service Stack
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      perfgate-server                             │
-│            (REST API, SQLite/in-memory storage)                 │
+│        (REST API, memory/SQLite/PostgreSQL storage)             │
 ├─────────────────────────────────────────────────────────────────┤
 │                      perfgate-client                             │
 │       (API client, fallback storage, retry logic)               │
@@ -194,7 +227,7 @@ perfgate-cli (integrates client)
 - SHOULD use atomic writes for output files
 - MAY integrate perfgate-client for server-backed baseline operations
 
-#### perfgate-client (v2.0)
+#### perfgate-client
 
 - MUST provide async API client for baseline service communication
 - MUST implement automatic retry logic with exponential backoff
@@ -202,10 +235,10 @@ perfgate-cli (integrates client)
 - MUST handle authentication via API keys
 - SHALL NOT depend on perfgate-server implementation details
 
-#### perfgate-server (v2.0)
+#### perfgate-server
 
 - MUST provide REST API for baseline CRUD operations
-- MUST support multiple storage backends (in-memory, SQLite)
+- MUST support multiple storage backends (in-memory, SQLite, PostgreSQL)
 - MUST implement role-based access control (viewer, contributor, promoter, admin)
 - MUST support multi-tenancy via project namespacing
 - MUST track baseline version history

@@ -216,7 +216,7 @@ Exit codes: `0` pass, `1` error, `2` fail, `3` warn (with `--fail-on-warn`).
 - [Configuration](docs/CONFIG.md) -- `perfgate.toml` options and per-metric budgets
 - [Output Schemas](docs/SCHEMAS.md) -- perfgate.run.v1, compare.v1, report.v1, sensor.report.v1
 - [Artifact Layouts](docs/ARTIFACTS.md) -- standard and cockpit mode output structure
-- [Architecture](docs/ARCHITECTURE.md) -- 26-crate workspace, clean-architecture layers
+- [Architecture](docs/ARCHITECTURE.md) -- public crate surface and clean-architecture layers
 - [ADRs](docs/adrs/) -- architectural decision records
 
 **Explanation**:

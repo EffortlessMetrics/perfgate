@@ -67,9 +67,24 @@ When adding a new metric type:
 - Report findings MUST be ordered by metric (BTreeMap iteration order)
 - These orderings MUST be verified by property tests
 
-## Architectural Components (26-Crate Workspace)
+## Architectural Components (Public Surface Transition)
 
-The perfgate architecture is modularized into 26 workspace crates:
+The 0.16 public-surface contract is intentionally smaller than the current
+workspace layout. These packages are the target publishable surface:
+
+| Public package | Responsibility |
+|----------------|----------------|
+| `perfgate` | Unified facade library |
+| `perfgate-cli` | Command-line interface and `perfgate` binary |
+| `perfgate-types` | Stable receipts, schemas, config, and API contracts |
+| `perfgate-client` | Baseline service client |
+| `perfgate-server` | Baseline service binary/library |
+
+The remaining packages below are internal seams, transition packages, or
+compatibility wrappers while the 0.16 collapse proceeds. The transition is
+enforced by `cargo run -p xtask -- public-surface` and
+`cargo run -p xtask -- arch`; strict public-surface mode is the final release
+gate once transition packages stop being publishable.
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -106,7 +121,7 @@ The perfgate architecture is modularized into 26 workspace crates:
 **Status:** Implemented (v0.4.0)
 
 Centralized storage for fleet-scale performance monitoring:
-- REST API with Axum and multi-backend support (SQLite, PostgreSQL planned)
+- REST API with Axum and multi-backend support (memory, SQLite, PostgreSQL)
 - Multi-tenancy (projects) and versioned baselines
 - Client-side fallback to local/cloud storage for resilience
 - `baseline` command group for management
