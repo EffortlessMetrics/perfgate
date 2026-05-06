@@ -15,7 +15,6 @@ categories = ["algorithms", "development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true
-perfgate-error.workspace = true
 perfgate-host-detect.workspace = true
 perfgate-budget.workspace = true
 perfgate-significance.workspace = true

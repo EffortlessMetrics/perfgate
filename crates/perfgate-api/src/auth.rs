@@ -15,7 +15,7 @@
 //! ```
 
 use chrono::{DateTime, Utc};
-use perfgate_error::AuthError;
+use perfgate_types::error::AuthError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

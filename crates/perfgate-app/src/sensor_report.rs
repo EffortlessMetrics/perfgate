@@ -13,7 +13,7 @@ pub use perfgate_sensor::{
 
 use crate::{CheckRequest, CheckUseCase, Clock};
 use perfgate_adapters::{HostProbe, ProcessRunner};
-use perfgate_error::{AdapterError, ConfigValidationError, IoError, PerfgateError};
+use perfgate_types::error::{AdapterError, ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, ConfigFile, ERROR_KIND_EXEC, ERROR_KIND_IO, ERROR_KIND_PARSE,
     HostMismatchPolicy, MAX_FINDINGS_DEFAULT, RunReceipt, STAGE_BASELINE_RESOLVE,

@@ -241,7 +241,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         } else {
             // No baseline
             if req.require_baseline {
-                use perfgate_error::IoError;
+                use perfgate_types::error::IoError;
                 return Err(PerfgateError::Io(IoError::BaselineNotFound {
                     path: format!("bench '{}'", req.bench_name),
                 })

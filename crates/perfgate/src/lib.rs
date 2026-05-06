@@ -24,7 +24,6 @@ pub use perfgate_app as app;
 pub use perfgate_budget as budget;
 pub use perfgate_domain as domain;
 pub use perfgate_domain::stats;
-pub use perfgate_error as error;
 pub use perfgate_export as export;
 pub use perfgate_host_detect as host_detect;
 pub use perfgate_paired as paired;
@@ -33,6 +32,7 @@ pub use perfgate_sensor as sensor;
 pub use perfgate_sha256 as sha256;
 pub use perfgate_significance as significance;
 pub use perfgate_types as types;
+pub use perfgate_types::error;
 // validation is now part of types
 pub use perfgate_types::validation;
 

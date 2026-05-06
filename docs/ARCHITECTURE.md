@@ -104,7 +104,7 @@ Dependencies flow inward toward the core types and domain logic:
 - **perfgate-significance**: P-value and statistical significance testing.
 - **perfgate-render**: Markdown and terminal rendering logic.
 - **perfgate-export**: Multi-format data exporters (CSV, Prometheus, etc.).
-- **perfgate-error**: Shared error taxonomy across all crates.
+- **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.
 - **perfgate-sha256**: High-performance fingerprinting for reports.
 
 ### Client/Server Stack (v2.0)

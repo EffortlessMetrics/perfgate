@@ -89,7 +89,7 @@ The perfgate architecture is modularized into 26 workspace crates:
 | `perfgate-significance` | Statistical significance testing (Welch's t-test) |
 | `perfgate-host-detect` | Host fingerprinting and mismatch detection |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
-| `perfgate-error` | Shared error types and categorization |
+| `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-fake` | Test fixtures and mock data generators |
 | `perfgate-profile` | Profiling diagnostics and flamegraph capture |

@@ -39,7 +39,7 @@ use perfgate_types::{
 };
 use std::collections::BTreeMap;
 
-pub use perfgate_error::StatsError;
+pub use perfgate_types::error::StatsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DomainError {

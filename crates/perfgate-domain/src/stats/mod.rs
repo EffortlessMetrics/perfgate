@@ -12,7 +12,7 @@
 
 pub mod trend;
 
-pub use perfgate_error::StatsError;
+pub use perfgate_types::error::StatsError;
 
 // Re-export trend module items
 pub use trend::{

@@ -7,7 +7,7 @@
 
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use perfgate_api::auth::{ApiKey, Role};
-use perfgate_error::AuthError;
+use perfgate_types::error::AuthError;
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;

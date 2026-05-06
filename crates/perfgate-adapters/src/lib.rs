@@ -25,8 +25,8 @@ mod fake;
 
 pub use fake::FakeProcessRunner;
 
-pub use perfgate_error::AdapterError;
 use perfgate_sha256::sha256_hex;
+pub use perfgate_types::error::AdapterError;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 

@@ -11,7 +11,7 @@ use axum::{
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, errors::ErrorKind};
 pub use perfgate_api::auth::{ApiKey, JwtClaims, Role, Scope, validate_key_format};
-use perfgate_error::AuthError;
+use perfgate_types::error::AuthError;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;

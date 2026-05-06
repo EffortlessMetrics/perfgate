@@ -13,7 +13,6 @@ keywords = ["performance", "profiling", "flamegraph", "regression"]
 categories = ["development-tools"]
 
 [dependencies]
-perfgate-error.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true

@@ -19,7 +19,6 @@ path = "src/main.rs"
 
 [dependencies]
 perfgate-types.workspace = true
-perfgate-error.workspace = true
 perfgate-client.workspace = true
 perfgate-config.workspace = true
 perfgate-api.workspace = true

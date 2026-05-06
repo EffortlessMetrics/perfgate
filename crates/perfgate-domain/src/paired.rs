@@ -80,7 +80,7 @@ use perfgate_types::{
     PairedDiffSummary, PairedSample, PairedStats, Significance, SignificancePolicy,
 };
 
-pub use perfgate_error::PairedError;
+pub use perfgate_types::error::PairedError;
 
 /// Compute summary statistics from paired benchmark samples.
 ///

@@ -18,7 +18,6 @@ perfgate-types.workspace = true
 perfgate-domain.workspace = true
 perfgate-adapters.workspace = true
 perfgate-app.workspace = true
-perfgate-error.workspace = true
 perfgate-significance.workspace = true
 perfgate-budget.workspace = true
 perfgate-render.workspace = true

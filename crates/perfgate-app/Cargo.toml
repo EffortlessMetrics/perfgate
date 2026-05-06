@@ -15,7 +15,6 @@ categories = ["development-tools"]
 
 [dependencies]
 perfgate-types.workspace = true
-perfgate-error.workspace = true
 perfgate-domain.workspace = true
 perfgate-adapters.workspace = true
 perfgate-config.workspace = true
