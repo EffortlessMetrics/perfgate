@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, and the profiling implementation now lives under `perfgate::runtime::profile`. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, and external benchmark ingestion now lives under `perfgate::integrations::ingest`. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -118,12 +118,12 @@ This stays at a high level and coordinates lower modules.
 ### Into `perfgate::integrations`
 Feature-gated external integrations:
 
-| Current Crate | New Module | Feature Gate |
-|---------------|-----------|--------------|
-| `perfgate-github` | `perfgate::integrations::github` | `github` |
-| `perfgate-ingest` | `perfgate::integrations::ingest` | `ingest` |
+| Current Crate | New Module | Status |
+|---------------|-----------|--------|
+| `perfgate-github` | `perfgate::integrations::github` | planned `github` feature |
+| `perfgate-ingest` | `perfgate::integrations::ingest` | absorbed |
 
-These are not core to the product and should be optional.
+These are not core to the product and should stay isolated from core paths.
 
 ---
 
@@ -331,7 +331,7 @@ Move into `perfgate`:
 - `perfgate-profile` -> `perfgate::runtime::profile` (done)
 - `perfgate-app` -> `perfgate::app`
 - `perfgate-github` -> `perfgate::integrations::github` (feature-gated)
-- `perfgate-ingest` -> `perfgate::integrations::ingest` (feature-gated)
+- `perfgate-ingest` -> `perfgate::integrations::ingest` (done)
 
 Simplify `perfgate-cli` dependencies to mostly: `perfgate`, `perfgate-types`, `perfgate-client`, `perfgate-server`.
 

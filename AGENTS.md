@@ -34,7 +34,6 @@ cargo test -p perfgate-sha256
 cargo test -p perfgate-fake
 cargo test -p perfgate-config
 cargo test -p perfgate-api
-cargo test -p perfgate-ingest
 cargo test -p perfgate-github
 cargo test -p perfgate-scaling
 cargo test -p perfgate-selfbench
@@ -110,7 +109,6 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
-| `perfgate-ingest` | External benchmark format ingestion |
 | `perfgate-github` | GitHub API and PR-comment integration |
 | `perfgate-scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |

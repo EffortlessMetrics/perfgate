@@ -23,7 +23,6 @@ perfgate-client.workspace = true
 perfgate-config.workspace = true
 perfgate-api.workspace = true
 perfgate-render.workspace = true
-perfgate-ingest.workspace = true
 perfgate-app.workspace = true
 perfgate-github.workspace = true
 perfgate-adapters.workspace = true

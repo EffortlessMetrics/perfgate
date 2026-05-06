@@ -12,7 +12,7 @@ use anyhow::Context;
 use perfgate_types::{RunReceipt, Sample, Stats, U64Summary};
 use regex::Regex;
 
-use crate::make_receipt;
+use super::make_receipt;
 
 /// A parsed Go benchmark line.
 #[derive(Debug)]

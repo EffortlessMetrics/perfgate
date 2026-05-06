@@ -710,7 +710,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-config",
             "perfgate-export",
             "perfgate-github",
-            "perfgate-ingest",
             "perfgate-render",
             "perfgate-sensor",
             "perfgate-server",

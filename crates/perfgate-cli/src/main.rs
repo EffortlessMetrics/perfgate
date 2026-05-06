@@ -4,6 +4,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
+use perfgate::integrations::ingest::{self, IngestFormat};
 use perfgate::runtime::profile::{ProfileRequest, capture_flamegraph};
 use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
@@ -34,7 +35,6 @@ use perfgate_config::{
 };
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_github::{CommentOptions, GitHubClient};
-use perfgate_ingest::IngestFormat;
 use perfgate_render::summary::{SummaryRequest, SummaryUseCase};
 use perfgate_scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
@@ -2381,7 +2381,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             let content = fs::read_to_string(&input)
                 .with_context(|| format!("read input file {}", input.display()))?;
 
-            let request = perfgate_ingest::IngestRequest {
+            let request = ingest::IngestRequest {
                 format,
                 input: content,
                 name,
@@ -2389,7 +2389,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 exclude_spans: exclude_span,
             };
 
-            let receipt = perfgate_ingest::ingest(&request)?;
+            let receipt = ingest::ingest(&request)?;
             write_json(&out, &receipt, pretty)?;
             eprintln!("Ingested {} -> {}", input.display(), out.display());
             Ok(())

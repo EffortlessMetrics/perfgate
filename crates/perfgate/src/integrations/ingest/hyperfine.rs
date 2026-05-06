@@ -8,7 +8,7 @@ use anyhow::Context;
 use perfgate_types::{RunReceipt, Sample, Stats};
 use serde::Deserialize;
 
-use crate::{compute_u64_summary, make_receipt};
+use super::{compute_u64_summary, make_receipt};
 
 /// A single result entry from hyperfine JSON output.
 #[derive(Debug, Deserialize)]

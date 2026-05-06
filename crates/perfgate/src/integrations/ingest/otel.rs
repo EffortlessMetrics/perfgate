@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use serde::Deserialize;
 
-use crate::{compute_u64_summary, make_receipt};
+use super::{compute_u64_summary, make_receipt};
 use perfgate_types::{Sample, Stats};
 
 #[derive(Debug, Deserialize)]

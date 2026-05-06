@@ -38,7 +38,7 @@ perfgate-adapters -> perfgate::runtime
 perfgate-profile -> perfgate::runtime::profile [deleted]
 perfgate-app -> perfgate::app
 perfgate-github -> perfgate::integrations::github
-perfgate-ingest -> perfgate::integrations::ingest
+perfgate-ingest -> perfgate::integrations::ingest [deleted]
 
 # Dev-only packages.
 perfgate-fake -> private workspace crate [publish=false]

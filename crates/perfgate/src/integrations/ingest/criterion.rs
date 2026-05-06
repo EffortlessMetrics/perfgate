@@ -8,7 +8,7 @@ use anyhow::Context;
 use perfgate_types::{RunReceipt, Sample, Stats};
 use serde::Deserialize;
 
-use crate::{compute_u64_summary, make_receipt};
+use super::{compute_u64_summary, make_receipt};
 
 /// A Criterion estimate entry (mean, median, std_dev, etc.).
 #[derive(Debug, Deserialize)]

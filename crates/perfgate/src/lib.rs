@@ -36,6 +36,9 @@ pub use perfgate_types::error;
 // validation is now part of types
 pub use perfgate_types::validation;
 
+/// Integrations for external benchmark formats and CI platforms.
+pub mod integrations;
+
 /// Runtime helpers for optional diagnostics and local execution support.
 pub mod runtime;
 

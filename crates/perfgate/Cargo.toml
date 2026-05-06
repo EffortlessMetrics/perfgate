@@ -25,8 +25,13 @@ perfgate-sensor.workspace = true
 perfgate-export.workspace = true
 perfgate-host-detect.workspace = true
 perfgate-sha256.workspace = true
+anyhow.workspace = true
+regex.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
