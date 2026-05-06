@@ -18,7 +18,7 @@
 /// let too_long = "a".repeat(BENCH_NAME_MAX_LEN + 1);
 /// assert!(perfgate_types::validation::validate_bench_name(&too_long).is_err());
 /// ```
-pub use perfgate_error::BENCH_NAME_MAX_LEN;
+pub use crate::error::BENCH_NAME_MAX_LEN;
 
 /// Regex pattern describing the set of valid benchmark-name characters.
 ///
@@ -34,7 +34,7 @@ pub use perfgate_error::BENCH_NAME_MAX_LEN;
 /// assert!(BENCH_NAME_PATTERN.starts_with('^'));
 /// assert!(BENCH_NAME_PATTERN.ends_with('$'));
 /// ```
-pub use perfgate_error::BENCH_NAME_PATTERN;
+pub use crate::error::BENCH_NAME_PATTERN;
 
 /// Error type returned when a benchmark name fails validation.
 ///
@@ -61,7 +61,7 @@ pub use perfgate_error::BENCH_NAME_PATTERN;
 /// let err = validate_bench_name("bench/").unwrap_err();
 /// assert!(matches!(err, ValidationError::EmptySegment { .. }));
 /// ```
-pub use perfgate_error::ValidationError;
+pub use crate::error::ValidationError;
 
 /// Validate a benchmark name against the naming rules.
 ///
@@ -113,7 +113,7 @@ pub use perfgate_error::ValidationError;
 ///     Err(ValidationError::EmptySegment { .. }),
 /// ));
 /// ```
-pub use perfgate_error::validate_bench_name;
+pub use crate::error::validate_bench_name;
 
 #[cfg(test)]
 mod tests {

@@ -14,9 +14,9 @@ perfgate-auth -> perfgate_api::auth [deleted]
 perfgate-summary -> perfgate_render::summary [deleted]
 perfgate-stats -> perfgate_domain::stats [deleted]
 perfgate-paired -> perfgate_domain::paired [compatibility wrapper]
+perfgate-error -> perfgate_types::error [compatibility wrapper]
 
 # Contract-adjacent.
-perfgate-error -> perfgate_types::error
 perfgate-config -> perfgate_types::config
 perfgate-api -> perfgate_types::baseline_service or shared client/server contract
 

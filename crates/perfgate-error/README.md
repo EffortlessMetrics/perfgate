@@ -1,14 +1,14 @@
 # perfgate-error
 
-Shared error types and categorization across the perfgate workspace.
+Compatibility wrapper for perfgate's shared error contract.
 
 Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
-## Problem
+## Status
 
-A workspace with 26 crates needs a single error vocabulary so that errors flow
-cleanly from inner layers (stats, adapters) through orchestration to the CLI
-exit code. This crate defines that vocabulary.
+The concrete error types have moved to `perfgate_types::error` as part of the
+0.16 public-surface collapse. This crate temporarily re-exports that module so
+existing `perfgate_error` imports keep compiling during the migration.
 
 ## Error Categories
 
@@ -43,6 +43,12 @@ let err = validate_bench_name("../escape").unwrap_err();
 let unified: PerfgateError = err.into();
 assert_eq!(unified.exit_code(), 1);
 assert!(!unified.is_recoverable());
+```
+
+New code should prefer:
+
+```rust
+use perfgate_types::error::{PerfgateError, ValidationError, validate_bench_name};
 ```
 
 ## License

@@ -23,6 +23,7 @@
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
 mod defaults_config;
+pub mod error;
 mod io;
 mod paired;
 mod repair_context;
@@ -42,7 +43,7 @@ pub use validation::{
     validate_bench_name,
 };
 
-pub use perfgate_error::{ConfigValidationError, PerfgateError};
+pub use error::{ConfigValidationError, PerfgateError};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1903,21 +1904,21 @@ mod tests {
 
     #[test]
     fn perfgate_error_display_baseline_resolve() {
-        use perfgate_error::IoError;
+        use crate::error::IoError;
         let err = PerfgateError::Io(IoError::BaselineResolve("file not found".to_string()));
         assert_eq!(format!("{}", err), "baseline resolve: file not found");
     }
 
     #[test]
     fn perfgate_error_display_artifact_write() {
-        use perfgate_error::IoError;
+        use crate::error::IoError;
         let err = PerfgateError::Io(IoError::ArtifactWrite("permission denied".to_string()));
         assert_eq!(format!("{}", err), "write artifacts: permission denied");
     }
 
     #[test]
     fn perfgate_error_display_run_command() {
-        use perfgate_error::IoError;
+        use crate::error::IoError;
         let err = PerfgateError::Io(IoError::RunCommand {
             command: "echo".to_string(),
             reason: "spawn failed".to_string(),

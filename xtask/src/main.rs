@@ -1663,7 +1663,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     let microcrates = [
         (
             "perfgate-error",
-            "Unified error types for error propagation",
+            "Compatibility wrapper for perfgate_types::error",
             100,
         ),
         (
@@ -1756,7 +1756,9 @@ fn cmd_microcrates() -> anyhow::Result<()> {
 
     println!("\nDependency Flow");
     println!("--------------\n");
-    println!("  perfgate-error (innermost - unified errors)");
+    println!("  perfgate-types::error (unified errors)");
+    println!("         ↓");
+    println!("  perfgate-error (compatibility wrapper)");
     println!("         ↓");
     println!("  perfgate-sha256 (standalone, no_std)");
     println!("         ↓");
@@ -2026,7 +2028,7 @@ fn generate_workspace_inventory_md() -> String {
     let microcrates = [
         (
             "perfgate-error",
-            "Unified error types for error propagation",
+            "Compatibility wrapper for perfgate_types::error",
             100,
         ),
         (
@@ -2121,7 +2123,7 @@ fn generate_workspace_inventory_md() -> String {
 
     md.push_str("\n## Dependency Flow\n\n");
     md.push_str("```mermaid\ngraph TD\n");
-    md.push_str("  error[perfgate-error] --> types[perfgate-types]\n");
+    md.push_str("  error[perfgate-error compatibility wrapper] --> types[perfgate-types]\n");
     md.push_str("  sha[perfgate-sha256] --> types\n");
     md.push_str("  domain --> stats[perfgate-domain::stats]\n");
     md.push_str("  types --> val[perfgate-types::validation]\n");
@@ -2856,12 +2858,12 @@ mod tests {
     #[test]
     fn arch_allows_lower_layer_dependencies() {
         let metadata = arch_metadata(vec![
+            test_package("perfgate-types", None),
             test_package_with_deps(
-                "perfgate-types",
+                "perfgate-error",
                 None,
-                vec![workspace_dep("perfgate-error")],
+                vec![workspace_dep("perfgate-types")],
             ),
-            test_package("perfgate-error", None),
             test_package_with_deps(
                 "perfgate-domain",
                 None,

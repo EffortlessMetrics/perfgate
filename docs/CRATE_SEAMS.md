@@ -43,6 +43,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-summary` | `perfgate_render::summary` | crate deleted |
 | `perfgate-stats` | `perfgate_domain::stats` | crate deleted |
 | `perfgate-paired` | `perfgate_domain::paired` | compatibility wrapper remains |
+| `perfgate-error` | `perfgate_types::error` | compatibility wrapper remains |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -55,7 +56,6 @@ high-level target is:
 
 | Current package | Target owner |
 |-----------------|--------------|
-| `perfgate-error` | `perfgate_types::error` |
 | `perfgate-config` | `perfgate_types::config` |
 | `perfgate-api` | `perfgate_types::baseline_service` or shared client/server contract |
 | `perfgate-domain` | `perfgate::domain` |
