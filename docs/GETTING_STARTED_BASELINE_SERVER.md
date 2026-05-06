@@ -222,7 +222,17 @@ include current pool occupancy:
 
 `/metrics` exposes Prometheus counters and histograms for request volume,
 request latency, storage operations, upload failures, auth failures, and
-storage errors.
+storage errors:
+
+```text
+perfgate_server_requests_total
+perfgate_server_request_duration_seconds
+perfgate_baselines_total
+perfgate_verdicts_total
+perfgate_upload_failures_total
+perfgate_auth_failures_total
+perfgate_storage_errors_total
+```
 
 The server binary accepts `--retention-days` and
 `--cleanup-interval-hours` for background artifact cleanup. Cleanup only runs

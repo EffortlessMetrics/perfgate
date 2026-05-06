@@ -147,6 +147,21 @@ using S3, GCS, Azure, or another managed object store, configure provider-side
 lifecycle policies as the durable retention backstop and use perfgate cleanup
 as application-level hygiene.
 
+## Metrics
+
+`/metrics` exposes Prometheus text output for request volume/latency and the
+server operations that matter when the service becomes CI-critical:
+
+```text
+perfgate_server_requests_total
+perfgate_server_request_duration_seconds
+perfgate_baselines_total
+perfgate_verdicts_total
+perfgate_upload_failures_total
+perfgate_auth_failures_total
+perfgate_storage_errors_total
+```
+
 ## Library usage
 
 ```rust

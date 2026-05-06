@@ -18,6 +18,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
 
+use crate::metrics;
 use crate::models::ApiError;
 use crate::oidc::OidcRegistry;
 use crate::storage::KeyStore;
@@ -206,6 +207,11 @@ fn unauthorized(message: &str) -> (StatusCode, Json<ApiError>) {
     )
 }
 
+fn auth_failure(reason: &'static str, message: &str) -> (StatusCode, Json<ApiError>) {
+    metrics::record_auth_failure(reason);
+    unauthorized(message)
+}
+
 async fn authenticate_api_key(
     auth_state: &AuthState,
     api_key_str: &str,
@@ -216,14 +222,14 @@ async fn authenticate_api_key(
             key_prefix = &api_key_str[..10.min(api_key_str.len())],
             "Invalid API key format"
         );
-        unauthorized("Invalid API key format")
+        auth_failure("invalid_api_key_format", "Invalid API key format")
     })?;
 
     // Try the in-memory store first (CLI-provided keys)
     if let Some(api_key) = auth_state.key_store.get_key(api_key_str).await {
         if api_key.is_expired() {
             warn!(key_id = %api_key.id, "API key expired");
-            return Err(unauthorized("API key has expired"));
+            return Err(auth_failure("expired_api_key", "API key has expired"));
         }
         return Ok(AuthContext {
             api_key,
@@ -256,7 +262,7 @@ async fn authenticate_api_key(
         key_prefix = &api_key_str[..10.min(api_key_str.len())],
         "Invalid API key"
     );
-    Err(unauthorized("Invalid API key"))
+    Err(auth_failure("invalid_api_key", "Invalid API key"))
 }
 
 fn validate_jwt(token: &str, config: &JwtConfig) -> Result<JwtClaims, AuthError> {
@@ -297,7 +303,11 @@ async fn authenticate_jwt(
                         AuthError::InvalidToken(_) => warn!("Invalid JWT token"),
                         _ => {}
                     }
-                    return Err(unauthorized(&e.to_string()));
+                    let reason = match &e {
+                        AuthError::ExpiredToken => "expired_jwt",
+                        _ => "invalid_jwt",
+                    };
+                    return Err(auth_failure(reason, &e.to_string()));
                 }
             }
         }
@@ -318,13 +328,20 @@ async fn authenticate_jwt(
                     AuthError::InvalidToken(msg) => warn!("Invalid OIDC token: {}", msg),
                     _ => {}
                 }
-                return Err(unauthorized(&e.to_string()));
+                let reason = match &e {
+                    AuthError::ExpiredToken => "expired_oidc",
+                    _ => "invalid_oidc",
+                };
+                return Err(auth_failure(reason, &e.to_string()));
             }
         }
     }
 
     warn!("JWT token received but no JWT or OIDC authentication is configured");
-    Err(unauthorized("JWT/OIDC authentication is not configured"))
+    Err(auth_failure(
+        "jwt_unconfigured",
+        "JWT/OIDC authentication is not configured",
+    ))
 }
 
 fn api_key_from_jwt_claims(claims: &JwtClaims) -> ApiKey {
@@ -366,6 +383,7 @@ pub async fn auth_middleware(
             authenticate_jwt(&auth_state, &token, request.headers()).await?
         }
         None => {
+            metrics::record_auth_failure("missing_credentials");
             warn!("Missing authentication header");
             return Err(unauthorized("Missing authentication header"));
         }
@@ -407,6 +425,7 @@ pub fn check_scope(
     let ctx = match auth_ctx {
         Some(ctx) => ctx,
         None => {
+            metrics::record_auth_failure("missing_auth_context");
             return Err((
                 StatusCode::UNAUTHORIZED,
                 Json(ApiError::unauthorized("Authentication required")),
@@ -422,6 +441,7 @@ pub fn check_scope(
             actual_role = %ctx.api_key.role,
             "Insufficient permissions: scope mismatch"
         );
+        metrics::record_auth_failure("insufficient_scope");
         return Err((
             StatusCode::FORBIDDEN,
             Json(ApiError::forbidden(&format!(
@@ -441,6 +461,7 @@ pub fn check_scope(
             requested_project = %project_id,
             "Insufficient permissions: project isolation violation"
         );
+        metrics::record_auth_failure("project_mismatch");
         return Err((
             StatusCode::FORBIDDEN,
             Json(ApiError::forbidden(&format!(
@@ -455,6 +476,7 @@ pub fn check_scope(
     if let (Some(regex_str), Some(bench)) = (&ctx.api_key.benchmark_regex, benchmark) {
         let regex = regex::Regex::new(regex_str).map_err(|e| {
             warn!(key_id = %ctx.api_key.id, regex = %regex_str, error = %e, "Invalid benchmark regex in API key");
+            metrics::record_auth_failure("invalid_benchmark_regex");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiError::internal_error("Invalid security configuration")),
@@ -468,6 +490,7 @@ pub fn check_scope(
                 regex = %regex_str,
                 "Insufficient permissions: benchmark restriction violation"
             );
+            metrics::record_auth_failure("benchmark_restricted");
             return Err((
                 StatusCode::FORBIDDEN,
                 Json(ApiError::forbidden(&format!(
@@ -601,6 +624,34 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_auth_middleware_records_missing_and_invalid_credentials() {
+        let auth_state = AuthState::new(Arc::new(ApiKeyStore::new()), None, Default::default());
+
+        let missing = auth_test_router(auth_state.clone())
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+
+        let invalid = auth_test_router(auth_state)
+            .oneshot(
+                Request::builder()
+                    .uri("/protected")
+                    .header(header::AUTHORIZATION, "Bearer invalid")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

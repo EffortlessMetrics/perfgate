@@ -9,6 +9,7 @@ use axum::{
 use tracing::{error, info, warn};
 
 use crate::auth::{AuthContext, Scope, check_scope};
+use crate::metrics;
 use crate::models::{
     ApiError, AuditAction, AuditEvent, AuditResourceType, ListVerdictsQuery, SubmitVerdictRequest,
     VERDICT_SCHEMA_V1, VerdictRecord, generate_ulid,
@@ -70,6 +71,7 @@ async fn compute_flakiness_score(
             );
         }
         Err(e) => {
+            metrics::record_storage_error("flakiness_history");
             warn!(
                 error = %e,
                 project = %project,
@@ -126,6 +128,7 @@ pub async fn submit_verdict(
 
     match state.store.create_verdict(&record).await {
         Ok(_) => {
+            metrics::record_verdict_submit(&project, record.status.as_str());
             info!(
                 project = %project,
                 benchmark = %record.benchmark,
@@ -147,12 +150,14 @@ pub async fn submit_verdict(
                 }),
             };
             if let Err(e) = state.audit.log_event(&audit_event).await {
+                metrics::record_storage_error("audit_log");
                 warn!(error = %e, "Failed to log audit event");
             }
 
             Ok((StatusCode::CREATED, Json(record)))
         }
         Err(e) => {
+            metrics::record_storage_error("submit_verdict");
             error!(error = %e, "Failed to submit verdict");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -174,6 +179,7 @@ pub async fn list_verdicts(
     match state.store.list_verdicts(&project, &query).await {
         Ok(response) => Ok(Json(response)),
         Err(e) => {
+            metrics::record_storage_error("list_verdicts");
             error!(error = %e, "Failed to list verdicts");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
