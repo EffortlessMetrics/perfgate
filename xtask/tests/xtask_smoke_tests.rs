@@ -20,7 +20,7 @@ fn xtask_schema_command_runs() {
     assert!(status.success());
     assert!(out_dir.join("perfgate.run.v1.schema.json").exists());
 
-    let _ = fs::remove_dir_all(&out_dir);
+    fs::remove_dir_all(&out_dir).ok();
 }
 
 #[test]
@@ -73,5 +73,5 @@ fn xtask_mutants_propagates_exit_code() {
 
     assert_eq!(status.code(), Some(2));
 
-    let _ = fs::remove_dir_all(&fake_dir);
+    fs::remove_dir_all(&fake_dir).ok();
 }

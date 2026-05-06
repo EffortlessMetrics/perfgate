@@ -43,7 +43,7 @@ pub fn with_temp_cwd<F: FnOnce(&PathBuf)>(f: F) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&temp_dir)));
 
     std::env::set_current_dir(&original).expect("restore cwd");
-    let _ = fs::remove_dir_all(&temp_dir);
+    fs::remove_dir_all(&temp_dir).ok();
 
     if let Err(panic) = result {
         std::panic::resume_unwind(panic);

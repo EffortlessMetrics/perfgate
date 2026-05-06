@@ -1,0 +1,75 @@
+# Semantic no-panic allowlist for the perfgate workspace.
+#
+# Authoritative exception ledger for panic-family debt. The no-panic checker
+# (`cargo run -p xtask -- check-no-panic-family`) matches findings against
+# entries by *path + family + selector*, never by line/column. `last_seen`
+# fields are advisory hints for review only.
+#
+# Philosophy:
+#   * Deny by default. Allow by receipt. Expire exceptions. Measure drift.
+#   * Every entry has owner, reason, classification, and expiry.
+#   * Tests that genuinely require panics (e.g. should_panic harnesses,
+#     proptest invariants) are still receipted — they declare intent here so
+#     the surface remains discoverable.
+#
+# Bootstrap state:
+#   This file ships in its baseline-empty form. The first run of the no-panic
+#   checker is *advisory*: it generates a proposed allowlist at
+#   `target/perfgate/reports/no-panic-proposed-allowlist.toml`, owners review,
+#   and entries are merged in.
+#
+# Schema: see docs/NO_PANIC_POLICY.md for the full grammar.
+
+schema_version = "0.3"
+
+# Family vocabulary the checker understands. Listed here so editors can
+# autocomplete and the checker can validate entries.
+#
+#   unwrap                       — `.unwrap()` and `.unwrap_or_panic()` family
+#   expect                       — `.expect("...")` family
+#   panic_macro                  — `panic!(...)`
+#   todo                         — `todo!(...)`
+#   unimplemented                — `unimplemented!(...)`
+#   unreachable                  — `unreachable!(...)`
+#   indexing                     — `slice[i]` / `vec[i]`
+#   string_slice                 — `&s[a..b]` on str
+#   get_unwrap                   — `.get(...).unwrap()`
+#   unchecked_time_subtraction   — `Duration` / `Instant` subtraction without checked_sub
+#   assertion_macro              — assert!/assert_eq!/assert_ne! (opt-in family,
+#                                  off by default until tests use fallible helpers)
+
+# ---------------------------------------------------------------------------
+# Active allowlist entries
+# ---------------------------------------------------------------------------
+#
+# Entries are intentionally empty at file creation. Owners populate after
+# running:
+#
+#     cargo run -p xtask -- check-no-panic-family --propose
+#
+# The proposed file is written to:
+#
+#     target/perfgate/reports/no-panic-proposed-allowlist.toml
+#
+# Review, edit (especially `reason` and `expires`), and merge into this file.
+
+# Example entry (commented):
+#
+# [[allow]]
+# id = "panic-0001"
+# path = "crates/perfgate-domain/src/stats.rs"
+# family = "unwrap"
+# classification = "domain_invariant"
+# owner = "perfgate-domain"
+# explanation = "Welch's t-test divides finite, validated variances; unwrap upholds invariant."
+# expires = "2026-09-30"
+#
+# [allow.selector]
+# kind = "method_call"
+# container = "welch_t_test"
+# callee = "unwrap"
+# receiver_fingerprint = "self.variance.checked_div(n)"
+#
+# [allow.last_seen]
+# line = 142
+# column = 27

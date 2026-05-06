@@ -59,6 +59,6 @@ mod tests {
         };
         // We cannot guarantee a profiler is available in the test environment,
         // so we just verify the function does not panic.
-        let _ = capture_flamegraph(&request);
+        capture_flamegraph(&request).ok();
     }
 }

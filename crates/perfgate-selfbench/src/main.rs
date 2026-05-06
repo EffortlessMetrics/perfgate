@@ -47,8 +47,8 @@ fn io_fixed() -> anyhow::Result<()> {
     let read = fs::read(&path)?;
     assert_eq!(read.len(), data.len());
 
-    // Clean up
-    let _ = fs::remove_file(&path);
+    // Clean up — best-effort.
+    fs::remove_file(&path).ok();
 
     eprintln!("IO work complete. Duration: {:?}", start.elapsed());
     Ok(())

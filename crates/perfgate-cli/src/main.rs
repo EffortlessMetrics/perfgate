@@ -4989,7 +4989,8 @@ fn run_watch(args: WatchArgs) -> anyhow::Result<()> {
             if let Ok(event) = res {
                 match event.kind {
                     EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {
-                        let _ = tx.send(());
+                        // Channel may be closed if the watch loop already exited.
+                        tx.send(()).ok();
                     }
                     _ => {}
                 }
@@ -6466,6 +6467,6 @@ mod tests {
         write_json(&path, &receipt, false).unwrap();
 
         assert!(path.exists());
-        let _ = fs::remove_file(&path);
+        fs::remove_file(&path).ok();
     }
 }

@@ -1,0 +1,422 @@
+# Non-Rust file policy for the perfgate workspace.
+#
+# Default implementation path is Rust + xtask. Non-Rust source/config surfaces
+# require an explicit, owned, reason-receipted entry below. The file-policy
+# checker (`cargo run -p xtask -- check-file-policy`) classifies every
+# git-tracked file and fails on:
+#   * unknown non-Rust files without an entry
+#   * entries whose `expires` has passed
+#   * entries whose glob matches no files (stale receipts, unless retired = true)
+#
+# Surfaces vocabulary:
+#   ci          — CI/CD pipeline declarative configs (GitHub Actions, GitLab)
+#   editor      — Editor extensions (VS Code, JetBrains)
+#   fixtures    — Test fixtures and golden files
+#   contracts   — Vendored schemas / wire format declarations
+#   docs        — Markdown, prose, ADRs
+#   config      — Repo-level static config (deny.toml, mutants.toml, ...)
+#   scripts     — Shell scripts and tooling helpers
+#   schema      — Hand-written JSON Schema or contract files
+#   badge       — Generated metadata (badges, dashboards)
+#   release     — Release/packaging declaratives
+#   licenses    — License manifests
+#
+# Classifications:
+#   production  — runs in shipped binaries or affects on-the-wire schema
+#   test        — exercised only by `cargo test`
+#   tooling     — development-time only (xtask, editor extensions)
+#   config      — declarative, not executed
+#   generated   — produced by xtask; should be checked in but not edited by hand
+
+schema_version = "1.0"
+
+# ---------------------------------------------------------------------------
+# CI / release / declarative platform configs
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".github/workflows/*.yml"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "GitHub Actions workflow definitions are platform-required YAML."
+covered_by = ["cargo run -p xtask -- ci"]
+
+[[allow]]
+glob = ".github/**/*.yml"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "GitHub repo-level config (Dependabot, issue templates, etc.)."
+covered_by = []
+
+[[allow]]
+glob = ".github/CODEOWNERS"
+kind = "vcs_config"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Code-owner routing for GitHub PR review assignment."
+covered_by = []
+
+[[allow]]
+glob = ".gemini/**"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Gemini Code Assist agent config."
+covered_by = []
+
+[[allow]]
+glob = ".kiro/**"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Kiro agent config."
+covered_by = []
+
+[[allow]]
+glob = "gitlab-ci/**"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Reusable GitLab CI templates shipped with the action."
+covered_by = []
+
+[[allow]]
+glob = ".ci/**"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Vendored CI helper configs."
+covered_by = []
+
+[[allow]]
+glob = "action.yml"
+kind = "release"
+owner = "release/ci"
+surface = "release"
+classification = "production"
+reason = "GitHub Action manifest is the public CI entry point."
+covered_by = ["cargo run -p xtask -- doc-test"]
+
+[[allow]]
+glob = "codecov.yml"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Codecov upload config."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Repo-level Rust toolchain / packaging configs
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "rust-toolchain.toml"
+kind = "rust_toolchain"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "Pins the workspace Rust toolchain."
+covered_by = []
+
+[[allow]]
+glob = ".cargo/**"
+kind = "cargo_config"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "Cargo workspace-level config."
+covered_by = []
+
+[[allow]]
+glob = "deny.toml"
+kind = "cargo_deny"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "cargo-deny policy for licenses, advisories, sources."
+covered_by = []
+
+[[allow]]
+glob = "mutants.toml"
+kind = "cargo_mutants"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "cargo-mutants config; consumed by xtask mutants."
+covered_by = ["cargo run -p xtask -- mutants"]
+
+[[allow]]
+glob = "perfgate.toml"
+kind = "perfgate_config"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "Self-config for perfgate to dogfood its own check command."
+covered_by = []
+
+# Cargo.lock is auto-classified as Cargo metadata; no explicit entry needed.
+
+# ---------------------------------------------------------------------------
+# Editor / IDE extensions
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "vscode-perfgate/**"
+kind = "editor_extension"
+owner = "perfgate-cli"
+surface = "editor"
+classification = "tooling"
+reason = "VS Code extension surface (TypeScript, package.json, manifests)."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Documentation, ADRs, release notes
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "docs/**/*.md"
+kind = "docs"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "Architecture, design, and policy documentation."
+covered_by = ["cargo run -p xtask -- docs-check", "cargo run -p xtask -- doc-test"]
+
+[[allow]]
+glob = "*.md"
+kind = "docs"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "Repo-level docs (README, CHANGELOG, CONTRIBUTING, AGENTS, CLAUDE, GEMINI, ROADMAP, TESTING)."
+covered_by = ["cargo run -p xtask -- doc-test"]
+
+[[allow]]
+glob = "crates/*/CLAUDE.md"
+kind = "agent_instructions"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "Per-crate agent instruction files."
+covered_by = []
+
+[[allow]]
+glob = "crates/*/README.md"
+kind = "docs"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "Per-crate README, also used as crates.io readme."
+covered_by = []
+
+[[allow]]
+glob = "xtask/CLAUDE.md"
+kind = "agent_instructions"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "xtask agent instruction file."
+covered_by = []
+
+[[allow]]
+glob = "fuzz/README.md"
+kind = "docs"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "Fuzz workspace README."
+covered_by = []
+
+[[allow]]
+glob = "xtask/README.md"
+kind = "docs"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "xtask README."
+covered_by = []
+
+[[allow]]
+glob = "LICENSE-*"
+kind = "license"
+owner = "perfgate-core"
+surface = "licenses"
+classification = "config"
+reason = "Repository license texts (MIT/Apache-2.0)."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Fixtures, contracts, schemas, baselines
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "fixtures/**/*.json"
+kind = "fixture_input"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "Schema and conformance fixtures."
+covered_by = ["cargo run -p xtask -- conform", "cargo run -p xtask -- schema-compat"]
+
+[[allow]]
+glob = "crates/*/tests/fixtures/**"
+kind = "fixture_input"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "Per-crate test fixture inputs (JSON receipts, golden CSVs)."
+covered_by = ["cargo test --workspace --all-features"]
+
+[[allow]]
+glob = "crates/*/src/snapshots/*.snap"
+kind = "snapshot"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "insta snapshot files; refreshed via `cargo insta accept`."
+covered_by = ["cargo test --workspace --all-features"]
+
+[[allow]]
+glob = "crates/*/tests/snapshots/*.snap"
+kind = "snapshot"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "insta snapshot files for per-crate integration tests."
+covered_by = ["cargo test --workspace --all-features"]
+
+[[allow]]
+glob = "crates/*/proptest-regressions/*.txt"
+kind = "regression_corpus"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "proptest seed corpus auto-saved on shrunk failures."
+covered_by = ["cargo test --workspace --all-features"]
+
+[[allow]]
+glob = "contracts/**"
+kind = "schema"
+owner = "perfgate-core"
+surface = "contracts"
+classification = "production"
+reason = "Vendored hand-written JSON Schemas (sensor.report.v1, ...)."
+covered_by = ["cargo run -p xtask -- schema-check"]
+
+[[allow]]
+glob = "schemas/**"
+kind = "schema"
+owner = "perfgate-core"
+surface = "schema"
+classification = "generated"
+reason = "schemars-generated JSON Schemas, byte-locked against the source types."
+generated_by = "cargo run -p xtask -- schema"
+covered_by = ["cargo run -p xtask -- schema-check"]
+
+[[allow]]
+glob = "baselines/**"
+kind = "baseline"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "Self-dogfood baseline files."
+covered_by = ["cargo run -p xtask -- dogfood verify"]
+
+[[allow]]
+glob = "presets/**"
+kind = "preset"
+owner = "perfgate-core"
+surface = "config"
+classification = "production"
+reason = "Bundled config presets shipped with perfgate."
+covered_by = ["cargo test --workspace --all-features"]
+
+[[allow]]
+glob = "templates/**"
+kind = "template"
+owner = "perfgate-core"
+surface = "config"
+classification = "production"
+reason = "Markdown/HTML templates for rendering reports."
+covered_by = ["cargo test -p perfgate-render --all-features"]
+
+[[allow]]
+glob = "examples/**"
+kind = "example"
+owner = "perfgate-core"
+surface = "docs"
+classification = "docs"
+reason = "Top-level usage examples referenced from the README."
+covered_by = []
+
+[[allow]]
+glob = "features/**/*.feature"
+kind = "fixture_input"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "Cucumber/BDD feature files."
+covered_by = ["cargo test --test cucumber"]
+
+# ---------------------------------------------------------------------------
+# Fuzz harness (separate workspace)
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "crates/perfgate-server/assets/**"
+kind = "static_asset"
+owner = "perfgate-server"
+surface = "release"
+classification = "production"
+reason = "Static HTML/CSS/JS served by perfgate-server."
+covered_by = ["cargo test -p perfgate-server"]
+
+[[allow]]
+glob = "tests/cucumber.rs.part2"
+kind = "fixture_input"
+owner = "perfgate-core"
+surface = "fixtures"
+classification = "test"
+reason = "Concatenated extension to the BDD harness; merged into tests/cucumber.rs at build time."
+covered_by = ["cargo test --test cucumber"]
+
+# ---------------------------------------------------------------------------
+# Repo policy itself
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "policy/**"
+kind = "repo_policy"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "Repo policy ledgers (clippy, no-panic, file policy, public-surface)."
+covered_by = [
+  "cargo run -p xtask -- check-lint-policy",
+  "cargo run -p xtask -- check-no-panic-family",
+  "cargo run -p xtask -- check-file-policy",
+  "cargo run -p xtask -- public-surface",
+]
+
+# ---------------------------------------------------------------------------
+# Misc top-level files
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".gitignore"
+kind = "vcs_config"
+owner = "perfgate-core"
+surface = "config"
+classification = "config"
+reason = "Repo VCS config."
+covered_by = []

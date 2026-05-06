@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod policy;
+
 const SCHEMA_FILES: [&str; 8] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
@@ -192,6 +194,60 @@ enum Command {
         #[arg(long)]
         files: Vec<PathBuf>,
     },
+
+    /// Verify the workspace lint declaration matches `policy/clippy-lints.toml`
+    /// and that every soft-staged lint has a current debt receipt.
+    CheckLintPolicy {
+        /// Fail on any policy violation. Default is advisory (warn-only).
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Scan Rust sources for panic-family constructs and reconcile against
+    /// `policy/no-panic-allowlist.toml`.
+    CheckNoPanicFamily {
+        /// Fail on any unallowlisted/stale/expired finding. Default is
+        /// advisory (warn-only).
+        #[arg(long)]
+        strict: bool,
+
+        /// Also write a proposed allowlist to
+        /// `target/perfgate/reports/no-panic-proposed-allowlist.toml`.
+        #[arg(long)]
+        propose: bool,
+    },
+
+    /// Subcommand alias group for no-panic operations.
+    NoPanic {
+        #[command(subcommand)]
+        action: NoPanicAction,
+    },
+
+    /// Reconcile the git-tracked tree against `policy/non-rust-allowlist.toml`.
+    CheckFilePolicy {
+        /// Fail on any unallowlisted/stale/expired finding. Default is
+        /// advisory (warn-only).
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Run all three policy checkers in advisory mode and write a combined report.
+    PolicyReport {
+        /// Fail on any policy violation across all checkers.
+        #[arg(long)]
+        strict: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum NoPanicAction {
+    /// Materialize a proposed allowlist from current findings.
+    Propose,
+    /// Run the checker (alias for `check-no-panic-family`).
+    Check {
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -241,6 +297,39 @@ fn main() -> anyhow::Result<()> {
         Command::DocsSync => cmd_docs_sync(),
         Command::DocsCheck => cmd_docs_check(),
         Command::DocTest { files } => cmd_doc_test(files),
+        Command::CheckLintPolicy { strict } => policy::lint_policy::run(strict),
+        Command::CheckNoPanicFamily { strict, propose } => policy::no_panic::run(propose, strict),
+        Command::NoPanic { action } => match action {
+            NoPanicAction::Propose => policy::no_panic::run(true, false),
+            NoPanicAction::Check { strict } => policy::no_panic::run(false, strict),
+        },
+        Command::CheckFilePolicy { strict } => policy::file_policy::run(strict),
+        Command::PolicyReport { strict } => cmd_policy_report(strict),
+    }
+}
+
+fn cmd_policy_report(strict: bool) -> anyhow::Result<()> {
+    // Run all three checkers; on `strict`, they each fail-fast independently.
+    // In advisory mode we want all three reports written even if one finds debt.
+    let mut errs: Vec<anyhow::Error> = Vec::new();
+    if let Err(e) = policy::lint_policy::run(strict) {
+        errs.push(e);
+    }
+    if let Err(e) = policy::no_panic::run(false, strict) {
+        errs.push(e);
+    }
+    if let Err(e) = policy::file_policy::run(strict) {
+        errs.push(e);
+    }
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        let joined = errs
+            .into_iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("\n  - ");
+        anyhow::bail!("policy-report failures:\n  - {joined}")
     }
 }
 
@@ -308,6 +397,20 @@ fn cmd_ci() -> anyhow::Result<()> {
     )?;
     cmd_arch()?;
     cmd_doc_test(Vec::new())?;
+
+    // Policy stack — advisory by default. Set PERFGATE_POLICY_STRICT=1 (or
+    // pass --strict to the individual checkers) to promote findings to hard
+    // CI failures. See docs/CLIPPY_POLICY.md, docs/NO_PANIC_POLICY.md,
+    // docs/FILE_POLICY.md for the rollout schedule.
+    if let Err(e) = policy::lint_policy::run(false) {
+        eprintln!("  WARN check-lint-policy advisory failure: {e}");
+    }
+    if let Err(e) = policy::no_panic::run(false, false) {
+        eprintln!("  WARN check-no-panic-family advisory failure: {e}");
+    }
+    if let Err(e) = policy::file_policy::run(false) {
+        eprintln!("  WARN check-file-policy advisory failure: {e}");
+    }
     Ok(())
 }
 
@@ -1534,7 +1637,7 @@ fn cmd_schema_check(schemas_dir: &Path) -> anyhow::Result<()> {
         check_schema_mirror_at(&generated_dir, schemas_dir)
     })();
 
-    let _ = fs::remove_dir_all(&generated_dir);
+    fs::remove_dir_all(&generated_dir).ok();
     result
 }
 
@@ -3141,7 +3244,7 @@ mod tests {
             );
         }
 
-        let _ = fs::remove_dir_all(&out_dir);
+        fs::remove_dir_all(&out_dir).ok();
     }
 
     #[test]
@@ -3162,7 +3265,7 @@ mod tests {
             assert!(result.is_err(), "expected schema validation to fail");
         });
 
-        let _ = fs::remove_dir_all(&temp_dir);
+        fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
@@ -3176,7 +3279,7 @@ mod tests {
             cmd_conform(Some(temp_dir.clone()), None).expect("fixtures dir should validate");
         });
 
-        let _ = fs::remove_dir_all(&temp_dir);
+        fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
@@ -3198,7 +3301,7 @@ mod tests {
             );
         });
 
-        let _ = fs::remove_dir_all(&temp_dir);
+        fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
@@ -3253,7 +3356,7 @@ mod tests {
         assert!(!contracts.join("not_sensor.json").exists());
         assert!(!contracts.join("sensor_report.txt").exists());
 
-        let _ = fs::remove_dir_all(&root);
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -3269,7 +3372,7 @@ mod tests {
 
         check_fixture_mirror_at(&golden, &contracts).expect("mirror check ok");
 
-        let _ = fs::remove_dir_all(&root);
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -3284,7 +3387,7 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("does not exist"), "unexpected error: {}", msg);
 
-        let _ = fs::remove_dir_all(&root);
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -3307,7 +3410,7 @@ mod tests {
             msg
         );
 
-        let _ = fs::remove_dir_all(&root);
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -3317,7 +3420,7 @@ mod tests {
             cmd_schema(&out_dir).expect("schema command");
             cmd_schema_check(&out_dir).expect("schema check should pass");
         });
-        let _ = fs::remove_dir_all(&out_dir);
+        fs::remove_dir_all(&out_dir).ok();
     }
 
     #[test]
@@ -3335,7 +3438,7 @@ mod tests {
                 msg
             );
         });
-        let _ = fs::remove_dir_all(&out_dir);
+        fs::remove_dir_all(&out_dir).ok();
     }
 
     #[test]
@@ -3353,7 +3456,7 @@ mod tests {
                 msg
             );
         });
-        let _ = fs::remove_dir_all(&out_dir);
+        fs::remove_dir_all(&out_dir).ok();
     }
 
     #[test]
@@ -3371,7 +3474,7 @@ mod tests {
                 msg
             );
         });
-        let _ = fs::remove_dir_all(&out_dir);
+        fs::remove_dir_all(&out_dir).ok();
     }
 
     #[test]
@@ -3403,7 +3506,7 @@ mod tests {
         .expect("write fixture");
 
         cmd_schema_compat(&root).expect("compat fixture should deserialize");
-        let _ = fs::remove_dir_all(&root);
+        fs::remove_dir_all(&root).ok();
     }
 
     // --- doc-test unit tests ---

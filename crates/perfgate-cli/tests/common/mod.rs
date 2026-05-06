@@ -42,6 +42,6 @@ pub fn generate_compare_receipt(
         .arg(output_path);
 
     // The helper only needs the output artifact; verdict exit code is irrelevant here.
-    let _ = cmd.output();
+    cmd.output().ok();
     Ok(())
 }

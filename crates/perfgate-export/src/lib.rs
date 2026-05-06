@@ -764,8 +764,8 @@ fn status_to_string(status: MetricStatus) -> String {
 /// Write an optional u64 value to a buffer. Writes nothing if `None`.
 fn write_opt_u64(buf: &mut String, val: Option<u64>) {
     if let Some(v) = val {
-        // write! to a String is infallible, unwrap is safe
-        let _ = write!(buf, "{}", v);
+        // write! to a String is infallible.
+        write!(buf, "{}", v).expect("writing to String never fails");
     }
 }
 

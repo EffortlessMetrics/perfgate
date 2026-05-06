@@ -174,8 +174,21 @@ impl SqliteStore {
             CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(action);
             "#,
         )?;
-        let _ = conn.execute("ALTER TABLE verdicts ADD COLUMN wall_ms_cv REAL", []);
-        let _ = conn.execute("ALTER TABLE verdicts ADD COLUMN flakiness_score REAL", []);
+        // Idempotent migration: ADD COLUMN errors with "duplicate column"
+        // when the column already exists. We ignore that specific error and
+        // bail on anything else.
+        for stmt in [
+            "ALTER TABLE verdicts ADD COLUMN wall_ms_cv REAL",
+            "ALTER TABLE verdicts ADD COLUMN flakiness_score REAL",
+        ] {
+            match conn.execute(stmt, []) {
+                Ok(_) => {}
+                Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
+                    if msg.contains("duplicate column") => {}
+                Err(rusqlite::Error::SqliteFailure(_, None)) => {}
+                Err(e) => return Err(StoreError::from(e)),
+            }
+        }
         Ok(())
     }
 

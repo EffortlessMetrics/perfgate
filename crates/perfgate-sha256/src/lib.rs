@@ -143,7 +143,11 @@ pub fn sha256_hex(data: &[u8]) -> String {
 
     let mut result = String::with_capacity(64);
     for val in h.iter() {
-        let _ = core::fmt::write(&mut result, core::format_args!("{:08x}", val));
+        // Writing to a `String` via `core::fmt::write` is infallible because
+        // `String`'s `fmt::Write` impl never returns an error; we still need
+        // to observe the `Result` so `let_underscore_must_use` doesn't fire.
+        core::fmt::write(&mut result, core::format_args!("{:08x}", val))
+            .expect("writing to String never fails");
     }
     result
 }

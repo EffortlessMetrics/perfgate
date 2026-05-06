@@ -1,0 +1,148 @@
+# Clippy debt ledger.
+#
+# Every Clippy lint that is currently shipped at a *softer* level than the
+# target level in `policy/clippy-lints.toml` must be receipted here, with an
+# owner, a reason, and an expiry. `cargo run -p xtask -- check-lint-policy`
+# fails on:
+#   * entries with a missing/expired `expires`
+#   * entries whose `target_level` is already met (stale debt)
+#   * lints in clippy-lints.toml that are softer than target without an entry
+#
+# Schema:
+#   [[debt]]
+#   lint = "clippy::unwrap_used"
+#   current_level = "warn"
+#   target_level = "deny"
+#   owner = "<team or maintainer handle>"
+#   reason = "<one line, ideally with a tracking issue>"
+#   expires = "YYYY-MM-DD"
+
+schema_version = "1.0"
+
+[[debt]]
+lint = "clippy::panic"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "39 panic!/todo!/unreachable!() call sites; receipt via no-panic allowlist before flipping."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::unreachable"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Pairs with panic; flip together once allowlist is baselined."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::unwrap_used"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "~2.5k unwrap call sites across crates; baseline via xtask check-no-panic-family."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::expect_used"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Same migration as unwrap_used; receipt then promote."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::unwrap_in_result"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Result-returning fns still hold panicking unwraps; flip post-baseline."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::string_slice"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-render"
+reason = "Render/markdown paths slice on byte indexes; audit for UTF-8 safety."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::indexing_slicing"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Many slice[i] sites; replace with .get/.first/.last() incrementally."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::map_err_ignore"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Existing call sites discard inner errors; tighten in adapters first."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::lines_filter_map_ok"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-ingest"
+reason = "Ingest paths read text; we want explicit error propagation."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::float_cmp"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-domain"
+reason = "Statistics tests rely on direct float compares; migrate to abs-diff helpers."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::float_cmp_const"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-domain"
+reason = "Same migration as float_cmp."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::read_line_without_trim"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-cli"
+reason = "Audit any read_line callsites in CLI before flipping."
+expires = "2026-09-30"
+
+[[debt]]
+lint = "clippy::get_unwrap"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "tests/integration/* still use BTreeMap.get(k).unwrap() against keys validated upstream."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::assertions_on_result_states"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Existing test sites use assert!(res.is_ok()); migrate to .unwrap() and re-deny."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::allow_attributes"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Migrate existing #[allow(...)] sites to #[expect(..., reason = ...)]."
+expires = "2026-12-31"
+
+[[debt]]
+lint = "clippy::allow_attributes_without_reason"
+current_level = "warn"
+target_level = "deny"
+owner = "perfgate-core"
+reason = "Pairs with allow_attributes migration."
+expires = "2026-12-31"

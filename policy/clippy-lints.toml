@@ -1,0 +1,624 @@
+# Shared Clippy/Rust lint policy for the perfgate workspace.
+#
+# This file is the *authoritative* declaration of the lint policy. The
+# `[workspace.lints.*]` block in the root `Cargo.toml` MUST be a strict subset
+# of (or equal to) the lints listed below. `cargo run -p xtask -- check-lint-policy`
+# enforces the relationship.
+#
+# Design principles (see docs/CLIPPY_POLICY.md):
+#   * Deny by default. Allow by receipt. Expire exceptions. Measure drift.
+#   * Clippy is the immediate code-shape detector.
+#   * The semantic no-panic checker (policy/no-panic-allowlist.toml) is the
+#     authoritative exception mechanism for panic-family debt.
+#   * No bare `#[allow(...)]`. Use `#[expect(..., reason = "...")]` only.
+#   * No `clippy.toml` test carveouts (`allow-unwrap-in-tests`, etc.).
+
+schema_version = "1.0"
+msrv = "1.93"
+
+[policy]
+# Tests must not panic outside of the test harness's own assertion macros.
+panic_free_tests = true
+# Disable test-only Clippy carveouts entirely.
+allow_test_carveouts = false
+# All exception attributes must use `#[expect(..., reason = "...")]`.
+suppression_style = "expect-with-reason"
+# Forbid `#![warn(clippy::all, clippy::pedantic, ...)]` blanket profiles.
+blanket_categories = false
+# Unsafe posture for this repo. perfgate has unix `wait4()` and friends, so
+# unsafe is `deny` rather than `forbid`. Specific blocks must be receipted.
+unsafe_posture = "deny"
+
+# ---------------------------------------------------------------------------
+# Active lints (as of MSRV 1.93)
+# ---------------------------------------------------------------------------
+#
+# Format:
+#   [[active]]
+#   name  = "<lint name without `clippy::`/`rust::` prefix>"
+#   group = "rust" | "clippy"
+#   level = "deny" | "warn" | "allow"
+#   reason = "<one line describing what bug/footgun this catches>"
+#
+# Stage notes:
+#   * Lints currently shipped as `warn` are debt-staged: the workspace owns
+#     existing debt, and the lint will be promoted to `deny` once the no-panic
+#     allowlist baseline catches up.
+#   * Lints currently shipped as `deny` are intentionally non-negotiable.
+
+# --- Panic-family / abrupt exits -------------------------------------------
+[[active]]
+name = "dbg_macro"
+group = "clippy"
+level = "deny"
+reason = "Strays into committed code; use tracing or a deliberate fmt println."
+
+[[active]]
+name = "todo"
+group = "clippy"
+level = "deny"
+reason = "Placeholder panics ship by accident; carry a tracking issue instead."
+
+[[active]]
+name = "unimplemented"
+group = "clippy"
+level = "deny"
+reason = "Same risk as todo!: silent runtime panic in production paths."
+
+[[active]]
+name = "panic"
+group = "clippy"
+level = "warn"
+reason = "Stage A: deny once allowlist baseline catches existing call sites."
+
+[[active]]
+name = "unreachable"
+group = "clippy"
+level = "warn"
+reason = "Catches branches that turn into runtime panics under refactors."
+
+[[active]]
+name = "unwrap_used"
+group = "clippy"
+level = "warn"
+reason = "Stage A: 2.4k call sites; promote to deny via no-panic allowlist."
+
+[[active]]
+name = "expect_used"
+group = "clippy"
+level = "warn"
+reason = "Stage A: same migration as unwrap_used."
+
+[[active]]
+name = "get_unwrap"
+group = "clippy"
+level = "warn"
+reason = "Stage A: integration tests still use .get(k).unwrap() over BTreeMap; receipt then promote."
+
+[[active]]
+name = "unwrap_in_result"
+group = "clippy"
+level = "warn"
+reason = "Result-returning fns should propagate, not panic."
+
+[[active]]
+name = "string_slice"
+group = "clippy"
+level = "warn"
+reason = "Byte-index slicing on str panics on UTF-8 boundaries."
+
+[[active]]
+name = "indexing_slicing"
+group = "clippy"
+level = "warn"
+reason = "[i] panics on out-of-bounds; prefer get/checked APIs."
+
+[[active]]
+name = "out_of_bounds_indexing"
+group = "clippy"
+level = "deny"
+reason = "Constant-index OOB is always a bug."
+
+[[active]]
+name = "unchecked_duration_subtraction"
+group = "clippy"
+level = "deny"
+reason = "Duration subtraction panics on underflow; use checked_sub."
+
+# --- UTF-8 / parser safety -------------------------------------------------
+[[active]]
+name = "char_indices_as_byte_indices"
+group = "clippy"
+level = "deny"
+reason = "char positions are not byte positions; this is a UTF-8 footgun."
+
+[[active]]
+name = "index_refutable_slice"
+group = "clippy"
+level = "deny"
+reason = "Refutable slice patterns hide partial-match bugs."
+
+# --- Silent failure --------------------------------------------------------
+[[active]]
+name = "let_underscore_future"
+group = "clippy"
+level = "deny"
+reason = "Dropping a Future cancels work silently."
+
+[[active]]
+name = "let_underscore_must_use"
+group = "clippy"
+level = "deny"
+reason = "Dropping #[must_use] values discards return-channel signal."
+
+[[active]]
+name = "let_underscore_lock"
+group = "clippy"
+level = "deny"
+reason = "Dropping a guard releases the lock immediately — almost never intended."
+
+[[active]]
+name = "map_err_ignore"
+group = "clippy"
+level = "warn"
+reason = "Discarding inner error context loses provenance for failure triage."
+
+[[active]]
+name = "assertions_on_result_states"
+group = "clippy"
+level = "warn"
+reason = "Stage A: test code still uses assert!(res.is_ok()); migrate to .unwrap()/Result tests, then promote."
+
+[[active]]
+name = "lines_filter_map_ok"
+group = "clippy"
+level = "warn"
+reason = "Silently drops Err lines from a parse iterator."
+
+# --- Async / concurrency ---------------------------------------------------
+[[active]]
+name = "await_holding_lock"
+group = "clippy"
+level = "deny"
+reason = "Awaiting under std::sync lock deadlocks under cancellation."
+
+[[active]]
+name = "await_holding_refcell_ref"
+group = "clippy"
+level = "deny"
+reason = "RefCell across await is a runtime borrow-check panic."
+
+[[active]]
+name = "await_holding_invalid_type"
+group = "clippy"
+level = "deny"
+reason = "Catches user-declared disallowed types held across await."
+
+[[active]]
+name = "future_not_send"
+group = "clippy"
+level = "warn"
+reason = "Hard to spawn on multi-threaded executors later."
+
+[[active]]
+name = "arc_with_non_send_sync"
+group = "clippy"
+level = "deny"
+reason = "Arc<T> where T: !Sync is a soundness footgun across threads."
+
+[[active]]
+name = "rc_mutex"
+group = "clippy"
+level = "deny"
+reason = "Rc<Mutex<T>> indicates you wanted Arc<Mutex<T>>."
+
+[[active]]
+name = "mut_mutex_lock"
+group = "clippy"
+level = "deny"
+reason = "Mutex<&mut T> is almost always wrong shape."
+
+[[active]]
+name = "readonly_write_lock"
+group = "clippy"
+level = "deny"
+reason = "write() on a read-only path causes spurious contention."
+
+# --- Unsafe / memory -------------------------------------------------------
+[[active]]
+name = "mem_forget"
+group = "clippy"
+level = "deny"
+reason = "Leaks Drop side effects (locks, file handles, heap)."
+
+[[active]]
+name = "forget_non_drop"
+group = "clippy"
+level = "deny"
+reason = "Forget on non-Drop type indicates lifetime confusion."
+
+[[active]]
+name = "drop_non_drop"
+group = "clippy"
+level = "deny"
+reason = "Calling drop() on Copy/non-Drop is a no-op masquerading as cleanup."
+
+[[active]]
+name = "undocumented_unsafe_blocks"
+group = "clippy"
+level = "deny"
+reason = "Every unsafe block must carry a SAFETY: comment."
+
+[[active]]
+name = "multiple_unsafe_ops_per_block"
+group = "clippy"
+level = "deny"
+reason = "Each unsafe op should be auditable in its own block."
+
+# --- Numeric correctness ---------------------------------------------------
+[[active]]
+name = "float_cmp"
+group = "clippy"
+level = "warn"
+reason = "Bitwise float equality is rarely the intended comparison."
+
+[[active]]
+name = "float_cmp_const"
+group = "clippy"
+level = "warn"
+reason = "Same risk as float_cmp; constant comparisons hide rounding."
+
+[[active]]
+name = "float_equality_without_abs"
+group = "clippy"
+level = "deny"
+reason = "(a-b) < eps without abs() ignores negative drift."
+
+[[active]]
+name = "lossy_float_literal"
+group = "clippy"
+level = "deny"
+reason = "f32/f64 literal that already loses precision at parse time."
+
+[[active]]
+name = "cast_sign_loss"
+group = "clippy"
+level = "warn"
+reason = "Stage A: many ns→f64 casts; tighten after audit."
+
+[[active]]
+name = "cast_possible_wrap"
+group = "clippy"
+level = "warn"
+reason = "Catch silently wrapping integer casts."
+
+[[active]]
+name = "cast_possible_truncation"
+group = "clippy"
+level = "warn"
+reason = "Catch silently truncating integer casts."
+
+[[active]]
+name = "cast_precision_loss"
+group = "clippy"
+level = "warn"
+reason = "Catch i64/u64 → f32/f64 precision loss."
+
+[[active]]
+name = "invalid_upcast_comparisons"
+group = "clippy"
+level = "deny"
+reason = "Comparison whose result is decided by the cast is dead code."
+
+[[active]]
+name = "cast_abs_to_unsigned"
+group = "clippy"
+level = "deny"
+reason = "x.abs() as u32 traps on i32::MIN; use unsigned_abs()."
+
+[[active]]
+name = "cast_enum_truncation"
+group = "clippy"
+level = "deny"
+reason = "Truncating an enum to a smaller integer destroys discriminants."
+
+[[active]]
+name = "cast_nan_to_int"
+group = "clippy"
+level = "deny"
+reason = "NaN-as-int is platform-dependent UB-adjacent."
+
+# --- File / process / path footguns ----------------------------------------
+[[active]]
+name = "suspicious_open_options"
+group = "clippy"
+level = "deny"
+reason = ".create(true) without .truncate(true)/.append(true) silently grows files."
+
+[[active]]
+name = "nonsensical_open_options"
+group = "clippy"
+level = "deny"
+reason = "Open option combinations that the OS will reject at runtime."
+
+[[active]]
+name = "ineffective_open_options"
+group = "clippy"
+level = "deny"
+reason = "Options that pair with each other are silently dropped."
+
+[[active]]
+name = "path_buf_push_overwrite"
+group = "clippy"
+level = "deny"
+reason = "Pushing an absolute path overwrites the buffer entirely."
+
+[[active]]
+name = "join_absolute_paths"
+group = "clippy"
+level = "deny"
+reason = "Path::join with absolute arg drops base — usually a bug."
+
+[[active]]
+name = "read_line_without_trim"
+group = "clippy"
+level = "warn"
+reason = "trailing \\n breaks parse_int and friends."
+
+[[active]]
+name = "exit"
+group = "clippy"
+level = "warn"
+reason = "Only the CLI boundary may decide process exit; library code must propagate."
+
+# --- API / trait correctness -----------------------------------------------
+[[active]]
+name = "iter_not_returning_iterator"
+group = "clippy"
+level = "deny"
+reason = "fn iter(...) that returns non-Iterator misleads downstream consumers."
+
+[[active]]
+name = "expl_impl_clone_on_copy"
+group = "clippy"
+level = "warn"
+reason = "Drift between Clone and Copy semantics."
+
+[[active]]
+name = "infallible_try_from"
+group = "clippy"
+level = "deny"
+reason = "Use From, not infallible TryFrom."
+
+[[active]]
+name = "fallible_impl_from"
+group = "clippy"
+level = "deny"
+reason = "From should not panic; use TryFrom."
+
+[[active]]
+name = "error_impl_error"
+group = "clippy"
+level = "deny"
+reason = "Error trait must be implemented to participate in the ecosystem."
+
+[[active]]
+name = "result_unit_err"
+group = "clippy"
+level = "warn"
+reason = "Result<T, ()> erases the failure cause."
+
+[[active]]
+name = "result_large_err"
+group = "clippy"
+level = "warn"
+reason = "Large error values bloat happy-path return size."
+
+# --- Format / good-taste lints that pay rent -------------------------------
+[[active]]
+name = "format_in_format_args"
+group = "clippy"
+level = "deny"
+reason = "Nested format!() inside format_args!() is wasteful and unclear."
+
+[[active]]
+name = "to_string_in_format_args"
+group = "clippy"
+level = "deny"
+reason = "Use {x} instead of {}.to_string()."
+
+[[active]]
+name = "unused_format_specs"
+group = "clippy"
+level = "deny"
+reason = "Format specs that can never apply — usually a typo."
+
+[[active]]
+name = "uninlined_format_args"
+group = "clippy"
+level = "warn"
+reason = "Prefer inline format args for legibility."
+
+[[active]]
+name = "manual_let_else"
+group = "clippy"
+level = "warn"
+reason = "let-else makes early returns and bindings explicit."
+
+[[active]]
+name = "manual_ok_or"
+group = "clippy"
+level = "warn"
+reason = "Use Option::ok_or instead of match boilerplate."
+
+[[active]]
+name = "manual_strip"
+group = "clippy"
+level = "warn"
+reason = "Use strip_prefix/strip_suffix; manual slicing is fragile."
+
+[[active]]
+name = "manual_split_once"
+group = "clippy"
+level = "warn"
+reason = "split_once captures intent better than split().next()."
+
+[[active]]
+name = "filter_map_next"
+group = "clippy"
+level = "warn"
+reason = "find_map captures intent better than filter_map().next()."
+
+[[active]]
+name = "flat_map_option"
+group = "clippy"
+level = "warn"
+reason = "Use filter_map for Option flat-maps."
+
+[[active]]
+name = "match_result_ok"
+group = "clippy"
+level = "warn"
+reason = "Use res.ok() rather than match { Ok(v) => Some(v), Err(_) => None }."
+
+[[active]]
+name = "needless_collect"
+group = "clippy"
+level = "warn"
+reason = "Avoid intermediate Vec allocation when iterator chain suffices."
+
+# --- Documentation discipline ----------------------------------------------
+[[active]]
+name = "missing_panics_doc"
+group = "clippy"
+level = "warn"
+reason = "Functions that panic must say so; pairs with panic-family allowlist."
+
+[[active]]
+name = "missing_errors_doc"
+group = "clippy"
+level = "warn"
+reason = "Result-returning APIs should document their failure modes."
+
+# --- Suppression governance (keeps the policy honest) ----------------------
+[[active]]
+name = "allow_attributes"
+group = "clippy"
+level = "warn"
+reason = "Stage A: prefer #[expect(..)] over #[allow(..)]; promote to deny."
+
+[[active]]
+name = "allow_attributes_without_reason"
+group = "clippy"
+level = "warn"
+reason = "Stage A: every suppression must justify itself."
+
+[[active]]
+name = "blanket_clippy_restriction_lints"
+group = "clippy"
+level = "deny"
+reason = "No #![warn(clippy::restriction)] blanket profiles."
+
+[[active]]
+name = "should_panic_without_expect"
+group = "clippy"
+level = "deny"
+reason = "#[should_panic] must include expected = \"...\" to be discriminating."
+
+# --- Rust group ------------------------------------------------------------
+[[active]]
+name = "unsafe_op_in_unsafe_fn"
+group = "rust"
+level = "deny"
+reason = "Even inside unsafe fn, each unsafe op should be marked."
+
+[[active]]
+name = "unused_must_use"
+group = "rust"
+level = "deny"
+reason = "#[must_use] return values must be observed."
+
+[[active]]
+name = "unexpected_cfgs"
+group = "rust"
+level = "warn"
+reason = "Unknown cfg names usually indicate a typo or stale flag."
+
+# ---------------------------------------------------------------------------
+# Planned promotions (activate when MSRV bumps to listed Rust version)
+# ---------------------------------------------------------------------------
+
+[[planned]]
+name = "clippy::same_length_and_capacity"
+level = "deny"
+activate_when_msrv = "1.94"
+reason = "Catch raw-parts reconstruction mistakes."
+
+[[planned]]
+name = "clippy::manual_ilog2"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Prefer the standard integer log helper."
+
+[[planned]]
+name = "clippy::decimal_bitwise_operands"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Make bit masks visually inspectable."
+
+[[planned]]
+name = "clippy::needless_type_cast"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Avoid stale numeric type drift."
+
+[[planned]]
+name = "clippy::disallowed_fields"
+level = "deny"
+activate_when_msrv = "1.95"
+reason = "Ban direct field access across protected seams."
+
+[[planned]]
+name = "clippy::manual_checked_ops"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Prefer checked arithmetic over manual divide-by-zero guards."
+
+[[planned]]
+name = "clippy::manual_take"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Use std ownership helper instead of local reimplementation."
+
+[[planned]]
+name = "clippy::manual_pop_if"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Use collection APIs that encode predicate-and-pop intent."
+
+[[planned]]
+name = "clippy::duration_suboptimal_units"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Make durations legible without mental unit conversion."
+
+[[planned]]
+name = "clippy::unnecessary_trailing_comma"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Keep format macro calls clean."
+
+# ---------------------------------------------------------------------------
+# Disallowed methods/macros (process/clock/IO discipline)
+# ---------------------------------------------------------------------------
+# These are mirrored into clippy.toml when the corresponding clippy lints
+# (`disallowed_methods`, `disallowed_macros`) are activated. They are inert
+# until then, but documented here so policy lives in one place.
+
+[[disallowed_method]]
+path = "std::process::exit"
+reason = "Only the CLI boundary may decide process exit; library code must propagate Result."
+
+[[disallowed_method]]
+path = "std::thread::sleep"
+reason = "Use injected clocks or retry-policy helpers — sleeps cause flaky tests."

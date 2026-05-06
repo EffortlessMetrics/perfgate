@@ -124,13 +124,14 @@ impl<R: ProcessRunner> BisectUseCase<R> {
             }
         }
 
-        // Cleanup
+        // Cleanup — best-effort; cleanup failures must not mask the bisect
+        // result, so we explicitly drop the Result with `.ok()`.
         println!("Cleaning up...");
-        let _ = Self::run_git(&["bisect", "reset"]);
+        Self::run_git(&["bisect", "reset"]).ok();
         if !original_branch.is_empty() {
-            let _ = Self::run_git(&["checkout", &original_branch]);
+            Self::run_git(&["checkout", &original_branch]).ok();
         }
-        let _ = fs::remove_file(&baseline_exe);
+        fs::remove_file(&baseline_exe).ok();
 
         Ok(())
     }

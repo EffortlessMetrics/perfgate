@@ -284,7 +284,12 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
+    // SAFETY: `libc::rusage` is a plain old data struct of integer/timeval
+    // fields — `mem::zeroed` produces a valid all-zeros initial state.
     let mut usage_before = unsafe { std::mem::zeroed::<libc::rusage>() };
+    // SAFETY: `usage_before` is a valid, mutably-borrowed rusage allocation.
+    // `getrusage` only writes into the destination on success; on failure we
+    // ignore the return code and keep the zeroed state.
     let _ = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage_before) };
 
     let start = Instant::now();
@@ -329,7 +334,10 @@ fn run_unix(spec: &CommandSpec) -> Result<RunResult, AdapterError> {
     let mut page_faults = None;
     let mut ctx_switches = None;
 
+    // SAFETY: see usage_before above.
     let mut usage_after = unsafe { std::mem::zeroed::<libc::rusage>() };
+    // SAFETY: `usage_after` is a valid, mutably-borrowed rusage allocation;
+    // `getrusage` writes only on success (return 0).
     if unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut usage_after) } == 0 {
         let user_ms = diff_timeval_ms(usage_after.ru_utime, usage_before.ru_utime);
         let sys_ms = diff_timeval_ms(usage_after.ru_stime, usage_before.ru_stime);

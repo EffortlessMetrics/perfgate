@@ -218,8 +218,8 @@ impl Profiler for PerfProfiler {
             }
         })?;
 
-        // Clean up perf.data
-        let _ = std::fs::remove_file(&perf_data);
+        // Clean up perf.data — best-effort.
+        std::fs::remove_file(&perf_data).ok();
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -376,8 +376,8 @@ impl Profiler for DtraceProfiler {
             }
         })?;
 
-        // Clean up intermediate files
-        let _ = std::fs::remove_file(&stacks_path);
+        // Clean up intermediate files — best-effort.
+        std::fs::remove_file(&stacks_path).ok();
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
