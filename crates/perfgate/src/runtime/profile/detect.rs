@@ -1,6 +1,6 @@
 //! Profiler detection: probes the system for available profiling tools.
 
-use crate::profiler::{
+use super::profiler::{
     CargoFlamegraphProfiler, DtraceProfiler, PerfProfiler, ProfileError, ProfileRequest,
     ProfileResult, Profiler,
 };

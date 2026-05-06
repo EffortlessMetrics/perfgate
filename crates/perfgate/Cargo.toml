@@ -25,6 +25,12 @@ perfgate-sensor.workspace = true
 perfgate-export.workspace = true
 perfgate-host-detect.workspace = true
 perfgate-sha256.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
 
 [features]
 default = []

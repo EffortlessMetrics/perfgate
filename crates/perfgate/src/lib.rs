@@ -36,6 +36,9 @@ pub use perfgate_types::error;
 // validation is now part of types
 pub use perfgate_types::validation;
 
+/// Runtime helpers for optional diagnostics and local execution support.
+pub mod runtime;
+
 // Common re-exports for ergonomic use
 pub mod prelude {
     pub use perfgate_app::{CheckUseCase, CompareUseCase, RunBenchUseCase};

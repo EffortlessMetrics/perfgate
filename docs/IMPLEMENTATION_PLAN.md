@@ -107,7 +107,6 @@ gate once transition packages stop being publishable.
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-fake` | Test fixtures and mock data generators |
-| `perfgate-profile` | Profiling diagnostics and flamegraph capture |
 | `perfgate-ingest` | External benchmark format ingestion |
 | `perfgate-github` | GitHub API and PR-comment integration |
 | `perfgate-scaling` | Complexity and scaling analysis |

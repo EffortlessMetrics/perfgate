@@ -45,6 +45,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-paired` | `perfgate_domain::paired` | compatibility wrapper remains |
 | `perfgate-error` | `perfgate_types::error` | compatibility wrapper remains |
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
+| `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -69,7 +70,6 @@ high-level target is:
 | `perfgate-export` | `perfgate::presentation::export` |
 | `perfgate-sensor` | `perfgate::presentation::sensor` |
 | `perfgate-adapters` | `perfgate::runtime` |
-| `perfgate-profile` | `perfgate::runtime::profile` |
 | `perfgate-app` | `perfgate::app` |
 | `perfgate-github` | `perfgate::integrations::github` |
 | `perfgate-ingest` | `perfgate::integrations::ingest` |

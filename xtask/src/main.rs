@@ -685,7 +685,6 @@ const ARCH_RULES: &[ArchRule] = &[
         sources: &["perfgate-types", "perfgate-api"],
         forbidden: &[
             "perfgate-adapters",
-            "perfgate-profile",
             "perfgate-app",
             "perfgate-client",
             "perfgate-server",
@@ -712,7 +711,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-export",
             "perfgate-github",
             "perfgate-ingest",
-            "perfgate-profile",
             "perfgate-render",
             "perfgate-sensor",
             "perfgate-server",
@@ -727,7 +725,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-adapters",
             "perfgate-app",
             "perfgate-client",
-            "perfgate-profile",
             "perfgate-server",
             "perfgate-cli",
             "perfgate",
@@ -735,7 +732,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "runtime packages stay below service/client/cli entrypoints",
-        sources: &["perfgate-adapters", "perfgate-profile"],
+        sources: &["perfgate-adapters"],
         forbidden: &[
             "perfgate-client",
             "perfgate-server",

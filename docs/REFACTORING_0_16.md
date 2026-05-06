@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a `perfgate-error` compatibility wrapper. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a `perfgate-error` compatibility wrapper, and the profiling implementation now lives under `perfgate::runtime::profile`. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -92,7 +92,7 @@ I/O and external interactions:
 | Current Crate | New Module | Why |
 |---------------|-----------|-----|
 | `perfgate-adapters` | `perfgate::runtime` | System adapters (rusage, process execution) |
-| `perfgate-profile` | `perfgate::runtime::profile` | Profiling data collection |
+| `perfgate-profile` | `perfgate::runtime::profile` | absorbed |
 
 Keep ports/interfaces separate from stdlib implementations:
 ```
@@ -328,7 +328,7 @@ Add feature gates and verify default build is lightweight.
 ### Phase 6: Collapse Runtime & App (PR 6)
 Move into `perfgate`:
 - `perfgate-adapters` -> `perfgate::runtime`
-- `perfgate-profile` -> `perfgate::runtime::profile`
+- `perfgate-profile` -> `perfgate::runtime::profile` (done)
 - `perfgate-app` -> `perfgate::app`
 - `perfgate-github` -> `perfgate::integrations::github` (feature-gated)
 - `perfgate-ingest` -> `perfgate::integrations::ingest` (feature-gated)

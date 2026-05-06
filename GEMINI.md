@@ -33,7 +33,6 @@ The architecture is modularized into 26 workspace crates:
 | `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
-| `perfgate-profile` | Profiling diagnostics and flamegraph capture |
 | `perfgate-ingest` | External benchmark format ingestion |
 | `perfgate-github` | GitHub API and PR-comment integration |
 | `perfgate-scaling` | Complexity and scaling analysis |

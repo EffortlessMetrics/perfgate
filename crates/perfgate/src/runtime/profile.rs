@@ -1,6 +1,6 @@
 //! Automatic flamegraph profiling for performance regression diagnostics.
 //!
-//! This crate detects available system profilers and generates flamegraph SVGs
+//! This module detects available system profilers and generates flamegraph SVGs
 //! when perfgate detects a regression. It supports:
 //!
 //! - `perf` (Linux) with `perf record` + folded stack conversion

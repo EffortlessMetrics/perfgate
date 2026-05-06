@@ -4,6 +4,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
+use perfgate::runtime::profile::{ProfileRequest, capture_flamegraph};
 use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
@@ -34,7 +35,6 @@ use perfgate_config::{
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_ingest::IngestFormat;
-use perfgate_profile::{ProfileRequest, capture_flamegraph};
 use perfgate_render::summary::{SummaryRequest, SummaryUseCase};
 use perfgate_scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
