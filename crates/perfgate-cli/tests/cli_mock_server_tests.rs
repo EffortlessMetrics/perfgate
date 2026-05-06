@@ -79,6 +79,22 @@ fn write_run_receipt(path: &std::path::Path, run_id: &str, benchmark: &str, wall
     .unwrap();
 }
 
+fn write_fallback_baseline(
+    root: &std::path::Path,
+    project: &str,
+    benchmark: &str,
+    run_id: &str,
+    wall_ms: u64,
+) {
+    let project_dir = root.join("baselines").join(project);
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(
+        project_dir.join(format!("{benchmark}-v1.json")),
+        serde_json::to_string(&baseline_record(project, benchmark, run_id, wall_ms)).unwrap(),
+    )
+    .unwrap();
+}
+
 fn add_success_command(cmd: &mut assert_cmd::Command) {
     cmd.arg("--");
     if cfg!(windows) {
@@ -456,6 +472,77 @@ fn test_compare_bare_baseline_without_server_uses_existing_local_error() {
     );
 }
 
+#[test]
+fn test_compare_explicit_server_baseline_without_config_hard_errors() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+    let compare_path = temp_dir.path().join("compare.json");
+
+    write_run_receipt(&current_path, "current-run", "contract-bench", 110);
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("compare")
+        .arg("--baseline")
+        .arg("@server:contract-bench")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--out")
+        .arg(&compare_path);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "baseline server is not configured",
+    ));
+    assert!(
+        !compare_path.exists(),
+        "explicit server compare must not write a compare receipt after configuration failure"
+    );
+}
+
+#[test]
+fn test_compare_explicit_server_baseline_does_not_use_local_fallback() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+    let compare_path = temp_dir.path().join("compare.json");
+    let config_path = temp_dir.path().join("perfgate.toml");
+
+    write_run_receipt(&current_path, "current-run", "explicit-contract", 110);
+    write_fallback_baseline(
+        temp_dir.path(),
+        "test-project",
+        "explicit-contract",
+        "fallback-run",
+        90,
+    );
+    fs::write(
+        &config_path,
+        "[baseline_server]\nfallback_to_local = true\n",
+    )
+    .unwrap();
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("compare")
+        .arg("--baseline")
+        .arg("@server:explicit-contract")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--baseline-server")
+        .arg("http://127.0.0.1:9/api/v1")
+        .arg("--project")
+        .arg("test-project")
+        .arg("--out")
+        .arg(&compare_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to fetch baseline"));
+    assert!(
+        !compare_path.exists(),
+        "explicit @server baseline must not silently compare against local fallback storage"
+    );
+}
+
 #[tokio::test]
 async fn test_run_upload_failure_preserves_local_receipt_and_exits_nonzero() {
     let mock_server = MockServer::start().await;
@@ -489,6 +576,47 @@ async fn test_run_upload_failure_preserves_local_receipt_and_exits_nonzero() {
     assert!(output_path.exists(), "run receipt should be preserved");
 }
 
+#[test]
+fn test_run_upload_connection_failure_does_not_write_local_fallback() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("run.json");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    fs::write(
+        &config_path,
+        "[baseline_server]\nfallback_to_local = true\n",
+    )
+    .unwrap();
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("run")
+        .arg("--name")
+        .arg("explicit-upload")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--upload")
+        .arg("--baseline-server")
+        .arg("http://127.0.0.1:9/api/v1")
+        .arg("--project")
+        .arg("test-project");
+    add_success_command(&mut cmd);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Failed to upload baseline to server",
+    ));
+    assert!(output_path.exists(), "run receipt should be preserved");
+    assert!(
+        !temp_dir
+            .path()
+            .join("baselines")
+            .join("test-project")
+            .exists(),
+        "explicit upload must not write a local fallback baseline"
+    );
+}
+
 #[tokio::test]
 async fn test_promote_to_server_failure_hard_errors() {
     let mock_server = MockServer::start().await;
@@ -518,6 +646,45 @@ async fn test_promote_to_server_failure_hard_errors() {
     cmd.assert().failure().stderr(predicate::str::contains(
         "Failed to promote baseline to server",
     ));
+}
+
+#[test]
+fn test_promote_to_server_connection_failure_does_not_write_local_fallback() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+    let config_path = temp_dir.path().join("perfgate.toml");
+
+    write_run_receipt(&current_path, "current-run", "explicit-promote", 100);
+    fs::write(
+        &config_path,
+        "[baseline_server]\nfallback_to_local = true\n",
+    )
+    .unwrap();
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("promote")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--to-server")
+        .arg("--benchmark")
+        .arg("explicit-promote")
+        .arg("--baseline-server")
+        .arg("http://127.0.0.1:9/api/v1")
+        .arg("--project")
+        .arg("test-project");
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Failed to promote baseline to server",
+    ));
+    assert!(
+        !temp_dir
+            .path()
+            .join("baselines")
+            .join("test-project")
+            .exists(),
+        "explicit promote must not write a local fallback baseline"
+    );
 }
 
 #[tokio::test]

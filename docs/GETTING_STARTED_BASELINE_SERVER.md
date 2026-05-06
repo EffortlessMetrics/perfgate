@@ -144,6 +144,13 @@ perfgate check --config perfgate.toml --bench my-bench
 `fallback_to_local = true` allows config-driven workflows to fall back to the
 local `baselines/` directory when the server is unavailable.
 
+Fallback is intentionally limited. Explicit local paths always use the file you
+named. Explicit remote operations such as `compare --baseline @server:my-bench`,
+`run --upload`, and `promote --to-server` hard-fail when the server cannot be
+used; they do not silently write to or read from local fallback storage. Bare
+benchmark selectors such as `--baseline my-bench` may use the server only when
+no local file/path is selected and the server is configured.
+
 ## Supported CLI Workflows
 
 The current CLI surfaces that talk to the baseline service are:

@@ -104,7 +104,7 @@ impl ServerFlags {
 
 enum BaselineSelector {
     Local(PathBuf),
-    Server { benchmark: String },
+    Server { benchmark: String, explicit: bool },
 }
 
 fn parse_baseline_selector(
@@ -122,6 +122,7 @@ fn parse_baseline_selector(
 
         return Ok(BaselineSelector::Server {
             benchmark: server_ref.to_string(),
+            explicit: true,
         });
     }
 
@@ -138,6 +139,7 @@ fn parse_baseline_selector(
 
     Ok(BaselineSelector::Server {
         benchmark: baseline.to_string(),
+        explicit: false,
     })
 }
 
@@ -1711,10 +1713,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             if upload {
                 let (server_config, _config_file) =
                     resolve_server_config_from_path(&server_flags, None)?;
-                let client = server_config.require_fallback_client(
-                    Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
-                    BASELINE_SERVER_NOT_CONFIGURED,
-                )?;
+                let client = server_config.require_client(BASELINE_SERVER_NOT_CONFIGURED)?;
                 let project = server_config.resolve_project(upload_project)?;
 
                 let request = UploadBaselineRequest {
@@ -1784,24 +1783,43 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 resolve_server_config_from_path(&server_flags, None)?;
             let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
             let (baseline_receipt, baseline_ref) = match baseline_selector {
-                BaselineSelector::Server { benchmark } => {
-                    let client = server_config.require_fallback_client(
-                        Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
-                        BASELINE_SERVER_NOT_CONFIGURED,
-                    )?;
+                BaselineSelector::Server {
+                    benchmark,
+                    explicit,
+                } => {
                     let explicit_baseline_project = baseline_project.is_some();
                     let project = server_config.resolve_project(baseline_project)?;
-                    let record = with_tokio_runtime(async {
-                        let record: perfgate_api::BaselineRecord = client
-                            .get_latest_baseline(&project, &benchmark)
-                            .await
-                            .with_context(|| {
-                                format!(
-                                    "Failed to fetch baseline '{benchmark}' from server (project: {project})"
-                                )
-                            })?;
-                        Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
-                    })?;
+                    let record = if explicit {
+                        let client =
+                            server_config.require_client(BASELINE_SERVER_NOT_CONFIGURED)?;
+                        with_tokio_runtime(async {
+                            let record: perfgate_api::BaselineRecord = client
+                                .get_latest_baseline(&project, &benchmark)
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "Failed to fetch baseline '{benchmark}' from server (project: {project})"
+                                    )
+                                })?;
+                            Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
+                        })?
+                    } else {
+                        let client = server_config.require_fallback_client(
+                            Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
+                            BASELINE_SERVER_NOT_CONFIGURED,
+                        )?;
+                        with_tokio_runtime(async {
+                            let record: perfgate_api::BaselineRecord = client
+                                .get_latest_baseline(&project, &benchmark)
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "Failed to fetch baseline '{benchmark}' from server (project: {project})"
+                                    )
+                                })?;
+                            Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
+                        })?
+                    };
 
                     let receipt = record.receipt;
                     let ref_info = CompareRef {
@@ -1967,10 +1985,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 let (server_config, _config_file) =
                     resolve_server_config_from_path(&server_flags, None)?;
                 // Promote to server
-                let client = server_config.require_fallback_client(
-                    Some(Path::new(DEFAULT_FALLBACK_BASELINE_DIR)),
-                    BASELINE_SERVER_NOT_CONFIGURED,
-                )?;
+                let client = server_config.require_client(BASELINE_SERVER_NOT_CONFIGURED)?;
                 let project = server_config.resolve_project(promote_project)?;
 
                 let benchmark_name = benchmark.ok_or_else(|| {

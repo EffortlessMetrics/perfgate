@@ -156,6 +156,23 @@ Cross-project compare is currently a CLI-side lookup override for baseline
 fetches. It does not change server-side auth or the project used by other
 server-backed workflows.
 
+## Baseline Resolution Contract
+
+The CLI keeps local and remote baseline semantics deliberately explicit:
+
+| Input | Server configured? | Behavior |
+|-------|:------------------:|----------|
+| `--baseline ./baseline.json` and file exists | yes/no | use the local file |
+| `--baseline @server:bench` | yes | fetch the server baseline |
+| `--baseline @server:bench` | no | hard error |
+| `--baseline bench` and no local file/path is selected | yes | fetch the server baseline |
+| `--baseline bench` and no local file/path is selected | no | use the existing local read error |
+| `run --upload` upload fails | yes | preserve the local run receipt and exit nonzero |
+| `promote --to-server` server fails | yes | hard error with no local fallback write |
+
+In short: explicit local paths win, explicit remote operations hard-fail, and
+fallback is only allowed for implicit remote behavior.
+
 ## Recommended Deployment Shapes
 
 ### Local developer workflow

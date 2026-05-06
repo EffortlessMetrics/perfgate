@@ -75,6 +75,13 @@ impl ResolvedServerConfig {
         Ok(Some(FallbackClient::new(client, fallback)))
     }
 
+    /// Returns a baseline client for explicit server operations, or an error
+    /// if the server is not configured.
+    pub fn require_client(&self, error_msg: &str) -> anyhow::Result<BaselineClient> {
+        self.create_client()?
+            .ok_or_else(|| anyhow::anyhow!(error_msg.to_string()))
+    }
+
     /// Returns a baseline client for server operations, or an error if not configured.
     pub fn require_fallback_client(
         &self,
