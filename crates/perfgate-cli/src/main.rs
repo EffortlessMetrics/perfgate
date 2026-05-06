@@ -1149,13 +1149,13 @@ pub struct PairedArgs {
     #[arg(long)]
     pub significance_min_samples: Option<u32>,
 
-    /// Maximum number of additional pairs to run if significance is not reached.
+    /// Maximum retry batches to collect when significance is required but not reached.
+    /// Each retry adds an adaptive number of measured pairs.
     #[arg(long, default_value_t = 0)]
     pub max_retries: u32,
 
-    /// CV threshold for early termination of retries.
-    /// If the coefficient of variation of wall-time differences exceeds this value,
-    /// retries are aborted because the benchmark is too noisy. Default: 0.5 (50%).
+    /// Optional CV threshold for early termination of significance retries.
+    /// If wall-time diff CV exceeds this value, retries stop because the benchmark is too noisy.
     #[arg(long)]
     pub cv_threshold: Option<f64>,
 

@@ -2270,6 +2270,7 @@ fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
         "README.md",
         "docs/CONFIG.md",
         "docs/FLEET_AGGREGATION.md",
+        "docs/PAIRED_BENCHMARKING.md",
         "docs/PIPELINE.md",
         "docs/BASELINE_SERVICE_DESIGN.md",
     ] {

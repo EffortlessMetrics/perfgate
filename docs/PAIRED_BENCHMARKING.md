@@ -28,7 +28,7 @@ The output is a standard `perfgate.compare.v1` receipt, compatible with `md`,
 ## Significance-based Retries
 
 The `paired` command supports automatic retries if statistical significance is
-not reached:
+required but not reached:
 
 ```bash
 perfgate paired \
@@ -36,10 +36,32 @@ perfgate paired \
   --baseline-cmd "./bench-old" \
   --current-cmd "./bench-new" \
   --repeat 10 \
-  --max-retries 3 \
   --significance-alpha 0.05 \
+  --require-significance \
+  --max-retries 3 \
   --out compare.json
 ```
 
-If the initial run doesn't reach significance, perfgate will retry up to
-`--max-retries` times with the same parameters before reporting the final result.
+Retries only run when `--require-significance` is set. If the initial measured
+pairs do not reach significance, each retry collects an adaptive extra batch:
+retry 1 collects 2 extra pairs, retry 2 collects 3 extra pairs, retry 3 collects
+5 extra pairs, and so on.
+
+Use `--cv-threshold` to stop retrying early when the paired wall-time
+differences are too noisy to trust:
+
+```bash
+perfgate paired \
+  --name my-bench \
+  --baseline-cmd "./bench-old" \
+  --current-cmd "./bench-new" \
+  --repeat 10 \
+  --significance-alpha 0.05 \
+  --require-significance \
+  --max-retries 3 \
+  --cv-threshold 0.50 \
+  --out compare.json
+```
+
+The receipt includes noise diagnostics when retries are enabled, including CV,
+noise level, retries used, and whether early termination occurred.
