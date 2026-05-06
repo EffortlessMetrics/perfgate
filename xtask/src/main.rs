@@ -450,6 +450,10 @@ fn cmd_public_surface(
         .copied()
         .filter(|name| !public_crates.contains(*name) && absorbed_crates.contains_key(*name))
         .collect();
+    let compatibility_wrapper_count = absorbed_crates
+        .values()
+        .filter(|disposition| is_compatibility_wrapper_disposition(disposition))
+        .count();
 
     println!(
         "  OK  public-surface policy accounts for {} publishable package(s)",
@@ -460,6 +464,12 @@ fn cmd_public_surface(
         println!(
             "      transition publishable packages with dispositions: {}",
             transitional.len()
+        );
+    }
+    if compatibility_wrapper_count > 0 {
+        println!(
+            "      compatibility wrappers isolated from production deps: {}",
+            compatibility_wrapper_count
         );
     }
 
@@ -530,6 +540,20 @@ fn strip_policy_comment(line: &str) -> &str {
         .unwrap_or(line)
 }
 
+const COMPATIBILITY_WRAPPER_DISPOSITION: &str = "[compatibility wrapper]";
+
+fn is_compatibility_wrapper_disposition(disposition: &str) -> bool {
+    disposition.contains(COMPATIBILITY_WRAPPER_DISPOSITION)
+}
+
+fn compatibility_wrapper_owner_path(disposition: &str) -> &str {
+    disposition
+        .split_once(COMPATIBILITY_WRAPPER_DISPOSITION)
+        .map(|(owner, _marker)| owner.trim())
+        .filter(|owner| !owner.is_empty())
+        .unwrap_or_else(|| disposition.trim())
+}
+
 fn collect_public_surface_errors(
     metadata: &CargoMetadata,
     public_crates: &BTreeSet<String>,
@@ -591,6 +615,58 @@ fn collect_public_surface_errors(
             "{} is publishable but is not listed in {} or {}",
             package.name, "policy/public_crates.txt", "policy/absorbed_crates.txt"
         ));
+    }
+
+    errors.extend(collect_compatibility_wrapper_dependency_errors(
+        metadata,
+        absorbed_crates,
+    ));
+
+    errors
+}
+
+fn collect_compatibility_wrapper_dependency_errors(
+    metadata: &CargoMetadata,
+    absorbed_crates: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let compatibility_wrappers: BTreeMap<&str, &str> = absorbed_crates
+        .iter()
+        .filter(|(_package, disposition)| is_compatibility_wrapper_disposition(disposition))
+        .map(|(package, disposition)| {
+            (
+                package.as_str(),
+                compatibility_wrapper_owner_path(disposition),
+            )
+        })
+        .collect();
+    if compatibility_wrappers.is_empty() {
+        return Vec::new();
+    }
+
+    let package_names: BTreeSet<&str> = metadata
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    let mut errors = Vec::new();
+
+    for package in &metadata.packages {
+        for dependency in package
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.kind.as_deref() != Some("dev"))
+            .filter(|dependency| dependency.path.is_some())
+            .filter(|dependency| package_names.contains(dependency.name.as_str()))
+        {
+            let Some(disposition) = compatibility_wrappers.get(dependency.name.as_str()) else {
+                continue;
+            };
+
+            errors.push(format!(
+                "{} depends on compatibility wrapper {}; use {} directly",
+                package.name, dependency.name, disposition
+            ));
+        }
     }
 
     errors
@@ -2853,6 +2929,83 @@ mod tests {
             collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, false);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("perfgate-surprise is publishable"));
+    }
+
+    #[test]
+    fn public_surface_rejects_workspace_dependencies_on_compatibility_wrappers() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate", None),
+                test_package_with_deps("perfgate-app", None, vec![workspace_dep("perfgate-error")]),
+                test_package_with_deps(
+                    "perfgate-error",
+                    None,
+                    vec![workspace_dep("perfgate-types")],
+                ),
+                test_package("perfgate-types", None),
+            ],
+        };
+        let public_crates = ["perfgate", "perfgate-types"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let absorbed_crates = [
+            ("perfgate-app".to_string(), "perfgate::app".to_string()),
+            (
+                "perfgate-error".to_string(),
+                "perfgate_types::error [compatibility wrapper]".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        let errors =
+            collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, false);
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains("perfgate-app depends on compatibility wrapper perfgate-error"),
+            "unexpected errors: {:?}",
+            errors
+        );
+        assert!(errors[0].contains("use perfgate_types::error directly"));
+        assert!(!errors[0].contains(COMPATIBILITY_WRAPPER_DISPOSITION));
+    }
+
+    #[test]
+    fn public_surface_allows_dev_dependencies_on_compatibility_wrappers() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate", None),
+                test_package_with_deps(
+                    "perfgate-app",
+                    None,
+                    vec![dev_workspace_dep("perfgate-error")],
+                ),
+                test_package_with_deps(
+                    "perfgate-error",
+                    None,
+                    vec![workspace_dep("perfgate-types")],
+                ),
+                test_package("perfgate-types", None),
+            ],
+        };
+        let public_crates = ["perfgate", "perfgate-types"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let absorbed_crates = [
+            ("perfgate-app".to_string(), "perfgate::app".to_string()),
+            (
+                "perfgate-error".to_string(),
+                "perfgate_types::error [compatibility wrapper]".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        let errors =
+            collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, false);
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
     }
 
     #[test]

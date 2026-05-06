@@ -108,7 +108,9 @@ filesystem/process APIs in production source.
 
 `xtask public-surface` fails if a publishable workspace package is neither listed in
 `policy/public_crates.txt` nor assigned a disposition in
-`policy/absorbed_crates.txt`.
+`policy/absorbed_crates.txt`. Entries marked `[compatibility wrapper]` must also
+stay out of non-dev workspace dependency graphs; internal crates should import
+the owner path directly and leave the wrapper for external compatibility.
 
 Run:
 
