@@ -41,6 +41,11 @@ Coverage workflow emits:
 See `codecov.yml` for Codecov status and reporting settings.
 Current configuration uses informational (non-blocking) checks while real data accumulates on `main`.
 
+The coverage command uses `cargo llvm-cov nextest` for libtest-compatible
+workspace packages and excludes the root `perfgate-tests` package. That package
+owns the `harness = false` Cucumber/BDD test binary, which normal CI runs
+directly because nextest cannot enumerate it.
+
 ## Ratcheting
 
 Once stable main-branch data exists, thresholds will be ratcheted incrementally

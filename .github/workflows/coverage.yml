@@ -79,6 +79,7 @@ jobs:
 
           cargo llvm-cov nextest \
             --workspace \
+            --exclude perfgate-tests \
             --locked \
             --all-features \
             --no-report
