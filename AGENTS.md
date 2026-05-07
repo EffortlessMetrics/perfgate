@@ -28,7 +28,6 @@ cargo test -p perfgate-adapters
 cargo test -p perfgate-paired
 cargo test -p perfgate-error
 cargo test -p perfgate-fake
-cargo test -p perfgate-config
 cargo test -p perfgate-api
 cargo test -p perfgate-github
 cargo test -p perfgate-selfbench
@@ -85,7 +84,7 @@ cargo +nightly fuzz run parse_run_receipt
 
 ## Architecture
 
-This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI. The architecture is modularized into 26 workspace crates:
+This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI. The architecture preserves SRP seams across the remaining workspace crates and absorbed owner modules:
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -96,7 +95,6 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | API models and authentication types for baseline service |
-| `perfgate-config` | Configuration loading and merging logic |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |

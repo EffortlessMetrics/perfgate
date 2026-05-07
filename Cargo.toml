@@ -7,7 +7,6 @@ default-members = [
 ]
 members = [
   "crates/perfgate-error",
-  "crates/perfgate-config",
   "crates/perfgate-api",
   "crates/perfgate-types",
   "crates/perfgate-paired",
@@ -76,7 +75,6 @@ perfgate-error.workspace = true
 perfgate-domain.workspace = true
 perfgate-paired.workspace = true
 perfgate-app.workspace = true
-perfgate-config.workspace = true
 perfgate-api.workspace = true
 perfgate.workspace = true
 glob.workspace = true
@@ -131,7 +129,6 @@ libc = "0.2.182"
 # Internal crates
 perfgate-error = { path = "crates/perfgate-error", version = "0.15.1" }
 perfgate-api = { path = "crates/perfgate-api", version = "0.15.1" }
-perfgate-config = { path = "crates/perfgate-config", version = "0.15.1" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.15.1" }
 perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.1" }
 perfgate-paired = { path = "crates/perfgate-paired", version = "0.15.1" }

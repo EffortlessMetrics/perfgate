@@ -14,7 +14,7 @@ This file provides comprehensive context for AI interactions within the `perfgat
 - **System Metrics**: Unix `rusage` (`wait4`), Windows `GlobalMemoryStatusEx`
 
 ### Architecture
-The architecture is modularized into 26 workspace crates:
+The architecture preserves SRP seams across the remaining workspace crates and absorbed owner modules:
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -25,7 +25,6 @@ The architecture is modularized into 26 workspace crates:
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | API models and authentication types for baseline service |
-| `perfgate-config` | Configuration loading and merging logic |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |

@@ -17,7 +17,7 @@ perfgate-paired -> perfgate_domain::paired [compatibility wrapper] [publish=fals
 perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
 
 # Contract-adjacent.
-perfgate-config -> perfgate_types::config
+perfgate-config -> perfgate_types::config and perfgate_client::ResolvedServerConfig [deleted]
 perfgate-api -> perfgate_types::baseline_service or shared client/server contract
 
 # Pure core and domain policy.

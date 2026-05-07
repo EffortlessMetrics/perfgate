@@ -75,7 +75,7 @@ Use this table to find the new import path for any old crate:
 | `perfgate-error` | `perfgate_types::error` | `use perfgate_types::error::*;` |
 | `perfgate-validation` | `perfgate_types::validation` | `use perfgate_types::validation::*;` |
 | `perfgate-auth` | `perfgate_api::auth` now; final owner TBD | `use perfgate_api::auth::*;` |
-| `perfgate-config` | `perfgate_types::config` | `use perfgate_types::config::*;` |
+| `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` | `use perfgate_types::config::*; use perfgate_client::ResolvedServerConfig;` |
 | `perfgate-api` | `perfgate_types::baseline_service` | `use perfgate_types::baseline_service::*;` |
 | `perfgate-fake` | private workspace crate | No public replacement yet; keep local test helpers in your own crate. |
 | `perfgate-adapters` | `perfgate::runtime` | `use perfgate::runtime::*;` |

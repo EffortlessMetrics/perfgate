@@ -104,7 +104,10 @@ pub mod types;
 
 // Re-export main types at the crate root for convenience
 pub use client::BaselineClient;
-pub use config::{AuthMethod, ClientConfig, FallbackStorage, RetryConfig};
+pub use config::{
+    AuthMethod, ClientConfig, FallbackStorage, ResolvedServerConfig, RetryConfig,
+    resolve_server_config,
+};
 pub use error::ClientError;
 pub use fallback::FallbackClient;
 pub use types::{

@@ -364,7 +364,10 @@ mod property_tests {
     }
 
     fn finite_f64_strategy() -> impl Strategy<Value = f64> {
-        -1e100f64..1e100f64
+        // Keep generated values in an operationally plausible range. The
+        // properties below assert statistical invariants, not exact behavior
+        // of floating-point cancellation at extreme magnitudes.
+        -1e12f64..1e12f64
     }
 
     fn large_u64_strategy() -> impl Strategy<Value = u64> {

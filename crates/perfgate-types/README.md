@@ -5,8 +5,8 @@ Canonical types and versioned schemas that every perfgate crate depends on.
 `perfgate-types` is the innermost crate in the dependency graph. It defines all
 receipt structs, configuration types, enums, and constants shared across the
 workspace. Everything here is contract-adjacent: plain data types, validation
-helpers, deterministic fingerprint helpers, and no runtime I/O, statistics, or
-policy logic.
+helpers, deterministic fingerprint helpers, config file helpers, and no
+process execution, client/server coupling, statistics, or policy logic.
 
 ## Schema Versions
 
@@ -30,7 +30,8 @@ policy logic.
 **Reporting:** `PerfgateReport`, `ReportFinding`, `FindingData`, `Severity`
 
 **Configuration:** `ConfigFile`, `DefaultsConfig`, `BenchConfigFile`,
-`BudgetOverride`
+`BudgetOverride`, `config::load_config_file`,
+`config::apply_ratchet_toml_changes`
 
 **Sensor (cockpit):** `SensorReport`, `SensorVerdict`, `SensorFinding`,
 `SensorCapabilities`, `ToolInfo`, `HostInfo`, `HostMismatchPolicy`
@@ -63,8 +64,8 @@ JSON Schema generation via `schemars` is always available (not feature-gated).
   removing or renaming fields is a breaking change.
 - **`SensorReport` uses `serde_json::Value`** for opaque data (ABI hardening),
   so it cannot derive `JsonSchema` or `Arbitrary`.
-- **Contract-adjacent helpers only:** statistics, policy, runtime I/O, and
-  rendering belong in downstream crates.
+- **Contract-adjacent helpers only:** statistics, policy, process execution,
+  client/server coupling, and rendering belong in downstream crates.
 
 ## Testing
 
