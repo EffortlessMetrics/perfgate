@@ -39,7 +39,6 @@ include_globs = [
     "crates/perfgate-host-detect/src/**",
     "crates/perfgate-paired/src/**",
     "crates/perfgate-error/src/**",
-    "crates/perfgate-sha256/src/**",
     "crates/perfgate-fake/src/**"
 ]
 

@@ -30,7 +30,6 @@ on:
           - perfgate-paired
           - perfgate-host-detect
           - perfgate-validation
-          - perfgate-sha256
           - perfgate-error
           - perfgate-fake
 

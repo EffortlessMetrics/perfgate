@@ -18,7 +18,6 @@ perfgate-types.workspace = true
 perfgate-domain.workspace = true
 perfgate-adapters.workspace = true
 perfgate-config.workspace = true
-perfgate-sha256.workspace = true
 perfgate-render.workspace = true
 perfgate-scaling.workspace = true
 perfgate-export.workspace = true

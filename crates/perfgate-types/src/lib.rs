@@ -24,6 +24,7 @@
 
 mod defaults_config;
 pub mod error;
+pub mod fingerprint;
 mod io;
 mod paired;
 mod repair_context;

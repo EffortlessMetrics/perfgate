@@ -37,7 +37,7 @@ use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_host_detect::detect_host_mismatch;
 use perfgate_render::render_markdown;
 use perfgate_sensor::SensorReportBuilder;
-use perfgate_sha256::sha256_hex;
+use perfgate_types::fingerprint::sha256_hex;
 use perfgate_types::validation::validate_bench_name as validate_bench_name_fn;
 
 /// World struct that holds state across BDD scenario steps.

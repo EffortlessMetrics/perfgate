@@ -1,20 +1,13 @@
-//! Minimal SHA-256 implementation for perfgate fingerprinting.
+//! Deterministic SHA-256 fingerprints for perfgate receipts and findings.
 //!
-//! This crate provides a `#![no_std]`-compatible SHA-256 hash function
-//! that returns a hexadecimal string. It's designed for fingerprinting
-//! and identification purposes, not for cryptographic security.
-//!
-//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
-//!
-//! # Features
-//!
-//! - `std` (default): Enable `std` support
-//! - Without `std`: Uses `alloc::string::String`
+//! This module provides a small SHA-256 hash function that returns a hexadecimal
+//! string. It is designed for deterministic fingerprinting and identification,
+//! not for new cryptographic protocol design.
 //!
 //! # Example
 //!
 //! ```
-//! use perfgate_sha256::sha256_hex;
+//! use perfgate_types::fingerprint::sha256_hex;
 //!
 //! let hash = sha256_hex(b"hello");
 //! assert_eq!(hash, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
@@ -23,14 +16,7 @@
 //! assert_eq!(empty_hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 //! ```
 
-#![no_std]
-
-#[cfg(feature = "std")]
-extern crate std;
-
-extern crate alloc;
-
-use alloc::string::String;
+use std::string::String;
 
 /// SHA-256 round constants.
 const K: [u32; 64] = [
@@ -63,7 +49,7 @@ const H0: [u32; 8] = [
 /// # Example
 ///
 /// ```
-/// use perfgate_sha256::sha256_hex;
+/// use perfgate_types::fingerprint::sha256_hex;
 ///
 /// let hash = sha256_hex(b"hello world");
 /// assert_eq!(hash.len(), 64);
@@ -74,7 +60,7 @@ pub fn sha256_hex(data: &[u8]) -> String {
     let mut h = H0;
 
     let ml = (data.len() as u64) * 8;
-    let mut padded = alloc::vec::Vec::with_capacity(data.len() + 65);
+    let mut padded = Vec::with_capacity(data.len() + 65);
     padded.extend_from_slice(data);
     padded.push(0x80);
 
@@ -151,9 +137,9 @@ pub fn sha256_hex(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
-    use alloc::vec::Vec;
     use proptest::prelude::*;
+    use std::vec;
+    use std::vec::Vec;
 
     fn is_valid_hex(s: &str) -> bool {
         s.len() == 64 && s.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))

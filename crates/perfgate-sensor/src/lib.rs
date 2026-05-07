@@ -5,7 +5,7 @@
 //!
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
-use perfgate_sha256::sha256_hex;
+use perfgate_types::fingerprint::sha256_hex;
 pub use perfgate_types::{
     Capability, CapabilityStatus, PerfgateReport, SENSOR_REPORT_SCHEMA_V1, SensorArtifact,
     SensorCapabilities, SensorFinding, SensorReport, SensorRunMeta, SensorSeverity, SensorVerdict,

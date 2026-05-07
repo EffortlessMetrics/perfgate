@@ -14,7 +14,7 @@ We decided to decompose the workspace into 19 specialized "micro-crates". Each c
 
 The workspace is now organized into:
 - **Core logic**: `perfgate-types`, `perfgate-domain`, `perfgate-stats`, `perfgate-budget`.
-- **Infrastructure**: `perfgate-adapters`, `perfgate-host-detect`, `perfgate-sha256`.
+- **Infrastructure**: `perfgate-adapters`, `perfgate-host-detect`.
 - **Use cases**: `perfgate-app`, `perfgate-paired`.
 - **Presentation**: `perfgate-render`, `perfgate-export`, `perfgate-cli`, `perfgate-sensor`.
 - **Ecosystem**: `perfgate-server`, `perfgate-client`.

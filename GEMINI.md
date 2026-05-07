@@ -18,11 +18,10 @@ The architecture is modularized into 26 workspace crates:
 
 | Crate | Responsibility |
 |-------|----------------|
-| `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic, statistics, significance, and paired analysis |
 | `perfgate-budget` | Budget evaluation and verdict logic |
-| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-host-detect` | Host fingerprinting and mismatch detection |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |

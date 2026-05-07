@@ -1,4 +1,4 @@
-//! Fuzz target for the SHA-256 implementation.
+//! Fuzz target for the receipt fingerprint implementation.
 //!
 //! This target verifies that the SHA-256 hash function is deterministic,
 //! always produces valid hex output, and never panics.
@@ -7,8 +7,8 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let hash1 = perfgate_sha256::sha256_hex(data);
-    let hash2 = perfgate_sha256::sha256_hex(data);
+    let hash1 = perfgate_types::fingerprint::sha256_hex(data);
+    let hash2 = perfgate_types::fingerprint::sha256_hex(data);
 
     // Determinism: same input should always produce same output
     assert_eq!(hash1, hash2);

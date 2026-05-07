@@ -30,7 +30,6 @@ pub use perfgate_export as export;
 pub use perfgate_host_detect as host_detect;
 pub use perfgate_render as render;
 pub use perfgate_sensor as sensor;
-pub use perfgate_sha256 as sha256;
 pub use perfgate_types as types;
 pub use perfgate_types::error;
 // validation is now part of types
@@ -47,7 +46,15 @@ pub mod core {
     pub use perfgate_budget as budget;
     pub use perfgate_domain::significance;
     pub use perfgate_domain::stats;
-    pub use perfgate_sha256 as fingerprint;
+    pub use perfgate_types::fingerprint;
+}
+
+/// Deterministic fingerprint helpers.
+///
+/// Prefer [`crate::core::fingerprint`] in new code; this module preserves the
+/// previous facade spelling during the 0.16 public-surface migration.
+pub mod sha256 {
+    pub use perfgate_types::fingerprint::*;
 }
 
 // Common re-exports for ergonomic use

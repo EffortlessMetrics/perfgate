@@ -138,7 +138,7 @@ Dependencies flow inward toward the core types and domain logic:
 - **perfgate-render**: Markdown and terminal rendering logic.
 - **perfgate-export**: Multi-format data exporters (CSV, Prometheus, etc.).
 - **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.
-- **perfgate-sha256**: High-performance fingerprinting for reports.
+- **perfgate-types::fingerprint**: Deterministic fingerprinting for reports.
 
 ### Baseline Service Stack
 

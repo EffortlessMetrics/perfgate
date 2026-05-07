@@ -23,7 +23,6 @@ perfgate-render.workspace = true
 perfgate-sensor.workspace = true
 perfgate-export.workspace = true
 perfgate-host-detect.workspace = true
-perfgate-sha256.workspace = true
 anyhow.workspace = true
 regex.workspace = true
 serde.workspace = true

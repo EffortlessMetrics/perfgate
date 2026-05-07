@@ -88,7 +88,7 @@ gate once transition packages stop being publishable.
 
 | Crate | Responsibility |
 |-------|----------------|
-| `perfgate-types` | Core domain types and stable schemas |
+| `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
 | `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-config` | Configuration loading and merging logic |
 | `perfgate-domain` | Core business logic, statistics, significance, and paired analysis |
@@ -104,7 +104,6 @@ gate once transition packages stop being publishable.
 | `perfgate-host-detect` | Host fingerprinting and mismatch detection |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
-| `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-fake` | Test fixtures and mock data generators |
 | `perfgate-github` | GitHub API and PR-comment integration |
 | `perfgate-scaling` | Complexity and scaling analysis |

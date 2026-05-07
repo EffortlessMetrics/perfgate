@@ -48,6 +48,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | crate deleted |
 | `perfgate-significance` | `perfgate_domain::significance` | crate deleted |
+| `perfgate-sha256` | `perfgate_types::fingerprint`; facade path `perfgate::core::fingerprint` | crate deleted |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -66,7 +67,6 @@ high-level target is:
 | `perfgate-budget` | `perfgate::core::budget` |
 | `perfgate-host-detect` | `perfgate::domain::host` |
 | `perfgate-scaling` | `perfgate::domain::scaling` |
-| `perfgate-sha256` | `perfgate::core::fingerprint` |
 | `perfgate-render` | `perfgate::presentation::render` |
 | `perfgate-export` | `perfgate::presentation::export` |
 | `perfgate-sensor` | `perfgate::presentation::sensor` |

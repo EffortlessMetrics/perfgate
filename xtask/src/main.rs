@@ -29,9 +29,18 @@ struct Cli {
 /// Supported crates for mutation testing
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum MutantsCrate {
-    #[value(name = "perfgate-domain", alias = "perfgate-stats")]
+    #[value(
+        name = "perfgate-domain",
+        alias = "perfgate-stats",
+        alias = "perfgate-significance"
+    )]
     Domain,
-    #[value(name = "perfgate-types", alias = "perfgate-validation")]
+    #[value(
+        name = "perfgate-types",
+        alias = "perfgate-validation",
+        alias = "perfgate-error",
+        alias = "perfgate-sha256"
+    )]
     Types,
     #[value(name = "perfgate-app")]
     App,
@@ -41,8 +50,6 @@ enum MutantsCrate {
     Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
-    #[value(name = "perfgate-sha256")]
-    Sha256,
     #[value(name = "perfgate-host-detect")]
     HostDetect,
     #[value(name = "perfgate-export")]
@@ -66,7 +73,6 @@ impl MutantsCrate {
             MutantsCrate::Api => "perfgate-api",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
-            MutantsCrate::Sha256 => "perfgate-sha256",
             MutantsCrate::HostDetect => "perfgate-host-detect",
             MutantsCrate::Export => "perfgate-export",
             MutantsCrate::Render => "perfgate-render",
@@ -84,7 +90,6 @@ impl MutantsCrate {
             MutantsCrate::Api => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
-            MutantsCrate::Sha256 => 100,
             MutantsCrate::HostDetect => 100,
             MutantsCrate::Export => 90,
             MutantsCrate::Render => 90,
@@ -700,7 +705,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-host-detect",
             "perfgate-paired",
             "perfgate-scaling",
-            "perfgate-sha256",
         ],
         forbidden: &[
             "perfgate-adapters",
@@ -763,7 +767,6 @@ const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &[
     "perfgate-host-detect",
     "perfgate-paired",
     "perfgate-scaling",
-    "perfgate-sha256",
 ];
 
 const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
@@ -1737,11 +1740,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-sha256",
-            "Minimal SHA-256 implementation (no_std compatible)",
-            100,
-        ),
-        (
             "perfgate-host-detect",
             "Host mismatch detection for CI noise reduction",
             100,
@@ -1825,9 +1823,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-error (compatibility wrapper)");
     println!("         ↓");
-    println!("  perfgate-sha256 (standalone, no_std)");
-    println!("         ↓");
-    println!("  perfgate-domain::stats (pure math)");
+    println!("  perfgate-types::fingerprint (deterministic hashes)");
     println!("         ↓");
     println!("  perfgate-types::validation, perfgate-host-detect (pure logic)");
     println!("         ↓");
@@ -2097,11 +2093,6 @@ fn generate_workspace_inventory_md() -> String {
             100,
         ),
         (
-            "perfgate-sha256",
-            "Minimal SHA-256 implementation (no_std compatible)",
-            100,
-        ),
-        (
             "perfgate-host-detect",
             "Host mismatch detection for CI noise reduction",
             100,
@@ -2184,7 +2175,7 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("\n## Dependency Flow\n\n");
     md.push_str("```mermaid\ngraph TD\n");
     md.push_str("  error[perfgate-error compatibility wrapper] --> types[perfgate-types]\n");
-    md.push_str("  sha[perfgate-sha256] --> types\n");
+    md.push_str("  types --> fingerprint[perfgate-types::fingerprint]\n");
     md.push_str("  domain --> stats[perfgate-domain::stats]\n");
     md.push_str("  types --> val[perfgate-types::validation]\n");
     md.push_str("  host[perfgate-host-detect] --> types\n");

@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, and external benchmark ingestion now lives under `perfgate::integrations::ingest`. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, external benchmark ingestion now lives under `perfgate::integrations::ingest`, and deterministic fingerprinting now lives in `perfgate_types::fingerprint` with a `perfgate::core::fingerprint` facade path. Many remaining internal seams are still publishable crates (`perfgate-budget`, `perfgate-render`, `perfgate-host-detect`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -53,7 +53,7 @@ Pure logic with no runtime dependencies:
 | `perfgate-budget` | `perfgate::core::budget` | Budget evaluation and verdict logic |
 | `perfgate-significance` | `perfgate_domain::significance` now; `perfgate::core::significance` facade path | Welch's t-test and statistical testing |
 | `perfgate-paired` | `perfgate_domain::paired` now; facade re-export later | Paired benchmarking computation |
-| `perfgate-sha256` | `perfgate::core::fingerprint` | Minimal SHA-256 for baseline fingerprints |
+| `perfgate-sha256` | `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path | Minimal SHA-256 for baseline fingerprints |
 
 These should be feature-gated minimally (or always-on) and have no dependency on runtime, CLI, or server code.
 
@@ -304,7 +304,7 @@ Move into `perfgate::core`:
 - `perfgate-budget` -> `perfgate::core::budget`
 - `perfgate-significance` -> already landed in `perfgate_domain::significance`; facade path is `perfgate::core::significance`
 - `perfgate-paired` -> implementation already landed in `perfgate_domain::paired`; add facade path later
-- `perfgate-sha256` -> `perfgate::core::fingerprint`
+- `perfgate-sha256` -> `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path
 
 Provide deprecation shims if crates are published. Update `perfgate` prelude.
 

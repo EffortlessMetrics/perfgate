@@ -14,7 +14,6 @@ members = [
   "crates/perfgate-budget",
   "crates/perfgate-domain",
   "crates/perfgate-host-detect",
-  "crates/perfgate-sha256",
   "crates/perfgate-render",
   "crates/perfgate-export",
   "crates/perfgate-sensor",
@@ -74,7 +73,6 @@ serde_json.workspace = true
 toml.workspace = true
 perfgate-types.workspace = true
 perfgate-host-detect.workspace = true
-perfgate-sha256.workspace = true
 perfgate-render.workspace = true
 perfgate-export.workspace = true
 perfgate-sensor.workspace = true
@@ -144,7 +142,6 @@ perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.1" }
 perfgate-paired = { path = "crates/perfgate-paired", version = "0.15.1" }
 perfgate-budget = { path = "crates/perfgate-budget", version = "0.15.1" }
 perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.15.1" }
-perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.15.1" }
 perfgate-render = { path = "crates/perfgate-render", version = "0.15.1" }
 perfgate-export = { path = "crates/perfgate-export", version = "0.15.1" }
 perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.15.1" }
