@@ -14,8 +14,8 @@ refactoring decision as a crates.io package.
 
 ## Target Public Crates
 
-By the end of the 0.16 public-surface collapse, only these packages should be
-publishable:
+For the 0.16 public-surface collapse, only these packages should be
+publishable. This is now enforced by `cargo run -p xtask -- public-surface --strict`:
 
 | Crate | Role |
 |-------|------|
@@ -65,16 +65,18 @@ Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
 policy files and docs updated in the same change.
 
-## Remaining Absorption Map
+## Remaining Private Surface
 
 `policy/absorbed_crates.txt` is the machine-readable disposition list. The
-high-level target is:
+public-surface blockers have been resolved; remaining non-public workspace
+packages are private/dev packages or compatibility wrappers:
 
-| Current package | Target owner |
-|-----------------|--------------|
-| `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` |
-| `perfgate-fake` | private workspace crate |
+| Package | Disposition |
+|---------|-------------|
+| `perfgate-fake` | private workspace crate, `publish = false` |
 | `perfgate-selfbench` | private workspace crate |
+| `perfgate-tests` | private workspace root package |
+| `xtask` | private workspace automation crate |
 
 ## Dependency Direction Rules
 
@@ -119,11 +121,11 @@ Run:
 cargo run -p xtask -- public-surface --strict
 ```
 
-Strict mode is the release-end gate. It fails while any absorbed package is
-still publishable, or while a target public package directly depends on an
-absorbed/internal workspace package.
+Strict mode is the release-end gate. It fails if any absorbed package is still
+publishable, or if a target public package directly depends on an
+absorbed/internal workspace package. It now passes on `main`.
 
-## Migration Order
+## Completed Migration Order
 
 1. Land first seam absorption and compatibility wrappers.
 2. Establish enforceable public-surface policy.

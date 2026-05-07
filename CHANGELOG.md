@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Bumped Rust minimum supported version (MSRV) to 1.93.
+- Collapsed the 0.16 public crate surface to the five intended publishable
+  packages: `perfgate`, `perfgate-cli`, `perfgate-types`,
+  `perfgate-client`, and `perfgate-server`.
+- Moved former domain and application implementation crates under the public
+  facade as `perfgate::domain` and `perfgate::app`, leaving the old
+  `perfgate-domain` and `perfgate-app` packages as workspace-only
+  compatibility wrappers.
+- Extended `xtask arch` and `xtask public-surface --strict` so CI enforces the
+  collapsed module/package boundaries for the 0.16 release line.
 
 ### Fixed
 - Fixed clippy warnings by replacing `sort_by` with `sort_by_key` and `std::cmp::Reverse` for descending sorts in storage backends.

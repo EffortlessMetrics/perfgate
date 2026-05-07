@@ -2,17 +2,17 @@
 
 ## Overview
 
-This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
+This document records the 0.16 refactoring of perfgate's public crate surface. The goal was to collapse the broad microcrate surface into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: The public-surface collapse has landed across the former leaf crates and the final structural seams. Domain logic now lives in `perfgate::domain`, app orchestration and runtime adapters live under `perfgate::app` / `perfgate::runtime`, and old `perfgate-domain` / `perfgate-app` packages are workspace-only compatibility wrappers. Strict public-surface mode is expected to pass with only the five target public packages publishable.
+**Current state**: The public-surface collapse has landed across the former leaf crates and the final structural seams. Domain logic now lives in `perfgate::domain`, app orchestration and runtime adapters live under `perfgate::app` / `perfgate::runtime`, and old `perfgate-domain` / `perfgate-app` packages are workspace-only compatibility wrappers. Strict public-surface mode passes with only the five target public packages publishable.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
 ---
 
-## Target Public Crate Surface
+## Public Crate Surface
 
-Only these crates should be published:
+Only these crates are intended to be publishable:
 
 | Crate | Purpose | Keep? |
 |-------|---------|-------|
@@ -22,7 +22,7 @@ Only these crates should be published:
 | `perfgate-client` | Baseline service client for external automation | Yes |
 | `perfgate-server` | Baseline service binary/library | Yes |
 
-Everything else will be absorbed into one of these crates as modules, marked `publish = false`, or deleted.
+Everything else has been absorbed into one of these crates as modules, marked `publish = false`, or deleted.
 
 ---
 
@@ -278,8 +278,8 @@ Implement this as a Cargo metadata or source-level check in xtask.
 
 ## Migration Sequence
 
-### Phase 1: Policy & Visibility (current PR)
-Create:
+### Phase 1: Policy & Visibility
+Created:
 - `policy/public_crates.txt` - List of intended public crates
 - `policy/absorbed_crates.txt` - Mapping of absorbed crates
 - `docs/CRATE_SEAMS.md` - Detailed seam analysis
@@ -365,7 +365,7 @@ Add `xtask arch` check for module-layer violations.
 The refactoring is complete when:
 
 1. `policy/public_crates.txt` lists exactly: `perfgate`, `perfgate-cli`, `perfgate-types`, `perfgate-client`, `perfgate-server`
-2. `cargo publish --dry-run -p perfgate` does not require publishing internal microcrates
+2. `cargo run -p xtask -- publish-check` passes and publishable crates do not depend on unpublished internal path crates
 3. `perfgate-cli` depends on public packages, not every internal seam crate
 4. All microcrates are either deleted, `publish = false`, or deprecated shims
 5. `docs/ARCHITECTURE.md` describes public packages + internal modules
@@ -385,6 +385,10 @@ The refactoring is complete when:
 8. Examples and tutorials updated
 9. All tests pass; mutation test targets maintained
 10. CHANGELOG documents migration path for 0.16.0
+
+As of the final app/domain absorption, the enforceable public-surface criteria
+are satisfied by `cargo run -p xtask -- public-surface --strict`,
+`cargo run -p xtask -- arch`, and `cargo run -p xtask -- publish-check`.
 
 ---
 

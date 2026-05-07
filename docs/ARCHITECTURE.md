@@ -72,9 +72,8 @@ contract is:
 | `perfgate-client` | Baseline service client |
 | `perfgate-server` | Baseline service binary/library |
 
-The remaining workspace packages are internal seams, transition packages, or
-compatibility wrappers until the public-surface collapse finishes. The current
-policy files are:
+The remaining workspace packages are internal seams, private test/dev packages,
+or workspace-only compatibility wrappers. The current policy files are:
 
 - [`policy/public_crates.txt`](../policy/public_crates.txt)
 - [`policy/absorbed_crates.txt`](../policy/absorbed_crates.txt)
@@ -88,8 +87,7 @@ cargo run -p xtask -- arch
 ```
 
 `cargo run -p xtask -- public-surface --strict` is the final release gate. It
-is expected to fail until absorbed/internal transition packages are deleted,
-marked `publish = false`, or reduced to intentional compatibility shims.
+now passes on `main` and enforces the five-package publishable allowlist above.
 
 ### Component Layers
 

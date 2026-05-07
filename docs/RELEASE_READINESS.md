@@ -1,12 +1,42 @@
-# Release Readiness: v0.15.1
+# Release Readiness
 
 Last verified: 2026-03-28 after publishing `v0.15.1`, publishing crates.io packages, and merging the release workflow and publish-preflight fixes.
 
-Current-main note: this file is the historical readiness record for `v0.15.1`.
-Since that release, `main` has added API key management CLI support, audit
-logging, and executable documentation example validation. For the current
-baseline-service surface, see [Baseline Service Notes](BASELINE_SERVICE_DESIGN.md)
-and [Getting Started with the Baseline Server](GETTING_STARTED_BASELINE_SERVER.md).
+## Current Main Snapshot
+
+Verified on 2026-05-07 after merging the 0.16 public-surface collapse through
+PR #268.
+
+The current `main` branch is not a published release, but the 0.16 public crate
+surface is now in its intended release shape:
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
+| Architecture boundary enforcement | Passing | `cargo run -p xtask -- arch` |
+| Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
+| Full repo CI | Passing | Hosted `ci`, `fuzz`, and `perfgate-self` on PR #268 |
+
+The only publishable packages allowed by policy are:
+
+```text
+perfgate
+perfgate-cli
+perfgate-types
+perfgate-client
+perfgate-server
+```
+
+Former implementation packages such as `perfgate-domain` and `perfgate-app`
+are workspace-only compatibility wrappers. Domain logic lives under
+`perfgate::domain`; app orchestration and runtime adapters live under
+`perfgate::app` and `perfgate::runtime`.
+
+For the current baseline-service surface, see
+[Baseline Service Notes](BASELINE_SERVICE_DESIGN.md) and
+[Getting Started with the Baseline Server](GETTING_STARTED_BASELINE_SERVER.md).
+
+## Historical Record: v0.15.1
 
 ## Patch Scope
 
