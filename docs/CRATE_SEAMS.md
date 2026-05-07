@@ -120,7 +120,8 @@ cargo run -p xtask -- public-surface --strict
 ```
 
 Strict mode is the release-end gate. It fails while any absorbed package is
-still publishable.
+still publishable, or while a target public package directly depends on an
+absorbed/internal workspace package.
 
 ## Migration Order
 

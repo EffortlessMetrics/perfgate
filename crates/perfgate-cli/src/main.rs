@@ -4,6 +4,8 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
+use perfgate::app as perfgate_app;
+use perfgate::domain as perfgate_domain;
 use perfgate::integrations::github::{self, CommentOptions, GitHubClient};
 use perfgate::integrations::ingest::{self, IngestFormat};
 use perfgate::runtime::profile::{ProfileRequest, capture_flamegraph};

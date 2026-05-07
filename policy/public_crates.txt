@@ -5,7 +5,8 @@
 # `policy/absorbed_crates.txt`.
 #
 # `cargo run -p xtask -- public-surface --strict` enforces this file as the
-# final publishable package allowlist.
+# final publishable package allowlist and rejects target public crates that
+# still depend directly on absorbed/internal workspace packages.
 
 perfgate
 perfgate-cli

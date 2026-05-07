@@ -20,8 +20,6 @@ path = "src/main.rs"
 [dependencies]
 perfgate-types.workspace = true
 perfgate-client.workspace = true
-perfgate-app.workspace = true
-perfgate-domain.workspace = true
 perfgate-server.workspace = true
 perfgate = { workspace = true, features = ["github"] }
 anyhow.workspace = true

@@ -615,6 +615,48 @@ fn collect_public_surface_errors(
         metadata,
         absorbed_crates,
     ));
+    if strict {
+        errors.extend(collect_strict_public_internal_dependency_errors(
+            metadata,
+            public_crates,
+            absorbed_crates,
+        ));
+    }
+
+    errors
+}
+
+fn collect_strict_public_internal_dependency_errors(
+    metadata: &CargoMetadata,
+    public_crates: &BTreeSet<String>,
+    absorbed_crates: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let package_names: BTreeSet<&str> = metadata
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    let mut errors = Vec::new();
+
+    for package in metadata
+        .packages
+        .iter()
+        .filter(|package| public_crates.contains(&package.name))
+    {
+        for dependency in package
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.kind.as_deref() != Some("dev"))
+            .filter(|dependency| dependency.path.is_some())
+            .filter(|dependency| package_names.contains(dependency.name.as_str()))
+            .filter(|dependency| absorbed_crates.contains_key(dependency.name.as_str()))
+        {
+            errors.push(format!(
+                "{} is a target public crate but depends on absorbed/internal package {}; absorb or route it through an allowed public crate before strict release",
+                package.name, dependency.name
+            ));
+        }
+    }
 
     errors
 }
@@ -3098,6 +3140,31 @@ mod tests {
             collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, true);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("still publishable"));
+    }
+
+    #[test]
+    fn public_surface_strict_rejects_public_deps_on_absorbed_packages() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package_with_deps("perfgate", None, vec![workspace_dep("perfgate-app")]),
+                test_package("perfgate-app", Some(Vec::new())),
+            ],
+        };
+        let public_crates = ["perfgate"].into_iter().map(String::from).collect();
+        let absorbed_crates = [("perfgate-app".to_string(), "perfgate::app".to_string())]
+            .into_iter()
+            .collect();
+
+        let errors =
+            collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, true);
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains(
+                "perfgate is a target public crate but depends on absorbed/internal package perfgate-app"
+            ),
+            "unexpected errors: {:?}",
+            errors
+        );
     }
 
     #[test]
