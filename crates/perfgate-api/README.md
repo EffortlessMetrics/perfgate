@@ -1,78 +1,21 @@
 # perfgate-api
 
-Common API types and models for the perfgate baseline service.
+Workspace-only compatibility wrapper for baseline service API contracts.
 
-## Overview
-
-`perfgate-api` defines the shared request/response types and data models used by
-both `perfgate-server` (the centralized Baseline Service) and `perfgate-client`
-(the client library). If you are building tooling that talks to the perfgate
-baseline service, this crate gives you the canonical wire types.
-
-## Key Types
-
-### Storage models
-
-- `BaselineRecord` — primary storage model for a baseline snapshot, including the
-  full `RunReceipt`, git metadata, tags, content hash, and soft-delete flag.
-- `BaselineVersion` — lightweight version history entry (no receipt payload).
-- `BaselineSummary` — compact listing entry with optional receipt inclusion.
-- `VerdictRecord` — recorded outcome of a benchmark execution (pass/warn/fail/skip).
-- `Project` — multi-tenancy namespace with `RetentionPolicy` and `VersioningStrategy`.
-
-### Request / response pairs
-
-| Operation | Request | Response |
-|-----------|---------|----------|
-| Upload baseline | `UploadBaselineRequest` | `UploadBaselineResponse` |
-| Promote baseline | `PromoteBaselineRequest` | `PromoteBaselineResponse` |
-| Delete baseline | -- | `DeleteBaselineResponse` |
-| List baselines | `ListBaselinesQuery` | `ListBaselinesResponse` |
-| Submit verdict | `SubmitVerdictRequest` | -- |
-| List verdicts | `ListVerdictsQuery` | `ListVerdictsResponse` |
-| Health check | -- | `HealthResponse` |
-
-### Supporting types
-
-- `BaselineSource` — how a baseline was created (`Upload`, `Promote`, `Migrate`, `Rollback`).
-- `RetentionPolicy` — configurable limits for version count, age, and preserved tags.
-- `VersioningStrategy` — auto-versioning mode (`RunId`, `Timestamp`, `GitSha`, `Manual`).
-- `PaginationInfo` — offset/limit pagination metadata for list endpoints.
-- `ApiError` — structured error response with code, message, and optional details.
-
-### Schema identifiers
-
-```text
-perfgate.baseline.v1
-perfgate.project.v1
-perfgate.verdict.v1
-```
-
-## Feature Flags
-
-- `server` — enables `axum::response::IntoResponse` impl for `ApiError`, so
-  the server crate can return API errors directly as HTTP responses.
-
-## Example
+The baseline service wire types now live in `perfgate-types`:
 
 ```rust
-use perfgate_api::{ListBaselinesQuery, UploadBaselineRequest};
-
-// Build a filtered query with the builder API
-let query = ListBaselinesQuery::new()
-    .with_benchmark("my-bench")
-    .with_limit(10)
-    .with_receipts();
-
-// Convert to HTTP query parameters
-let params = query.to_query_params();
+use perfgate_types::baseline_service::{ListBaselinesQuery, UploadBaselineRequest};
+use perfgate_types::baseline_service::auth::{Role, Scope};
 ```
 
-## Workspace Role
+`perfgate-api` remains in the workspace with `publish = false` so existing
+internal imports can migrate gradually. New code should depend on
+`perfgate-types` for request/response/auth contract types.
 
-`perfgate-api` sits between the core types and the network layer:
-
-`perfgate-types` -> **`perfgate-api`** -> `perfgate-server` / `perfgate-client`
+Runtime credential-source loading for the server moved to
+`perfgate_server::CredentialSource`; it is intentionally not part of
+`perfgate-types`.
 
 ## License
 

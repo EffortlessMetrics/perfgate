@@ -34,10 +34,9 @@ use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use perfgate_api::auth::CredentialSource;
 use perfgate_server::{
-    ApiKeyMetadata, JwtConfig, OidcConfig, PostgresPoolConfig, Role, ServerConfig, StorageBackend,
-    run_server,
+    ApiKeyMetadata, CredentialSource, JwtConfig, OidcConfig, PostgresPoolConfig, Role,
+    ServerConfig, StorageBackend, run_server,
 };
 use std::time::Duration;
 

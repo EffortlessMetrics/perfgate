@@ -72,7 +72,6 @@ perfgate-error.workspace = true
 perfgate-domain.workspace = true
 perfgate-paired.workspace = true
 perfgate-app.workspace = true
-perfgate-api.workspace = true
 perfgate.workspace = true
 glob.workspace = true
 shell-words.workspace = true

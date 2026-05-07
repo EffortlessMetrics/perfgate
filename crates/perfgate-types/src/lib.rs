@@ -22,6 +22,7 @@
 //!
 //! - `arbitrary`: Enables `Arbitrary` derive for structure-aware fuzzing with cargo-fuzz.
 
+pub mod baseline_service;
 pub mod config;
 mod defaults_config;
 pub mod error;

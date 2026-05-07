@@ -50,6 +50,7 @@
 
 pub mod auth;
 pub mod cleanup;
+pub mod credential_source;
 pub mod error;
 pub mod handlers;
 pub mod metrics;
@@ -62,6 +63,10 @@ pub mod storage;
 pub mod testing;
 
 pub use auth::{ApiKey, ApiKeyStore, AuthContext, AuthState, JwtClaims, JwtConfig, Role, Scope};
+pub use credential_source::{
+    CredentialSource, CredentialSourceError, KeyPolicy, LoadedCredential,
+    parse_credentials_document,
+};
 pub use error::{AuthError, ConfigError, StoreError};
 pub use models::*;
 pub use oidc::{OidcConfig, OidcProvider, OidcProviderType, OidcRegistry};

@@ -10,7 +10,9 @@ use axum::{
     response::IntoResponse,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, errors::ErrorKind};
-pub use perfgate_api::auth::{ApiKey, JwtClaims, Role, Scope, validate_key_format};
+pub use perfgate_types::baseline_service::auth::{
+    ApiKey, JwtClaims, Role, Scope, validate_key_format,
+};
 use perfgate_types::error::AuthError;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -509,7 +511,7 @@ mod tests {
     use super::*;
     use axum::{Extension, Router, routing::get};
     use jsonwebtoken::{Header, encode};
-    use perfgate_api::auth::generate_api_key;
+    use perfgate_types::baseline_service::auth::generate_api_key;
     use tower::ServiceExt;
     use uselesskey::{Factory, HmacFactoryExt, HmacSpec, Seed};
     use uselesskey_jsonwebtoken::JwtKeyExt;

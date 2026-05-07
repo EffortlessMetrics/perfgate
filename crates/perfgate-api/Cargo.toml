@@ -1,6 +1,6 @@
 [package]
 name = "perfgate-api"
-description = "Common API types and models for perfgate baseline service"
+description = "Workspace-only compatibility wrapper for perfgate baseline service contracts"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,27 +12,14 @@ documentation = "https://docs.rs/perfgate-api"
 authors.workspace = true
 keywords = ["api", "baseline", "performance", "benchmarking"]
 categories = ["web-programming", "development-tools"]
+publish = false
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-chrono = { version = "0.4.39", features = ["serde"] }
 perfgate-types.workspace = true
-schemars.workspace = true
-thiserror.workspace = true
-async-trait.workspace = true
-http.workspace = true
-axum = { workspace = true, optional = true }
-toml.workspace = true
-uuid.workspace = true
-tempfile = { version = "3.26.0" }
 
 [features]
 default = []
-server = ["axum"]
-
-[dev-dependencies]
-tempfile = { version = "3.26.0" }
+server = []
 
 [lints]
 workspace = true

@@ -88,8 +88,8 @@ gate once transition packages stop being publishable.
 
 | Crate | Responsibility |
 |-------|----------------|
-| `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
-| `perfgate-api` | API models and authentication types for baseline service |
+| `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
+| `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, host mismatch logic, and scaling analysis |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-cli` | Command-line interface and argument parsing |

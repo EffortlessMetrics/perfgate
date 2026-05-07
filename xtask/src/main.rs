@@ -43,7 +43,9 @@ enum MutantsCrate {
         alias = "perfgate-validation",
         alias = "perfgate-error",
         alias = "perfgate-config",
-        alias = "perfgate-sha256"
+        alias = "perfgate-sha256",
+        alias = "perfgate-api",
+        alias = "perfgate-auth"
     )]
     Types,
     #[value(
@@ -54,8 +56,6 @@ enum MutantsCrate {
         alias = "perfgate-sensor"
     )]
     App,
-    #[value(name = "perfgate-api", alias = "perfgate-auth")]
-    Api,
     #[value(name = "perfgate-adapters")]
     Adapters,
     #[value(name = "perfgate-cli")]
@@ -72,7 +72,6 @@ impl MutantsCrate {
             MutantsCrate::Domain => "perfgate-domain",
             MutantsCrate::Types => "perfgate-types",
             MutantsCrate::App => "perfgate-app",
-            MutantsCrate::Api => "perfgate-api",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
             MutantsCrate::Paired => "perfgate-paired",
@@ -85,7 +84,6 @@ impl MutantsCrate {
             MutantsCrate::Domain => 100,
             MutantsCrate::Types => 95,
             MutantsCrate::App => 90,
-            MutantsCrate::Api => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
             MutantsCrate::Paired => 100,
@@ -3238,7 +3236,11 @@ mod tests {
                 None,
                 vec![workspace_dep("perfgate-types")],
             ),
-            test_package_with_deps("perfgate-server", None, vec![workspace_dep("perfgate-api")]),
+            test_package_with_deps(
+                "perfgate-server",
+                None,
+                vec![workspace_dep("perfgate-types")],
+            ),
             test_package_with_deps(
                 "perfgate-cli",
                 None,

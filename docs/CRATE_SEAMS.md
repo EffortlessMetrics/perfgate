@@ -39,7 +39,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | Former crate | Current owner | Status |
 |--------------|---------------|--------|
 | `perfgate-validation` | `perfgate_types::validation` | crate deleted |
-| `perfgate-auth` | `perfgate_api::auth` | crate deleted |
+| `perfgate-auth` | `perfgate_types::baseline_service::auth` | crate deleted |
 | `perfgate-summary` | `perfgate::presentation::render::summary` | crate deleted |
 | `perfgate-stats` | `perfgate_domain::stats` | crate deleted |
 | `perfgate-paired` | `perfgate_domain::paired` | workspace-only compatibility wrapper, `publish = false` |
@@ -48,6 +48,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-export` | `perfgate::presentation::export` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-sensor` | `perfgate::presentation::sensor` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
+| `perfgate-api` | `perfgate_types::baseline_service`; runtime credential source in `perfgate_server::CredentialSource` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | crate deleted |
 | `perfgate-significance` | `perfgate_domain::significance` | crate deleted |
@@ -69,7 +70,6 @@ high-level target is:
 | Current package | Target owner |
 |-----------------|--------------|
 | `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` |
-| `perfgate-api` | `perfgate_types::baseline_service` or shared client/server contract |
 | `perfgate-domain` | `perfgate::domain` |
 | `perfgate-adapters` | `perfgate::runtime` |
 | `perfgate-app` | `perfgate::app` |

@@ -9,7 +9,7 @@ use axum::{
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-use crate::auth::{AuthContext, Scope};
+use crate::auth::{AuthContext, Role, Scope};
 use crate::models::{
     ApiError, AuditAction, AuditEvent, AuditResourceType, CreateKeyRequest, CreateKeyResponse,
     KeyEntry, ListKeysResponse, RevokeKeyResponse,
@@ -38,7 +38,7 @@ pub async fn create_key(
     }
 
     // Generate a new plaintext key
-    let plaintext = perfgate_api::auth::generate_api_key(false);
+    let plaintext = perfgate_types::baseline_service::auth::generate_api_key(false);
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
 
@@ -206,7 +206,7 @@ async fn emit_key_audit(
     action: AuditAction,
     key_id: &str,
     project: &str,
-    role: Option<perfgate_api::auth::Role>,
+    role: Option<Role>,
 ) {
     let metadata = serde_json::json!({
         "source": "api_key",

@@ -8,23 +8,16 @@
 //! # Example
 //!
 //! ```
-//! use perfgate_api::auth::{generate_api_key, API_KEY_PREFIX_LIVE};
+//! use perfgate_types::baseline_service::auth::{generate_api_key, API_KEY_PREFIX_LIVE};
 //!
 //! let key = generate_api_key(false);
 //! assert!(key.starts_with(API_KEY_PREFIX_LIVE));
 //! ```
 
+use crate::error::AuthError;
 use chrono::{DateTime, Utc};
-use perfgate_types::error::AuthError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-mod source;
-
-pub use source::{
-    CredentialSource, CredentialSourceError, KeyPolicy, LoadedCredential,
-    parse_credentials_document,
-};
 
 /// API key prefix for live keys.
 pub const API_KEY_PREFIX_LIVE: &str = "pg_live_";

@@ -28,7 +28,7 @@ cargo test -p perfgate-adapters
 cargo test -p perfgate-paired
 cargo test -p perfgate-error
 cargo test -p perfgate-fake
-cargo test -p perfgate-api
+cargo test -p perfgate-types baseline_service --all-features
 cargo test -p perfgate-github
 cargo test -p perfgate-selfbench
 
@@ -88,13 +88,13 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 
 | Crate | Responsibility |
 |-------|----------------|
-| `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
+| `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
 | `perfgate-domain::budget` | Budget evaluation and verdict logic |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
-| `perfgate-api` | API models and authentication types for baseline service |
+| `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |

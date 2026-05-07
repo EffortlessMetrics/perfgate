@@ -10,7 +10,7 @@
 
 # Landed in PR #223.
 perfgate-validation -> perfgate_types::validation [deleted]
-perfgate-auth -> perfgate_api::auth [deleted]
+perfgate-auth -> perfgate_types::baseline_service::auth [deleted]
 perfgate-summary -> perfgate::presentation::render::summary [deleted]
 perfgate-stats -> perfgate_domain::stats [deleted]
 perfgate-paired -> perfgate_domain::paired [compatibility wrapper] [publish=false]
@@ -18,7 +18,7 @@ perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
 
 # Contract-adjacent.
 perfgate-config -> perfgate_types::config and perfgate_client::ResolvedServerConfig [deleted]
-perfgate-api -> perfgate_types::baseline_service or shared client/server contract
+perfgate-api -> perfgate_types::baseline_service; perfgate_server::CredentialSource [compatibility wrapper] [publish=false]
 
 # Pure core and domain policy.
 perfgate-domain -> perfgate::domain

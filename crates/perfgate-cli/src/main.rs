@@ -26,7 +26,8 @@ use perfgate_app::{
     render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
-use perfgate_client::types::{CreateKeyRequest, KeyEntry};
+use perfgate_client::types::auth::Role;
+use perfgate_client::types::{BaselineRecord, CreateKeyRequest, KeyEntry};
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     ResolvedServerConfig, SubmitVerdictRequest, UploadBaselineRequest, resolve_server_config,
@@ -1286,7 +1287,7 @@ enum KeyRole {
     Admin,
 }
 
-impl From<KeyRole> for perfgate_api::auth::Role {
+impl From<KeyRole> for Role {
     fn from(role: KeyRole) -> Self {
         match role {
             KeyRole::Viewer => Self::Viewer,
@@ -1792,7 +1793,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                         let client =
                             server_config.require_client(BASELINE_SERVER_NOT_CONFIGURED)?;
                         with_tokio_runtime(async {
-                            let record: perfgate_api::BaselineRecord = client
+                            let record: BaselineRecord = client
                                 .get_latest_baseline(&project, &benchmark)
                                 .await
                                 .with_context(|| {
@@ -1800,7 +1801,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                                         "Failed to fetch baseline '{benchmark}' from server (project: {project})"
                                     )
                                 })?;
-                            Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
+                            Ok::<BaselineRecord, anyhow::Error>(record)
                         })?
                     } else {
                         let client = server_config.require_fallback_client(
@@ -1808,7 +1809,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                             BASELINE_SERVER_NOT_CONFIGURED,
                         )?;
                         with_tokio_runtime(async {
-                            let record: perfgate_api::BaselineRecord = client
+                            let record: BaselineRecord = client
                                 .get_latest_baseline(&project, &benchmark)
                                 .await
                                 .with_context(|| {
@@ -1816,7 +1817,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                                         "Failed to fetch baseline '{benchmark}' from server (project: {project})"
                                     )
                                 })?;
-                            Ok::<perfgate_api::BaselineRecord, anyhow::Error>(record)
+                            Ok::<BaselineRecord, anyhow::Error>(record)
                         })?
                     };
 
@@ -3329,7 +3330,7 @@ fn execute_admin_action(action: AdminAction, server_flags: &ServerFlags) -> anyh
                 description,
                 pattern,
             } => {
-                let role: perfgate_api::auth::Role = role.into();
+                let role: Role = role.into();
                 let description =
                     description.unwrap_or_else(|| format!("{} key for {}", role, project));
                 let request = CreateKeyRequest {

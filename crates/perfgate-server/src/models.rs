@@ -4,7 +4,7 @@
 //! for the baseline storage service.
 
 use chrono::Utc;
-pub use perfgate_api::*;
+pub use perfgate_types::baseline_service::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 

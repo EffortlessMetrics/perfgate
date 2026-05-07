@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use perfgate_api::auth::Role;
+use perfgate_types::baseline_service::auth::Role;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -337,7 +337,7 @@ use rusqlite::OptionalExtension;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_api::auth::generate_api_key;
+    use perfgate_types::baseline_service::auth::generate_api_key;
 
     fn make_record(raw_key: &str, role: Role) -> KeyRecord {
         KeyRecord {

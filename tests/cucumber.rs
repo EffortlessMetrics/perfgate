@@ -146,7 +146,7 @@ pub struct PerfgateWorld {
     /// Mock server for baseline service tests
     server: Option<wiremock::MockServer>,
     /// Role for auth tests
-    current_role: Option<perfgate_api::auth::Role>,
+    current_role: Option<perfgate_types::baseline_service::auth::Role>,
     /// Generated API key
     last_api_key: Option<String>,
     /// Microcrate test state: baseline Cargo.lock
@@ -5303,19 +5303,19 @@ async fn when_run_command(world: &mut PerfgateWorld, command: String) {
 
 #[then(expr = "API key {string} should be valid")]
 async fn then_api_key_valid(_world: &mut PerfgateWorld, key: String) {
-    use perfgate_api::auth::validate_key_format;
+    use perfgate_types::baseline_service::auth::validate_key_format;
     assert!(validate_key_format(&key).is_ok());
 }
 
 #[then(expr = "API key {string} should be invalid")]
 async fn then_api_key_invalid(_world: &mut PerfgateWorld, key: String) {
-    use perfgate_api::auth::validate_key_format;
+    use perfgate_types::baseline_service::auth::validate_key_format;
     assert!(validate_key_format(&key).is_err());
 }
 
 #[given(expr = "a role {string}")]
 async fn given_role(world: &mut PerfgateWorld, role_str: String) {
-    use perfgate_api::auth::Role;
+    use perfgate_types::baseline_service::auth::Role;
     let role = match role_str.as_str() {
         "viewer" => Role::Viewer,
         "contributor" => Role::Contributor,
@@ -5328,7 +5328,7 @@ async fn given_role(world: &mut PerfgateWorld, role_str: String) {
 
 #[then(expr = "it should have scope {string}")]
 async fn then_role_has_scope(world: &mut PerfgateWorld, scope_str: String) {
-    use perfgate_api::auth::Scope;
+    use perfgate_types::baseline_service::auth::Scope;
     let scope = match scope_str.as_str() {
         "read" => Scope::Read,
         "write" => Scope::Write,
@@ -5343,7 +5343,7 @@ async fn then_role_has_scope(world: &mut PerfgateWorld, scope_str: String) {
 
 #[then(expr = "it should not have scope {string}")]
 async fn then_role_not_has_scope(world: &mut PerfgateWorld, scope_str: String) {
-    use perfgate_api::auth::Scope;
+    use perfgate_types::baseline_service::auth::Scope;
     let scope = match scope_str.as_str() {
         "read" => Scope::Read,
         "write" => Scope::Write,
@@ -5358,13 +5358,13 @@ async fn then_role_not_has_scope(world: &mut PerfgateWorld, scope_str: String) {
 
 #[when("I generate a live API key")]
 async fn when_generate_live_key(world: &mut PerfgateWorld) {
-    use perfgate_api::auth::generate_api_key;
+    use perfgate_types::baseline_service::auth::generate_api_key;
     world.last_api_key = Some(generate_api_key(false));
 }
 
 #[when("I generate a test API key")]
 async fn when_generate_test_key(world: &mut PerfgateWorld) {
-    use perfgate_api::auth::generate_api_key;
+    use perfgate_types::baseline_service::auth::generate_api_key;
     world.last_api_key = Some(generate_api_key(true));
 }
 
