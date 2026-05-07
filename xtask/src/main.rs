@@ -341,21 +341,33 @@ fn cmd_ci() -> anyhow::Result<()> {
     let xtask_env = vec![("CARGO_TARGET_DIR", xtask_target_dir.as_str())];
 
     run_with_env("cargo", ["fmt", "--all", "--", "--check"], &cargo_env)?;
-    run_with_env(
-        "cargo",
-        [
-            "clippy",
-            "--workspace",
-            "--exclude",
-            "xtask",
-            "--all-targets",
-            "--all-features",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        &cargo_env,
-    )?;
+
+    // Build the clippy invocation. `-D warnings` promotes every clippy warning
+    // to an error; we then overlay `-A clippy::<lint>` for each entry in
+    // `policy/clippy-debt.toml` whose `current_level = "allow"` (the active
+    // burndown). When a debt entry is removed, the lint immediately starts
+    // failing CI — that's the ratchet.
+    let muted = policy::lint_policy::muted_lints(Path::new(".")).unwrap_or_else(|e| {
+        eprintln!("  WARN could not read clippy-debt.toml ({e}); proceeding without overlay");
+        Vec::new()
+    });
+    let mut clippy_args: Vec<String> = vec![
+        "clippy".into(),
+        "--workspace".into(),
+        "--exclude".into(),
+        "xtask".into(),
+        "--all-targets".into(),
+        "--all-features".into(),
+        "--".into(),
+        "-D".into(),
+        "warnings".into(),
+    ];
+    for lint in &muted {
+        clippy_args.push("-A".into());
+        clippy_args.push(lint.clone());
+    }
+    let clippy_argv: Vec<&str> = clippy_args.iter().map(String::as_str).collect();
+    run_with_env_dyn("cargo", &clippy_argv, &cargo_env)?;
     run_with_env(
         "cargo",
         [
@@ -367,20 +379,22 @@ fn cmd_ci() -> anyhow::Result<()> {
         ],
         &cargo_env,
     )?;
-    run_with_env(
-        "cargo",
-        [
-            "clippy",
-            "-p",
-            "xtask",
-            "--all-targets",
-            "--all-features",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        &xtask_env,
-    )?;
+    let mut xtask_clippy_args: Vec<String> = vec![
+        "clippy".into(),
+        "-p".into(),
+        "xtask".into(),
+        "--all-targets".into(),
+        "--all-features".into(),
+        "--".into(),
+        "-D".into(),
+        "warnings".into(),
+    ];
+    for lint in &muted {
+        xtask_clippy_args.push("-A".into());
+        xtask_clippy_args.push(lint.clone());
+    }
+    let xtask_clippy_argv: Vec<&str> = xtask_clippy_args.iter().map(String::as_str).collect();
+    run_with_env_dyn("cargo", &xtask_clippy_argv, &xtask_env)?;
     run_with_env(
         "cargo",
         ["test", "-p", "xtask", "--all-features"],
@@ -1546,6 +1560,22 @@ fn run_with_env<const N: usize>(
         return run(bin, args);
     }
 
+    let mut command = std::process::Command::new(bin);
+    command.args(args);
+    for &(k, v) in envs {
+        command.env(k, v);
+    }
+    let status = command.status().with_context(|| format!("running {bin}"))?;
+    if !status.success() {
+        anyhow::bail!("{bin} failed: {status}");
+    }
+    Ok(())
+}
+
+/// Variant of [`run_with_env`] that accepts a dynamically-sized argv. Used by
+/// the CI clippy invocation, which appends `-A clippy::<lint>` flags built
+/// from the active debt ledger.
+fn run_with_env_dyn(bin: &str, args: &[&str], envs: &[(&str, &str)]) -> anyhow::Result<()> {
     let mut command = std::process::Command::new(bin);
     command.args(args);
     for &(k, v) in envs {

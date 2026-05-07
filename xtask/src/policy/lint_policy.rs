@@ -95,6 +95,27 @@ struct ReportSummary {
     early_planned: usize,
 }
 
+/// Returns the list of `clippy::<name>` lints that the debt ledger declares as
+/// currently muted (i.e. shipped at `allow` even though the workspace policy
+/// is stricter). `xtask ci` overlays these onto the clippy invocation as
+/// `-A clippy::<name>` so the existing burndown does not fail CI.
+pub fn muted_lints(repo: &Path) -> Result<Vec<String>> {
+    let debt = load_debt(repo)?;
+    Ok(debt
+        .into_iter()
+        .filter(|d| d.current_level == "allow")
+        .map(|d| {
+            // debt entries are written as "clippy::<name>" or bare "<name>";
+            // normalize to "clippy::<name>".
+            if d.lint.starts_with("clippy::") {
+                d.lint
+            } else {
+                format!("clippy::{}", d.lint)
+            }
+        })
+        .collect())
+}
+
 pub fn run(strict_flag: bool) -> Result<()> {
     let strict = resolve_strict(strict_flag);
     let repo = Path::new(".");
@@ -102,7 +123,7 @@ pub fn run(strict_flag: bool) -> Result<()> {
     let debt = load_debt(repo)?;
     let workspace = load_workspace_lints(repo)?;
 
-    let workspace_mismatches = compare_workspace(&lints.active, &debt, &workspace);
+    let workspace_mismatches = compare_workspace(&lints.active, &workspace);
     let (debt_violations, stale_debt) = compare_debt(&lints.active, &debt, &workspace);
     let expired_debt = expired_debt(&debt)?;
     let early_planned = early_planned(&lints.planned, &lints.msrv);
@@ -245,43 +266,26 @@ fn level_str(value: &toml::Value) -> String {
     }
 }
 
-fn compare_workspace(
-    active: &[ActiveLint],
-    debt: &[DebtEntry],
-    workspace: &BTreeMap<String, String>,
-) -> Vec<String> {
+fn compare_workspace(active: &[ActiveLint], workspace: &BTreeMap<String, String>) -> Vec<String> {
     let mut out = Vec::new();
     for lint in active {
         let key = format!("{}::{}", lint.group, lint.name);
-        // If this lint has a debt entry, the workspace must match
-        // `debt.current_level` (which may be softer than `policy.level`); the
-        // debt entry itself is the receipt for that gap.
-        let expected = debt
-            .iter()
-            .find(|d| debt_matches_active(d, lint))
-            .map(|d| d.current_level.as_str())
-            .unwrap_or(lint.level.as_str());
         match workspace.get(&key) {
             None => out.push(format!(
                 "{key}: declared in policy/clippy-lints.toml but not in [workspace.lints.{}] of Cargo.toml",
                 lint.group
             )),
             Some(wlevel) => {
-                if !levels_at_least(wlevel, expected) {
+                if !levels_at_least(wlevel, &lint.level) {
                     out.push(format!(
-                        "{key}: workspace level {:?} is softer than expected {:?}",
-                        wlevel, expected
+                        "{key}: workspace level {:?} is softer than policy level {:?}",
+                        wlevel, lint.level
                     ));
                 }
             }
         }
     }
     out
-}
-
-fn debt_matches_active(d: &DebtEntry, lint: &ActiveLint) -> bool {
-    let want = strip_group_prefix(&d.lint);
-    want == lint.name && (lint.group == "clippy" || !d.lint.starts_with("clippy::"))
 }
 
 /// Returns true iff `actual` is at least as strict as `target`.
@@ -317,6 +321,22 @@ fn compare_debt(
             ));
             continue;
         };
+        // current_level is the level CI overlays (via `-A clippy::<name>` for
+        // entries shipped at "allow"). It must not be stricter than the
+        // workspace's declared level — otherwise the debt would *add* policy
+        // rather than receipt a gap.
+        let key = format!("clippy::{}", strip_clippy(&entry.lint));
+        if let Some(wlevel) = workspace.get(&key)
+            && levels_at_least(&entry.current_level, wlevel)
+            && entry.current_level != *wlevel
+        {
+            // current_level stricter than workspace: nonsensical — debt
+            // doesn't add restrictions, only receipts gaps below workspace.
+            violations.push(format!(
+                "{}: debt current_level={:?} is stricter than workspace {:?}; debt should mute, not promote",
+                entry.lint, entry.current_level, wlevel
+            ));
+        }
         // target_level must be at least as strict as current_level — debt
         // ratchets toward strictness, never away.
         if !levels_at_least(&entry.target_level, &entry.current_level) {
@@ -333,16 +353,15 @@ fn compare_debt(
                 entry.lint, entry.target_level, active_lint.level
             ));
         }
-        // If the workspace already ships at target_level (debt paid), the
-        // entry is stale and should be removed.
-        let key = format!("clippy::{}", strip_clippy(&entry.lint));
+        // If the workspace level already meets the target AND the debt is
+        // saying current=workspace (no muting needed), the debt is stale.
         if let Some(wlevel) = workspace.get(&key)
-            && levels_at_least(wlevel, &entry.target_level)
-            && wlevel != &entry.current_level
+            && wlevel == &entry.current_level
+            && wlevel == &entry.target_level
         {
             stale.push(format!(
-                "{}: debt entry no longer needed (workspace already at {:?}, target {:?})",
-                entry.lint, wlevel, entry.target_level
+                "{}: debt entry no longer needed (workspace already at target {:?})",
+                entry.lint, entry.target_level
             ));
         }
     }

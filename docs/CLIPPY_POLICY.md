@@ -133,20 +133,48 @@ let mean = (sum as f64) / (n as f64);
 #[expect(clippy::cast_precision_loss)]  // forbidden — reason required
 ```
 
-## Promotion path (debt → deny)
+## Burndown ledger (`clippy-debt.toml`)
 
-The current `warn`-staged lints exist because of pre-existing call sites. The
-promotion path is:
+The workspace `[lints.*]` block declares the **policy target** (e.g.
+`unwrap_used = "warn"`). Existing findings that would fail
+`cargo clippy ... -- -D warnings` today are receipted in
+[`policy/clippy-debt.toml`](../policy/clippy-debt.toml). Each entry has:
 
-1. Run `cargo run -p xtask -- check-no-panic-family --propose` to materialize
-   the proposed allowlist for panic-family lints.
-2. Owners review and merge entries into `policy/no-panic-allowlist.toml` with
-   real `owner`, `reason`, and `expires`.
-3. Once the allowlist covers the existing surface, promote the lint level in
-   `policy/clippy-lints.toml` (`warn` → `deny`) and remove the matching
-   `clippy-debt.toml` entry.
-4. The lint-policy checker fails if the workspace `Cargo.toml` is softer than
-   `clippy-lints.toml` without a current `clippy-debt.toml` entry.
+```toml
+[[debt]]
+lint            = "clippy::unwrap_used"
+current_level   = "allow"   # the level CI overlays via `-A clippy::<name>`
+target_level    = "warn"    # what the policy actually wants
+owner           = "perfgate-core"
+reason          = "~2.5k existing call sites; receipt via no-panic allowlist."
+expires         = "2026-12-31"
+```
+
+`xtask ci` reads the ledger and appends `-A clippy::<lint>` for every entry
+with `current_level = "allow"`. Editors and `cargo clippy` (without xtask)
+still surface the warnings — only the CI gate is muted. When an entry is
+removed from the ledger, the lint immediately starts failing CI. **That is
+the ratchet.**
+
+### Promotion path
+
+1. Pick a lint with a debt entry.
+2. Burn down the findings in source (or, for panic-family, populate
+   `policy/no-panic-allowlist.toml` via
+   `cargo run -p xtask -- no-panic propose`).
+3. Verify locally: temporarily comment out the debt entry and run
+   `cargo run -p xtask -- ci`.
+4. When clean, delete the debt entry. The lint becomes blocking on the next
+   CI run.
+
+The lint-policy checker fails if:
+
+* a debt entry's `target_level` is softer than the policy's declared level
+* a debt entry's `current_level` is *stricter* than the workspace level
+  (debt should mute, not promote)
+* the workspace level has caught up to `target_level` and the entry is
+  no longer needed (stale debt)
+* an `expires` date has passed
 
 ## Planned 1.94 / 1.95 promotions
 
