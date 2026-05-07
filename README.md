@@ -2,6 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/perfgate-cli.svg)](https://crates.io/crates/perfgate-cli)
 [![ci](https://github.com/EffortlessMetrics/perfgate/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/perfgate/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/EffortlessMetrics/perfgate/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/perfgate)
 [![license](https://img.shields.io/crates/l/perfgate-cli.svg)](https://github.com/EffortlessMetrics/perfgate#license)
 
 **Catch performance regressions in CI before they ship.**
