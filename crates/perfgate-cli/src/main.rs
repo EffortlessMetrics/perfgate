@@ -13,6 +13,7 @@ use perfgate_app::init::{
     CiPlatform, Preset, ci_workflow_path, discover_benchmarks, generate_config, render_config_toml,
     scaffold_ci,
 };
+use perfgate_app::render::summary::{SummaryRequest, SummaryUseCase};
 use perfgate_app::{
     BadgeInput, BadgeStyle, BadgeType, BadgeUseCase, BenchOutcome, BisectRequest, BisectUseCase,
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
@@ -34,7 +35,6 @@ use perfgate_domain::scaling::{
 };
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_github::{CommentOptions, GitHubClient};
-use perfgate_render::summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::config::{
     apply_ratchet_toml_changes, load_config_file, preview_ratchet_toml_changes,
 };

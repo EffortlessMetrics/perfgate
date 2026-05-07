@@ -4,7 +4,7 @@
 //! trend indicators, optional blame attribution, and collapsible raw data.
 
 use crate::client::COMMENT_MARKER;
-use perfgate_render::{
+use perfgate_app::render::{
     direction_str, format_metric_with_statistic, format_pct, format_value, metric_status_icon,
     render_reason_line,
 };

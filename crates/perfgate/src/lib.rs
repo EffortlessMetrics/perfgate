@@ -27,7 +27,6 @@ pub use perfgate_domain::paired;
 pub use perfgate_domain::significance;
 pub use perfgate_domain::stats;
 pub use perfgate_export as export;
-pub use perfgate_render as render;
 pub use perfgate_sensor as sensor;
 pub use perfgate_types as types;
 pub use perfgate_types::error;
@@ -39,6 +38,26 @@ pub mod integrations;
 
 /// Runtime helpers for optional diagnostics and local execution support.
 pub mod runtime;
+
+/// Presentation helpers for rendering human- and CI-facing output.
+pub mod presentation {
+    /// Markdown, annotation, and summary rendering.
+    pub use perfgate_app::render;
+
+    /// Summary table rendering.
+    ///
+    /// Prefer [`render::summary`] in new code; this preserves the documented
+    /// presentation summary path during the 0.16 public-surface migration.
+    pub mod summary {
+        pub use perfgate_app::render::summary::*;
+    }
+}
+
+/// Markdown, annotation, and summary rendering.
+///
+/// Prefer [`crate::presentation::render`] in new code; this module preserves
+/// the previous facade spelling during the 0.16 public-surface migration.
+pub use perfgate_app::render;
 
 /// Core I/O-free building blocks for performance-gating policy.
 pub mod core {

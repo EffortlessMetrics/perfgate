@@ -6,9 +6,9 @@
 //! - types serialization roundtrip: Full receipts through serialize/deserialize
 //! - config → check: Config parsing through validation and budget resolution
 
+use perfgate::presentation::render::render_markdown;
 use perfgate_app::{CompareRequest, CompareUseCase};
 use perfgate_domain::{compare_runs, compute_stats, derive_report};
-use perfgate_render::render_markdown;
 use perfgate_types::{
     BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile, Direction,
     HostInfo, HostMismatchPolicy, Metric, MetricStatistic, MetricStatus, PAIRED_SCHEMA_V1,

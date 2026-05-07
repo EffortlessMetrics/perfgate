@@ -21,7 +21,6 @@ path = "src/main.rs"
 perfgate-types.workspace = true
 perfgate-client.workspace = true
 perfgate-api.workspace = true
-perfgate-render.workspace = true
 perfgate-app.workspace = true
 perfgate-github.workspace = true
 perfgate-adapters.workspace = true

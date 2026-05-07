@@ -46,7 +46,11 @@ enum MutantsCrate {
         alias = "perfgate-sha256"
     )]
     Types,
-    #[value(name = "perfgate-app")]
+    #[value(
+        name = "perfgate-app",
+        alias = "perfgate-render",
+        alias = "perfgate-summary"
+    )]
     App,
     #[value(name = "perfgate-api", alias = "perfgate-auth")]
     Api,
@@ -56,8 +60,6 @@ enum MutantsCrate {
     Cli,
     #[value(name = "perfgate-export")]
     Export,
-    #[value(name = "perfgate-render", alias = "perfgate-summary")]
-    Render,
     #[value(name = "perfgate-sensor")]
     Sensor,
     #[value(name = "perfgate-paired")]
@@ -76,7 +78,6 @@ impl MutantsCrate {
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
             MutantsCrate::Export => "perfgate-export",
-            MutantsCrate::Render => "perfgate-render",
             MutantsCrate::Sensor => "perfgate-sensor",
             MutantsCrate::Paired => "perfgate-paired",
             MutantsCrate::Fake => "perfgate-fake",
@@ -92,7 +93,6 @@ impl MutantsCrate {
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
             MutantsCrate::Export => 90,
-            MutantsCrate::Render => 90,
             MutantsCrate::Sensor => 90,
             MutantsCrate::Paired => 100,
             MutantsCrate::Fake => 70,
@@ -706,7 +706,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-client",
             "perfgate-export",
             "perfgate-github",
-            "perfgate-render",
             "perfgate-sensor",
             "perfgate-server",
             "perfgate-cli",
@@ -715,7 +714,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "presentation packages stay below runtime/app/entrypoints",
-        sources: &["perfgate-export", "perfgate-render", "perfgate-sensor"],
+        sources: &["perfgate-export", "perfgate-sensor"],
         forbidden: &[
             "perfgate-adapters",
             "perfgate-app",
@@ -764,8 +763,7 @@ const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
     "Command::new",
 ];
 
-const PRESENTATION_ARCH_PACKAGES: &[&str] =
-    &["perfgate-export", "perfgate-render", "perfgate-sensor"];
+const PRESENTATION_ARCH_PACKAGES: &[&str] = &["perfgate-export", "perfgate-sensor"];
 
 const PRESENTATION_BANNED_SOURCE_PATTERNS: &[&str] =
     &["std::process", "tokio::process", "Command::new"];
@@ -1733,7 +1731,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         ),
         (
             "perfgate-render",
-            "Markdown and GitHub annotations rendering",
+            "Workspace-only compatibility wrapper for perfgate::presentation::render",
             90,
         ),
         (
@@ -2140,7 +2138,7 @@ fn generate_workspace_inventory_md() -> String {
         ),
         (
             "perfgate-render",
-            "Markdown and GitHub annotations rendering",
+            "Workspace-only compatibility wrapper for perfgate::presentation::render",
             90,
         ),
         (

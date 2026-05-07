@@ -96,7 +96,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-app` | Orchestration layer for CLI commands |
-| `perfgate-render` | Markdown, terminal, and summary rendering |
+| `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-github` | GitHub API and PR-comment integration |

@@ -1,8 +1,8 @@
 //! Basic example demonstrating markdown and GitHub annotation rendering.
 //!
-//! Run with: cargo run -p perfgate-render --example basic
+//! Run with: cargo run -p perfgate-render --example render_example
 
-use perfgate_render::{
+use perfgate::presentation::render::{
     format_metric_with_statistic, format_pct, format_value, github_annotations, render_markdown,
     render_markdown_template,
 };

@@ -41,7 +41,7 @@ public packages above.
 use perfgate_stats::summarize_u64;
 use perfgate_budget::evaluate_budget;
 use perfgate_domain::CompareResult;
-use perfgate_render::markdown;
+use perfgate_render::render_markdown;
 ```
 
 **After the relevant absorption PR lands**:
@@ -49,7 +49,7 @@ use perfgate_render::markdown;
 use perfgate_domain::stats::summarize_u64;
 use perfgate::core::budget::evaluate_budget;
 use perfgate::domain::CompareResult;
-use perfgate::presentation::render::markdown;
+use perfgate::presentation::render::render_markdown;
 ```
 
 ---
@@ -71,7 +71,7 @@ Use this table to find the new import path for any old crate:
 | `perfgate-render` | `perfgate::presentation::render` | `use perfgate::presentation::render::*;` |
 | `perfgate-export` | `perfgate::presentation::export` | `use perfgate::presentation::export::*;` |
 | `perfgate-sensor` | `perfgate::presentation::sensor` | `use perfgate::presentation::sensor::*;` |
-| `perfgate-summary` | `perfgate::presentation::summary` | `use perfgate::presentation::summary::*;` |
+| `perfgate-summary` | `perfgate::presentation::render::summary` | `use perfgate::presentation::render::summary::*;` |
 | `perfgate-error` | `perfgate_types::error` | `use perfgate_types::error::*;` |
 | `perfgate-validation` | `perfgate_types::validation` | `use perfgate_types::validation::*;` |
 | `perfgate-auth` | `perfgate_api::auth` now; final owner TBD | `use perfgate_api::auth::*;` |

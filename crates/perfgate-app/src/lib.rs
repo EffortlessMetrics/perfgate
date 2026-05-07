@@ -21,6 +21,7 @@ pub mod init;
 mod paired;
 mod promote;
 mod ratchet;
+pub mod render;
 mod repair_context;
 mod report;
 mod sensor_report;
@@ -52,8 +53,8 @@ pub use trend::{
     TrendOutcome, TrendRequest, TrendUseCase, format_trend_chart, format_trend_output,
 };
 
-// Re-export rendering functions from perfgate-render for backward compatibility
-pub use perfgate_render::{
+// Re-export rendering functions from the app-owned presentation module for backward compatibility.
+pub use render::{
     direction_str, format_metric, format_metric_with_statistic, format_pct, format_value,
     github_annotations, markdown_template_context, metric_status_icon, metric_status_str,
     parse_reason_token, render_complexity_section, render_markdown, render_markdown_template,

@@ -11,7 +11,7 @@
 # Landed in PR #223.
 perfgate-validation -> perfgate_types::validation [deleted]
 perfgate-auth -> perfgate_api::auth [deleted]
-perfgate-summary -> perfgate_render::summary [deleted]
+perfgate-summary -> perfgate::presentation::render::summary [deleted]
 perfgate-stats -> perfgate_domain::stats [deleted]
 perfgate-paired -> perfgate_domain::paired [compatibility wrapper] [publish=false]
 perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
@@ -29,7 +29,7 @@ perfgate-scaling -> perfgate_domain::scaling; perfgate::domain::scaling facade [
 perfgate-sha256 -> perfgate_types::fingerprint; perfgate::core::fingerprint facade [deleted]
 
 # Presentation.
-perfgate-render -> perfgate::presentation::render
+perfgate-render -> perfgate::presentation::render [compatibility wrapper] [publish=false]
 perfgate-export -> perfgate::presentation::export
 perfgate-sensor -> perfgate::presentation::sensor
 

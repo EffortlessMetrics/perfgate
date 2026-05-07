@@ -4,7 +4,7 @@
 //! individual metric values, or trend summaries from perfgate reports and
 //! comparisons.
 
-use perfgate_render::{format_metric_with_statistic, format_pct, format_value};
+use crate::{format_metric_with_statistic, format_pct, format_value};
 use perfgate_types::{CompareReceipt, Metric, MetricStatus, PerfgateReport, VerdictStatus};
 use std::path::PathBuf;
 
