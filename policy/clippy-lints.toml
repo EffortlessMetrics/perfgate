@@ -120,10 +120,10 @@ level = "deny"
 reason = "Constant-index OOB is always a bug."
 
 [[active]]
-name = "unchecked_duration_subtraction"
+name = "unchecked_time_subtraction"
 group = "clippy"
 level = "deny"
-reason = "Duration subtraction panics on underflow; use checked_sub."
+reason = "Duration/Instant subtraction panics on underflow; use checked_sub."
 
 # --- UTF-8 / parser safety -------------------------------------------------
 [[active]]

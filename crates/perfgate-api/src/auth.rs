@@ -243,7 +243,7 @@ pub fn generate_api_key(test: bool) -> String {
         .chars()
         .take(32)
         .collect();
-    format!("{}{}", prefix, random)
+    format!("{prefix}{random}")
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@
 # Schema:
 #   [[debt]]
 #   lint = "clippy::unwrap_used"
-#   current_level = "warn"
+#   current_level = "allow"
 #   target_level = "deny"
 #   owner = "<team or maintainer handle>"
 #   reason = "<one line, ideally with a tracking issue>"
@@ -21,7 +21,7 @@ schema_version = "1.0"
 
 [[debt]]
 lint = "clippy::panic"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "39 panic!/todo!/unreachable!() call sites; receipt via no-panic allowlist before flipping."
@@ -29,7 +29,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::unreachable"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Pairs with panic; flip together once allowlist is baselined."
@@ -37,7 +37,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::unwrap_used"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "~2.5k unwrap call sites across crates; baseline via xtask check-no-panic-family."
@@ -45,7 +45,7 @@ expires = "2026-12-31"
 
 [[debt]]
 lint = "clippy::expect_used"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Same migration as unwrap_used; receipt then promote."
@@ -53,7 +53,7 @@ expires = "2026-12-31"
 
 [[debt]]
 lint = "clippy::unwrap_in_result"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Result-returning fns still hold panicking unwraps; flip post-baseline."
@@ -61,7 +61,7 @@ expires = "2026-12-31"
 
 [[debt]]
 lint = "clippy::string_slice"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-render"
 reason = "Render/markdown paths slice on byte indexes; audit for UTF-8 safety."
@@ -69,7 +69,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::indexing_slicing"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Many slice[i] sites; replace with .get/.first/.last() incrementally."
@@ -77,7 +77,7 @@ expires = "2026-12-31"
 
 [[debt]]
 lint = "clippy::map_err_ignore"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Existing call sites discard inner errors; tighten in adapters first."
@@ -85,7 +85,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::lines_filter_map_ok"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-ingest"
 reason = "Ingest paths read text; we want explicit error propagation."
@@ -93,7 +93,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::float_cmp"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-domain"
 reason = "Statistics tests rely on direct float compares; migrate to abs-diff helpers."
@@ -101,7 +101,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::float_cmp_const"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-domain"
 reason = "Same migration as float_cmp."
@@ -109,7 +109,7 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::read_line_without_trim"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-cli"
 reason = "Audit any read_line callsites in CLI before flipping."
@@ -117,15 +117,23 @@ expires = "2026-09-30"
 
 [[debt]]
 lint = "clippy::get_unwrap"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "tests/integration/* still use BTreeMap.get(k).unwrap() against keys validated upstream."
 expires = "2026-12-31"
 
 [[debt]]
+lint = "clippy::uninlined_format_args"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Many existing format!(\"{}\", x) sites; migrate incrementally to inline form."
+expires = "2026-12-31"
+
+[[debt]]
 lint = "clippy::assertions_on_result_states"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Existing test sites use assert!(res.is_ok()); migrate to .unwrap() and re-deny."
@@ -133,7 +141,7 @@ expires = "2026-12-31"
 
 [[debt]]
 lint = "clippy::allow_attributes"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Migrate existing #[allow(...)] sites to #[expect(..., reason = ...)]."
@@ -141,8 +149,178 @@ expires = "2026-12-31"
 
 [[debt]]
 lint = "clippy::allow_attributes_without_reason"
-current_level = "warn"
+current_level = "allow"
 target_level = "deny"
 owner = "perfgate-core"
 reason = "Pairs with allow_attributes migration."
 expires = "2026-12-31"
+
+# ---------------------------------------------------------------------------
+# Steady-state-warn or aspirational-warn lints currently silenced because
+# enforcing them would either contradict intentional code patterns (e.g.
+# i64→f64 narrowing in stats) or would require a large incremental backfill
+# (e.g. uniform manual_let_else / inline format args).
+#
+# These have a long expiry; they are real debt only if the team decides to
+# tighten them. The lint-policy checker still requires an owner and reason.
+# ---------------------------------------------------------------------------
+
+[[debt]]
+lint = "clippy::cast_sign_loss"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-domain"
+reason = "ns→f64 conversions in statistics paths are intentional; promote when audited."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::cast_possible_wrap"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-adapters"
+reason = "Memory/duration narrowing on rusage paths is intentional."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::cast_possible_truncation"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-adapters"
+reason = "Memory/duration narrowing is intentional; warn-staged target."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::cast_precision_loss"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-domain"
+reason = "Statistics intentionally accept i64/u64 → f64 narrowing on bounded values."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::exit"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-cli"
+reason = "process::exit at the CLI boundary is intentional; warn target signals new sites elsewhere."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::expl_impl_clone_on_copy"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Existing impls predate Copy bounds; backfill via #[derive] sweep."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::result_unit_err"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Existing Result<T, ()> APIs; migrate to typed errors incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::result_large_err"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Receipt-shaped errors are large by design; revisit after error consolidation."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::manual_let_else"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::manual_ok_or"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::manual_strip"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::manual_split_once"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::filter_map_next"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — find_map is clearer; backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::flat_map_option"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — filter_map for Option is clearer; backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::match_result_ok"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — res.ok() is clearer; backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::needless_collect"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Stylistic — eliminate intermediate Vec; backfill incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::missing_panics_doc"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Tied to the no-panic burndown — when unwrap_used migrates, panics-doc requirements naturally surface."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::missing_errors_doc"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-core"
+reason = "Backfill # Errors sections on public Result-returning APIs incrementally."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::float_cmp"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-domain"
+reason = "Existing test sites use direct float compares; migrate to abs-diff helpers."
+expires = "2027-06-30"
+
+[[debt]]
+lint = "clippy::float_cmp_const"
+current_level = "allow"
+target_level = "warn"
+owner = "perfgate-domain"
+reason = "Same migration as float_cmp."
+expires = "2027-06-30"

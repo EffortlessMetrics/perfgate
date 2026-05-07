@@ -256,8 +256,7 @@ pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<H
         };
         if ratio > 2.0 {
             reasons.push(format!(
-                "CPU count differs significantly: baseline={}, current={} ({:.1}x)",
-                base_cpu, curr_cpu, ratio
+                "CPU count differs significantly: baseline={base_cpu}, current={curr_cpu} ({ratio:.1}x)",
             ));
         }
     }
@@ -272,8 +271,7 @@ pub fn detect_host_mismatch(baseline: &HostInfo, current: &HostInfo) -> Option<H
             let base_gb = base_mem as f64 / (1024.0 * 1024.0 * 1024.0);
             let curr_gb = curr_mem as f64 / (1024.0 * 1024.0 * 1024.0);
             reasons.push(format!(
-                "memory differs significantly: baseline={:.1}GB, current={:.1}GB ({:.1}x)",
-                base_gb, curr_gb, ratio
+                "memory differs significantly: baseline={base_gb:.1}GB, current={curr_gb:.1}GB ({ratio:.1}x)",
             ));
         }
     }

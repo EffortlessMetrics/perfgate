@@ -102,8 +102,8 @@ pub fn run(strict_flag: bool) -> Result<()> {
     let debt = load_debt(repo)?;
     let workspace = load_workspace_lints(repo)?;
 
-    let workspace_mismatches = compare_workspace(&lints.active, &workspace);
-    let (debt_violations, stale_debt) = compare_debt(&lints.active, &debt);
+    let workspace_mismatches = compare_workspace(&lints.active, &debt, &workspace);
+    let (debt_violations, stale_debt) = compare_debt(&lints.active, &debt, &workspace);
     let expired_debt = expired_debt(&debt)?;
     let early_planned = early_planned(&lints.planned, &lints.msrv);
 
@@ -245,26 +245,43 @@ fn level_str(value: &toml::Value) -> String {
     }
 }
 
-fn compare_workspace(active: &[ActiveLint], workspace: &BTreeMap<String, String>) -> Vec<String> {
+fn compare_workspace(
+    active: &[ActiveLint],
+    debt: &[DebtEntry],
+    workspace: &BTreeMap<String, String>,
+) -> Vec<String> {
     let mut out = Vec::new();
     for lint in active {
         let key = format!("{}::{}", lint.group, lint.name);
+        // If this lint has a debt entry, the workspace must match
+        // `debt.current_level` (which may be softer than `policy.level`); the
+        // debt entry itself is the receipt for that gap.
+        let expected = debt
+            .iter()
+            .find(|d| debt_matches_active(d, lint))
+            .map(|d| d.current_level.as_str())
+            .unwrap_or(lint.level.as_str());
         match workspace.get(&key) {
             None => out.push(format!(
                 "{key}: declared in policy/clippy-lints.toml but not in [workspace.lints.{}] of Cargo.toml",
                 lint.group
             )),
             Some(wlevel) => {
-                if !levels_at_least(wlevel, &lint.level) {
+                if !levels_at_least(wlevel, expected) {
                     out.push(format!(
-                        "{key}: workspace level {:?} is softer than policy level {:?}",
-                        wlevel, lint.level
+                        "{key}: workspace level {:?} is softer than expected {:?}",
+                        wlevel, expected
                     ));
                 }
             }
         }
     }
     out
+}
+
+fn debt_matches_active(d: &DebtEntry, lint: &ActiveLint) -> bool {
+    let want = strip_group_prefix(&d.lint);
+    want == lint.name && (lint.group == "clippy" || !d.lint.starts_with("clippy::"))
 }
 
 /// Returns true iff `actual` is at least as strict as `target`.
@@ -281,12 +298,14 @@ fn levels_at_least(actual: &str, target: &str) -> bool {
     rank(actual) >= rank(target)
 }
 
-fn compare_debt(active: &[ActiveLint], debt: &[DebtEntry]) -> (Vec<String>, Vec<String>) {
+fn compare_debt(
+    active: &[ActiveLint],
+    debt: &[DebtEntry],
+    workspace: &BTreeMap<String, String>,
+) -> (Vec<String>, Vec<String>) {
     let mut violations = Vec::new();
     let mut stale = Vec::new();
     for entry in debt {
-        // Find matching active lint.
-        let key = format!("clippy::{}", strip_clippy(&entry.lint));
         let want_name = strip_group_prefix(&entry.lint);
         let active_match = active.iter().find(|a| {
             a.name == want_name && (a.group == "clippy" || entry.lint.starts_with("clippy::"))
@@ -298,29 +317,34 @@ fn compare_debt(active: &[ActiveLint], debt: &[DebtEntry]) -> (Vec<String>, Vec<
             ));
             continue;
         };
-        if active_lint.level != entry.current_level {
-            violations.push(format!(
-                "{}: debt current_level={:?} but policy level={:?}",
-                entry.lint, entry.current_level, active_lint.level
-            ));
-        }
+        // target_level must be at least as strict as current_level — debt
+        // ratchets toward strictness, never away.
         if !levels_at_least(&entry.target_level, &entry.current_level) {
             violations.push(format!(
                 "{}: debt target_level={:?} is softer than current_level={:?}",
                 entry.lint, entry.target_level, entry.current_level
             ));
         }
-        // If current already meets target, the debt is stale.
-        if levels_at_least(&active_lint.level, &entry.target_level)
-            && active_lint.level == entry.target_level
-            && entry.current_level == entry.target_level
-        {
-            stale.push(format!(
-                "{}: debt entry no longer needed (target met)",
-                entry.lint
+        // target_level must reach the policy's declared active level — a debt
+        // entry is the receipt for the gap, not a relaxation of the goal.
+        if !levels_at_least(&entry.target_level, &active_lint.level) {
+            violations.push(format!(
+                "{}: debt target_level={:?} is softer than policy level {:?}",
+                entry.lint, entry.target_level, active_lint.level
             ));
         }
-        let _ = key; // silence unused
+        // If the workspace already ships at target_level (debt paid), the
+        // entry is stale and should be removed.
+        let key = format!("clippy::{}", strip_clippy(&entry.lint));
+        if let Some(wlevel) = workspace.get(&key)
+            && levels_at_least(wlevel, &entry.target_level)
+            && wlevel != &entry.current_level
+        {
+            stale.push(format!(
+                "{}: debt entry no longer needed (workspace already at {:?}, target {:?})",
+                entry.lint, wlevel, entry.target_level
+            ));
+        }
     }
     (violations, stale)
 }

@@ -79,6 +79,12 @@ impl ValidationError {
     }
 }
 
+/// Validate a benchmark name against the rules used everywhere in perfgate.
+///
+/// # Errors
+/// Returns a [`ValidationError`] if `name` is empty, exceeds
+/// [`BENCH_NAME_MAX_LEN`], contains characters outside the allowed
+/// pattern, or contains path-traversal segments.
 pub fn validate_bench_name(name: &str) -> std::result::Result<(), ValidationError> {
     if name.is_empty() {
         return Err(ValidationError::Empty);
@@ -222,14 +228,14 @@ pub enum PerfgateError {
 impl fmt::Display for PerfgateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PerfgateError::Validation(e) => write!(f, "{}", e),
-            PerfgateError::Stats(e) => write!(f, "{}", e),
-            PerfgateError::Adapter(e) => write!(f, "{}", e),
-            PerfgateError::Config(e) => write!(f, "{}", e),
-            PerfgateError::Io(e) => write!(f, "{}", e),
-            PerfgateError::Paired(e) => write!(f, "{}", e),
-            PerfgateError::Auth(e) => write!(f, "{}", e),
-            PerfgateError::Parse(e) => write!(f, "{}", e),
+            PerfgateError::Validation(e) => write!(f, "{e}"),
+            PerfgateError::Stats(e) => write!(f, "{e}"),
+            PerfgateError::Adapter(e) => write!(f, "{e}"),
+            PerfgateError::Config(e) => write!(f, "{e}"),
+            PerfgateError::Io(e) => write!(f, "{e}"),
+            PerfgateError::Paired(e) => write!(f, "{e}"),
+            PerfgateError::Auth(e) => write!(f, "{e}"),
+            PerfgateError::Parse(e) => write!(f, "{e}"),
         }
     }
 }

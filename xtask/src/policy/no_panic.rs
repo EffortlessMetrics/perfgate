@@ -26,8 +26,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
 
 use super::common::{
     ensure_reports_dir, list_tracked_files, parse_iso_date, resolve_strict, today_utc, write_report,
@@ -166,7 +164,7 @@ pub fn run(propose: bool, strict_flag: bool) -> Result<()> {
         expired: expired.len(),
     };
 
-    let unallowlisted_refs: Vec<&Finding> = unallowlisted.iter().copied().collect();
+    let unallowlisted_refs: Vec<&Finding> = unallowlisted.to_vec();
     let report = Report {
         schema_version: "0.3",
         summary: ReportSummary { ..summary },
@@ -260,11 +258,6 @@ fn scan_repo(repo: &Path) -> Result<Vec<Finding>> {
         scan_file(&rel, &text, &mut out);
     }
     Ok(out)
-}
-
-#[cfg(test)]
-fn scan_file_test(rel: &PathBuf, text: &str, out: &mut Vec<Finding>) {
-    scan_file(rel.as_path(), text, out);
 }
 
 fn scan_file(rel: &Path, text: &str, out: &mut Vec<Finding>) {
@@ -443,7 +436,7 @@ fn receiver_fingerprint(text: &str, byte_pos: usize) -> Option<String> {
     // Truncate at preceding `=`/`(`/`,`/`{`/`;`/whitespace boundary so we
     // don't leak unrelated syntax.
     let cut = chunk
-        .rfind(|c: char| matches!(c, '=' | ';' | '{' | '}' | ',' | '\n'))
+        .rfind(['=', ';', '{', '}', ',', '\n'])
         .map(|i| i + 1)
         .unwrap_or(0);
     let s = chunk[cut..].trim();
@@ -775,8 +768,8 @@ mod tests {
     #[test]
     fn detects_unwrap() {
         let mut out = Vec::new();
-        scan_file_test(
-            &PathBuf::from("test.rs"),
+        scan_file(
+            Path::new("test.rs"),
             "fn foo() -> i32 {\n    let x = bar().unwrap();\n    x\n}\n",
             &mut out,
         );
@@ -788,8 +781,8 @@ mod tests {
     #[test]
     fn detects_get_unwrap_and_suppresses_inner() {
         let mut out = Vec::new();
-        scan_file_test(
-            &PathBuf::from("test.rs"),
+        scan_file(
+            Path::new("test.rs"),
             "fn foo() {\n    let x = v.get(0).unwrap();\n}\n",
             &mut out,
         );
@@ -800,8 +793,8 @@ mod tests {
     #[test]
     fn detects_macros() {
         let mut out = Vec::new();
-        scan_file_test(
-            &PathBuf::from("test.rs"),
+        scan_file(
+            Path::new("test.rs"),
             "fn foo() {\n    panic!(\"x\");\n    todo!();\n    unreachable!();\n}\n",
             &mut out,
         );
@@ -814,8 +807,8 @@ mod tests {
     #[test]
     fn ignores_unwrap_in_strings_and_comments() {
         let mut out = Vec::new();
-        scan_file_test(
-            &PathBuf::from("test.rs"),
+        scan_file(
+            Path::new("test.rs"),
             "fn foo() {\n    let s = \"x.unwrap()\";\n    // .unwrap()\n}\n",
             &mut out,
         );

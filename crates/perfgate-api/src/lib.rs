@@ -544,7 +544,7 @@ impl std::str::FromStr for AuditAction {
             "update" => Ok(AuditAction::Update),
             "delete" => Ok(AuditAction::Delete),
             "promote" => Ok(AuditAction::Promote),
-            other => Err(format!("Unknown audit action: {}", other)),
+            other => Err(format!("Unknown audit action: {other}")),
         }
     }
 }
@@ -579,7 +579,7 @@ impl std::str::FromStr for AuditResourceType {
             "baseline" => Ok(AuditResourceType::Baseline),
             "key" => Ok(AuditResourceType::Key),
             "verdict" => Ok(AuditResourceType::Verdict),
-            other => Err(format!("Unknown resource type: {}", other)),
+            other => Err(format!("Unknown resource type: {other}")),
         }
     }
 }

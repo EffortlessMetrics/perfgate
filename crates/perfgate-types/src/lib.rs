@@ -1393,6 +1393,10 @@ impl ConfigFile {
     /// "#).unwrap();
     /// assert!(bad.validate().is_err());
     /// ```
+    ///
+    /// # Errors
+    /// Returns the first validation failure encountered: invalid bench name,
+    /// empty `tradeoff.require`, or unknown metric reference.
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
             validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
@@ -1448,9 +1452,9 @@ fn default_fallback_to_local() -> bool {
 }
 
 impl BaselineServerConfig {
-    /// Returns true if server is configured (has a URL).
+    /// Returns true if server is configured (has a non-empty URL).
     pub fn is_configured(&self) -> bool {
-        self.url.is_some() && !self.url.as_ref().unwrap().is_empty()
+        self.url.as_deref().is_some_and(|u| !u.is_empty())
     }
 
     /// Resolves the server URL from config or environment variable.
