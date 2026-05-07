@@ -17,7 +17,6 @@ categories = ["development-tools"]
 perfgate-types.workspace = true
 perfgate-domain.workspace = true
 perfgate-adapters.workspace = true
-perfgate-export.workspace = true
 perfgate-sensor.workspace = true
 anyhow.workspace = true
 glob.workspace = true

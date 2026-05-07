@@ -96,7 +96,7 @@ gate once transition packages stop being publishable.
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
-| `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
+| `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |

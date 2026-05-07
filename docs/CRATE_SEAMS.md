@@ -45,6 +45,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-paired` | `perfgate_domain::paired` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-error` | `perfgate_types::error` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-render` | `perfgate::presentation::render` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-export` | `perfgate::presentation::export` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | crate deleted |
@@ -68,7 +69,6 @@ high-level target is:
 | `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` |
 | `perfgate-api` | `perfgate_types::baseline_service` or shared client/server contract |
 | `perfgate-domain` | `perfgate::domain` |
-| `perfgate-export` | `perfgate::presentation::export` |
 | `perfgate-sensor` | `perfgate::presentation::sensor` |
 | `perfgate-adapters` | `perfgate::runtime` |
 | `perfgate-app` | `perfgate::app` |

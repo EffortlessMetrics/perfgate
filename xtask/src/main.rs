@@ -49,7 +49,8 @@ enum MutantsCrate {
     #[value(
         name = "perfgate-app",
         alias = "perfgate-render",
-        alias = "perfgate-summary"
+        alias = "perfgate-summary",
+        alias = "perfgate-export"
     )]
     App,
     #[value(name = "perfgate-api", alias = "perfgate-auth")]
@@ -58,8 +59,6 @@ enum MutantsCrate {
     Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
-    #[value(name = "perfgate-export")]
-    Export,
     #[value(name = "perfgate-sensor")]
     Sensor,
     #[value(name = "perfgate-paired")]
@@ -77,7 +76,6 @@ impl MutantsCrate {
             MutantsCrate::Api => "perfgate-api",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
-            MutantsCrate::Export => "perfgate-export",
             MutantsCrate::Sensor => "perfgate-sensor",
             MutantsCrate::Paired => "perfgate-paired",
             MutantsCrate::Fake => "perfgate-fake",
@@ -92,7 +90,6 @@ impl MutantsCrate {
             MutantsCrate::Api => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
-            MutantsCrate::Export => 90,
             MutantsCrate::Sensor => 90,
             MutantsCrate::Paired => 100,
             MutantsCrate::Fake => 70,
@@ -704,7 +701,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-adapters",
             "perfgate-app",
             "perfgate-client",
-            "perfgate-export",
             "perfgate-github",
             "perfgate-sensor",
             "perfgate-server",
@@ -714,7 +710,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "presentation packages stay below runtime/app/entrypoints",
-        sources: &["perfgate-export", "perfgate-sensor"],
+        sources: &["perfgate-sensor"],
         forbidden: &[
             "perfgate-adapters",
             "perfgate-app",
@@ -763,7 +759,7 @@ const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
     "Command::new",
 ];
 
-const PRESENTATION_ARCH_PACKAGES: &[&str] = &["perfgate-export", "perfgate-sensor"];
+const PRESENTATION_ARCH_PACKAGES: &[&str] = &["perfgate-sensor"];
 
 const PRESENTATION_BANNED_SOURCE_PATTERNS: &[&str] =
     &["std::process", "tokio::process", "Command::new"];
@@ -1726,7 +1722,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         ),
         (
             "perfgate-export",
-            "Export formats (CSV, JSONL, HTML, Prometheus)",
+            "Workspace-only compatibility wrapper for perfgate::presentation::export",
             90,
         ),
         (
@@ -1806,7 +1802,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-domain::budget, perfgate-domain::significance, perfgate-domain::scaling");
     println!("         ↓");
-    println!("  perfgate-export, perfgate-render, perfgate-sensor, perfgate-paired");
+    println!("  perfgate::presentation::export, perfgate-render, perfgate-sensor, perfgate-paired");
     println!("         ↓");
     println!("  perfgate-domain (policy)");
     println!("         ↓");
@@ -1986,12 +1982,14 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             println!("Generating trend variance summary...");
             let pattern = format!("{}/**/*.jsonl", dir.display());
 
-            let mut all_rows: Vec<perfgate_export::RunExportRow> = Vec::new();
+            let mut all_rows: Vec<perfgate_app::export::RunExportRow> = Vec::new();
             for entry in glob(&pattern)? {
                 let path = entry?;
                 let content = fs::read_to_string(&path)?;
                 for line in content.lines() {
-                    if let Ok(row) = serde_json::from_str::<perfgate_export::RunExportRow>(line) {
+                    if let Ok(row) =
+                        serde_json::from_str::<perfgate_app::export::RunExportRow>(line)
+                    {
                         all_rows.push(row);
                     }
                 }
@@ -2133,7 +2131,7 @@ fn generate_workspace_inventory_md() -> String {
         ),
         (
             "perfgate-export",
-            "Export formats (CSV, JSONL, HTML, Prometheus)",
+            "Workspace-only compatibility wrapper for perfgate::presentation::export",
             90,
         ),
         (

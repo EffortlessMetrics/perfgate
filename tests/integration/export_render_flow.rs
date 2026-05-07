@@ -3,8 +3,8 @@
 //! These tests verify that export and render crates work together
 //! correctly, testing the full receipt → markdown flow.
 
+use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate::presentation::render::{github_annotations, render_markdown};
-use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_types::{
     BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, Delta, Direction, HostInfo,
     Metric, MetricStatistic, MetricStatus, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats,

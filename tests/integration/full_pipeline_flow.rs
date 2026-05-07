@@ -5,9 +5,9 @@
 //! - RunReceipt → sensor report → structure verification
 //! - RunReceipt → CSV export → structure verification
 
+use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate_domain::budget::evaluate_budget;
 use perfgate_domain::{compare_stats, compute_stats};
-use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_sensor::SensorReportBuilder;
 use perfgate_types::{
     BenchMeta, Budget, Direction, HostInfo, Metric, MetricStatus, PerfgateReport, REPORT_SCHEMA_V1,

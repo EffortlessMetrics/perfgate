@@ -17,6 +17,7 @@ pub mod comparison_logic;
 mod diff;
 pub mod discover;
 mod explain;
+pub mod export;
 pub mod init;
 mod paired;
 mod promote;
@@ -61,8 +62,8 @@ pub use render::{
     render_reason_line,
 };
 
-// Re-export export functionality from perfgate-export for backward compatibility
-pub use perfgate_export::{CompareExportRow, ExportFormat, ExportUseCase, RunExportRow};
+// Re-export export functionality from the app-owned presentation module for backward compatibility.
+pub use export::{CompareExportRow, ExportFormat, ExportUseCase, RunExportRow};
 
 use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
 use perfgate_domain::{

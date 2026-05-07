@@ -1,5 +1,6 @@
 ---
-source: crates/perfgate-export/src/lib.rs
+source: crates/perfgate-app/src/export.rs
+assertion_line: 1140
 expression: prom
 ---
 perfgate_compare_baseline_value{bench="alpha-bench",metric="max_rss_kb"} 1024.000000

@@ -1,5 +1,6 @@
 ---
-source: crates/perfgate-export/src/lib.rs
+source: crates/perfgate-app/src/export.rs
+assertion_line: 1126
 expression: prom
 ---
 perfgate_run_wall_ms_median{bench="test-benchmark"} 100

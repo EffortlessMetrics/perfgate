@@ -19,7 +19,6 @@ perfgate-domain.workspace = true
 perfgate-adapters.workspace = true
 perfgate-app.workspace = true
 perfgate-sensor.workspace = true
-perfgate-export.workspace = true
 anyhow.workspace = true
 regex.workspace = true
 serde.workspace = true

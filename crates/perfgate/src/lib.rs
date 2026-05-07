@@ -26,7 +26,6 @@ pub use perfgate_domain::budget;
 pub use perfgate_domain::paired;
 pub use perfgate_domain::significance;
 pub use perfgate_domain::stats;
-pub use perfgate_export as export;
 pub use perfgate_sensor as sensor;
 pub use perfgate_types as types;
 pub use perfgate_types::error;
@@ -41,6 +40,9 @@ pub mod runtime;
 
 /// Presentation helpers for rendering human- and CI-facing output.
 pub mod presentation {
+    /// CSV, JSONL, HTML, Prometheus, and JUnit export helpers.
+    pub use perfgate_app::export;
+
     /// Markdown, annotation, and summary rendering.
     pub use perfgate_app::render;
 
@@ -52,6 +54,12 @@ pub mod presentation {
         pub use perfgate_app::render::summary::*;
     }
 }
+
+/// CSV, JSONL, HTML, Prometheus, and JUnit export helpers.
+///
+/// Prefer [`crate::presentation::export`] in new code; this module preserves
+/// the previous facade spelling during the 0.16 public-surface migration.
+pub use perfgate_app::export;
 
 /// Markdown, annotation, and summary rendering.
 ///

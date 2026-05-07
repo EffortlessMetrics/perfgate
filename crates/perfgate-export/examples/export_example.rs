@@ -1,8 +1,8 @@
 //! Basic example demonstrating export formats.
 //!
-//! Run with: cargo run -p perfgate-export --example basic
+//! Run with: cargo run -p perfgate-export --example export_example
 
-use perfgate_export::{ExportFormat, ExportUseCase};
+use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate_types::{
     BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, Delta, Direction, HostInfo,
     Metric, MetricStatistic, MetricStatus, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats,

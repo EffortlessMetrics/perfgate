@@ -7,21 +7,19 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-description = "Export formats for perfgate benchmarks (CSV, JSONL, HTML, Prometheus)"
+description = "Workspace-only compatibility wrapper for perfgate::presentation::export"
 readme = "README.md"
 documentation = "https://docs.rs/perfgate-export"
 keywords = ["export", "csv", "prometheus", "benchmarking"]
 categories = ["development-tools"]
+publish = false
 
 [dependencies]
-perfgate-types.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-anyhow.workspace = true
+perfgate-app.workspace = true
 
 [dev-dependencies]
-proptest = "1.7"
-insta.workspace = true
+perfgate.workspace = true
+perfgate-types.workspace = true
 
 [lints]
 workspace = true

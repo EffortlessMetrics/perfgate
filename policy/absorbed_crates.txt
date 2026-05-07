@@ -30,7 +30,7 @@ perfgate-sha256 -> perfgate_types::fingerprint; perfgate::core::fingerprint faca
 
 # Presentation.
 perfgate-render -> perfgate::presentation::render [compatibility wrapper] [publish=false]
-perfgate-export -> perfgate::presentation::export
+perfgate-export -> perfgate::presentation::export [compatibility wrapper] [publish=false]
 perfgate-sensor -> perfgate::presentation::sensor
 
 # Runtime, app, and integrations.

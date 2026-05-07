@@ -26,6 +26,7 @@ use perfgate_types::{
 };
 
 // Microcrate imports for direct testing
+use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate::presentation::render::render_markdown;
 use perfgate_domain::budget::{
     aggregate_verdict, evaluate_budget, reason_token as budget_reason_token,
@@ -37,7 +38,6 @@ use perfgate_error::{
     AdapterError, ConfigValidationError, IoError, PairedError, PerfgateError, StatsError,
     ValidationError,
 };
-use perfgate_export::{ExportFormat, ExportUseCase};
 use perfgate_sensor::SensorReportBuilder;
 use perfgate_types::fingerprint::sha256_hex;
 use perfgate_types::validation::validate_bench_name as validate_bench_name_fn;
