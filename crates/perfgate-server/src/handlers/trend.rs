@@ -15,8 +15,8 @@ use tracing::error;
 use crate::auth::{AuthContext, Scope, check_scope};
 use crate::models::ApiError;
 use crate::server::AppState;
-use perfgate_domain::stats::trend::{TrendAnalysis, analyze_trend, spark_chart};
-use perfgate_domain::{TrendConfig, metric_value};
+use perfgate::domain::stats::trend::{TrendAnalysis, analyze_trend, spark_chart};
+use perfgate::domain::{TrendConfig, metric_value};
 use perfgate_types::Metric;
 
 /// Query parameters for trend analysis.
