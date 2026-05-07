@@ -27,7 +27,7 @@ run, promote each first baseline and commit it:
 ```bash
 perfgate check --config perfgate.toml --all
 perfgate baseline status --config perfgate.toml
-perfgate baseline promote --config perfgate.toml --bench api
+perfgate baseline promote --config perfgate.toml --all
 ```
 
 ## 2) Repository layout

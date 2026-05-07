@@ -1406,20 +1406,28 @@ enum BaselineAction {
         config: PathBuf,
 
         /// Benchmark name to promote
-        #[arg(long)]
-        bench: String,
+        #[arg(long, conflicts_with = "all", required_unless_present = "all")]
+        bench: Option<String>,
+
+        /// Promote every configured benchmark from its latest local check artifact
+        #[arg(long, conflicts_with_all = ["bench", "current", "to"], default_value_t = false)]
+        all: bool,
 
         /// Path or cloud URI to the run receipt. Defaults to [defaults].out_dir/<bench>/run.json.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "all")]
         current: Option<PathBuf>,
 
         /// Path or cloud URI where the baseline should be written. Defaults to the configured baseline path.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "all")]
         to: Option<PathBuf>,
 
         /// Strip run-specific fields (run_id, timestamps) for stable baselines
         #[arg(long, default_value_t = false)]
         normalize: bool,
+
+        /// Replace an existing baseline.
+        #[arg(long, visible_alias = "yes", default_value_t = false)]
+        force: bool,
 
         /// Pretty-print JSON
         #[arg(long, default_value_t = false)]
@@ -3446,7 +3454,7 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
     );
     eprintln!("  2. Promote a trusted first baseline:");
     eprintln!(
-        "     perfgate baseline promote --config {} --bench <bench>",
+        "     perfgate baseline promote --config {} --all",
         args.output.display()
     );
     if let Some(workflow_path) = &generated_workflow_path {
@@ -4142,23 +4150,30 @@ fn execute_local_baseline_status(config_path: &Path, bench: Option<&str>) -> any
         println!();
         println!("Next:");
         if missing.len() == 1 {
-            let bench = &missing[0];
             println!(
                 "  1. Run: perfgate check --config {} --all",
                 config_path.display()
             );
-            println!(
-                "  2. Promote: perfgate baseline promote --config {} --bench {}",
-                config_path.display(),
-                bench
-            );
+            if bench.is_some() {
+                let bench_name = &missing[0];
+                println!(
+                    "  2. Promote: perfgate baseline promote --config {} --bench {}",
+                    config_path.display(),
+                    bench_name
+                );
+            } else {
+                println!(
+                    "  2. Promote: perfgate baseline promote --config {} --all",
+                    config_path.display()
+                );
+            }
         } else {
             println!(
                 "  1. Run: perfgate check --config {} --all",
                 config_path.display()
             );
             println!(
-                "  2. Promote each missing baseline: perfgate baseline promote --config {} --bench <bench>",
+                "  2. Promote missing baselines: perfgate baseline promote --config {} --all",
                 config_path.display()
             );
         }
@@ -4194,28 +4209,75 @@ fn execute_local_baseline_init(config_path: &Path) -> anyhow::Result<()> {
         config_path.display()
     );
     println!(
-        "  2. Promote: perfgate baseline promote --config {} --bench <bench>",
+        "  2. Promote: perfgate baseline promote --config {} --all",
         config_path.display()
     );
 
     Ok(())
 }
 
-fn execute_local_baseline_promote(
-    config_path: &Path,
-    bench: &str,
+#[derive(Debug)]
+struct LocalBaselinePromoteOptions {
     current: Option<PathBuf>,
     to: Option<PathBuf>,
     normalize: bool,
+    force: bool,
     pretty: bool,
+}
+
+fn execute_local_baseline_promote(
+    config_path: &Path,
+    bench: Option<&str>,
+    all: bool,
+    options: LocalBaselinePromoteOptions,
 ) -> anyhow::Result<()> {
     let config = load_validated_baseline_config(config_path)?;
+    if all {
+        let benches = configured_baseline_benches(&config, None)?;
+        if benches.is_empty() {
+            anyhow::bail!("no benchmarks are configured in {}", config_path.display());
+        }
+
+        let mut promoted = 0usize;
+        for bench in &benches {
+            promote_one_local_baseline(config_path, &config, bench, None, None, &options)?;
+            promoted += 1;
+        }
+
+        eprintln!();
+        eprintln!(
+            "Promoted {promoted} baseline{} from {}",
+            plural(promoted),
+            config_path.display()
+        );
+        return Ok(());
+    }
+
+    let bench = bench.ok_or_else(|| anyhow::anyhow!("--bench or --all is required"))?;
     configured_baseline_benches(&config, Some(bench))?;
 
+    promote_one_local_baseline(
+        config_path,
+        &config,
+        bench,
+        options.current.clone(),
+        options.to.clone(),
+        &options,
+    )
+}
+
+fn promote_one_local_baseline(
+    config_path: &Path,
+    config: &ConfigFile,
+    bench: &str,
+    current: Option<PathBuf>,
+    to: Option<PathBuf>,
+    options: &LocalBaselinePromoteOptions,
+) -> anyhow::Result<()> {
     let current_path = if let Some(current) = current {
         current
     } else {
-        let candidates = check_run_receipt_candidates(&config, bench);
+        let candidates = check_run_receipt_candidates(config, bench);
         let mut found = None;
         for candidate in &candidates {
             if location_exists(candidate)? {
@@ -4250,9 +4312,19 @@ fn execute_local_baseline_promote(
         );
     }
 
-    let baseline_path = to.unwrap_or_else(|| resolve_baseline_path(&None, bench, &config));
-    let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
-    write_json_to_location(&baseline_path, &result.receipt, pretty)?;
+    let baseline_path = to.unwrap_or_else(|| resolve_baseline_path(&None, bench, config));
+    if !options.force && location_exists(&baseline_path)? {
+        anyhow::bail!(
+            "baseline already exists at {}; pass --force to replace it",
+            baseline_path.display()
+        );
+    }
+
+    let result = PromoteUseCase::execute(PromoteRequest {
+        receipt,
+        normalize: options.normalize,
+    });
+    write_json_to_location(&baseline_path, &result.receipt, options.pretty)?;
 
     eprintln!("Promoted baseline for {bench}");
     eprintln!("  current: {}", current_path.display());
@@ -4274,11 +4346,24 @@ fn execute_baseline_action(
         BaselineAction::Promote {
             config,
             bench,
+            all,
             current,
             to,
             normalize,
+            force,
             pretty,
-        } => execute_local_baseline_promote(&config, &bench, current, to, normalize, pretty),
+        } => execute_local_baseline_promote(
+            &config,
+            bench.as_deref(),
+            all,
+            LocalBaselinePromoteOptions {
+                current,
+                to,
+                normalize,
+                force,
+                pretty,
+            },
+        ),
         remote_action => execute_remote_baseline_action(remote_action, server_flags),
     }
 }

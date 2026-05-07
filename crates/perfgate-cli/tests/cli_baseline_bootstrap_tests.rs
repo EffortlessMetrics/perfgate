@@ -22,6 +22,38 @@ command = ["echo", "hello"]
     .expect("write config");
 }
 
+fn write_two_bench_config(dir: &Path) {
+    fs::write(
+        dir.join("perfgate.toml"),
+        r#"[defaults]
+out_dir = "artifacts/perfgate"
+baseline_dir = "baselines"
+
+[[bench]]
+name = "test-benchmark"
+command = ["echo", "hello"]
+
+[[bench]]
+name = "second-benchmark"
+command = ["echo", "world"]
+"#,
+    )
+    .expect("write config");
+}
+
+fn write_run_fixture(path: &Path, bench: &str) {
+    let mut receipt: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(fixtures_dir().join("baseline.json")).unwrap())
+            .expect("parse run fixture");
+    receipt["bench"]["name"] = serde_json::json!(bench);
+    fs::create_dir_all(path.parent().expect("run fixture has parent")).expect("create run parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize run fixture"),
+    )
+    .expect("write run fixture");
+}
+
 #[test]
 fn baseline_status_reports_missing_then_found_local_baseline() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
@@ -35,7 +67,7 @@ fn baseline_status_reports_missing_then_found_local_baseline() {
         .stdout(predicate::str::contains("Baseline status"))
         .stdout(predicate::str::contains("MISSING test-benchmark"))
         .stdout(predicate::str::contains(
-            "perfgate baseline promote --config perfgate.toml --bench test-benchmark",
+            "perfgate baseline promote --config perfgate.toml --all",
         ));
 
     fs::create_dir_all(temp_dir.path().join("baselines")).expect("create baselines");
@@ -68,7 +100,7 @@ fn baseline_init_creates_gitkeep_for_configured_baseline_dir() {
         .success()
         .stdout(predicate::str::contains("Wrote baselines"))
         .stdout(predicate::str::contains(
-            "perfgate baseline promote --config perfgate.toml --bench <bench>",
+            "perfgate baseline promote --config perfgate.toml --all",
         ));
 
     assert!(
@@ -150,6 +182,92 @@ fn baseline_promote_also_accepts_single_bench_artifact_convention() {
             .exists(),
         "baseline promote should accept the single-bench artifact path"
     );
+}
+
+#[test]
+fn baseline_promote_all_uses_check_all_artifact_convention() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_two_bench_config(temp_dir.path());
+    write_run_fixture(
+        &temp_dir
+            .path()
+            .join("artifacts/perfgate/test-benchmark/run.json"),
+        "test-benchmark",
+    );
+    write_run_fixture(
+        &temp_dir
+            .path()
+            .join("artifacts/perfgate/second-benchmark/run.json"),
+        "second-benchmark",
+    );
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["baseline", "promote", "--config", "perfgate.toml", "--all"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "Promoted baseline for test-benchmark",
+        ))
+        .stderr(predicate::str::contains(
+            "Promoted baseline for second-benchmark",
+        ))
+        .stderr(predicate::str::contains("Promoted 2 baselines"));
+
+    assert!(
+        temp_dir
+            .path()
+            .join("baselines/test-benchmark.json")
+            .exists(),
+        "baseline promote --all should write the first configured baseline"
+    );
+    assert!(
+        temp_dir
+            .path()
+            .join("baselines/second-benchmark.json")
+            .exists(),
+        "baseline promote --all should write the second configured baseline"
+    );
+}
+
+#[test]
+fn baseline_promote_refuses_overwrite_without_force() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+    write_run_fixture(
+        &temp_dir
+            .path()
+            .join("artifacts/perfgate/test-benchmark/run.json"),
+        "test-benchmark",
+    );
+    fs::create_dir_all(temp_dir.path().join("baselines")).expect("create baselines");
+    fs::write(
+        temp_dir.path().join("baselines/test-benchmark.json"),
+        r#"{"schema":"perfgate.run.v1"}"#,
+    )
+    .expect("write existing baseline");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["baseline", "promote", "--config", "perfgate.toml", "--all"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("baseline already exists"))
+        .stderr(predicate::str::contains("--force"));
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "promote",
+            "--config",
+            "perfgate.toml",
+            "--all",
+            "--force",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Promoted 1 baseline"));
 }
 
 #[test]

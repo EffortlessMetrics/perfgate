@@ -78,7 +78,7 @@ perfgate check --config perfgate.toml --bench my-service --profile-on-regression
 
 ```bash
 perfgate baseline status --config perfgate.toml
-perfgate baseline promote --config perfgate.toml --bench my-service
+perfgate baseline promote --config perfgate.toml --all
 ```
 
 **5. Gate** -- the generated GitHub Actions workflow uses:
