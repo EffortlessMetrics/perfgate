@@ -42,6 +42,7 @@ enum MutantsCrate {
         name = "perfgate-types",
         alias = "perfgate-validation",
         alias = "perfgate-error",
+        alias = "perfgate-config",
         alias = "perfgate-sha256"
     )]
     Types,
@@ -703,7 +704,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-adapters",
             "perfgate-app",
             "perfgate-client",
-            "perfgate-config",
             "perfgate-export",
             "perfgate-github",
             "perfgate-render",

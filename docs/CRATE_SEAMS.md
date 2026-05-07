@@ -64,7 +64,7 @@ high-level target is:
 
 | Current package | Target owner |
 |-----------------|--------------|
-| `perfgate-config` | `perfgate_types::config` |
+| `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` |
 | `perfgate-api` | `perfgate_types::baseline_service` or shared client/server contract |
 | `perfgate-domain` | `perfgate::domain` |
 | `perfgate-render` | `perfgate::presentation::render` |

@@ -143,7 +143,7 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> DiffUseCa
         };
 
         // 2. Load config
-        let config = perfgate_config::load_config_file(&config_path)
+        let config = perfgate_types::config::load_config_file(&config_path)
             .with_context(|| format!("failed to load config from {}", config_path.display()))?;
 
         config

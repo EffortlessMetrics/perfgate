@@ -35,10 +35,10 @@ These are contract-adjacent and belong with the public receipt/config model:
 |---------------|----------|--------|
 | `perfgate-error` | `perfgate_types::error` | Error types are part of the contract; compatibility wrapper remains |
 | `perfgate-validation` | `perfgate_types::validation` | Schema validation is contract-adjacent |
-| `perfgate-config` | `perfgate_types::config` | Config model is a receipt type |
+| `perfgate-config` | `perfgate_types::config` + `perfgate_client::ResolvedServerConfig` | Config model and file helpers are contract-adjacent; client construction belongs to the client crate |
 | `perfgate-api` (shared DTOs) | `perfgate_types::baseline_service` | Wire format for baseline service |
 
-**Current state**: `perfgate-validation` has been deleted, and `perfgate-error` now re-exports `perfgate_types::error` as a workspace-only compatibility wrapper. `perfgate-config` and shared baseline-service DTOs are the remaining contract-adjacent seams.
+**Current state**: `perfgate-validation` and `perfgate-config` have been deleted, and `perfgate-error` now re-exports `perfgate_types::error` as a workspace-only compatibility wrapper. Config file helpers now live in `perfgate_types::config`, resolved baseline-server client construction lives in `perfgate_client`, and shared baseline-service DTOs are the remaining contract-adjacent seam.
 
 **Why first**: The types crate must be standalone and self-describing. Absorbing these dependencies first unblocks all downstream refactoring.
 
@@ -293,7 +293,7 @@ fails until only the five target public crates are publishable.
 Move into `perfgate-types`:
 - `perfgate-error` -> `perfgate_types::error`
 - `perfgate-validation` -> `perfgate_types::validation`
-- `perfgate-config` -> `perfgate_types::config`
+- `perfgate-config` -> `perfgate_types::config` and `perfgate_client::ResolvedServerConfig`
 - `perfgate-api` shared DTOs -> `perfgate_types::baseline_service`
 
 Update all downstream crate imports. Verify `perfgate-types` remains self-contained.
