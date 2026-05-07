@@ -51,7 +51,7 @@ use perfgate_types::{
     ToolInfo, VerdictStatus,
 };
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -63,6 +63,7 @@ use url::Url;
 const BASELINE_SERVER_NOT_CONFIGURED: &str = "baseline server is not configured; set `--baseline-server`, `PERFGATE_SERVER_URL`, or `[baseline_server].url` in `perfgate.toml`";
 const DEFAULT_FALLBACK_BASELINE_DIR: &str = "baselines";
 const DEFAULT_ARTIFACT_DIR: &str = "artifacts/perfgate";
+const RUN_RECEIPT_FILE: &str = "run.json";
 
 /// Output mode for the check command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
@@ -257,7 +258,7 @@ enum Command {
     /// Exit codes: 0 for success, 1 for errors.
     Paired(Box<PairedArgs>),
 
-    /// Manage baselines on the baseline server.
+    /// Inspect local baselines and manage baselines on the baseline server.
     Baseline {
         #[command(subcommand)]
         action: BaselineAction,
@@ -1380,6 +1381,51 @@ enum KeyAction {
 /// Subcommands for baseline management.
 #[derive(Debug, Subcommand)]
 enum BaselineAction {
+    /// Show local baseline coverage from the config file.
+    Status {
+        /// Path to the config file (TOML or JSON)
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+
+        /// Limit status to one configured benchmark
+        #[arg(long)]
+        bench: Option<String>,
+    },
+
+    /// Create the local baseline directory declared by the config file.
+    Init {
+        /// Path to the config file (TOML or JSON)
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+    },
+
+    /// Promote the latest local check artifact into the configured baseline path.
+    Promote {
+        /// Path to the config file (TOML or JSON)
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+
+        /// Benchmark name to promote
+        #[arg(long)]
+        bench: String,
+
+        /// Path or cloud URI to the run receipt. Defaults to [defaults].out_dir/<bench>/run.json.
+        #[arg(long)]
+        current: Option<PathBuf>,
+
+        /// Path or cloud URI where the baseline should be written. Defaults to the configured baseline path.
+        #[arg(long)]
+        to: Option<PathBuf>,
+
+        /// Strip run-specific fields (run_id, timestamps) for stable baselines
+        #[arg(long, default_value_t = false)]
+        normalize: bool,
+
+        /// Pretty-print JSON
+        #[arg(long, default_value_t = false)]
+        pretty: bool,
+    },
+
     /// List baselines for a project.
     List {
         /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
@@ -2024,7 +2070,7 @@ fn doctor_baselines(config: &ConfigFile, server_flags: &ServerFlags) -> DoctorCh
         DoctorCheck::warn(
             "baselines",
             format!(
-                "{found}/{local} local baseline{} found; create missing baselines with `perfgate promote --current <run.json> --to <baseline.json>`",
+                "{found}/{local} local baseline{} found; inspect with `perfgate baseline status` and create missing baselines with `perfgate baseline promote --bench <bench>`",
                 plural(local)
             ),
         )
@@ -3400,7 +3446,8 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
     );
     eprintln!("  2. Promote a trusted first baseline:");
     eprintln!(
-        "     perfgate promote --current artifacts/perfgate/<bench>/run.json --to baselines/<bench>.json"
+        "     perfgate baseline promote --config {} --bench <bench>",
+        args.output.display()
     );
     if let Some(workflow_path) = &generated_workflow_path {
         eprintln!(
@@ -3979,8 +4026,264 @@ fn print_key_table(keys: &[KeyEntry]) {
     }
 }
 
+fn load_validated_baseline_config(config_path: &Path) -> anyhow::Result<ConfigFile> {
+    let config = load_config_file(config_path)
+        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    config
+        .validate()
+        .map_err(|error| anyhow::anyhow!("{} is invalid: {error}", config_path.display()))?;
+    Ok(config)
+}
+
+fn configured_baseline_benches(
+    config: &ConfigFile,
+    bench: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    if let Some(bench) = bench {
+        if config
+            .benches
+            .iter()
+            .any(|candidate| candidate.name == bench)
+        {
+            return Ok(vec![bench.to_string()]);
+        }
+
+        anyhow::bail!("benchmark '{}' is not defined in the config file", bench);
+    }
+
+    Ok(config
+        .benches
+        .iter()
+        .map(|bench| bench.name.clone())
+        .collect())
+}
+
+fn check_run_receipt_candidates(config: &ConfigFile, bench: &str) -> Vec<PathBuf> {
+    let out_dir = resolve_configured_out_dir(None, Some(config));
+    vec![
+        out_dir.join(bench).join(RUN_RECEIPT_FILE),
+        out_dir.join(RUN_RECEIPT_FILE),
+    ]
+}
+
+fn local_baseline_dirs(config: &ConfigFile) -> Vec<PathBuf> {
+    let mut dirs = BTreeSet::new();
+
+    if config.benches.is_empty() {
+        let baseline_dir = config
+            .defaults
+            .baseline_dir
+            .as_deref()
+            .unwrap_or(DEFAULT_FALLBACK_BASELINE_DIR);
+        if !is_remote_storage_uri(baseline_dir) {
+            dirs.insert(PathBuf::from(baseline_dir));
+        }
+    } else {
+        for bench in &config.benches {
+            let path = resolve_baseline_path(&None, &bench.name, config);
+            let path_text = path.to_string_lossy();
+            if is_remote_storage_uri(&path_text) {
+                continue;
+            }
+            if let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                dirs.insert(parent.to_path_buf());
+            }
+        }
+    }
+
+    dirs.into_iter().collect()
+}
+
+fn execute_local_baseline_status(config_path: &Path, bench: Option<&str>) -> anyhow::Result<()> {
+    let config = load_validated_baseline_config(config_path)?;
+    let benches = configured_baseline_benches(&config, bench)?;
+
+    println!("Baseline status ({})", config_path.display());
+    if benches.is_empty() {
+        println!("No benchmarks are configured.");
+        return Ok(());
+    }
+
+    let mut found = 0usize;
+    let mut missing = Vec::new();
+    let mut remote = 0usize;
+
+    for bench_name in &benches {
+        let path = resolve_baseline_path(&None, bench_name, &config);
+        let path_text = path.to_string_lossy();
+        if is_remote_storage_uri(&path_text) {
+            remote += 1;
+            println!("  REMOTE  {bench_name} -> {path_text} (not probed)");
+        } else if path.exists() {
+            found += 1;
+            println!("  FOUND   {bench_name} -> {}", path.display());
+        } else {
+            missing.push(bench_name.clone());
+            println!("  MISSING {bench_name} -> {}", path.display());
+        }
+    }
+
+    let local = found + missing.len();
+    println!();
+    println!(
+        "Summary: {found}/{local} local baseline{} found",
+        plural(local)
+    );
+    if remote > 0 {
+        println!(
+            "Remote baseline{} configured but not probed: {remote}",
+            plural(remote)
+        );
+    }
+
+    if !missing.is_empty() {
+        println!();
+        println!("Next:");
+        if missing.len() == 1 {
+            let bench = &missing[0];
+            println!(
+                "  1. Run: perfgate check --config {} --all",
+                config_path.display()
+            );
+            println!(
+                "  2. Promote: perfgate baseline promote --config {} --bench {}",
+                config_path.display(),
+                bench
+            );
+        } else {
+            println!(
+                "  1. Run: perfgate check --config {} --all",
+                config_path.display()
+            );
+            println!(
+                "  2. Promote each missing baseline: perfgate baseline promote --config {} --bench <bench>",
+                config_path.display()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_local_baseline_init(config_path: &Path) -> anyhow::Result<()> {
+    let config = load_validated_baseline_config(config_path)?;
+    let dirs = local_baseline_dirs(&config);
+
+    if dirs.is_empty() {
+        println!("No local baseline directories to create; configured baselines are remote.");
+        return Ok(());
+    }
+
+    for dir in &dirs {
+        fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+        let gitkeep = dir.join(".gitkeep");
+        if !gitkeep.exists() {
+            fs::write(&gitkeep, "").with_context(|| format!("write {}", gitkeep.display()))?;
+            println!("Wrote {}", gitkeep.display());
+        } else {
+            println!("Exists {}", gitkeep.display());
+        }
+    }
+
+    println!();
+    println!("Next:");
+    println!(
+        "  1. Run: perfgate check --config {} --all",
+        config_path.display()
+    );
+    println!(
+        "  2. Promote: perfgate baseline promote --config {} --bench <bench>",
+        config_path.display()
+    );
+
+    Ok(())
+}
+
+fn execute_local_baseline_promote(
+    config_path: &Path,
+    bench: &str,
+    current: Option<PathBuf>,
+    to: Option<PathBuf>,
+    normalize: bool,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    let config = load_validated_baseline_config(config_path)?;
+    configured_baseline_benches(&config, Some(bench))?;
+
+    let current_path = if let Some(current) = current {
+        current
+    } else {
+        let candidates = check_run_receipt_candidates(&config, bench);
+        let mut found = None;
+        for candidate in &candidates {
+            if location_exists(candidate)? {
+                found = Some(candidate.clone());
+                break;
+            }
+        }
+
+        match found {
+            Some(path) => path,
+            None => {
+                let searched = candidates
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                anyhow::bail!(
+                    "run receipt not found at {searched}; run `perfgate check --config {} --all` first, or pass --current",
+                    config_path.display()
+                );
+            }
+        }
+    };
+
+    let receipt: RunReceipt = read_json_from_location(&current_path)
+        .with_context(|| format!("failed to read run receipt from {}", current_path.display()))?;
+    if receipt.bench.name != bench {
+        anyhow::bail!(
+            "run receipt benchmark '{}' does not match --bench '{}'",
+            receipt.bench.name,
+            bench
+        );
+    }
+
+    let baseline_path = to.unwrap_or_else(|| resolve_baseline_path(&None, bench, &config));
+    let result = PromoteUseCase::execute(PromoteRequest { receipt, normalize });
+    write_json_to_location(&baseline_path, &result.receipt, pretty)?;
+
+    eprintln!("Promoted baseline for {bench}");
+    eprintln!("  current: {}", current_path.display());
+    eprintln!("  baseline: {}", baseline_path.display());
+
+    Ok(())
+}
+
 /// Execute baseline management actions.
 fn execute_baseline_action(
+    action: BaselineAction,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
+    match action {
+        BaselineAction::Status { config, bench } => {
+            execute_local_baseline_status(&config, bench.as_deref())
+        }
+        BaselineAction::Init { config } => execute_local_baseline_init(&config),
+        BaselineAction::Promote {
+            config,
+            bench,
+            current,
+            to,
+            normalize,
+            pretty,
+        } => execute_local_baseline_promote(&config, &bench, current, to, normalize, pretty),
+        remote_action => execute_remote_baseline_action(remote_action, server_flags),
+    }
+}
+
+fn execute_remote_baseline_action(
     action: BaselineAction,
     server_flags: &ServerFlags,
 ) -> anyhow::Result<()> {
@@ -3990,6 +4293,11 @@ fn execute_baseline_action(
     let rt = tokio::runtime::Runtime::new()?;
 
     match action {
+        BaselineAction::Status { .. }
+        | BaselineAction::Init { .. }
+        | BaselineAction::Promote { .. } => {
+            unreachable!("local baseline actions are handled before server dispatch");
+        }
         BaselineAction::List {
             project,
             prefix,

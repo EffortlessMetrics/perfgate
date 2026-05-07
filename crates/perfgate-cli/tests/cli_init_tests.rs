@@ -75,7 +75,7 @@ harness = false
     assert!(stderr.contains("Wrote baselines"));
     assert!(stderr.contains("Next:"));
     assert!(stderr.contains("perfgate check --config perfgate.toml --all"));
-    assert!(stderr.contains("perfgate promote --current artifacts/perfgate/<bench>/run.json"));
+    assert!(stderr.contains("perfgate baseline promote --config perfgate.toml --bench <bench>"));
 }
 
 #[test]

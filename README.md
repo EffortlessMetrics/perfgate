@@ -77,7 +77,8 @@ perfgate check --config perfgate.toml --bench my-service --profile-on-regression
 **4. Promote** -- create the first trusted local baseline:
 
 ```bash
-perfgate promote --current artifacts/perfgate/my-service/run.json --to baselines/my-service.json
+perfgate baseline status --config perfgate.toml
+perfgate baseline promote --config perfgate.toml --bench my-service
 ```
 
 **5. Gate** -- the generated GitHub Actions workflow uses:
@@ -214,7 +215,7 @@ perfgate comment --compare artifacts/perfgate/compare.json --repo owner/repo --p
 | `scale` | Validate complexity scaling across input sizes |
 | `comment` | Post or update a GitHub PR performance comment |
 | `trend` | Analyze metric drift and predict threshold breaches |
-| `baseline` | Manage baselines on the server |
+| `baseline` | Inspect local baselines and manage server baselines |
 | `fleet` | Analyze dependency regressions across projects |
 | `summary` | Summarize multiple comparisons in a table |
 | `aggregate` | Evaluate fleet/matrix receipts into `perfgate.aggregate.v1` |

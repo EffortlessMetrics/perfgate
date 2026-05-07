@@ -19,7 +19,7 @@ Commands:
   check Config-driven one-command workflow
   doctor Diagnose local setup, config, baselines, artifacts, CI, and server reachability
   paired Run paired benchmark: interleave baseline and current commands for reduced noise
-  baseline Manage baselines on the baseline server
+  baseline Inspect local baselines and manage baselines on the baseline server
   admin Administer baseline service operations
   summary Summarize one or more compare receipts in a terminal table
   aggregate Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt
