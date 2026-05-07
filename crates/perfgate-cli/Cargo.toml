@@ -22,11 +22,10 @@ perfgate-types.workspace = true
 perfgate-client.workspace = true
 perfgate-api.workspace = true
 perfgate-app.workspace = true
-perfgate-github.workspace = true
 perfgate-adapters.workspace = true
 perfgate-domain.workspace = true
 perfgate-server.workspace = true
-perfgate.workspace = true
+perfgate = { workspace = true, features = ["github"] }
 anyhow.workspace = true
 glob.workspace = true
 clap.workspace = true

@@ -37,7 +37,7 @@ perfgate-sensor -> perfgate::presentation::sensor [compatibility wrapper] [publi
 perfgate-adapters -> perfgate::runtime
 perfgate-profile -> perfgate::runtime::profile [deleted]
 perfgate-app -> perfgate::app
-perfgate-github -> perfgate::integrations::github
+perfgate-github -> perfgate::integrations::github [compatibility wrapper] [publish=false]
 perfgate-ingest -> perfgate::integrations::ingest [deleted]
 
 # Dev-only packages.

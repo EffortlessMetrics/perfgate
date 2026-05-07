@@ -1732,6 +1732,11 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             90,
         ),
         (
+            "perfgate-github",
+            "Workspace-only compatibility wrapper for perfgate::integrations::github",
+            90,
+        ),
+        (
             "perfgate-paired",
             "Paired benchmarking statistics (A/B testing)",
             100,
@@ -2140,6 +2145,11 @@ fn generate_workspace_inventory_md() -> String {
         (
             "perfgate-sensor",
             "Workspace-only compatibility wrapper for perfgate::presentation::sensor",
+            90,
+        ),
+        (
+            "perfgate-github",
+            "Workspace-only compatibility wrapper for perfgate::integrations::github",
             90,
         ),
         (

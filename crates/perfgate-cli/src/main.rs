@@ -4,6 +4,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glob::glob;
 use object_store::{ObjectStore, path::Path as ObjectPath};
+use perfgate::integrations::github::{self, CommentOptions, GitHubClient};
 use perfgate::integrations::ingest::{self, IngestFormat};
 use perfgate::runtime::profile::{ProfileRequest, capture_flamegraph};
 use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
@@ -34,7 +35,6 @@ use perfgate_domain::scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
 };
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
-use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_types::config::{
     apply_ratchet_toml_changes, load_config_file, preview_ratchet_toml_changes,
 };
@@ -3239,14 +3239,14 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
             blame_text,
             explain_text: None,
         };
-        perfgate_github::render_comment(&receipt, &options)
+        github::render_comment(&receipt, &options)
     } else if let Some(report_path) = report {
         let report_receipt: PerfgateReport = read_json(&report_path)?;
         let options = CommentOptions {
             blame_text,
             explain_text: None,
         };
-        perfgate_github::render_comment_from_report(&report_receipt, &options)
+        github::render_comment_from_report(&report_receipt, &options)
     } else {
         anyhow::bail!("Either --compare or --report is required");
     };
@@ -3275,20 +3275,19 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
             )
         })?;
 
-    let (owner, repo_name) =
-        perfgate_github::parse_github_repository(&repo_str).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Invalid repository format: '{}'. Expected owner/repo.",
-                repo_str
-            )
-        })?;
+    let (owner, repo_name) = github::parse_github_repository(&repo_str).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid repository format: '{}'. Expected owner/repo.",
+            repo_str
+        )
+    })?;
 
     // Resolve PR number
     let pr_number = pr
         .or_else(|| {
             std::env::var("GITHUB_REF")
                 .ok()
-                .and_then(|r| perfgate_github::parse_pr_number_from_ref(&r))
+                .and_then(|r| github::parse_pr_number_from_ref(&r))
         })
         .ok_or_else(|| {
             anyhow::anyhow!(

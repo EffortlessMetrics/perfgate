@@ -55,6 +55,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-host-detect` | `perfgate_domain::host`; facade path `perfgate::domain::host` | crate deleted |
 | `perfgate-budget` | `perfgate_domain::budget`; facade path `perfgate::core::budget` | crate deleted |
 | `perfgate-scaling` | `perfgate_domain::scaling`; facade path `perfgate::domain::scaling` | crate deleted |
+| `perfgate-github` | `perfgate::integrations::github` | workspace-only compatibility wrapper, `publish = false` |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -72,7 +73,6 @@ high-level target is:
 | `perfgate-domain` | `perfgate::domain` |
 | `perfgate-adapters` | `perfgate::runtime` |
 | `perfgate-app` | `perfgate::app` |
-| `perfgate-github` | `perfgate::integrations::github` |
 | `perfgate-fake` | private workspace crate |
 | `perfgate-selfbench` | private workspace crate |
 
