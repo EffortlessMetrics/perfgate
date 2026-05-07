@@ -83,9 +83,35 @@ jobs:
             --all-features \
             --no-report
 
-          cargo llvm-cov report --json --output-path coverage.json
-          cargo llvm-cov report --lcov --output-path lcov.info
-          cargo llvm-cov report --summary-only | tee coverage.txt
+          cargo llvm-cov \
+            --workspace \
+            --exclude perfgate-tests \
+            --locked \
+            --all-features \
+            --no-run \
+            --no-clean \
+            --json \
+            --output-path coverage.json
+
+          cargo llvm-cov \
+            --workspace \
+            --exclude perfgate-tests \
+            --locked \
+            --all-features \
+            --no-run \
+            --no-clean \
+            --lcov \
+            --output-path lcov.info
+
+          cargo llvm-cov \
+            --workspace \
+            --exclude perfgate-tests \
+            --locked \
+            --all-features \
+            --no-run \
+            --no-clean \
+            --summary-only \
+            | tee coverage.txt
 
       - name: Validate coverage output
         run: |
