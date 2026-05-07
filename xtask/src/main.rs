@@ -8,6 +8,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
+    "perfgate-types",
+    "perfgate",
+    "perfgate-client",
+    "perfgate-server",
+    "perfgate-cli",
+];
+
 const SCHEMA_FILES: [&str; 8] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
@@ -116,7 +124,23 @@ enum Command {
     Ci,
 
     /// Validate workspace packaging metadata for crates.io publication.
-    PublishCheck,
+    PublishCheck {
+        /// Limit package-list or dry-run checks to one or more publishable packages.
+        #[arg(long = "package", value_name = "PACKAGE")]
+        packages: Vec<String>,
+
+        /// Run `cargo package --list` for every publishable workspace package.
+        #[arg(long)]
+        package_list: bool,
+
+        /// Run `cargo publish --dry-run` for selected publishable packages.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Pass `--allow-dirty` to Cargo packaging commands.
+        #[arg(long)]
+        allow_dirty: bool,
+    },
 
     /// Validate the target public crate policy and transition dispositions.
     PublicSurface {
@@ -216,7 +240,12 @@ fn main() -> anyhow::Result<()> {
         Command::SchemaCheck { schemas_dir } => cmd_schema_check(&schemas_dir),
         Command::SchemaCompat { fixtures_dir } => cmd_schema_compat(&fixtures_dir),
         Command::Ci => cmd_ci(),
-        Command::PublishCheck => cmd_publish_check(),
+        Command::PublishCheck {
+            packages,
+            package_list,
+            dry_run,
+            allow_dirty,
+        } => cmd_publish_check(packages, package_list, dry_run, allow_dirty),
         Command::PublicSurface {
             public_policy,
             absorbed_policy,
@@ -294,7 +323,7 @@ fn cmd_ci() -> anyhow::Result<()> {
     cmd_schema_check(Path::new("schemas"))?;
     cmd_schema_compat(Path::new("fixtures/schema"))?;
     cmd_conform(None, None)?;
-    cmd_publish_check()?;
+    cmd_publish_check(Vec::new(), false, false, false)?;
     cmd_public_surface(
         Path::new("policy/public_crates.txt"),
         Path::new("policy/absorbed_crates.txt"),
@@ -326,24 +355,53 @@ struct MetadataDependency {
     path: Option<PathBuf>,
 }
 
-fn cmd_publish_check() -> anyhow::Result<()> {
+fn cmd_publish_check(
+    packages: Vec<String>,
+    package_list: bool,
+    dry_run: bool,
+    allow_dirty: bool,
+) -> anyhow::Result<()> {
     let metadata = load_cargo_metadata()?;
     let errors = collect_publish_errors(&metadata);
 
-    if errors.is_empty() {
-        println!("  OK  publishable workspace packages pass static packaging checks");
-        return Ok(());
+    if !errors.is_empty() {
+        println!("Found {} publish metadata error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} publish metadata issue(s) found. Fix packaging before release.",
+            errors.len()
+        );
     }
 
-    println!("Found {} publish metadata error(s):", errors.len());
-    for error in &errors {
-        println!("  - {}", error);
+    println!("  OK  publishable workspace packages pass static packaging checks");
+
+    if dry_run && packages.is_empty() {
+        anyhow::bail!(
+            "`publish-check --dry-run` requires at least one `--package <name>` because \
+             Cargo verifies package dependencies against crates.io, not unpublished workspace crates"
+        );
     }
 
-    anyhow::bail!(
-        "{} publish metadata issue(s) found. Fix packaging before release.",
-        errors.len()
-    );
+    if package_list || dry_run {
+        let packages = select_publishable_packages(&metadata, &packages)?;
+        println!("      publishable packages: {}", packages.join(", "));
+
+        for package in &packages {
+            if package_list {
+                run_cargo_args(cargo_package_list_args(package, allow_dirty))
+                    .with_context(|| format!("checking package file list for {package}"))?;
+            }
+            if dry_run {
+                run_cargo_args(cargo_publish_dry_run_args(package, allow_dirty))
+                    .with_context(|| format!("running publish dry-run for {package}"))?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn load_cargo_metadata() -> anyhow::Result<CargoMetadata> {
@@ -409,6 +467,94 @@ fn collect_publish_errors(metadata: &CargoMetadata) -> Vec<String> {
     }
 
     errors
+}
+
+fn ordered_publishable_packages(metadata: &CargoMetadata) -> Vec<String> {
+    let mut publishable: BTreeSet<String> = metadata
+        .packages
+        .iter()
+        .filter(|package| is_publishable(package))
+        .map(|package| package.name.clone())
+        .collect();
+
+    let mut ordered = Vec::new();
+    for package in TARGET_PUBLIC_PACKAGES {
+        if publishable.remove(package) {
+            ordered.push(package.to_string());
+        }
+    }
+    ordered.extend(publishable);
+    ordered
+}
+
+fn select_publishable_packages(
+    metadata: &CargoMetadata,
+    requested: &[String],
+) -> anyhow::Result<Vec<String>> {
+    let ordered = ordered_publishable_packages(metadata);
+    if requested.is_empty() {
+        return Ok(ordered);
+    }
+
+    let publishable: BTreeSet<&str> = ordered.iter().map(String::as_str).collect();
+    let requested: BTreeSet<&str> = requested.iter().map(String::as_str).collect();
+    let unknown: Vec<_> = requested
+        .iter()
+        .filter(|package| !publishable.contains(**package))
+        .copied()
+        .collect();
+    if !unknown.is_empty() {
+        anyhow::bail!(
+            "requested package(s) are not publishable workspace packages: {}",
+            unknown.join(", ")
+        );
+    }
+
+    Ok(ordered
+        .into_iter()
+        .filter(|package| requested.contains(package.as_str()))
+        .collect())
+}
+
+fn cargo_package_list_args(package: &str, allow_dirty: bool) -> Vec<String> {
+    let mut args = vec![
+        "package".to_string(),
+        "-p".to_string(),
+        package.to_string(),
+        "--list".to_string(),
+    ];
+    if allow_dirty {
+        args.push("--allow-dirty".to_string());
+    }
+    args
+}
+
+fn cargo_publish_dry_run_args(package: &str, allow_dirty: bool) -> Vec<String> {
+    let mut args = vec![
+        "publish".to_string(),
+        "-p".to_string(),
+        package.to_string(),
+        "--dry-run".to_string(),
+    ];
+    if allow_dirty {
+        args.push("--allow-dirty".to_string());
+    }
+    args
+}
+
+fn run_cargo_args(args: Vec<String>) -> anyhow::Result<()> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    println!("      running: {} {}", cargo, args.join(" "));
+    let status = std::process::Command::new(&cargo)
+        .args(&args)
+        .status()
+        .with_context(|| format!("running {} {}", cargo, args.join(" ")))?;
+
+    if !status.success() {
+        anyhow::bail!("{} {} failed: {}", cargo, args.join(" "), status);
+    }
+
+    Ok(())
 }
 
 fn cmd_public_surface(
@@ -3212,6 +3358,79 @@ mod tests {
 
         let errors = collect_publish_errors(&metadata);
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn ordered_publishable_packages_uses_release_order_then_extra_names() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate-cli", None),
+                test_package("perfgate-extra", None),
+                test_package("perfgate-types", None),
+                test_package("perfgate-internal", Some(Vec::new())),
+                test_package("perfgate", None),
+            ],
+        };
+
+        assert_eq!(
+            ordered_publishable_packages(&metadata),
+            vec![
+                "perfgate-types",
+                "perfgate",
+                "perfgate-cli",
+                "perfgate-extra"
+            ]
+        );
+    }
+
+    #[test]
+    fn select_publishable_packages_filters_requested_packages_in_release_order() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate-cli", None),
+                test_package("perfgate-types", None),
+                test_package("perfgate", None),
+            ],
+        };
+        let requested = vec!["perfgate-cli".to_string(), "perfgate-types".to_string()];
+
+        assert_eq!(
+            select_publishable_packages(&metadata, &requested).expect("selected packages"),
+            vec!["perfgate-types", "perfgate-cli"]
+        );
+    }
+
+    #[test]
+    fn select_publishable_packages_rejects_unknown_packages() {
+        let metadata = CargoMetadata {
+            packages: vec![test_package("perfgate-types", None)],
+        };
+        let requested = vec!["perfgate-domain".to_string()];
+
+        let err = select_publishable_packages(&metadata, &requested).unwrap_err();
+        assert!(err.to_string().contains("not publishable"));
+    }
+
+    #[test]
+    fn cargo_packaging_args_include_optional_allow_dirty() {
+        assert_eq!(
+            cargo_package_list_args("perfgate-cli", false),
+            vec!["package", "-p", "perfgate-cli", "--list"]
+        );
+        assert_eq!(
+            cargo_package_list_args("perfgate-cli", true),
+            vec!["package", "-p", "perfgate-cli", "--list", "--allow-dirty"]
+        );
+        assert_eq!(
+            cargo_publish_dry_run_args("perfgate-cli", true),
+            vec![
+                "publish",
+                "-p",
+                "perfgate-cli",
+                "--dry-run",
+                "--allow-dirty"
+            ]
+        );
     }
 
     #[test]

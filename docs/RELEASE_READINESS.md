@@ -15,6 +15,8 @@ surface is now in its intended release shape:
 | Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
 | Architecture boundary enforcement | Passing | `cargo run -p xtask -- arch` |
 | Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
+| Package file-list proof | Release-prep gate | `cargo run -p xtask -- publish-check --package-list` |
+| Publish dry-run proof | Per-package release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
 | Full repo CI | Passing | Hosted `ci`, `fuzz`, and `perfgate-self` on PR #268 |
 
 The only publishable packages allowed by policy are:
@@ -26,6 +28,32 @@ perfgate-types
 perfgate-client
 perfgate-server
 ```
+
+Before cutting a 0.16 release, run the package proof without `--allow-dirty`:
+
+```bash
+cargo run -p xtask -- public-surface --strict
+cargo run -p xtask -- arch
+cargo run -p xtask -- publish-check --package-list
+cargo run -p xtask -- publish-check --dry-run --package perfgate-types
+cargo run -p xtask -- docs-check
+cargo run -p xtask -- doc-test
+cargo run -p xtask -- ci
+```
+
+Run `publish-check --dry-run --package <name>` immediately before publishing each
+crate in dependency order. Cargo verifies packaged dependencies against
+crates.io, so downstream crates such as `perfgate` and `perfgate-cli` cannot be
+dry-run verified until their same-release workspace dependencies have already
+been published.
+
+For PR validation before the branch is committed or while release notes are still
+being edited, `publish-check` also accepts `--allow-dirty`. Release operators
+should omit it.
+
+The GitHub release workflow builds the platform archives, unpacks each generated
+archive, verifies the binary exists, and runs `perfgate --version` plus
+`perfgate doctor --help` on native targets before uploading release assets.
 
 Former implementation packages such as `perfgate-domain` and `perfgate-app`
 are workspace-only compatibility wrappers. Domain logic lives under
