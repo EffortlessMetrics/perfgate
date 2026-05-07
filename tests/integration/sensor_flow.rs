@@ -3,7 +3,7 @@
 //! These tests verify the full sensor report building flow,
 //! including error classification through to sensor report.
 
-use perfgate_sensor::{
+use perfgate::presentation::sensor::{
     BenchOutcome, SensorFinding, SensorReportBuilder, SensorSeverity, SensorVerdictStatus,
     sensor_fingerprint,
 };

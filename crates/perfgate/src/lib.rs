@@ -26,7 +26,6 @@ pub use perfgate_domain::budget;
 pub use perfgate_domain::paired;
 pub use perfgate_domain::significance;
 pub use perfgate_domain::stats;
-pub use perfgate_sensor as sensor;
 pub use perfgate_types as types;
 pub use perfgate_types::error;
 // validation is now part of types
@@ -46,6 +45,9 @@ pub mod presentation {
     /// Markdown, annotation, and summary rendering.
     pub use perfgate_app::render;
 
+    /// Sensor report generation for cockpit-style integrations.
+    pub use perfgate_app::sensor;
+
     /// Summary table rendering.
     ///
     /// Prefer [`render::summary`] in new code; this preserves the documented
@@ -60,6 +62,12 @@ pub mod presentation {
 /// Prefer [`crate::presentation::export`] in new code; this module preserves
 /// the previous facade spelling during the 0.16 public-surface migration.
 pub use perfgate_app::export;
+
+/// Sensor report generation for cockpit-style integrations.
+///
+/// Prefer [`crate::presentation::sensor`] in new code; this module preserves
+/// the previous facade spelling during the 0.16 public-surface migration.
+pub use perfgate_app::sensor;
 
 /// Markdown, annotation, and summary rendering.
 ///

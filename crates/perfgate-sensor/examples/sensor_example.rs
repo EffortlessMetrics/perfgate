@@ -1,6 +1,6 @@
 //! Demonstrates SensorReportBuilder for creating sensor.report.v1 envelopes.
 
-use perfgate_sensor::{SensorReportBuilder, sensor_fingerprint};
+use perfgate::presentation::sensor::{SensorReportBuilder, sensor_fingerprint};
 use perfgate_types::{
     PerfgateReport, REPORT_SCHEMA_V1, ReportSummary, ToolInfo, Verdict, VerdictCounts,
     VerdictStatus,

@@ -25,6 +25,7 @@ mod ratchet;
 pub mod render;
 mod repair_context;
 mod report;
+pub mod sensor;
 mod sensor_report;
 mod trend;
 pub mod watch;

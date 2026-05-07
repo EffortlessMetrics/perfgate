@@ -102,7 +102,7 @@ promise:
 │                    perfgate-cli / perfgate-server                │
 │                    (outer adapters and binaries)                 │
 ├─────────────────────────────────────────────────────────────────┤
-│       perfgate-render | perfgate-export | perfgate-sensor        │
+│       perfgate::presentation::{render, export, sensor}           │
 │                    (Presentation Layer)                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                  perfgate-app | perfgate-client                  │
@@ -127,7 +127,7 @@ Dependencies flow inward toward the core types and domain logic:
 2. **Domain**: `perfgate-domain` owns statistics, significance testing, host mismatch detection, budget evaluation, scaling analysis, and comparison policy.
 3. **Infrastructure**: `perfgate-adapters` provides the "outer" world access (process execution, system info).
 4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
-5. **Presentation**: `perfgate-render`, `perfgate-export`, and `perfgate-sensor` format the results for various consumers.
+5. **Presentation**: `perfgate::presentation::{render, export, sensor}` formats the results for various consumers, with workspace-only compatibility wrappers preserving the previous crate names during the 0.16 migration.
 6. **CLI**: `perfgate-cli` is the thin entry point.
 
 ### Internal Seam Responsibilities
@@ -136,8 +136,9 @@ Dependencies flow inward toward the core types and domain logic:
 - **perfgate-domain::significance**: P-value and statistical significance testing.
 - **perfgate-domain::budget**: Logic for comparing metrics against thresholds.
 - **perfgate-domain::scaling**: Complexity model fitting and scaling validation.
-- **perfgate-render**: Markdown and terminal rendering logic.
-- **perfgate-export**: Multi-format data exporters (CSV, Prometheus, etc.).
+- **perfgate::presentation::render**: Markdown and terminal rendering logic; `perfgate-render` is a compatibility wrapper.
+- **perfgate::presentation::export**: Multi-format data exporters (CSV, Prometheus, etc.); `perfgate-export` is a compatibility wrapper.
+- **perfgate::presentation::sensor**: Sensor report envelopes for cockpit-style integrations; `perfgate-sensor` is a compatibility wrapper.
 - **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.
 - **perfgate-types::fingerprint**: Deterministic fingerprinting for reports.
 

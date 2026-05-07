@@ -50,7 +50,8 @@ enum MutantsCrate {
         name = "perfgate-app",
         alias = "perfgate-render",
         alias = "perfgate-summary",
-        alias = "perfgate-export"
+        alias = "perfgate-export",
+        alias = "perfgate-sensor"
     )]
     App,
     #[value(name = "perfgate-api", alias = "perfgate-auth")]
@@ -59,8 +60,6 @@ enum MutantsCrate {
     Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
-    #[value(name = "perfgate-sensor")]
-    Sensor,
     #[value(name = "perfgate-paired")]
     Paired,
     #[value(name = "perfgate-fake")]
@@ -76,7 +75,6 @@ impl MutantsCrate {
             MutantsCrate::Api => "perfgate-api",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
-            MutantsCrate::Sensor => "perfgate-sensor",
             MutantsCrate::Paired => "perfgate-paired",
             MutantsCrate::Fake => "perfgate-fake",
         }
@@ -90,7 +88,6 @@ impl MutantsCrate {
             MutantsCrate::Api => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
-            MutantsCrate::Sensor => 90,
             MutantsCrate::Paired => 100,
             MutantsCrate::Fake => 70,
         }
@@ -702,7 +699,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-app",
             "perfgate-client",
             "perfgate-github",
-            "perfgate-sensor",
             "perfgate-server",
             "perfgate-cli",
             "perfgate",
@@ -710,7 +706,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "presentation packages stay below runtime/app/entrypoints",
-        sources: &["perfgate-sensor"],
+        sources: &[],
         forbidden: &[
             "perfgate-adapters",
             "perfgate-app",
@@ -759,7 +755,7 @@ const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
     "Command::new",
 ];
 
-const PRESENTATION_ARCH_PACKAGES: &[&str] = &["perfgate-sensor"];
+const PRESENTATION_ARCH_PACKAGES: &[&str] = &[];
 
 const PRESENTATION_BANNED_SOURCE_PATTERNS: &[&str] =
     &["std::process", "tokio::process", "Command::new"];
@@ -1732,7 +1728,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         ),
         (
             "perfgate-sensor",
-            "Sensor report builder for cockpit integration",
+            "Workspace-only compatibility wrapper for perfgate::presentation::sensor",
             90,
         ),
         (
@@ -1802,7 +1798,9 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-domain::budget, perfgate-domain::significance, perfgate-domain::scaling");
     println!("         ↓");
-    println!("  perfgate::presentation::export, perfgate-render, perfgate-sensor, perfgate-paired");
+    println!(
+        "  perfgate::presentation::export, perfgate-render, perfgate::presentation::sensor, perfgate-paired"
+    );
     println!("         ↓");
     println!("  perfgate-domain (policy)");
     println!("         ↓");
@@ -2141,7 +2139,7 @@ fn generate_workspace_inventory_md() -> String {
         ),
         (
             "perfgate-sensor",
-            "Sensor report builder for cockpit integration",
+            "Workspace-only compatibility wrapper for perfgate::presentation::sensor",
             90,
         ),
         (

@@ -3,11 +3,12 @@
 //! This module provides `run_sensor_check()`, a library-linkable convenience function
 //! so the cockpit binary can `use perfgate_app::run_sensor_check`.
 //!
-//! The sensor report building functionality is provided by the `perfgate-sensor` crate.
+//! The sensor report building functionality is provided by the app-owned
+//! [`crate::sensor`] module.
 //! This module re-exports those types and functions for backward compatibility.
 
-// Re-export sensor building functionality from perfgate-sensor
-pub use perfgate_sensor::{
+// Re-export sensor building functionality from the app-owned presentation module.
+pub use crate::sensor::{
     BenchOutcome, SensorReportBuilder, default_engine_capability, sensor_fingerprint,
 };
 

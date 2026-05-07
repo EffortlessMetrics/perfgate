@@ -25,7 +25,6 @@ perfgate-app.workspace = true
 perfgate-github.workspace = true
 perfgate-adapters.workspace = true
 perfgate-domain.workspace = true
-perfgate-sensor.workspace = true
 perfgate-server.workspace = true
 perfgate.workspace = true
 anyhow.workspace = true

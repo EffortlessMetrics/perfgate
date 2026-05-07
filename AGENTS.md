@@ -98,7 +98,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
-| `perfgate-sensor` | Cockpit mode and sensor report generation |
+| `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
 | `perfgate-github` | GitHub API and PR-comment integration |
 | `perfgate-domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |

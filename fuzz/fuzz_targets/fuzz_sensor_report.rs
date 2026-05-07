@@ -116,7 +116,7 @@ fuzz_target!(|input: SensorInput| {
         profile_path: None,
     };
 
-    let mut builder = perfgate_sensor::SensorReportBuilder::new(tool, input.started_at)
+    let mut builder = perfgate_app::sensor::SensorReportBuilder::new(tool, input.started_at)
         .ended_at(input.ended_at, input.duration_ms)
         .baseline(input.baseline_available, None);
 

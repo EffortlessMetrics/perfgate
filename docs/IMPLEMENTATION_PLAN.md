@@ -98,7 +98,7 @@ gate once transition packages stop being publishable.
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
-| `perfgate-sensor` | Cockpit mode and sensor report generation |
+| `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |

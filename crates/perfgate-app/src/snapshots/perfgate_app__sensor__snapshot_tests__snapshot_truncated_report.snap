@@ -1,0 +1,80 @@
+---
+source: crates/perfgate-app/src/sensor.rs
+expression: sensor_report
+---
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-15T10:30:00Z",
+    "ended_at": "2024-01-15T10:31:00Z",
+    "duration_ms": 60000,
+    "capabilities": {
+      "baseline": {
+        "status": "available"
+      }
+    }
+  },
+  "verdict": {
+    "status": "fail",
+    "counts": {
+      "info": 0,
+      "warn": 0,
+      "error": 5
+    },
+    "reasons": [
+      "truncated"
+    ]
+  },
+  "findings": [
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "metric_0 regression",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e",
+      "data": {
+        "baseline": 100.0,
+        "current": 150.0,
+        "direction": "lower",
+        "metric_name": "metric_0",
+        "regression_pct": 50.0,
+        "threshold": 0.2
+      }
+    },
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "metric_1 regression",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e",
+      "data": {
+        "baseline": 100.0,
+        "current": 150.0,
+        "direction": "lower",
+        "metric_name": "metric_1",
+        "regression_pct": 50.0,
+        "threshold": 0.2
+      }
+    },
+    {
+      "check_id": "perfgate.tool",
+      "code": "tool_truncation",
+      "severity": "info",
+      "message": "Some findings were truncated to stay within limits.",
+      "fingerprint": "a54d821885b1a36708a034be2e75637dddf8306b4467ef58826013cbd598c8ed"
+    }
+  ],
+  "data": {
+    "summary": {
+      "bench_count": 1,
+      "fail_count": 5,
+      "pass_count": 0,
+      "total_count": 5,
+      "warn_count": 0
+    }
+  }
+}
