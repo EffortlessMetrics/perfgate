@@ -701,7 +701,6 @@ const ARCH_RULES: &[ArchRule] = &[
             "perfgate-paired",
             "perfgate-scaling",
             "perfgate-sha256",
-            "perfgate-significance",
         ],
         forbidden: &[
             "perfgate-adapters",
@@ -765,7 +764,6 @@ const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &[
     "perfgate-paired",
     "perfgate-scaling",
     "perfgate-sha256",
-    "perfgate-significance",
 ];
 
 const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
@@ -1754,11 +1752,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-significance",
-            "Statistical significance testing (Welch's t-test)",
-            100,
-        ),
-        (
             "perfgate-export",
             "Export formats (CSV, JSONL, HTML, Prometheus)",
             90,
@@ -1840,7 +1833,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
     println!("         ↓");
-    println!("  perfgate-budget, perfgate-significance");
+    println!("  perfgate-budget, perfgate-domain::significance");
     println!("         ↓");
     println!("  perfgate-export, perfgate-render, perfgate-sensor, perfgate-paired");
     println!("         ↓");
@@ -2119,11 +2112,6 @@ fn generate_workspace_inventory_md() -> String {
             100,
         ),
         (
-            "perfgate-significance",
-            "Statistical significance testing (Welch's t-test)",
-            100,
-        ),
-        (
             "perfgate-export",
             "Export formats (CSV, JSONL, HTML, Prometheus)",
             90,
@@ -2201,9 +2189,8 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("  types --> val[perfgate-types::validation]\n");
     md.push_str("  host[perfgate-host-detect] --> types\n");
     md.push_str("  types --> budget[perfgate-budget]\n");
-    md.push_str("  types --> sig[perfgate-significance]\n");
+    md.push_str("  domain --> sig[perfgate-domain::significance]\n");
     md.push_str("  budget --> domain[perfgate-domain]\n");
-    md.push_str("  sig --> domain\n");
     md.push_str("  domain --> adapters[perfgate-adapters]\n");
     md.push_str("  adapters --> app[perfgate-app]\n");
     md.push_str("  app --> cli[perfgate-cli]\n");

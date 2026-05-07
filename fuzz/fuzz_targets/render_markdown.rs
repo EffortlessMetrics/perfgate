@@ -7,11 +7,3 @@ fuzz_target!(|data: &[u8]| {
         let _ = perfgate_app::render_markdown(&compare);
     }
 });
-
-
-
-
-
-
-
-

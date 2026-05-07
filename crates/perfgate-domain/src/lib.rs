@@ -8,6 +8,7 @@
 
 mod blame;
 pub mod paired;
+pub mod significance;
 pub mod stats;
 
 pub use blame::{
@@ -24,7 +25,7 @@ pub use perfgate_budget::{
     evaluate_budget, evaluate_budgets, reason_token,
 };
 
-pub use perfgate_significance::{compute_significance, mean_and_variance};
+pub use significance::{compute_significance, mean_and_variance};
 pub use stats::{
     DriftClass, TrendAnalysis, TrendConfig, analyze_trend, classify_drift, compute_headroom_pct,
     linear_regression, median_f64_sorted, median_u64_sorted, predict_breach_run, spark_chart,

@@ -25,6 +25,7 @@ struct SensorInput {
     pass_count: u32,
     warn_count: u32,
     fail_count: u32,
+    skip_count: u32,
     findings: Vec<FuzzFinding>,
 }
 
@@ -89,7 +90,7 @@ fuzz_target!(|input: SensorInput| {
         })
         .collect();
 
-    let total_count = input.pass_count + input.warn_count + input.fail_count;
+    let total_count = input.pass_count + input.warn_count + input.fail_count + input.skip_count;
     let report = PerfgateReport {
         report_type: REPORT_SCHEMA_V1.to_string(),
         verdict: Verdict {
@@ -98,6 +99,7 @@ fuzz_target!(|input: SensorInput| {
                 pass: input.pass_count,
                 warn: input.warn_count,
                 fail: input.fail_count,
+                skip: input.skip_count,
             },
             reasons: vec![],
         },
@@ -107,8 +109,10 @@ fuzz_target!(|input: SensorInput| {
             pass_count: input.pass_count,
             warn_count: input.warn_count,
             fail_count: input.fail_count,
+            skip_count: input.skip_count,
             total_count,
         },
+        complexity: None,
         profile_path: None,
     };
 
@@ -126,11 +130,3 @@ fuzz_target!(|input: SensorInput| {
     // Basic invariant: verdict counts should be non-negative (they're u32, so always true)
     let _ = serde_json::to_string(&sensor_report);
 });
-
-
-
-
-
-
-
-

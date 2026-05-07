@@ -15,7 +15,7 @@ We integrate Welch's t-test as an optional significance layer on top of threshol
 4. **Noise policy** (`ignore`, `warn`, `skip`) handles metrics with high coefficient of variation — benchmarks that are inherently unstable can be flagged and optionally excluded from gating.
 5. **Paired benchmarking** (`perfgate paired`) further reduces noise by interleaving baseline and current measurements back-to-back, canceling out environmental drift.
 
-The implementation lives in `perfgate-significance` (Welch's t-test, confidence intervals) and `perfgate-domain` (noise policy evaluation).
+The implementation lives in `perfgate-domain::significance` (Welch's t-test, confidence intervals) and the surrounding `perfgate-domain` comparison policy.
 
 ## Consequences
 - Teams can tune their confidence level per-project, balancing sensitivity against false-positive rates.

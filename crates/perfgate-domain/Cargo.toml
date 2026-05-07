@@ -17,7 +17,6 @@ categories = ["algorithms", "development-tools"]
 perfgate-types.workspace = true
 perfgate-host-detect.workspace = true
 perfgate-budget.workspace = true
-perfgate-significance.workspace = true
 thiserror.workspace = true
 statrs.workspace = true
 serde.workspace = true
@@ -26,6 +25,7 @@ schemars.workspace = true
 [dev-dependencies]
 insta.workspace = true
 proptest = "1"
+approx = "0.5"
 
 [lints]
 workspace = true

@@ -20,7 +20,6 @@ perfgate-app = { path = "../crates/perfgate-app" }
 perfgate-sha256 = { path = "../crates/perfgate-sha256" }
 perfgate-export = { path = "../crates/perfgate-export" }
 perfgate-budget = { path = "../crates/perfgate-budget" }
-perfgate-significance = { path = "../crates/perfgate-significance" }
 perfgate-paired = { path = "../crates/perfgate-paired" }
 perfgate-sensor = { path = "../crates/perfgate-sensor" }
 perfgate-host-detect = { path = "../crates/perfgate-host-detect" }

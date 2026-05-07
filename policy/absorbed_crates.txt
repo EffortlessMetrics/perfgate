@@ -23,7 +23,7 @@ perfgate-api -> perfgate_types::baseline_service or shared client/server contrac
 # Pure core and domain policy.
 perfgate-domain -> perfgate::domain
 perfgate-budget -> perfgate::core::budget or perfgate_domain::budget
-perfgate-significance -> perfgate::core::significance or perfgate_domain::significance
+perfgate-significance -> perfgate_domain::significance [deleted]
 perfgate-host-detect -> perfgate::domain::host
 perfgate-scaling -> perfgate::domain::scaling
 perfgate-sha256 -> perfgate::core::fingerprint

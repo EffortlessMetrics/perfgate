@@ -65,7 +65,7 @@ fuzz_target!(|input: PairedInput| {
         .map(|s| s.to_paired_sample())
         .collect();
 
-    if let Ok(stats) = perfgate_paired::compute_paired_stats(&samples, input.work_units) {
+    if let Ok(stats) = perfgate_paired::compute_paired_stats(&samples, input.work_units, None) {
         // Also fuzz the comparison path
         let comparison = perfgate_paired::compare_paired_stats(&stats);
 
@@ -73,11 +73,3 @@ fuzz_target!(|input: PairedInput| {
         assert!(comparison.ci_95_lower <= comparison.ci_95_upper);
     }
 });
-
-
-
-
-
-
-
-

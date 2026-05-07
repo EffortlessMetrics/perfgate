@@ -25,7 +25,6 @@ cargo test -p perfgate-budget
 cargo test -p perfgate-export
 cargo test -p perfgate-render
 cargo test -p perfgate-sensor
-cargo test -p perfgate-significance
 cargo test -p perfgate-adapters
 cargo test -p perfgate-host-detect
 cargo test -p perfgate-paired
@@ -96,8 +95,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 |-------|----------------|
 | `perfgate-types` | Core domain types and stable schemas |
 | `perfgate-error` | Shared error types and categorization |
-| `perfgate-domain` | Core business logic, statistics, and paired analysis |
-| `perfgate-significance` | Statistical significance testing (Welch's t-test) |
+| `perfgate-domain` | Core business logic, statistics, significance, and paired analysis |
 | `perfgate-budget` | Budget evaluation and verdict logic |
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-host-detect` | Host fingerprinting and mismatch detection |

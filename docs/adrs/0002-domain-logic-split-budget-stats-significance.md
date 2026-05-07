@@ -10,7 +10,7 @@ The `perfgate-domain` crate originally handled everything from raw sample storag
 We extracted the core mathematical and policy logic into specialized crates:
 - `perfgate-stats`: Provides `U64Summary` and `F64Summary` for pure statistical aggregation.
 - `perfgate-budget`: Implements the logic for comparing metrics against thresholds and determining `Pass/Warn/Fail` status.
-- `perfgate-significance`: Contains the statistical significance logic (Welch's t-test and p-values).
+- `perfgate-domain::significance`: Contains the statistical significance logic (Welch's t-test and p-values); this was a standalone `perfgate-significance` crate before the 0.16 public-surface collapse.
 
 `perfgate-domain` now acts as a coordinator for these domain entities, focusing on the high-level measurement models.
 

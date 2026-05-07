@@ -47,6 +47,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | crate deleted |
+| `perfgate-significance` | `perfgate_domain::significance` | crate deleted |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -63,7 +64,6 @@ high-level target is:
 | `perfgate-api` | `perfgate_types::baseline_service` or shared client/server contract |
 | `perfgate-domain` | `perfgate::domain` |
 | `perfgate-budget` | `perfgate::core::budget` |
-| `perfgate-significance` | `perfgate::core::significance` |
 | `perfgate-host-detect` | `perfgate::domain::host` |
 | `perfgate-scaling` | `perfgate::domain::scaling` |
 | `perfgate-sha256` | `perfgate::core::fingerprint` |

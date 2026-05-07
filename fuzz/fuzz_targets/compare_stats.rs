@@ -191,11 +191,3 @@ fuzz_target!(|input: CompareStatsInput| {
     // It may return an error (e.g., InvalidBaseline), which is fine
     let _ = perfgate_domain::compare_stats(&baseline, &current, &budgets);
 });
-
-
-
-
-
-
-
-

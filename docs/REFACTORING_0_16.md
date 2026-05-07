@@ -51,7 +51,7 @@ Pure logic with no runtime dependencies:
 |---------------|-----------|-----|
 | `perfgate-stats` | `perfgate_domain::stats` now; facade re-export later | Statistical descriptors (median, p95, etc.) |
 | `perfgate-budget` | `perfgate::core::budget` | Budget evaluation and verdict logic |
-| `perfgate-significance` | `perfgate::core::significance` | Welch's t-test and statistical testing |
+| `perfgate-significance` | `perfgate_domain::significance` now; `perfgate::core::significance` facade path | Welch's t-test and statistical testing |
 | `perfgate-paired` | `perfgate_domain::paired` now; facade re-export later | Paired benchmarking computation |
 | `perfgate-sha256` | `perfgate::core::fingerprint` | Minimal SHA-256 for baseline fingerprints |
 
@@ -302,7 +302,7 @@ Update all downstream crate imports. Verify `perfgate-types` remains self-contai
 Move into `perfgate::core`:
 - `perfgate-stats` -> already landed in `perfgate_domain::stats`; add facade path later
 - `perfgate-budget` -> `perfgate::core::budget`
-- `perfgate-significance` -> `perfgate::core::significance`
+- `perfgate-significance` -> already landed in `perfgate_domain::significance`; facade path is `perfgate::core::significance`
 - `perfgate-paired` -> implementation already landed in `perfgate_domain::paired`; add facade path later
 - `perfgate-sha256` -> `perfgate::core::fingerprint`
 
