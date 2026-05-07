@@ -24,6 +24,7 @@ schemars.workspace = true
 insta.workspace = true
 proptest = "1"
 approx = "0.5"
+serde_json.workspace = true
 
 [lints]
 workspace = true

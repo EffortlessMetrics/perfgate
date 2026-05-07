@@ -31,7 +31,7 @@ The architecture is modularized into 26 workspace crates:
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-github` | GitHub API and PR-comment integration |
-| `perfgate-scaling` | Complexity and scaling analysis |
+| `perfgate-domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-cli` | Command-line interface and argument parsing |

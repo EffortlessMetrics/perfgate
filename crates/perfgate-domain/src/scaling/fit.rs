@@ -7,8 +7,8 @@
 //! For O(1), we use a simple mean (no intercept needed).
 //! For O(2^n), we cap input sizes to avoid overflow.
 
-use crate::models::ComplexityClass;
-use crate::report::SizeMeasurement;
+use super::models::ComplexityClass;
+use super::report::SizeMeasurement;
 
 /// Fit a single complexity model to the data.
 ///

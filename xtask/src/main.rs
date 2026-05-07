@@ -34,7 +34,8 @@ enum MutantsCrate {
         alias = "perfgate-stats",
         alias = "perfgate-significance",
         alias = "perfgate-host-detect",
-        alias = "perfgate-budget"
+        alias = "perfgate-budget",
+        alias = "perfgate-scaling"
     )]
     Domain,
     #[value(
@@ -697,7 +698,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "core/domain packages stay below I/O, presentation, and entrypoints",
-        sources: &["perfgate-domain", "perfgate-paired", "perfgate-scaling"],
+        sources: &["perfgate-domain", "perfgate-paired"],
         forbidden: &[
             "perfgate-adapters",
             "perfgate-app",
@@ -753,8 +754,7 @@ struct SourceArchRule {
     banned_patterns: &'static [&'static str],
 }
 
-const CORE_DOMAIN_ARCH_PACKAGES: &[&str] =
-    &["perfgate-domain", "perfgate-paired", "perfgate-scaling"];
+const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &["perfgate-domain", "perfgate-paired"];
 
 const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
     "std::fs",
@@ -1806,7 +1806,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
     println!("         ↓");
-    println!("  perfgate-domain::budget, perfgate-domain::significance");
+    println!("  perfgate-domain::budget, perfgate-domain::significance, perfgate-domain::scaling");
     println!("         ↓");
     println!("  perfgate-export, perfgate-render, perfgate-sensor, perfgate-paired");
     println!("         ↓");
@@ -2148,6 +2148,7 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("  domain --> host[perfgate-domain::host]\n");
     md.push_str("  domain --> budget[perfgate-domain::budget]\n");
     md.push_str("  domain --> sig[perfgate-domain::significance]\n");
+    md.push_str("  domain --> scaling[perfgate-domain::scaling]\n");
     md.push_str("  domain --> adapters[perfgate-adapters]\n");
     md.push_str("  adapters --> app[perfgate-app]\n");
     md.push_str("  app --> cli[perfgate-cli]\n");

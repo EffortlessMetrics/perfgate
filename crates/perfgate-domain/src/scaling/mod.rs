@@ -1,13 +1,13 @@
 //! Computational complexity validation and curve fitting.
 //!
-//! This crate provides tools to validate that benchmarks conform to expected
+//! This module provides tools to validate that benchmarks conform to expected
 //! algorithmic complexity classes (O(1), O(n), O(n log n), O(n^2), etc.)
 //! by running benchmarks at multiple input sizes and fitting mathematical
 //! models to the observed data.
 //!
 //! # Overview
 //!
-//! The crate provides:
+//! The module provides:
 //! - Complexity class definitions with expected function shapes
 //! - Least-squares curve fitting for each model
 //! - R-squared goodness-of-fit scoring
@@ -17,7 +17,7 @@
 //!
 //! # Design
 //!
-//! This crate is intentionally I/O-free: it does math and model fitting only.
+//! This module is intentionally I/O-free: it does math and model fitting only.
 //! Process execution and file I/O are handled by the CLI and app layers.
 
 mod chart;
@@ -46,7 +46,7 @@ pub const DEFAULT_R_SQUARED_THRESHOLD: f64 = 0.90;
 /// # Examples
 ///
 /// ```
-/// use perfgate_scaling::{SizeMeasurement, classify_complexity};
+/// use perfgate_domain::scaling::{SizeMeasurement, classify_complexity};
 ///
 /// let measurements = vec![
 ///     SizeMeasurement { input_size: 100, time_ms: 10.0 },
@@ -118,7 +118,7 @@ pub fn is_complexity_degraded(expected: ComplexityClass, actual: ComplexityClass
 /// # Examples
 ///
 /// ```
-/// use perfgate_scaling::{parse_complexity, ComplexityClass};
+/// use perfgate_domain::scaling::{parse_complexity, ComplexityClass};
 ///
 /// assert_eq!(parse_complexity("O(1)").unwrap(), ComplexityClass::O1);
 /// assert_eq!(parse_complexity("O(n)").unwrap(), ComplexityClass::ON);

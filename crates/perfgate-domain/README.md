@@ -1,7 +1,7 @@
 # perfgate-domain
 
-Pure business logic with zero I/O -- statistics, budget evaluation, and verdict
-computation for perfgate.
+Pure business logic with zero I/O -- statistics, budget evaluation, scaling
+analysis, and verdict computation for perfgate.
 
 This crate is intentionally I/O-free. All data arrives via function arguments;
 there is no filesystem access, no network, no process spawning. This makes every
@@ -44,6 +44,15 @@ function deterministic and trivially testable.
 - `SignificancePolicy` -- controls alpha, minimum sample count, and whether
   non-significant regressions are downgraded to pass
 
+### Scaling Analysis
+
+- `scaling::classify_complexity(measurements, threshold) -> ScalingResult` --
+  fit benchmark measurements to complexity classes such as O(n) and O(n^2)
+- `scaling::parse_complexity(value) -> ComplexityClass` -- parse config and CLI
+  complexity labels
+- `scaling::render_ascii_chart(...) -> String` -- render a deterministic
+  terminal chart for scaling output
+
 ### Paired Benchmarking
 
 - `compute_paired_stats(samples) -> PairedStats`
@@ -57,7 +66,8 @@ function deterministic and trivially testable.
 ## Key Types
 
 `Comparison` (deltas + verdict), `SignificancePolicy`, `Report`, `Finding`,
-`FindingData`, `DomainError` (`NoSamples`, `Stats`, `InvalidAlpha`).
+`FindingData`, `DomainError` (`NoSamples`, `Stats`, `InvalidAlpha`), and
+scaling types under `perfgate_domain::scaling`.
 
 ## Verdict Logic
 

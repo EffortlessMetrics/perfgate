@@ -33,12 +33,12 @@ use perfgate_config::{
     ResolvedServerConfig, apply_ratchet_toml_changes, load_config_file,
     preview_ratchet_toml_changes, resolve_server_config,
 };
+use perfgate_domain::scaling::{
+    ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
+};
 use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_render::summary::{SummaryRequest, SummaryUseCase};
-use perfgate_scaling::{
-    ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
-};
 use perfgate_types::error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
