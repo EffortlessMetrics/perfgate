@@ -96,6 +96,12 @@ cargo binstall perfgate-cli
 cargo install perfgate-cli
 ```
 
+Verify the local install and project setup:
+
+```bash
+perfgate doctor
+```
+
 ## What Gets Measured
 
 | Metric | Description | Unix | Windows |
@@ -164,6 +170,7 @@ perfgate comment --compare artifacts/perfgate/compare.json --repo owner/repo --p
 | Command | Description |
 |---------|-------------|
 | **`check`** | **Config-driven workflow (start here)** |
+| `doctor` | Diagnose config, benchmark commands, baselines, artifacts, CI, and server reachability |
 | `run` | Execute a benchmark, emit a run receipt |
 | `compare` | Compare a run against a baseline |
 | `diff` | Run a quick local regression check against discovered config/baselines |

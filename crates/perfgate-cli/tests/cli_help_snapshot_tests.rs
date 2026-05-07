@@ -21,6 +21,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("run"))
         .stdout(predicate::str::contains("compare"))
         .stdout(predicate::str::contains("check"))
+        .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("md"))
         .stdout(predicate::str::contains("export"))
@@ -69,6 +70,18 @@ fn cli_help_check() {
         .stdout(predicate::str::contains("--bench"))
         .stdout(predicate::str::contains("--out-dir"))
         .stdout(predicate::str::contains("--emit-repair-context"));
+}
+
+#[test]
+fn cli_help_doctor() {
+    perfgate_cmd()
+        .args(["doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Diagnose local setup"))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--strict"));
 }
 
 #[test]

@@ -19,6 +19,12 @@ cargo install perfgate-cli
 cargo install --path crates/perfgate-cli
 ```
 
+Check the local install and project setup:
+
+```bash
+perfgate doctor
+```
+
 ## Quick Start
 
 ```bash
@@ -81,6 +87,7 @@ Commands are organized by workflow stage.
 | Command  | Purpose |
 |----------|---------|
 | `check`  | Config-driven end-to-end workflow: run, compare, report, gate |
+| `doctor` | Diagnose config, benchmark commands, baselines, artifacts, CI, and server reachability |
 | `bisect` | Binary-search for the commit that introduced a regression |
 
 ## Exit Codes

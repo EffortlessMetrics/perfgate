@@ -32,7 +32,8 @@ use perfgate_client::types::auth::Role;
 use perfgate_client::types::{BaselineRecord, CreateKeyRequest, KeyEntry};
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
-    ResolvedServerConfig, SubmitVerdictRequest, UploadBaselineRequest, resolve_server_config,
+    ResolvedServerConfig, RetryConfig, SubmitVerdictRequest, UploadBaselineRequest,
+    resolve_server_config,
 };
 use perfgate_domain::scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
@@ -243,6 +244,9 @@ enum Command {
     /// - 2: fail (budget violated)
     /// - 3: warn treated as failure (with --fail-on-warn)
     Check(Box<CheckArgs>),
+
+    /// Diagnose local setup, config, baselines, artifacts, CI, and server reachability.
+    Doctor(Box<DoctorArgs>),
 
     /// Run paired benchmark: interleave baseline and current commands for reduced noise.
     ///
@@ -1082,6 +1086,21 @@ pub struct CheckArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Path to the config file (TOML or JSON)
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Output directory checked for artifact writability
+    #[arg(long, default_value = "artifacts/perfgate")]
+    pub out_dir: PathBuf,
+
+    /// Exit non-zero if doctor finds a failed required check
+    #[arg(long, default_value_t = false)]
+    pub strict: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct PairedArgs {
     /// Bench identifier (used for baselines and reporting)
     #[arg(long)]
@@ -1647,6 +1666,431 @@ fn resolve_bench_names(
     anyhow::bail!("either --bench or --all must be specified")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DoctorStatus {
+    Ok,
+    Warn,
+    Fail,
+}
+
+impl DoctorStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "OK",
+            Self::Warn => "WARN",
+            Self::Fail => "FAIL",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DoctorCheck {
+    status: DoctorStatus,
+    name: &'static str,
+    detail: String,
+}
+
+impl DoctorCheck {
+    fn ok(name: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            status: DoctorStatus::Ok,
+            name,
+            detail: detail.into(),
+        }
+    }
+
+    fn warn(name: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            status: DoctorStatus::Warn,
+            name,
+            detail: detail.into(),
+        }
+    }
+
+    fn fail(name: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            status: DoctorStatus::Fail,
+            name,
+            detail: detail.into(),
+        }
+    }
+}
+
+fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result<()> {
+    let mut checks = Vec::new();
+    checks.push(DoctorCheck::ok(
+        "version",
+        env!("CARGO_PKG_VERSION").to_string(),
+    ));
+    checks.push(DoctorCheck::ok(
+        "platform",
+        format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+    ));
+
+    let config = if args.config.exists() {
+        match load_config_file(&args.config) {
+            Ok(config) => {
+                match config.validate() {
+                    Ok(()) => checks.push(DoctorCheck::ok(
+                        "config",
+                        format!(
+                            "{} found ({} benchmark{})",
+                            args.config.display(),
+                            config.benches.len(),
+                            plural(config.benches.len())
+                        ),
+                    )),
+                    Err(error) => checks.push(DoctorCheck::fail(
+                        "config",
+                        format!("{} is invalid: {error}", args.config.display()),
+                    )),
+                }
+                Some(config)
+            }
+            Err(error) => {
+                checks.push(DoctorCheck::fail(
+                    "config",
+                    format!("failed to load {}: {error}", args.config.display()),
+                ));
+                None
+            }
+        }
+    } else {
+        checks.push(DoctorCheck::fail(
+            "config",
+            format!(
+                "{} not found; run `perfgate init` or pass --config",
+                args.config.display()
+            ),
+        ));
+        None
+    };
+
+    checks.push(doctor_git_check());
+    checks.push(doctor_ci_check());
+
+    if let Some(config) = &config {
+        checks.push(doctor_benchmark_commands(config));
+        checks.push(doctor_baselines(config, &server_flags));
+        checks.push(doctor_server(config, &server_flags));
+    } else {
+        checks.push(DoctorCheck::warn(
+            "benchmarks",
+            "skipped because config could not be loaded",
+        ));
+        checks.push(DoctorCheck::warn(
+            "baselines",
+            "skipped because config could not be loaded",
+        ));
+        checks.push(doctor_server(&ConfigFile::default(), &server_flags));
+    }
+
+    checks.push(doctor_artifact_dir(&args.out_dir));
+
+    println!("perfgate doctor");
+    println!();
+    for check in &checks {
+        println!(
+            "{:<4} {:<18} {}",
+            check.status.as_str(),
+            check.name,
+            check.detail
+        );
+    }
+
+    let failed = checks
+        .iter()
+        .filter(|check| check.status == DoctorStatus::Fail)
+        .count();
+    let warned = checks
+        .iter()
+        .filter(|check| check.status == DoctorStatus::Warn)
+        .count();
+    println!();
+    println!(
+        "Summary: {failed} failed, {warned} warning{}",
+        plural(warned)
+    );
+
+    if args.strict && failed > 0 {
+        anyhow::bail!("doctor found {failed} failed check{}", plural(failed));
+    }
+
+    Ok(())
+}
+
+fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
+}
+
+fn doctor_git_check() -> DoctorCheck {
+    match run_git_capture(&["rev-parse", "--is-inside-work-tree"]) {
+        Some(value) if value == "true" => {
+            let branch = run_git_capture(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .unwrap_or_else(|| "unknown".to_string());
+            DoctorCheck::ok("git", format!("repository detected ({branch})"))
+        }
+        _ => DoctorCheck::ok("git", "not a git repository"),
+    }
+}
+
+fn doctor_ci_check() -> DoctorCheck {
+    match detect_ci_provider() {
+        Some(provider) => DoctorCheck::ok("ci", format!("detected {provider}")),
+        None => DoctorCheck::ok("ci", "not detected"),
+    }
+}
+
+fn detect_ci_provider() -> Option<&'static str> {
+    if std::env::var_os("GITHUB_ACTIONS").is_some() {
+        Some("GitHub Actions")
+    } else if std::env::var_os("GITLAB_CI").is_some() {
+        Some("GitLab CI")
+    } else if std::env::var_os("BITBUCKET_BUILD_NUMBER").is_some() {
+        Some("Bitbucket Pipelines")
+    } else if std::env::var_os("CIRCLECI").is_some() {
+        Some("CircleCI")
+    } else if std::env::var_os("CI").is_some() {
+        Some("generic CI")
+    } else {
+        None
+    }
+}
+
+fn doctor_benchmark_commands(config: &ConfigFile) -> DoctorCheck {
+    if config.benches.is_empty() {
+        return DoctorCheck::fail("benchmarks", "no [[bench]] entries configured");
+    }
+
+    let mut runnable = 0usize;
+    let mut missing = Vec::new();
+    for bench in &config.benches {
+        match bench_command_runnable(bench) {
+            Ok(true) => runnable += 1,
+            Ok(false) => missing.push(bench.name.clone()),
+            Err(error) => missing.push(format!("{} ({error})", bench.name)),
+        }
+    }
+
+    if missing.is_empty() {
+        DoctorCheck::ok(
+            "benchmarks",
+            format!(
+                "{}/{} command{} runnable",
+                runnable,
+                config.benches.len(),
+                plural(config.benches.len())
+            ),
+        )
+    } else {
+        DoctorCheck::fail(
+            "benchmarks",
+            format!(
+                "{}/{} command{} runnable; not runnable: {}",
+                runnable,
+                config.benches.len(),
+                plural(config.benches.len()),
+                missing.join(", ")
+            ),
+        )
+    }
+}
+
+fn bench_command_runnable(bench: &perfgate_types::BenchConfigFile) -> anyhow::Result<bool> {
+    let Some(program) = bench.command.first() else {
+        return Ok(false);
+    };
+
+    let cwd = resolve_bench_cwd(bench.cwd.as_deref());
+    if !cwd.exists() {
+        anyhow::bail!("cwd does not exist: {}", cwd.display());
+    }
+
+    Ok(program_is_runnable(program, &cwd))
+}
+
+fn resolve_bench_cwd(cwd: Option<&str>) -> PathBuf {
+    match cwd {
+        Some(cwd) => PathBuf::from(cwd),
+        None => PathBuf::from("."),
+    }
+}
+
+fn program_is_runnable(program: &str, cwd: &Path) -> bool {
+    let path = Path::new(program);
+    if path.is_absolute() || program.contains('/') || program.contains('\\') {
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        };
+        return executable_candidate_exists(&candidate);
+    }
+
+    find_program_on_path(program).is_some()
+}
+
+fn find_program_on_path(program: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(program);
+        if executable_candidate_exists(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn executable_candidate_exists(path: &Path) -> bool {
+    if path.is_file() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let Ok(metadata) = path.metadata() else {
+                return false;
+            };
+            return metadata.permissions().mode() & 0o111 != 0;
+        }
+
+        #[cfg(not(unix))]
+        {
+            return true;
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        if path.extension().is_none() {
+            let pathext =
+                std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+            for ext in pathext.split(';').filter(|ext| !ext.is_empty()) {
+                let ext = ext.trim_start_matches('.');
+                if path.with_extension(ext).is_file() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn doctor_baselines(config: &ConfigFile, server_flags: &ServerFlags) -> DoctorCheck {
+    if config.benches.is_empty() {
+        return DoctorCheck::warn("baselines", "skipped because no benchmarks are configured");
+    }
+
+    let server_config = server_flags.resolve(&config.baseline_server);
+    if server_config.is_configured() {
+        return DoctorCheck::ok("baselines", "baseline server configured");
+    }
+
+    let mut local = 0usize;
+    let mut found = 0usize;
+    let mut remote = 0usize;
+    for bench in &config.benches {
+        let path = resolve_baseline_path(&None, &bench.name, config);
+        let path_text = path.to_string_lossy();
+        if is_remote_storage_uri(&path_text) {
+            remote += 1;
+            continue;
+        }
+        local += 1;
+        if path.exists() {
+            found += 1;
+        }
+    }
+
+    if local == 0 && remote > 0 {
+        return DoctorCheck::ok(
+            "baselines",
+            format!(
+                "{remote} remote baseline URI{} configured; not probed",
+                plural(remote)
+            ),
+        );
+    }
+
+    if found == local {
+        DoctorCheck::ok(
+            "baselines",
+            format!("{found}/{local} local baseline{} found", plural(local)),
+        )
+    } else {
+        DoctorCheck::warn(
+            "baselines",
+            format!(
+                "{found}/{local} local baseline{} found; create missing baselines with `perfgate promote --current <run.json> --to <baseline.json>`",
+                plural(local)
+            ),
+        )
+    }
+}
+
+fn doctor_server(config: &ConfigFile, server_flags: &ServerFlags) -> DoctorCheck {
+    let server_config = server_flags.resolve(&config.baseline_server);
+    if !server_config.is_configured() {
+        return DoctorCheck::ok("baseline server", "not configured");
+    }
+
+    let Some(url) = server_config.url.as_ref() else {
+        return DoctorCheck::ok("baseline server", "not configured");
+    };
+
+    let mut client_config = ClientConfig::new(url)
+        .with_timeout(Duration::from_secs(2))
+        .with_retry(RetryConfig::new().with_max_retries(0));
+    if let Some(api_key) = &server_config.api_key {
+        client_config = client_config.with_api_key(api_key);
+    }
+
+    let client = match BaselineClient::new(client_config) {
+        Ok(client) => client,
+        Err(error) => {
+            return DoctorCheck::fail("baseline server", format!("{url} invalid: {error}"));
+        }
+    };
+
+    match with_tokio_runtime(async { client.health_check().await.map_err(anyhow::Error::from) }) {
+        Ok(health) if health.status == "healthy" => {
+            let project = server_config.project.as_deref().unwrap_or("not configured");
+            DoctorCheck::ok(
+                "baseline server",
+                format!("{url} reachable (project: {project})"),
+            )
+        }
+        Ok(health) => DoctorCheck::fail(
+            "baseline server",
+            format!("{url} returned unhealthy status: {}", health.status),
+        ),
+        Err(error) => {
+            DoctorCheck::fail("baseline server", format!("{url} not reachable: {error:#}"))
+        }
+    }
+}
+
+fn doctor_artifact_dir(out_dir: &Path) -> DoctorCheck {
+    match ensure_artifact_dir_writable(out_dir) {
+        Ok(()) => DoctorCheck::ok(
+            "artifact directory",
+            format!("{} writable", out_dir.display()),
+        ),
+        Err(error) => DoctorCheck::fail(
+            "artifact directory",
+            format!("{} not writable: {error}", out_dir.display()),
+        ),
+    }
+}
+
+fn ensure_artifact_dir_writable(out_dir: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(out_dir)?;
+    let probe = out_dir.join(".perfgate-doctor-write-test");
+    fs::write(&probe, b"perfgate doctor\n")?;
+    fs::remove_file(probe)?;
+    Ok(())
+}
+
 fn main() -> ExitCode {
     match real_main() {
         Ok(_) => ExitCode::from(0),
@@ -2183,6 +2627,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 OutputMode::Cockpit => run_check_cockpit(req),
             }
         }
+
+        Command::Doctor(args) => execute_doctor(*args, server_flags),
 
         Command::Paired(args) => {
             let PairedArgs {

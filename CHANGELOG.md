@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added `perfgate doctor` to diagnose local setup, config loading, benchmark
+  command availability, baseline presence, artifact directory writability, CI
+  detection, and baseline-server health.
 - Extended `xtask schema-compat` with baseline-service and fleet record
   fixtures so the 0.16 server API contract is checked alongside receipt
   compatibility.
