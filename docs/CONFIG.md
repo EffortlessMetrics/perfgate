@@ -9,7 +9,10 @@ perfgate uses TOML configuration files for the `check` command.
 repeat = 7                                    # iterations per benchmark
 warmup = 1                                    # warmup iterations (discarded)
 threshold = 0.20                              # fail if regression exceeds 20%
-warn_factor = 0.90                            # warn at 90% of threshold
+warn_factor = 0.50                            # warn at 50% of threshold
+noise_threshold = 0.10                        # warn when CV exceeds 10%
+noise_policy = "warn"                         # warn on noisy measurements
+out_dir = "artifacts/perfgate"                # default artifact directory
 baseline_dir = "baselines"                    # directory for baseline receipts
 baseline_pattern = "baselines/{bench}.json"   # pattern with {bench} placeholder
 markdown_template = ".github/perfgate-comment.hbs"  # optional Handlebars template
@@ -34,7 +37,7 @@ Each metric can have its own budget:
 ```toml
 [budgets.wall_ms]
 threshold = 0.20        # 20% regression = fail
-warn_factor = 0.90      # warn at 18% (0.90 * 0.20)
+warn_factor = 0.50      # warn at 10% (0.50 * 0.20)
 statistic = "p95"       # gate on p95 instead of median
 ```
 
@@ -65,7 +68,7 @@ Bundled presets in `presets/`:
 
 | Preset | Repeat | Warmup | Threshold | Use case |
 |--------|--------|--------|-----------|----------|
-| `standard.toml` | 5 | 1 | 20% | Regular PR checks |
+| `standard.toml` | 7 | 1 | 20% | Regular PR checks |
 | `release.toml` | 10 | 2 | 10% | Release branches, nightly |
 | `tier1-fast.toml` | 3 | 1 | 30% | Draft PRs, fast feedback |
 

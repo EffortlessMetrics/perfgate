@@ -29,13 +29,32 @@ Notes:
 
 ## Quick Start
 
-**1. Configure** -- define benchmarks in `perfgate.toml`:
+**1. Initialize** -- discover benchmarks and write the CI scaffold:
+
+```bash
+perfgate init --ci github --profile standard
+```
+
+This creates:
+
+```text
+perfgate.toml
+.github/workflows/perfgate.yml
+baselines/.gitkeep
+.perfgate/README.md
+```
+
+**2. Review** -- the generated `perfgate.toml` is the local source of truth:
 
 ```toml
 [defaults]
 repeat = 7
 warmup = 1
 threshold = 0.20
+warn_factor = 0.50
+noise_threshold = 0.10
+noise_policy = "warn"
+out_dir = "artifacts/perfgate"
 baseline_dir = "baselines"
 
 [[bench]]
@@ -43,10 +62,10 @@ name = "my-service"
 command = ["./target/release/my-bench"]
 ```
 
-**2. Run** -- check locally or in CI:
+**3. Run** -- check locally or in CI:
 
 ```bash
-perfgate check --config perfgate.toml --bench my-service
+perfgate check --config perfgate.toml --all
 ```
 
 Optional diagnostics for regressing benches:
@@ -55,14 +74,20 @@ Optional diagnostics for regressing benches:
 perfgate check --config perfgate.toml --bench my-service --profile-on-regression
 ```
 
-**3. Gate** -- wire into GitHub Actions:
+**4. Promote** -- create the first trusted local baseline:
+
+```bash
+perfgate promote --current artifacts/perfgate/my-service/run.json --to baselines/my-service.json
+```
+
+**5. Gate** -- the generated GitHub Actions workflow uses:
 
 ```yaml
-# .github/workflows/perf.yml
-- uses: EffortlessMetrics/perfgate@v0.15.1
+- uses: EffortlessMetrics/perfgate@v0
   with:
     config: perfgate.toml
     all: "true"
+    require_baseline: "true"
 ```
 
 Pin `@v0.15.1` for an exact patch release, or use `@v0.15` / `@v0` to follow

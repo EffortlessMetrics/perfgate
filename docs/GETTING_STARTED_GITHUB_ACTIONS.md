@@ -6,7 +6,30 @@ This guide shows a minimal GitHub Actions setup for `perfgate` with:
 - workflow branching via `--output-github`
 - optional one-line use of the official `perfgate-action`
 
-## 1) Repository layout
+## 1) Generate the paved-road setup
+
+Run this from the repository root:
+
+```bash
+perfgate init --ci github --profile standard
+```
+
+This creates:
+
+- `perfgate.toml`
+- `.github/workflows/perfgate.yml`
+- `baselines/.gitkeep`
+- `.perfgate/README.md`
+
+The generated setup uses local in-repo baselines first. After a trusted local
+run, promote each first baseline and commit it:
+
+```bash
+perfgate check --config perfgate.toml --all
+perfgate promote --current artifacts/perfgate/api/run.json --to baselines/api.json
+```
+
+## 2) Repository layout
 
 Expected files:
 - `perfgate.toml`
@@ -16,10 +39,13 @@ Example `perfgate.toml`:
 
 ```toml
 [defaults]
-repeat = 5
+repeat = 7
 warmup = 1
 threshold = 0.20
-warn_factor = 0.90
+warn_factor = 0.50
+noise_threshold = 0.10
+noise_policy = "warn"
+out_dir = "artifacts/perfgate"
 baseline_dir = "baselines"
 
 [[bench]]
@@ -27,7 +53,7 @@ name = "api"
 command = ["bash", "-lc", "cargo test -p mycrate --release -- --nocapture"]
 ```
 
-## 2) Zero-config workflow with `perfgate-action`
+## 3) Zero-config workflow with `perfgate-action`
 
 Use the official composite action at the root of this repository:
 
@@ -50,9 +76,13 @@ jobs:
         with:
           config: perfgate.toml
           all: "true"
-          out_dir: artifacts/perfgate
+          require_baseline: "true"
           upload_artifact: "true"
 ```
+
+Omit `out_dir` to let the action use `[defaults].out_dir` from
+`perfgate.toml`. Set `out_dir` only when the workflow should override the
+config.
 
 Use `@v0.15.1` when you want an exact patch pin. If you prefer a moving tag,
 the published action aliases `@v0.15` and `@v0` now track the current
@@ -66,7 +96,7 @@ Action outputs are available as:
 - `${{ steps.perfgate.outputs.bench_count }}`
 - `${{ steps.perfgate.outputs.exit_code }}`
 
-## 3) Manual PR performance gate workflow
+## 4) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:
 
@@ -122,7 +152,7 @@ jobs:
 - `bench_count`
 - `exit_code`
 
-## 4) Optional: comment markdown artifact
+## 5) Optional: comment markdown artifact
 
 If you want a custom PR comment body:
 

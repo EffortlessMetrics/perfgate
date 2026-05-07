@@ -262,6 +262,60 @@ fn test_check_basic_with_config() {
     );
 }
 
+/// Test check command honors [defaults].out_dir when --out-dir is omitted.
+#[test]
+fn test_check_uses_config_out_dir_when_cli_omitted() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let success_cmd = success_command();
+    let cmd_str = success_cmd
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let config_content = format!(
+        r#"
+[defaults]
+repeat = 1
+warmup = 0
+threshold = 0.20
+out_dir = "configured-artifacts"
+
+[[bench]]
+name = "config-out"
+command = [{cmd_str}]
+"#
+    );
+    fs::write(&config_path, config_content).expect("write config file");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .arg("check")
+        .arg("--config")
+        .arg("perfgate.toml")
+        .arg("--bench")
+        .arg("config-out")
+        .assert()
+        .success();
+
+    assert!(
+        temp_dir
+            .path()
+            .join("configured-artifacts")
+            .join("run.json")
+            .exists(),
+        "run.json should use [defaults].out_dir when --out-dir is omitted"
+    );
+    assert!(
+        !temp_dir
+            .path()
+            .join("artifacts/perfgate")
+            .join("run.json")
+            .exists(),
+        "built-in artifact dir should not be used when config out_dir is set"
+    );
+}
+
 /// Test check command can parse JSON config files
 #[test]
 fn test_check_json_config_parsing() {

@@ -20,9 +20,9 @@ inputs:
     required: false
     default: "true"
   out_dir:
-    description: "Artifact output directory"
+    description: "Artifact output directory; defaults to [defaults].out_dir or artifacts/perfgate"
     required: false
-    default: "artifacts/perfgate"
+    default: ""
   fail_on_warn:
     description: "Treat warn verdicts as failures"
     required: false
@@ -175,6 +175,77 @@ runs:
         perfgate --version
         perfgate doctor --help
 
+    - id: resolve_out_dir
+      name: Resolve artifact directory
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        default_out_dir="artifacts/perfgate"
+        if [[ -n "${{ inputs.out_dir }}" ]]; then
+          out_dir="${{ inputs.out_dir }}"
+        else
+          if command -v python3 >/dev/null 2>&1; then
+            py=python3
+          elif command -v python >/dev/null 2>&1; then
+            py=python
+          else
+            py=""
+          fi
+
+          if [[ -n "${py}" ]]; then
+            out_dir="$("${py}" - "${{ inputs.config }}" "${default_out_dir}" <<'PY'
+        import json
+        import pathlib
+        import sys
+
+        config_path = pathlib.Path(sys.argv[1])
+        default = sys.argv[2]
+
+        def fallback_toml_out_dir(text):
+            in_defaults = False
+            for raw_line in text.splitlines():
+                line = raw_line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                if line.startswith("[") and line.endswith("]"):
+                    in_defaults = line == "[defaults]"
+                    continue
+                if in_defaults:
+                    key, sep, value = line.partition("=")
+                    if sep and key.strip() == "out_dir":
+                        value = value.strip()
+                        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                            return value[1:-1]
+                        return value
+            return None
+
+        try:
+            text = config_path.read_text(encoding="utf-8")
+            if config_path.suffix.lower() == ".json":
+                data = json.loads(text)
+                value = (data.get("defaults") or {}).get("out_dir")
+            else:
+                try:
+                    import tomllib
+                except ModuleNotFoundError:
+                    value = fallback_toml_out_dir(text)
+                else:
+                    data = tomllib.loads(text)
+                    value = (data.get("defaults") or {}).get("out_dir")
+            print(value or default)
+        except Exception:
+            print(default)
+        PY
+        )"
+          else
+            out_dir="${default_out_dir}"
+          fi
+        fi
+
+        echo "out_dir=${out_dir}" >> "${GITHUB_OUTPUT}"
+        echo "Using perfgate artifact directory: ${out_dir}"
+
     - id: run_check
       name: Run perfgate check
       shell: bash
@@ -184,10 +255,13 @@ runs:
         args=(
           check
           --config "${{ inputs.config }}"
-          --out-dir "${{ inputs.out_dir }}"
           --host-mismatch "${{ inputs.host_mismatch }}"
           --mode "${{ inputs.mode }}"
         )
+
+        if [[ -n "${{ inputs.out_dir }}" ]]; then
+          args+=(--out-dir "${{ inputs.out_dir }}")
+        fi
 
         if [[ "${{ inputs.all }}" == "true" ]]; then
           args+=(--all)
@@ -236,7 +310,7 @@ runs:
         # In standard mode, report.json is a perfgate.report.v1.
         # In cockpit mode, report.json is a sensor.report.v1 (not
         # parseable as --report), so we look for extras/ receipts first.
-        out="${{ inputs.out_dir }}"
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         pr_num="${{ github.event.pull_request.number }}"
         posted=false
 
@@ -267,5 +341,5 @@ runs:
       uses: actions/upload-artifact@v6
       with:
         name: ${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ inputs.out_dir }}
+        path: ${{ steps.resolve_out_dir.outputs.out_dir }}
         if-no-files-found: warn

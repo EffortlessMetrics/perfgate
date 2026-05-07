@@ -14,7 +14,7 @@ use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_pat
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::init::{
     CiPlatform, Preset, ci_workflow_path, discover_benchmarks, generate_config, render_config_toml,
-    scaffold_ci,
+    render_onboarding_readme, scaffold_ci,
 };
 use perfgate_app::render::summary::{SummaryRequest, SummaryUseCase};
 use perfgate_app::{
@@ -62,6 +62,7 @@ use url::Url;
 
 const BASELINE_SERVER_NOT_CONFIGURED: &str = "baseline server is not configured; set `--baseline-server`, `PERFGATE_SERVER_URL`, or `[baseline_server].url` in `perfgate.toml`";
 const DEFAULT_FALLBACK_BASELINE_DIR: &str = "baselines";
+const DEFAULT_ARTIFACT_DIR: &str = "artifacts/perfgate";
 
 /// Output mode for the check command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
@@ -1001,9 +1002,9 @@ pub struct CheckArgs {
     #[arg(long, requires = "all")]
     pub bench_regex: Option<String>,
 
-    /// Output directory for artifacts
-    #[arg(long, default_value = "artifacts/perfgate")]
-    pub out_dir: PathBuf,
+    /// Output directory for artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
 
     /// Path or cloud URI to the baseline file.
     #[arg(long, conflicts_with = "all")]
@@ -1091,9 +1092,9 @@ pub struct DoctorArgs {
     #[arg(long, default_value = "perfgate.toml")]
     pub config: PathBuf,
 
-    /// Output directory checked for artifact writability
-    #[arg(long, default_value = "artifacts/perfgate")]
-    pub out_dir: PathBuf,
+    /// Output directory checked for artifact writability. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
 
     /// Exit non-zero if doctor finds a failed required check
     #[arg(long, default_value_t = false)]
@@ -1226,11 +1227,12 @@ pub struct IngestArgs {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum InitPreset {
-    /// Balanced accuracy and speed (repeat=5, warmup=1, threshold=20%)
+    /// Balanced accuracy and speed (repeat=7, warmup=1, threshold=20%)
     Standard,
     /// High accuracy, tight thresholds (repeat=10, warmup=2, threshold=10%)
     Release,
     /// Quick validation, wide thresholds (repeat=3, warmup=1, threshold=30%)
+    #[value(name = "fast", alias = "tier1-fast")]
     Tier1Fast,
 }
 
@@ -1252,8 +1254,8 @@ pub struct InitArgs {
     #[arg(long, default_value = "perfgate.toml")]
     pub output: PathBuf,
 
-    /// Budget preset.
-    #[arg(long, default_value = "standard")]
+    /// Budget profile.
+    #[arg(long = "profile", visible_alias = "preset", default_value = "standard")]
     pub preset: InitPreset,
 
     /// Also generate a CI workflow file.
@@ -1785,7 +1787,8 @@ fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result
         checks.push(doctor_server(&ConfigFile::default(), &server_flags));
     }
 
-    checks.push(doctor_artifact_dir(&args.out_dir));
+    let artifact_dir = resolve_configured_out_dir(args.out_dir.as_ref(), config.as_ref());
+    checks.push(doctor_artifact_dir(&artifact_dir));
 
     println!("perfgate doctor");
     println!();
@@ -3343,8 +3346,24 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
         .with_context(|| format!("write {}", args.output.display()))?;
     eprintln!("Wrote {}", args.output.display());
 
+    let baseline_dir = config
+        .defaults
+        .baseline_dir
+        .as_deref()
+        .unwrap_or(DEFAULT_FALLBACK_BASELINE_DIR);
+    if !is_remote_storage_uri(baseline_dir) {
+        let baseline_dir = PathBuf::from(baseline_dir);
+        fs::create_dir_all(&baseline_dir)
+            .with_context(|| format!("create {}", baseline_dir.display()))?;
+        let gitkeep = baseline_dir.join(".gitkeep");
+        if !gitkeep.exists() || args.yes {
+            fs::write(&gitkeep, "").with_context(|| format!("write {}", gitkeep.display()))?;
+            eprintln!("Wrote {}", gitkeep.display());
+        }
+    }
+
     // CI workflow
-    if let Some(platform) = ci_platform {
+    let generated_workflow_path = if let Some(platform) = ci_platform {
         let workflow_path = ci_workflow_path(platform);
         let workflow_content = scaffold_ci(platform, &args.output);
 
@@ -3357,14 +3376,44 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
         fs::write(&workflow_path, &workflow_content)
             .with_context(|| format!("write {}", workflow_path.display()))?;
         eprintln!("Wrote {}", workflow_path.display());
+        Some(workflow_path)
+    } else {
+        None
+    };
+
+    let setup_dir = PathBuf::from(".perfgate");
+    fs::create_dir_all(&setup_dir).with_context(|| format!("create {}", setup_dir.display()))?;
+    let setup_readme = setup_dir.join("README.md");
+    if !setup_readme.exists() || args.yes {
+        fs::write(
+            &setup_readme,
+            render_onboarding_readme(&args.output, generated_workflow_path.as_deref()),
+        )
+        .with_context(|| format!("write {}", setup_readme.display()))?;
+        eprintln!("Wrote {}", setup_readme.display());
     }
 
-    eprintln!("\nNext steps:");
-    eprintln!("  1. Review and edit {}", args.output.display());
+    eprintln!("\nNext:");
     eprintln!(
-        "  2. Run: perfgate check --config {} --all",
+        "  1. Run: perfgate check --config {} --all",
         args.output.display()
     );
+    eprintln!("  2. Promote a trusted first baseline:");
+    eprintln!(
+        "     perfgate promote --current artifacts/perfgate/<bench>/run.json --to baselines/<bench>.json"
+    );
+    if let Some(workflow_path) = &generated_workflow_path {
+        eprintln!(
+            "  3. Commit {}, {}, baselines/.gitkeep, and .perfgate/README.md",
+            args.output.display(),
+            workflow_path.display()
+        );
+    } else {
+        eprintln!(
+            "  3. Commit {}, baselines/.gitkeep, and .perfgate/README.md",
+            args.output.display()
+        );
+    }
 
     Ok(())
 }
@@ -4597,7 +4646,7 @@ struct CheckConfig {
     bench: Option<String>,
     all: bool,
     bench_regex: Option<String>,
-    out_dir: PathBuf,
+    out_dir: Option<PathBuf>,
     baseline: Option<PathBuf>,
     require_baseline: bool,
     fail_on_warn: bool,
@@ -4617,6 +4666,21 @@ struct CheckConfig {
     emit_repair_context: bool,
     server_flags: ServerFlags,
     local_db: bool,
+}
+
+fn resolve_configured_out_dir(
+    cli_out_dir: Option<&PathBuf>,
+    config: Option<&ConfigFile>,
+) -> PathBuf {
+    if let Some(out_dir) = cli_out_dir {
+        return out_dir.clone();
+    }
+
+    if let Some(out_dir) = config.and_then(|config| config.defaults.out_dir.as_ref()) {
+        return PathBuf::from(out_dir);
+    }
+
+    PathBuf::from(DEFAULT_ARTIFACT_DIR)
 }
 
 /// Returns true if the verdict indicates a regression (warn or fail).
@@ -4745,6 +4809,7 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
     });
     let _markdown_template = load_template(markdown_template_path.as_deref())?;
     let github_output_path = resolve_github_output_path(req.output_github)?;
+    let out_dir = resolve_configured_out_dir(req.out_dir.as_ref(), Some(&config_file));
 
     // Track aggregate exit code: fail (2) > warn-as-fail (3) > pass (0)
     let mut max_exit_code: i32 = 0;
@@ -4756,9 +4821,9 @@ fn run_check_standard(req: CheckConfig) -> anyhow::Result<()> {
     for bench_name in &bench_names {
         // For --all mode, use per-bench subdirectories
         let bench_out_dir = if req.all {
-            req.out_dir.join(bench_name)
+            out_dir.join(bench_name)
         } else {
-            req.out_dir.clone()
+            out_dir.clone()
         };
 
         // Resolve baseline path (--baseline flag only valid for single bench mode)
@@ -4901,10 +4966,11 @@ fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
     let started_at = clock.now_rfc3339();
     let start_instant = Instant::now();
     let github_output_path = resolve_github_output_path(req.output_github)?;
+    let fallback_out_dir = resolve_configured_out_dir(req.out_dir.as_ref(), None);
 
     // Ensure base output directory exists (catastrophic failure if we can't)
-    fs::create_dir_all(&req.out_dir)
-        .with_context(|| format!("create output dir {}", req.out_dir.display()))?;
+    fs::create_dir_all(&fallback_out_dir)
+        .with_context(|| format!("create output dir {}", fallback_out_dir.display()))?;
 
     // Try to run the check; capture errors
     let result = run_check_cockpit_inner(
@@ -4936,7 +5002,7 @@ fn run_check_cockpit(req: CheckConfig) -> anyhow::Result<()> {
             let error_report = builder.build_error(&err.to_string(), stage, error_kind);
 
             // Try to write the error report
-            let report_path = req.out_dir.join("report.json");
+            let report_path = fallback_out_dir.join("report.json");
             if write_json(&report_path, &error_report, req.pretty).is_ok() {
                 if let Some(path) = github_output_path.as_deref() {
                     write_github_outputs(
@@ -5009,6 +5075,7 @@ fn run_check_cockpit_inner(
             .map(PathBuf::from)
     });
     let _markdown_template = load_template(markdown_template_path.as_deref())?;
+    let out_dir = resolve_configured_out_dir(req.out_dir.as_ref(), Some(&config_file));
 
     let multi_bench = bench_names.len() > 1;
 
@@ -5019,9 +5086,9 @@ fn run_check_cockpit_inner(
         let outcome: BenchOutcome = (|| -> anyhow::Result<BenchOutcome> {
             // Create extras directory for native artifacts
             let extras_dir = if multi_bench {
-                req.out_dir.join("extras").join(bench_name)
+                out_dir.join("extras").join(bench_name)
             } else {
-                req.out_dir.join("extras")
+                out_dir.join("extras")
             };
             fs::create_dir_all(&extras_dir).map_err(|e| {
                 PerfgateError::Io(IoError::ArtifactWrite(format!(
@@ -5176,11 +5243,11 @@ fn run_check_cockpit_inner(
     let (sensor_report, combined_markdown) = builder.build_aggregated(&bench_outcomes);
 
     // Write sensor report to out_dir/report.json
-    let report_path = req.out_dir.join("report.json");
+    let report_path = out_dir.join("report.json");
     write_json(&report_path, &sensor_report, req.pretty)?;
 
     // Write combined markdown to out_dir root
-    let md_dest = req.out_dir.join("comment.md");
+    let md_dest = out_dir.join("comment.md");
     fs::write(&md_dest, &combined_markdown)
         .with_context(|| format!("write {}", md_dest.display()))?;
 

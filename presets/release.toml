@@ -5,3 +5,8 @@
 repeat = 10
 warmup = 2
 threshold = 0.10
+warn_factor = 0.50
+noise_threshold = 0.08
+noise_policy = "warn"
+out_dir = "artifacts/perfgate"
+baseline_dir = "baselines"

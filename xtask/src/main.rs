@@ -381,6 +381,7 @@ fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
 
 fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> {
     let mut errors = Vec::new();
+    let raw_action = action;
 
     let action = match yaml_serde::from_str::<ActionDefinition>(action) {
         Ok(action) => action,
@@ -403,6 +404,17 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         .and_then(|input| input.description.as_deref());
     if version_description.is_none_or(|description| !description.contains("perfgate-cli")) {
         errors.push("action.yml version input must describe the perfgate-cli crate".to_string());
+    }
+    if action
+        .inputs
+        .get("out_dir")
+        .and_then(|input| input.default.as_deref())
+        != Some("")
+    {
+        errors.push(
+            "action.yml out_dir input must default to empty so [defaults].out_dir can drive artifact paths"
+                .to_string(),
+        );
     }
 
     let Some(binary_install_run) = action.step_run("Install perfgate (pre-built binary)") else {
@@ -467,6 +479,62 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         errors.push("action.yml must smoke-test the doctor command after install".to_string());
     }
 
+    let Some(resolve_out_dir_run) = action.step_run("Resolve artifact directory") else {
+        errors.push(
+            "action.yml must resolve the effective artifact directory before running perfgate"
+                .to_string(),
+        );
+        return errors;
+    };
+    let resolve_out_dir_lines = active_shell_lines(resolve_out_dir_run);
+    if !resolve_out_dir_lines
+        .iter()
+        .any(|line| line == "default_out_dir=\"artifacts/perfgate\"")
+    {
+        errors.push(
+            "action.yml artifact resolver must keep artifacts/perfgate as the fallback".to_string(),
+        );
+    }
+    if !resolve_out_dir_lines
+        .iter()
+        .any(|line| line == "echo \"out_dir=${out_dir}\" >> \"${GITHUB_OUTPUT}\"")
+    {
+        errors
+            .push("action.yml artifact resolver must expose out_dir as a step output".to_string());
+    }
+
+    let Some(run_check_run) = action.step_run("Run perfgate check") else {
+        errors.push("action.yml must include the perfgate check step".to_string());
+        return errors;
+    };
+    let run_check_lines = active_shell_lines(run_check_run);
+    if !run_check_lines
+        .iter()
+        .any(|line| line == "if [[ -n \"${{ inputs.out_dir }}\" ]]; then")
+        || !run_check_lines
+            .iter()
+            .any(|line| line == "args+=(--out-dir \"${{ inputs.out_dir }}\")")
+    {
+        errors.push(
+            "action.yml must pass --out-dir only when the input explicitly overrides config"
+                .to_string(),
+        );
+    }
+    if run_check_lines
+        .iter()
+        .any(|line| line == "--out-dir \"${{ inputs.out_dir }}\"")
+    {
+        errors.push("action.yml must not unconditionally pass the out_dir input".to_string());
+    }
+    if !raw_action.contains("out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
+        || !raw_action.contains("path: ${{ steps.resolve_out_dir.outputs.out_dir }}")
+    {
+        errors.push(
+            "action.yml comment and artifact upload steps must use the resolved artifact directory"
+                .to_string(),
+        );
+    }
+
     let binstall = toml_path(&manifest, &["package", "metadata", "binstall"]);
     if toml_str_at(binstall, &["pkg-url"])
         != Some("{ repo }/releases/download/v{ version }/perfgate-{ target }.tar.gz")
@@ -516,6 +584,7 @@ impl ActionDefinition {
 #[derive(Debug, Deserialize)]
 struct ActionInput {
     description: Option<String>,
+    default: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3653,6 +3722,9 @@ mod tests {
 inputs:
   version:
     description: "Optional perfgate-cli crate version from crates.io"
+  out_dir:
+    description: "Artifact output directory"
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -3670,6 +3742,22 @@ runs:
       run: |
         perfgate --version
         perfgate doctor --help
+    - name: Resolve artifact directory
+      run: |
+        default_out_dir="artifacts/perfgate"
+        echo "out_dir=${out_dir}" >> "${GITHUB_OUTPUT}"
+    - name: Run perfgate check
+      run: |
+        args=(check)
+        if [[ -n "${{ inputs.out_dir }}" ]]; then
+          args+=(--out-dir "${{ inputs.out_dir }}")
+        fi
+    - name: Post PR comment
+      run: |
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+    - name: Upload perfgate artifacts
+      with:
+        path: ${{ steps.resolve_out_dir.outputs.out_dir }}
 "#
     }
 

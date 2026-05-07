@@ -1,5 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 295
 expression: "help_output(&[\"check\", \"--help\"])"
 ---
 Config-driven one-command workflow.
@@ -21,7 +22,7 @@ Options:
 
       --bench-regex <BENCH_REGEX> Regex to filter benchmark names when used with --all
 
-      --out-dir <OUT_DIR> Output directory for artifacts [default: artifacts/perfgate]
+      --out-dir <DIR> Output directory for artifacts. Defaults to [defaults].out_dir or artifacts/perfgate
 
       --baseline <BASELINE> Path or cloud URI to the baseline file
 
