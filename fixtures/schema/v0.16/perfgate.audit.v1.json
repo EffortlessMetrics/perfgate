@@ -1,0 +1,13 @@
+{
+  "id": "audit-compat-001",
+  "timestamp": "2026-05-07T00:00:00Z",
+  "actor": "key-admin",
+  "action": "promote",
+  "resource_type": "baseline",
+  "resource_id": "baseline-compat-001",
+  "project": "compat-project",
+  "metadata": {
+    "source": "api_key",
+    "request_id": "req-compat-001"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "perfgate.fleet_alert.v1",
+  "id": "fleet-alert-compat-001",
+  "dependency": "example-crate",
+  "old_version": "1.2.3",
+  "new_version": "1.2.4",
+  "affected_projects": [
+    {
+      "project": "compat-project",
+      "benchmark": "compat-bench",
+      "metric": "wall_ms",
+      "delta_pct": 0.12
+    },
+    {
+      "project": "compat-project-two",
+      "benchmark": "compat-bench",
+      "metric": "wall_ms",
+      "delta_pct": 0.08
+    }
+  ],
+  "confidence": 0.75,
+  "avg_delta_pct": 0.10,
+  "first_seen": "2026-05-07T00:00:00Z"
+}

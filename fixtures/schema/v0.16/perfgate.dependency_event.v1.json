@@ -1,0 +1,12 @@
+{
+  "schema": "perfgate.dependency_event.v1",
+  "id": "dependency-event-compat-001",
+  "project": "compat-project",
+  "benchmark": "compat-bench",
+  "dep_name": "example-crate",
+  "old_version": "1.2.3",
+  "new_version": "1.2.4",
+  "metric": "wall_ms",
+  "delta_pct": 0.12,
+  "created_at": "2026-05-07T00:00:00Z"
+}

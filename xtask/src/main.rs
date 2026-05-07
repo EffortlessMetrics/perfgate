@@ -1663,7 +1663,8 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
             .get("schema")
             .or_else(|| value.get("report_type"))
             .and_then(serde_json::Value::as_str)
-            .map(str::to_string);
+            .map(str::to_string)
+            .or_else(|| infer_schema_from_fixture_path(path));
 
         let Some(schema) = schema else {
             errors.push(format!(
@@ -1685,6 +1686,26 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
             }
             "sensor.report.v1" => {
                 serde_json::from_value::<perfgate_types::SensorReport>(value).map(|_| ())
+            }
+            "perfgate.baseline.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::BaselineRecord>(value)
+                    .map(|_| ())
+            }
+            "perfgate.verdict.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::VerdictRecord>(value)
+                    .map(|_| ())
+            }
+            "perfgate.audit.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::AuditEvent>(value)
+                    .map(|_| ())
+            }
+            "perfgate.dependency_event.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::DependencyEvent>(value)
+                    .map(|_| ())
+            }
+            "perfgate.fleet_alert.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::FleetAlert>(value)
+                    .map(|_| ())
             }
             other => {
                 errors.push(format!("{}: unsupported schema {}", path.display(), other));
@@ -1740,6 +1761,11 @@ fn collect_schema_compat_json_files(dir: &Path, out: &mut Vec<PathBuf>) -> anyho
         }
     }
     Ok(())
+}
+
+fn infer_schema_from_fixture_path(path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    (name == "perfgate.audit.v1.json").then(|| "perfgate.audit.v1".to_string())
 }
 
 fn check_schema_mirror_at(generated_dir: &Path, committed_dir: &Path) -> anyhow::Result<()> {
@@ -3813,6 +3839,55 @@ mod tests {
         .expect("write fixture");
 
         cmd_schema_compat(&root).expect("compat fixture should deserialize");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cmd_schema_compat_accepts_baseline_service_fixture() {
+        let root = unique_temp_dir("perfgate_schema_compat_baseline_service");
+        let version_dir = root.join("v0.16");
+        fs::create_dir_all(&version_dir).expect("create fixture dir");
+        fs::write(
+            version_dir.join("perfgate.verdict.v1.json"),
+            r#"{
+  "schema": "perfgate.verdict.v1",
+  "id": "verdict-compat-1",
+  "project": "compat-project",
+  "benchmark": "compat-bench",
+  "run_id": "run-1",
+  "status": "warn",
+  "counts": {"pass": 0, "warn": 1, "fail": 0, "skip": 0},
+  "reasons": ["wall_ms.noisy"],
+  "created_at": "2026-05-07T00:00:00Z"
+}"#,
+        )
+        .expect("write fixture");
+
+        cmd_schema_compat(&root).expect("baseline service compat fixture should deserialize");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cmd_schema_compat_accepts_schema_less_audit_fixture_by_filename() {
+        let root = unique_temp_dir("perfgate_schema_compat_audit");
+        let version_dir = root.join("v0.16");
+        fs::create_dir_all(&version_dir).expect("create fixture dir");
+        fs::write(
+            version_dir.join("perfgate.audit.v1.json"),
+            r#"{
+  "id": "audit-compat-1",
+  "timestamp": "2026-05-07T00:00:00Z",
+  "actor": "key-admin",
+  "action": "create",
+  "resource_type": "key",
+  "resource_id": "key-1",
+  "project": "compat-project",
+  "metadata": {"source": "api_key"}
+}"#,
+        )
+        .expect("write fixture");
+
+        cmd_schema_compat(&root).expect("schema-less audit fixture should deserialize");
         let _ = fs::remove_dir_all(&root);
     }
 

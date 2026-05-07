@@ -2,7 +2,7 @@
 
 perfgate uses versioned JSON receipts at every stage of the pipeline.
 
-## Receipt Types
+## Receipt And Service Types
 
 | Schema | Produced by | Description |
 |--------|-------------|-------------|
@@ -10,6 +10,11 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.compare.v1` | `compare`, `check`, `paired` | Comparison of current run against baseline |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
 | `sensor.report.v1` | `check --mode cockpit` | Sensor integration envelope for dashboards |
+| `perfgate.baseline.v1` | baseline service | Stored baseline record returned by the server |
+| `perfgate.verdict.v1` | baseline service | Stored verdict history, including optional noise history fields |
+| `perfgate.audit.v1` | baseline service | Append-only audit event for baseline, verdict, and key mutations; inferred by fixture filename because current audit events do not include a `schema` field |
+| `perfgate.dependency_event.v1` | fleet API | Dependency-change event with performance impact |
+| `perfgate.fleet_alert.v1` | fleet API | Fleet-wide dependency regression alert |
 
 ## Additional Generated Schemas
 
@@ -55,8 +60,11 @@ This schema is hand-written (not auto-generated) to maintain a stable contract
 with external consumers.
 
 Historical compatibility fixtures live under `fixtures/schema/<release>/`.
-`schema-compat` currently checks v0.15 examples for `perfgate.run.v1`,
+`schema-compat` checks v0.15 examples for `perfgate.run.v1`,
 `perfgate.compare.v1`, `perfgate.report.v1`, and `sensor.report.v1`.
+It also checks v0.16 baseline-service and fleet contract fixtures for
+`perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
+`perfgate.dependency_event.v1`, and `perfgate.fleet_alert.v1`.
 
 ## Versioning Policy
 

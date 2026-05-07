@@ -1,0 +1,22 @@
+{
+  "schema": "perfgate.verdict.v1",
+  "id": "verdict-compat-001",
+  "project": "compat-project",
+  "benchmark": "compat-bench",
+  "run_id": "run-compat-001",
+  "status": "warn",
+  "counts": {
+    "pass": 0,
+    "warn": 1,
+    "fail": 0,
+    "skip": 0
+  },
+  "reasons": [
+    "wall_ms.noisy"
+  ],
+  "git_ref": "refs/heads/main",
+  "git_sha": "0123456789abcdef",
+  "wall_ms_cv": 0.42,
+  "flakiness_score": 0.61,
+  "created_at": "2026-05-07T00:00:00Z"
+}

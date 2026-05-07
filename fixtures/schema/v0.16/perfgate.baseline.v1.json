@@ -1,0 +1,58 @@
+{
+  "schema": "perfgate.baseline.v1",
+  "id": "baseline-compat-001",
+  "project": "compat-project",
+  "benchmark": "compat-bench",
+  "version": "v1",
+  "git_ref": "refs/heads/main",
+  "git_sha": "0123456789abcdef",
+  "receipt": {
+    "schema": "perfgate.run.v1",
+    "tool": {
+      "name": "perfgate",
+      "version": "0.16.0"
+    },
+    "run": {
+      "id": "run-compat-001",
+      "started_at": "2026-05-07T00:00:00Z",
+      "ended_at": "2026-05-07T00:00:01Z",
+      "host": {
+        "os": "linux",
+        "arch": "x86_64"
+      }
+    },
+    "bench": {
+      "name": "compat-bench",
+      "command": [
+        "echo",
+        "compat"
+      ],
+      "repeat": 1,
+      "warmup": 0
+    },
+    "samples": [
+      {
+        "wall_ms": 100,
+        "exit_code": 0
+      }
+    ],
+    "stats": {
+      "wall_ms": {
+        "median": 100,
+        "min": 100,
+        "max": 100
+      }
+    }
+  },
+  "metadata": {
+    "runner": "gha-ubuntu-24.04-x86_64"
+  },
+  "tags": [
+    "stable"
+  ],
+  "created_at": "2026-05-07T00:00:00Z",
+  "updated_at": "2026-05-07T00:00:00Z",
+  "content_hash": "sha256-compat",
+  "source": "promote",
+  "deleted": false
+}
