@@ -12,8 +12,8 @@ pub use crate::sensor::{
     BenchOutcome, SensorReportBuilder, default_engine_capability, sensor_fingerprint,
 };
 
+use crate::runtime::{HostProbe, ProcessRunner};
 use crate::{CheckRequest, CheckUseCase, Clock};
-use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::error::{AdapterError, ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::{
     BASELINE_REASON_NO_BASELINE, ConfigFile, ERROR_KIND_EXEC, ERROR_KIND_IO, ERROR_KIND_PARSE,

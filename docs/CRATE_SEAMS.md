@@ -57,6 +57,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-budget` | `perfgate_domain::budget`; facade path `perfgate::core::budget` | crate deleted |
 | `perfgate-scaling` | `perfgate_domain::scaling`; facade path `perfgate::domain::scaling` | crate deleted |
 | `perfgate-github` | `perfgate::integrations::github` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-adapters` | `perfgate_app::runtime`; facade path `perfgate::runtime` | workspace-only compatibility wrapper, `publish = false` |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -71,7 +72,6 @@ high-level target is:
 |-----------------|--------------|
 | `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` |
 | `perfgate-domain` | `perfgate::domain` |
-| `perfgate-adapters` | `perfgate::runtime` |
 | `perfgate-app` | `perfgate::app` |
 | `perfgate-fake` | private workspace crate |
 | `perfgate-selfbench` | private workspace crate |

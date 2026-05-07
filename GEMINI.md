@@ -22,7 +22,7 @@ The architecture preserves SRP seams across the remaining workspace crates and a
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
 | `perfgate-domain::budget` | Budget evaluation and verdict logic |
-| `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate_app::runtime` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate-app` | Orchestration layer for CLI commands |

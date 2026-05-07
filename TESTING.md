@@ -50,8 +50,8 @@ perfgate employs a multi-layered testing strategy following the test pyramid:
 |-------|------------|----------------|--------------|--------------|
 | perfgate-types | Serialization | Round-trip | N/A | `parse_run_receipt`, `parse_compare_receipt`, `parse_config` |
 | perfgate-domain | Logic, Errors | Stats & Comparison | N/A | `compare_stats` |
-| perfgate-adapters | Mock-based | Output truncation | N/A | N/A |
-| perfgate-app | Use-cases | Orchestration | N/A | `render_markdown` |
+| perfgate-adapters | Compatibility wrapper | N/A | N/A | N/A |
+| perfgate-app | Use-cases/runtime | Orchestration and output truncation | N/A | `render_markdown` |
 | perfgate-cli | N/A | N/A | Full command coverage | N/A |
 | perfgate-server | API handlers | N/A | Baseline management | N/A |
 | perfgate-client | Client logic | N/A | Remote workflows | N/A |

@@ -19,7 +19,6 @@
 //! assert_eq!(Metric::WallMs.default_direction(), Direction::Lower);
 //! ```
 
-pub use perfgate_adapters as adapters;
 pub use perfgate_app as app;
 pub use perfgate_domain as domain;
 pub use perfgate_domain::budget;
@@ -30,6 +29,13 @@ pub use perfgate_types as types;
 pub use perfgate_types::error;
 // validation is now part of types
 pub use perfgate_types::validation;
+
+/// Compatibility path for runtime process and host adapters.
+///
+/// Prefer [`crate::runtime`] in new code.
+pub mod adapters {
+    pub use crate::runtime::*;
+}
 
 /// Integrations for external benchmark formats and CI platforms.
 pub mod integrations;

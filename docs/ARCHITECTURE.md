@@ -108,8 +108,8 @@ promise:
 │                  perfgate-app | perfgate-client                  │
 │                    (Use-Case Orchestration)                     │
 ├─────────────────────────────────────────────────────────────────┤
-│                         perfgate-adapters                       │
-│                    (Infrastructure/IO)                          │
+│                    perfgate-app::runtime                        │
+│                    (Infrastructure/IO seam)                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                         perfgate-domain                        │
 │                    (Domain Business Logic)                      │
@@ -125,7 +125,7 @@ Dependencies flow inward toward the core types and domain logic:
 
 1. **Core**: `perfgate-types` is the stable receipt/config and validation foundation.
 2. **Domain**: `perfgate-domain` owns statistics, significance testing, host mismatch detection, budget evaluation, scaling analysis, and comparison policy.
-3. **Infrastructure**: `perfgate-adapters` provides the "outer" world access (process execution, system info).
+3. **Infrastructure**: `perfgate_app::runtime` provides the "outer" world access (process execution, system info), with `perfgate::runtime` as the public facade path.
 4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
 5. **Presentation**: `perfgate::presentation::{render, export, sensor}` formats the results for various consumers, with workspace-only compatibility wrappers preserving the previous crate names during the 0.16 migration.
 6. **CLI**: `perfgate-cli` is the thin entry point.
@@ -141,6 +141,7 @@ Dependencies flow inward toward the core types and domain logic:
 - **perfgate::presentation::sensor**: Sensor report envelopes for cockpit-style integrations; `perfgate-sensor` is a compatibility wrapper.
 - **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.
 - **perfgate-types::fingerprint**: Deterministic fingerprinting for reports.
+- **perfgate_app::runtime**: Runtime process execution, host probing, and platform metrics; `perfgate-adapters` is a workspace-only compatibility wrapper.
 
 ### Baseline Service Stack
 
@@ -167,7 +168,7 @@ perfgate-types (innermost)
        ↓
 perfgate-domain
        ↓
-perfgate-adapters
+perfgate-app::runtime
        ↓
 perfgate-app
        ↓
@@ -203,7 +204,7 @@ perfgate-cli (integrates client)
 - MUST implement host mismatch detection logic
 - SHALL NOT depend on external services or filesystem
 
-#### perfgate-adapters
+#### perfgate_app::runtime
 
 - MUST implement platform-specific code (Unix `wait4()` and best-effort Windows process APIs)
 - MUST define trait abstractions for process execution (`ProcessRunner`)
@@ -215,7 +216,7 @@ perfgate-cli (integrates client)
 
 #### perfgate-app
 
-- MUST orchestrate adapters and domain logic
+- MUST orchestrate runtime adapters and domain logic
 - MUST implement use-cases: run, compare, check, report, promote, export, paired
 - MUST generate markdown and GitHub annotation output
 - MUST build `sensor.report.v1` envelopes for cockpit mode

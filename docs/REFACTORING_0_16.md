@@ -91,7 +91,7 @@ I/O and external interactions:
 
 | Current Crate | New Module | Why |
 |---------------|-----------|-----|
-| `perfgate-adapters` | `perfgate::runtime` | System adapters (rusage, process execution) |
+| `perfgate-adapters` | `perfgate_app::runtime`; facade `perfgate::runtime` | absorbed; wrapper remains |
 | `perfgate-profile` | `perfgate::runtime::profile` | absorbed |
 
 Keep ports/interfaces separate from stdlib implementations:
@@ -327,7 +327,7 @@ Add feature gates and verify default build is lightweight.
 
 ### Phase 6: Collapse Runtime & App (PR 6)
 Move into `perfgate`:
-- `perfgate-adapters` -> `perfgate::runtime`
+- `perfgate-adapters` -> `perfgate_app::runtime` with facade path `perfgate::runtime` (done)
 - `perfgate-profile` -> `perfgate::runtime::profile` (done)
 - `perfgate-app` -> `perfgate::app`
 - `perfgate-github` -> `perfgate::integrations::github` (feature-gated, wrapper remains)

@@ -1,54 +1,23 @@
 # perfgate-adapters
 
-Platform-specific process execution and metric collection for the
-[perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+Workspace-only compatibility wrapper for runtime process and host adapters.
 
-Every other crate in the workspace is platform-agnostic. `perfgate-adapters`
-is the single place where OS APIs, `libc`, and `std::process` are used --
-keeping the rest of the codebase testable and portable.
+The implementation now lives in `perfgate_app::runtime` and is exposed through
+the public facade at `perfgate::runtime`. This package is marked
+`publish = false` during the 0.16 public-surface collapse.
 
-## Platform support
+## Migration
 
-| Capability | Unix | Windows | Other |
-|---|---|---|---|
-| Process execution | `wait4` + `WNOHANG` polling | `WaitForSingleObject` | `std::process::Command` |
-| Timeout / kill | SIGKILL after deadline | `WaitForSingleObject` + kill | not supported |
-| CPU time (`cpu_ms`) | `rusage` (user + system) | -- | -- |
-| Peak RSS (`max_rss_kb`) | `rusage.ru_maxrss` | `GetProcessMemoryInfo` | -- |
-| Page faults | `rusage.ru_majflt` | -- | -- |
-| Context switches | `rusage` (vol + invol) | -- | -- |
-| I/O bytes | -- | `GetProcessIoCounters` | -- |
-| Memory detection | `/proc/meminfo`, `sysctl` | `GlobalMemoryStatusEx` | -- |
-| Hostname hash | SHA-256 | SHA-256 | SHA-256 |
+Prefer the facade path in new code:
 
-- Unix supports command timeouts.
-- Windows supports command timeouts via `try_wait()` polling with `child.kill()` on expiration.
-- Other platforms run without timeout support and with limited metrics.
+```rust
+use perfgate::runtime::{CommandSpec, ProcessRunner, StdProcessRunner};
+```
 
-> **RSS unit quirk:** Linux reports `ru_maxrss` in KB; macOS reports bytes
-> (divided by 1024 internally).
+Workspace-internal crates should use the owner module directly:
 
-## Key types
-
-| Type | Role |
-|---|---|
-| `CommandSpec` | Describes a command: argv, cwd, env, timeout, output cap |
-| `RunResult` | Execution output: wall_ms, exit_code, cpu_ms, max_rss_kb, stdout/stderr, ... |
-| `AdapterError` | Typed errors: `EmptyArgv`, `Timeout`, `RunCommand`, `Other` |
-| `ProcessRunner` (trait) | Abstracts process execution for dependency injection |
-| `HostProbe` (trait) | Collects OS, arch, CPU count, memory, optional hostname hash |
-| `FakeProcessRunner` | Deterministic test double for `ProcessRunner` |
-
-## Design
-
-- **Traits enable testing** -- `ProcessRunner` and `HostProbe` are trait objects
-  so the app layer can inject fakes without spawning real processes.
-- **Output capping** -- stdout/stderr are truncated to `output_cap_bytes` (default 8 KB).
-- **No policy logic** -- this crate only collects data; thresholds and verdicts
-  live in `perfgate-domain`.
-
-```text
-perfgate-types + perfgate-domain + perfgate-adapters --> perfgate-app
+```rust
+use perfgate_app::runtime::{CommandSpec, ProcessRunner};
 ```
 
 ## License

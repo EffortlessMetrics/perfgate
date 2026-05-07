@@ -92,7 +92,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
 | `perfgate-domain::budget` | Budget evaluation and verdict logic |
-| `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate_app::runtime` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate-app` | Orchestration layer for CLI commands |
@@ -111,7 +111,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 
 **Key design principles:**
 - `perfgate-domain` is intentionally I/O-free: it does statistics and budget policy only
-- `perfgate-adapters` contains platform-specific code (Unix `wait4()` for `max_rss_kb`)
+- `perfgate_app::runtime` contains platform-specific code (Unix `wait4()` for `max_rss_kb`); `perfgate-adapters` is a workspace-only compatibility wrapper
 - Receipt types are versioned (`perfgate.run.v1`, `perfgate.compare.v1`, `perfgate.report.v1`) and have JSON Schema support via `schemars`
 - The `arbitrary` feature flag enables structure-aware fuzzing
 

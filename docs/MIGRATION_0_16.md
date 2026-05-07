@@ -78,7 +78,7 @@ Use this table to find the new import path for any old crate:
 | `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` | `use perfgate_types::config::*; use perfgate_client::ResolvedServerConfig;` |
 | `perfgate-api` | `perfgate_types::baseline_service`; server credential loading in `perfgate_server::CredentialSource` | `use perfgate_types::baseline_service::*;` |
 | `perfgate-fake` | private workspace crate | No public replacement yet; keep local test helpers in your own crate. |
-| `perfgate-adapters` | `perfgate::runtime` | `use perfgate::runtime::*;` |
+| `perfgate-adapters` | `perfgate_app::runtime`; facade `perfgate::runtime` | `use perfgate::runtime::*;` |
 | `perfgate-app` | `perfgate::app` | `use perfgate::app::*;` |
 
 ---

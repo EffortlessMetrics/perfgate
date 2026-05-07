@@ -50,14 +50,13 @@ enum MutantsCrate {
     Types,
     #[value(
         name = "perfgate-app",
+        alias = "perfgate-adapters",
         alias = "perfgate-render",
         alias = "perfgate-summary",
         alias = "perfgate-export",
         alias = "perfgate-sensor"
     )]
     App,
-    #[value(name = "perfgate-adapters")]
-    Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
     #[value(name = "perfgate-paired")]
@@ -72,7 +71,6 @@ impl MutantsCrate {
             MutantsCrate::Domain => "perfgate-domain",
             MutantsCrate::Types => "perfgate-types",
             MutantsCrate::App => "perfgate-app",
-            MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
             MutantsCrate::Paired => "perfgate-paired",
             MutantsCrate::Fake => "perfgate-fake",
@@ -84,7 +82,6 @@ impl MutantsCrate {
             MutantsCrate::Domain => 100,
             MutantsCrate::Types => 95,
             MutantsCrate::App => 90,
-            MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
             MutantsCrate::Paired => 100,
             MutantsCrate::Fake => 70,
@@ -715,8 +712,8 @@ const ARCH_RULES: &[ArchRule] = &[
         ],
     },
     ArchRule {
-        name: "runtime packages stay below service/client/cli entrypoints",
-        sources: &["perfgate-adapters"],
+        name: "runtime/app packages stay below service/client/cli entrypoints",
+        sources: &["perfgate-app", "perfgate-adapters"],
         forbidden: &[
             "perfgate-client",
             "perfgate-server",
@@ -1289,8 +1286,7 @@ fn generate_mutation_summary(crate_name: Option<MutantsCrate>) -> anyhow::Result
         println!("Target kill rates by crate:");
         println!("  • perfgate-domain:   100%");
         println!("  • perfgate-types:     95%");
-        println!("  • perfgate-app:       90%");
-        println!("  • perfgate-adapters:  80%");
+        println!("  • perfgate-app:       90% (includes runtime adapters)");
         println!("  • perfgate-cli:       70%\n");
     }
 
@@ -1730,6 +1726,11 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             90,
         ),
         (
+            "perfgate-adapters",
+            "Workspace-only compatibility wrapper for perfgate::runtime",
+            90,
+        ),
+        (
             "perfgate-github",
             "Workspace-only compatibility wrapper for perfgate::integrations::github",
             90,
@@ -1764,13 +1765,8 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         ),
         ("perfgate-domain", "Pure math/policy (I/O-free)", 100),
         (
-            "perfgate-adapters",
-            "Platform I/O (process execution, host probing)",
-            80,
-        ),
-        (
             "perfgate-app",
-            "Use-cases, rendering, sensor report builder",
+            "Use-cases, runtime adapters, rendering, sensor report builder",
             90,
         ),
         (
@@ -1807,7 +1803,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-domain (policy)");
     println!("         ↓");
-    println!("  perfgate-adapters (platform I/O)");
+    println!("  perfgate-app::runtime (platform I/O)");
     println!("         ↓");
     println!("  perfgate-app (use cases)");
     println!("         ↓");
@@ -2146,6 +2142,11 @@ fn generate_workspace_inventory_md() -> String {
             90,
         ),
         (
+            "perfgate-adapters",
+            "Workspace-only compatibility wrapper for perfgate::runtime",
+            90,
+        ),
+        (
             "perfgate-github",
             "Workspace-only compatibility wrapper for perfgate::integrations::github",
             90,
@@ -2178,11 +2179,10 @@ fn generate_workspace_inventory_md() -> String {
         ),
         ("perfgate-domain", "Pure math/policy (I/O-free)", 100),
         (
-            "perfgate-adapters",
-            "Platform I/O (process execution, host probing)",
-            80,
+            "perfgate-app",
+            "Use-cases, runtime adapters, orchestration layer",
+            90,
         ),
-        ("perfgate-app", "Use-cases, orchestration layer", 90),
         (
             "perfgate-cli",
             "CLI argument parsing and command dispatch",
@@ -2215,8 +2215,8 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("  domain --> budget[perfgate-domain::budget]\n");
     md.push_str("  domain --> sig[perfgate-domain::significance]\n");
     md.push_str("  domain --> scaling[perfgate-domain::scaling]\n");
-    md.push_str("  domain --> adapters[perfgate-adapters]\n");
-    md.push_str("  adapters --> app[perfgate-app]\n");
+    md.push_str("  domain --> runtime[perfgate-app::runtime]\n");
+    md.push_str("  runtime --> app[perfgate-app]\n");
     md.push_str("  app --> cli[perfgate-cli]\n");
     md.push_str("  app --> facade[perfgate]\n");
     md.push_str("  types --> client[perfgate-client]\n");
@@ -2906,16 +2906,11 @@ mod tests {
         assert_eq!(MutantsCrate::Domain.as_package_name(), "perfgate-domain");
         assert_eq!(MutantsCrate::Types.as_package_name(), "perfgate-types");
         assert_eq!(MutantsCrate::App.as_package_name(), "perfgate-app");
-        assert_eq!(
-            MutantsCrate::Adapters.as_package_name(),
-            "perfgate-adapters"
-        );
         assert_eq!(MutantsCrate::Cli.as_package_name(), "perfgate-cli");
 
         assert_eq!(MutantsCrate::Domain.target_kill_rate(), 100);
         assert_eq!(MutantsCrate::Types.target_kill_rate(), 95);
         assert_eq!(MutantsCrate::App.target_kill_rate(), 90);
-        assert_eq!(MutantsCrate::Adapters.target_kill_rate(), 80);
         assert_eq!(MutantsCrate::Cli.target_kill_rate(), 70);
     }
 
@@ -3221,16 +3216,9 @@ mod tests {
             test_package_with_deps(
                 "perfgate-adapters",
                 None,
-                vec![workspace_dep("perfgate-types")],
+                vec![workspace_dep("perfgate-app")],
             ),
-            test_package_with_deps(
-                "perfgate-app",
-                None,
-                vec![
-                    workspace_dep("perfgate-adapters"),
-                    workspace_dep("perfgate-domain"),
-                ],
-            ),
+            test_package_with_deps("perfgate-app", None, vec![workspace_dep("perfgate-domain")]),
             test_package_with_deps(
                 "perfgate-client",
                 None,

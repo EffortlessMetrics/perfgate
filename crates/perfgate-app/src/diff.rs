@@ -8,9 +8,9 @@
 //! 5. Compares against baseline
 //! 6. Returns structured diff outcomes for terminal rendering
 
+use crate::runtime::{HostProbe, ProcessRunner};
 use crate::{Clock, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase};
 use anyhow::Context;
-use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
     BenchConfigFile, CompareReceipt, CompareRef, ConfigFile, HostMismatchPolicy, Metric,
     MetricStatistic, RunReceipt, ToolInfo, VerdictStatus,

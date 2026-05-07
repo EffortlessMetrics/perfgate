@@ -7,7 +7,7 @@ use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate::integrations::github::{self, CommentOptions, GitHubClient};
 use perfgate::integrations::ingest::{self, IngestFormat};
 use perfgate::runtime::profile::{ProfileRequest, capture_flamegraph};
-use perfgate_adapters::{HostProbe, StdHostProbe, StdProcessRunner};
+use perfgate::runtime::{HostProbe, HostProbeOptions, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
 use perfgate_app::init::{
@@ -2759,7 +2759,7 @@ fn execute_cargo_bench(args: CargoBenchArgs) -> anyhow::Result<()> {
     // Collect host info and tool info
     let tool = tool_info();
     let host_probe = StdHostProbe;
-    let host = host_probe.probe(&perfgate_adapters::HostProbeOptions {
+    let host = host_probe.probe(&HostProbeOptions {
         include_hostname_hash: args.include_hostname_hash,
     });
     let clock = SystemClock;

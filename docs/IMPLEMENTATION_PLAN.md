@@ -91,9 +91,9 @@ gate once transition packages stop being publishable.
 | `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, host mismatch logic, and scaling analysis |
-| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate-app` | Orchestration layer for CLI commands and runtime adapters |
 | `perfgate-cli` | Command-line interface and argument parsing |
-| `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
+| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate_app::runtime` |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |

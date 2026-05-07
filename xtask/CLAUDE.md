@@ -59,8 +59,7 @@ A single `src/main.rs` with automation commands.
 |-------|-----------------|
 | `perfgate-domain` | 100% |
 | `perfgate-types` | 95% |
-| `perfgate-app` | 90% |
-| `perfgate-adapters` | 80% |
+| `perfgate-app` | 90% (includes runtime adapters) |
 | `perfgate-cli` | 70% |
 
 Parses `mutants.out/outcomes.json` to calculate actual rates.

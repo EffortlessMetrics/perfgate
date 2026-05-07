@@ -25,6 +25,7 @@ mod ratchet;
 pub mod render;
 mod repair_context;
 mod report;
+pub mod runtime;
 pub mod sensor;
 mod sensor_report;
 mod trend;
@@ -66,7 +67,7 @@ pub use render::{
 // Re-export export functionality from the app-owned presentation module for backward compatibility.
 pub use export::{CompareExportRow, ExportFormat, ExportUseCase, RunExportRow};
 
-use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
+use crate::runtime::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult};
 use perfgate_domain::{
     Comparison, SignificancePolicy, compare_runs_with_tradeoffs, compute_stats,
     detect_host_mismatch,
@@ -181,7 +182,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> RunBenchUseCase<R, H, C> {
             };
 
             let run = self.runner.run(&spec).map_err(|e| match e {
-                perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+                crate::runtime::AdapterError::RunCommand { command, reason } => {
                     anyhow::anyhow!("failed to run iteration {}: {}: {}", i + 1, command, reason)
                 }
                 _ => anyhow::anyhow!("failed to run iteration {}: {}", i + 1, e),

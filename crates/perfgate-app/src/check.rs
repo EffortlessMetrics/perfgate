@@ -8,12 +8,12 @@
 //! 5. Compares results
 //! 6. Generates all artifacts (run.json, compare.json, report.json, comment.md)
 
+use crate::runtime::{CommandSpec, HostProbe, ProcessRunner};
 use crate::{
     Clock, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase, format_metric,
     format_pct,
 };
 use anyhow::Context;
-use perfgate_adapters::{CommandSpec, HostProbe, ProcessRunner};
 use perfgate_domain::SignificancePolicy;
 use perfgate_domain::scaling::{
     SizeMeasurement, classify_complexity, is_complexity_degraded, parse_complexity,
@@ -876,7 +876,7 @@ fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_adapters::{AdapterError, CommandSpec, HostProbeOptions, RunResult};
+    use crate::runtime::{AdapterError, CommandSpec, HostProbeOptions, RunResult};
     use perfgate_types::{
         BaselineServerConfig, BenchConfigFile, BenchMeta, BudgetOverride, COMPARE_SCHEMA_V1,
         CompareReceipt, DefaultsConfig, Delta, Direction, HostInfo, Metric, RunMeta, Sample,

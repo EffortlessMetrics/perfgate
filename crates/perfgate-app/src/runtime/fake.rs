@@ -1,6 +1,6 @@
 //! Fake process runner for deterministic testing.
 
-use crate::{AdapterError, CommandSpec, ProcessRunner, RunResult};
+use super::{AdapterError, CommandSpec, ProcessRunner, RunResult};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

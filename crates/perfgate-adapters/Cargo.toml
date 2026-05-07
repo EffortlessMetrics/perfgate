@@ -1,36 +1,21 @@
 [package]
 name = "perfgate-adapters"
-description = "Process execution and host probing adapters for perfgate"
+description = "Workspace-only compatibility wrapper for perfgate runtime adapters"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation = "https://docs.rs/perfgate-adapters"
+documentation = "https://docs.rs/perfgate/latest/perfgate/runtime/"
 authors.workspace = true
 readme = "README.md"
 keywords = ["performance", "benchmarking", "process", "metrics", "host"]
 categories = ["development-tools"]
+publish = false
 
 [dependencies]
-perfgate-types.workspace = true
-anyhow.workspace = true
-thiserror.workspace = true
-hostname = "0.4"
-num_cpus = "1"
-which = "7"
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
-
-[target.'cfg(unix)'.dependencies]
-libc.workspace = true
-
-[dev-dependencies]
-assert_cmd.workspace = true
-predicates.workspace = true
-proptest = "1"
+perfgate-app.workspace = true
 
 [lints]
 workspace = true

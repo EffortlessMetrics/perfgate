@@ -1,6 +1,8 @@
 //! Paired benchmark execution for perfgate.
 
-use perfgate_adapters::{CommandSpec, HostProbe, HostProbeOptions, ProcessRunner};
+use crate::runtime::{
+    AdapterError, CommandSpec, HostProbe, HostProbeOptions, ProcessRunner, RunResult,
+};
 use perfgate_domain::{compute_paired_cv, compute_paired_stats};
 use perfgate_types::{
     NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedRunReceipt,
@@ -222,7 +224,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             output_cap_bytes: req.output_cap_bytes,
         };
         let baseline_run = self.runner.run(&baseline_spec).map_err(|e| match e {
-            perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+            AdapterError::RunCommand { command, reason } => {
                 anyhow::anyhow!(
                     "failed to run baseline pair {}: {}: {}",
                     pair_index + 1,
@@ -242,7 +244,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
             output_cap_bytes: req.output_cap_bytes,
         };
         let current_run = self.runner.run(&current_spec).map_err(|e| match e {
-            perfgate_adapters::AdapterError::RunCommand { command, reason } => {
+            AdapterError::RunCommand { command, reason } => {
                 anyhow::anyhow!(
                     "failed to run current pair {}: {}: {}",
                     pair_index + 1,
@@ -298,7 +300,7 @@ impl<R: ProcessRunner, H: HostProbe, C: Clock> PairedRunUseCase<R, H, C> {
     }
 }
 
-fn sample_half(run: &perfgate_adapters::RunResult) -> PairedSampleHalf {
+fn sample_half(run: &RunResult) -> PairedSampleHalf {
     PairedSampleHalf {
         wall_ms: run.wall_ms,
         exit_code: run.exit_code,
@@ -320,7 +322,6 @@ fn sample_half(run: &perfgate_adapters::RunResult) -> PairedSampleHalf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_adapters::{AdapterError, RunResult};
     use perfgate_types::HostInfo;
     use std::sync::{Arc, Mutex};
 

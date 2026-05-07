@@ -17,7 +17,7 @@
 //!
 //! ```
 //! use perfgate_fake::{FakeProcessRunner, MockProcessBuilder};
-//! use perfgate_adapters::{ProcessRunner, CommandSpec, RunResult};
+//! use perfgate_app::runtime::{ProcessRunner, CommandSpec, RunResult};
 //!
 //! let runner = FakeProcessRunner::new();
 //!
@@ -55,6 +55,6 @@ pub use clock::FakeClock;
 pub use host_probe::FakeHostProbe;
 pub use process_runner::FakeProcessRunner;
 
-pub use perfgate_adapters::{
+pub use perfgate_app::runtime::{
     AdapterError, CommandSpec, HostProbeOptions, ProcessRunner, RunResult,
 };

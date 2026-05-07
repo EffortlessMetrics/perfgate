@@ -7,8 +7,8 @@
 # │ Crate Category                                          │ Target Kill Rate │
 # ├─────────────────────────────────────────────────────────┼──────────────────┤
 # │ Core Domain (domain, types, budget, stats)              │ 95-100%          │
-# │ Application (app, client, server)                       │ 90%              │
-# │ Adapters & Infrastructure (adapters, host-detect, paired)│ 80-85%          │
+# │ Application (app, runtime adapters, client, server)     │ 90%              │
+# │ Infrastructure shims (host-detect, paired)              │ 80-85%           │
 # │ Presentation (export, render, sensor)                   │ 80%              │
 # │ CLI (cli)                                               │ 70%              │
 # └─────────────────────────────────────────────────────────┴──────────────────┘
@@ -29,7 +29,6 @@ include_globs = [
     "crates/perfgate-types/src/**",
     "crates/perfgate-app/src/**",
     "crates/perfgate-cli/src/**",
-    "crates/perfgate-adapters/src/**",
     "crates/perfgate-server/src/**",
     "crates/perfgate-client/src/**",
     "crates/perfgate-export/src/**",

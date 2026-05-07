@@ -7,8 +7,8 @@
 //! The filesystem-watching layer lives in the CLI crate; this module handles
 //! the benchmark execution cycle and result formatting.
 
+use crate::runtime::{HostProbe, ProcessRunner};
 use crate::{CheckRequest, CheckUseCase, Clock, format_metric, format_value};
-use perfgate_adapters::{HostProbe, ProcessRunner};
 use perfgate_types::{
     ConfigFile, HostMismatchPolicy, Metric, MetricStatus, RunReceipt, ToolInfo, VerdictStatus,
 };

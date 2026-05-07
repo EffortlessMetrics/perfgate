@@ -23,7 +23,7 @@ reproducible test results.
 
 ```rust
 use perfgate_fake::{FakeProcessRunner, MockProcessBuilder, FakeClock};
-use perfgate_adapters::{ProcessRunner, CommandSpec};
+use perfgate_app::runtime::{ProcessRunner, CommandSpec};
 use std::time::Duration;
 
 // Build a mock result with the fluent builder

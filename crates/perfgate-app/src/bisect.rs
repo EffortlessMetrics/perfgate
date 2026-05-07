@@ -1,7 +1,7 @@
 //! Bisection orchestration.
 
+use crate::runtime::{CommandSpec, ProcessRunner, RunResult, StdProcessRunner};
 use anyhow::Context;
-use perfgate_adapters::{CommandSpec, ProcessRunner, StdProcessRunner};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -151,7 +151,7 @@ impl<R: ProcessRunner> BisectUseCase<R> {
         Ok(())
     }
 
-    fn run_shell(&self, cmd: &str) -> anyhow::Result<perfgate_adapters::RunResult> {
+    fn run_shell(&self, cmd: &str) -> anyhow::Result<RunResult> {
         let spec = if cfg!(windows) {
             CommandSpec {
                 name: "cmd".to_string(),

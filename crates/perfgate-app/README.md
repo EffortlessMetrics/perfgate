@@ -12,7 +12,7 @@ Application-layer orchestration for perfgate workflows.
   - `PromoteUseCase`
   - `PairedRunUseCase`
   - `ExportUseCase`
-- Coordinates `perfgate-domain` logic with `perfgate-adapters` runners/probes.
+- Coordinates `perfgate-domain` logic with runtime runners/probes.
 - Renders markdown summaries and GitHub annotation lines.
 - Builds cockpit-mode sensor envelopes (`sensor.report.v1`) and structured findings.
 - Exposes stable request/response structs for CLI and other integrations.
@@ -21,7 +21,7 @@ Application-layer orchestration for perfgate workflows.
 
 - No CLI flag parsing (that belongs in `perfgate`).
 - No direct filesystem artifact writing (done by CLI callers).
-- No low-level process/OS primitives (handled by `perfgate-adapters`).
+- Low-level process/OS primitives stay isolated in the `runtime` module.
 
 ## Export Support
 
@@ -31,7 +31,7 @@ Application-layer orchestration for perfgate workflows.
 
 `perfgate-app` is the orchestration layer above domain + adapters and below the CLI:
 
-`perfgate-types` -> `perfgate-domain` -> `perfgate-adapters` -> `perfgate-app` -> `perfgate`
+`perfgate-types` -> `perfgate-domain` -> `perfgate-app::runtime` -> `perfgate-app` -> `perfgate`
 
 ## License
 

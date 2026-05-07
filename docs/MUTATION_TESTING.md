@@ -74,8 +74,7 @@ minimum_test_timeout = 20
 |-------|------------------|-----------|
 | perfgate-domain | 100% | Pure logic, fully testable |
 | perfgate-types | 95% | Serialization logic, some derive macros |
-| perfgate-app | 90% | Rendering logic, some formatting edge cases |
-| perfgate-adapters | 80% | Platform-specific code, harder to test |
+| perfgate-app | 90% | Use-cases, rendering logic, and runtime adapter implementations |
 | perfgate-cli | 70% | I/O heavy, integration tested instead |
 
 ## Initial Baseline (perfgate-domain)

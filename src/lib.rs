@@ -6,6 +6,6 @@
 //! The actual perfgate functionality is in the workspace member crates:
 //! - `perfgate-types`: Shared types and JSON schemas
 //! - `perfgate-domain`: Pure business logic
-//! - `perfgate-adapters`: I/O adapters
+//! - `perfgate-app::runtime`: I/O adapters
 //! - `perfgate-app`: Application use cases
 //! - `perfgate` (perfgate-cli): CLI interface
