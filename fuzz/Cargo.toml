@@ -18,7 +18,6 @@ perfgate-types = { path = "../crates/perfgate-types", features = ["arbitrary"] }
 perfgate-domain = { path = "../crates/perfgate-domain" }
 perfgate-app = { path = "../crates/perfgate-app" }
 perfgate-export = { path = "../crates/perfgate-export" }
-perfgate-budget = { path = "../crates/perfgate-budget" }
 perfgate-paired = { path = "../crates/perfgate-paired" }
 perfgate-sensor = { path = "../crates/perfgate-sensor" }
 

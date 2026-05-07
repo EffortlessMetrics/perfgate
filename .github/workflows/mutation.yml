@@ -21,7 +21,6 @@ on:
           - perfgate-cli
           - perfgate-server
           - perfgate-client
-          - perfgate-budget
           - perfgate-stats
           - perfgate-significance
           - perfgate-export

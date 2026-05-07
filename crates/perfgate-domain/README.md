@@ -23,7 +23,7 @@ function deterministic and trivially testable.
 - `compare_runs(baseline, current, budgets, statistics, significance) ->
   Comparison` -- full run-level comparison with per-metric statistic selection
   (median or p95) and optional Welch's t-test significance gating
-- Re-exports from `perfgate-budget`: `evaluate_budget`, `evaluate_budgets`,
+- Re-exports from `perfgate-domain::budget`: `evaluate_budget`, `evaluate_budgets`,
   `calculate_regression`, `determine_status`, `aggregate_verdict`
 
 ### Report Derivation

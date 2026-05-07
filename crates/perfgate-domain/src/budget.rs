@@ -1,13 +1,13 @@
 //! Budget evaluation logic for performance thresholds.
 //!
-//! This crate provides pure budget evaluation functions with no I/O dependencies.
+//! This module provides pure budget evaluation functions with no I/O dependencies.
 //! It handles threshold checking, regression calculation, and verdict aggregation.
 //!
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 //!
 //! # Overview
 //!
-//! The crate provides:
+//! The module provides:
 //! - [`evaluate_budget`] - Evaluate a single metric against a budget threshold
 //! - [`calculate_regression`] - Calculate regression percentage between baseline and current
 //! - [`determine_status`] - Determine metric status (Pass/Warn/Fail) from regression
@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```
-//! use perfgate_budget::{evaluate_budget, calculate_regression, determine_status};
+//! use perfgate_domain::budget::{evaluate_budget, calculate_regression, determine_status};
 //! use perfgate_types::{Budget, Direction, MetricStatus};
 //! use std::collections::BTreeMap;
 //!
@@ -50,7 +50,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use perfgate_budget::{evaluate_budget, BudgetError};
+/// use perfgate_domain::budget::{evaluate_budget, BudgetError};
 /// use perfgate_types::{Budget, Direction};
 ///
 /// let budget = Budget {
@@ -79,7 +79,7 @@ pub enum BudgetError {
 /// # Examples
 ///
 /// ```
-/// use perfgate_budget::evaluate_budget;
+/// use perfgate_domain::budget::evaluate_budget;
 /// use perfgate_types::{Budget, Direction, MetricStatus};
 ///
 /// let budget = Budget {
@@ -212,7 +212,7 @@ pub fn evaluate_budget(
 /// # Example
 ///
 /// ```
-/// use perfgate_budget::calculate_regression;
+/// use perfgate_domain::budget::calculate_regression;
 /// use perfgate_types::Direction;
 ///
 /// // Lower is better: 10% slower = 10% regression
@@ -253,7 +253,7 @@ pub fn calculate_regression(baseline: f64, current: f64, direction: Direction) -
 /// # Example
 ///
 /// ```
-/// use perfgate_budget::determine_status;
+/// use perfgate_domain::budget::determine_status;
 /// use perfgate_types::MetricStatus;
 ///
 /// let threshold = 0.20;
@@ -291,7 +291,7 @@ pub fn determine_status(regression: f64, threshold: f64, warn_threshold: f64) ->
 /// # Example
 ///
 /// ```
-/// use perfgate_budget::aggregate_verdict;
+/// use perfgate_domain::budget::aggregate_verdict;
 /// use perfgate_types::{MetricStatus, VerdictStatus};
 ///
 /// // Fail dominates
@@ -348,7 +348,7 @@ pub fn aggregate_verdict(statuses: &[MetricStatus]) -> Verdict {
 /// # Examples
 ///
 /// ```
-/// use perfgate_budget::reason_token;
+/// use perfgate_domain::budget::reason_token;
 /// use perfgate_types::{Metric, MetricStatus};
 ///
 /// assert_eq!(reason_token(Metric::WallMs, MetricStatus::Warn), "wall_ms_warn");

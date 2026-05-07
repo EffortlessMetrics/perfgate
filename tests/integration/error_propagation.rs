@@ -256,7 +256,7 @@ fn error_chain_through_domain() {
 
 #[test]
 fn error_chain_through_budget() {
-    use perfgate_budget::BudgetError;
+    use perfgate_domain::budget::BudgetError;
 
     let budget_err = BudgetError::InvalidBaseline;
     let msg = budget_err.to_string();

@@ -33,7 +33,8 @@ enum MutantsCrate {
         name = "perfgate-domain",
         alias = "perfgate-stats",
         alias = "perfgate-significance",
-        alias = "perfgate-host-detect"
+        alias = "perfgate-host-detect",
+        alias = "perfgate-budget"
     )]
     Domain,
     #[value(
@@ -696,12 +697,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "core/domain packages stay below I/O, presentation, and entrypoints",
-        sources: &[
-            "perfgate-budget",
-            "perfgate-domain",
-            "perfgate-paired",
-            "perfgate-scaling",
-        ],
+        sources: &["perfgate-domain", "perfgate-paired", "perfgate-scaling"],
         forbidden: &[
             "perfgate-adapters",
             "perfgate-app",
@@ -757,12 +753,8 @@ struct SourceArchRule {
     banned_patterns: &'static [&'static str],
 }
 
-const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &[
-    "perfgate-budget",
-    "perfgate-domain",
-    "perfgate-paired",
-    "perfgate-scaling",
-];
+const CORE_DOMAIN_ARCH_PACKAGES: &[&str] =
+    &["perfgate-domain", "perfgate-paired", "perfgate-scaling"];
 
 const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
     "std::fs",
@@ -1735,11 +1727,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-budget",
-            "Budget evaluation logic for performance thresholds",
-            100,
-        ),
-        (
             "perfgate-export",
             "Export formats (CSV, JSONL, HTML, Prometheus)",
             90,
@@ -1819,7 +1806,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
     println!("         ↓");
-    println!("  perfgate-budget, perfgate-domain::significance");
+    println!("  perfgate-domain::budget, perfgate-domain::significance");
     println!("         ↓");
     println!("  perfgate-export, perfgate-render, perfgate-sensor, perfgate-paired");
     println!("         ↓");
@@ -2083,11 +2070,6 @@ fn generate_workspace_inventory_md() -> String {
             100,
         ),
         (
-            "perfgate-budget",
-            "Budget evaluation logic for performance thresholds",
-            100,
-        ),
-        (
             "perfgate-export",
             "Export formats (CSV, JSONL, HTML, Prometheus)",
             90,
@@ -2164,9 +2146,8 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("  domain --> stats[perfgate-domain::stats]\n");
     md.push_str("  types --> val[perfgate-types::validation]\n");
     md.push_str("  domain --> host[perfgate-domain::host]\n");
-    md.push_str("  types --> budget[perfgate-budget]\n");
+    md.push_str("  domain --> budget[perfgate-domain::budget]\n");
     md.push_str("  domain --> sig[perfgate-domain::significance]\n");
-    md.push_str("  budget --> domain[perfgate-domain]\n");
     md.push_str("  domain --> adapters[perfgate-adapters]\n");
     md.push_str("  adapters --> app[perfgate-app]\n");
     md.push_str("  app --> cli[perfgate-cli]\n");
@@ -3018,14 +2999,14 @@ mod tests {
         let metadata = CargoMetadata {
             packages: vec![
                 test_package("perfgate", None),
-                test_package("perfgate-budget", None),
+                test_package("perfgate-render", None),
                 test_package("perfgate-tests", Some(Vec::new())),
             ],
         };
         let public_crates = ["perfgate"].into_iter().map(String::from).collect();
         let absorbed_crates = [(
-            "perfgate-budget".to_string(),
-            "perfgate::core::budget".to_string(),
+            "perfgate-render".to_string(),
+            "perfgate::presentation::render".to_string(),
         )]
         .into_iter()
         .collect();
@@ -3040,13 +3021,13 @@ mod tests {
         let metadata = CargoMetadata {
             packages: vec![
                 test_package("perfgate", None),
-                test_package("perfgate-budget", None),
+                test_package("perfgate-render", None),
             ],
         };
         let public_crates = ["perfgate"].into_iter().map(String::from).collect();
         let absorbed_crates = [(
-            "perfgate-budget".to_string(),
-            "perfgate::core::budget".to_string(),
+            "perfgate-render".to_string(),
+            "perfgate::presentation::render".to_string(),
         )]
         .into_iter()
         .collect();
@@ -3162,14 +3143,6 @@ mod tests {
             ),
             test_package_with_deps(
                 "perfgate-domain",
-                None,
-                vec![
-                    workspace_dep("perfgate-budget"),
-                    workspace_dep("perfgate-types"),
-                ],
-            ),
-            test_package_with_deps(
-                "perfgate-budget",
                 None,
                 vec![workspace_dep("perfgate-types")],
             ),

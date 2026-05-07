@@ -21,8 +21,8 @@
 
 pub use perfgate_adapters as adapters;
 pub use perfgate_app as app;
-pub use perfgate_budget as budget;
 pub use perfgate_domain as domain;
+pub use perfgate_domain::budget;
 pub use perfgate_domain::paired;
 pub use perfgate_domain::significance;
 pub use perfgate_domain::stats;
@@ -42,7 +42,7 @@ pub mod runtime;
 
 /// Core I/O-free building blocks for performance-gating policy.
 pub mod core {
-    pub use perfgate_budget as budget;
+    pub use perfgate_domain::budget;
     pub use perfgate_domain::significance;
     pub use perfgate_domain::stats;
     pub use perfgate_types::fingerprint;

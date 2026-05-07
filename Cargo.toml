@@ -11,7 +11,6 @@ members = [
   "crates/perfgate-api",
   "crates/perfgate-types",
   "crates/perfgate-paired",
-  "crates/perfgate-budget",
   "crates/perfgate-domain",
   "crates/perfgate-render",
   "crates/perfgate-export",
@@ -75,7 +74,6 @@ perfgate-render.workspace = true
 perfgate-export.workspace = true
 perfgate-sensor.workspace = true
 perfgate-error.workspace = true
-perfgate-budget.workspace = true
 perfgate-domain.workspace = true
 perfgate-paired.workspace = true
 perfgate-app.workspace = true
@@ -138,7 +136,6 @@ perfgate-config = { path = "crates/perfgate-config", version = "0.15.1" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.15.1" }
 perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.1" }
 perfgate-paired = { path = "crates/perfgate-paired", version = "0.15.1" }
-perfgate-budget = { path = "crates/perfgate-budget", version = "0.15.1" }
 perfgate-render = { path = "crates/perfgate-render", version = "0.15.1" }
 perfgate-export = { path = "crates/perfgate-export", version = "0.15.1" }
 perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.15.1" }

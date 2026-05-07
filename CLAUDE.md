@@ -21,7 +21,6 @@ cargo test -p perfgate-app
 cargo test -p perfgate-cli
 cargo test -p perfgate-server
 cargo test -p perfgate-client
-cargo test -p perfgate-budget
 cargo test -p perfgate-export
 cargo test -p perfgate-render
 cargo test -p perfgate-sensor
@@ -94,7 +93,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
-| `perfgate-budget` | Budget evaluation and verdict logic |
+| `perfgate-domain::budget` | Budget evaluation and verdict logic |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | API models and authentication types for baseline service |

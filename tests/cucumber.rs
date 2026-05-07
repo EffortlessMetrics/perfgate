@@ -26,7 +26,9 @@ use perfgate_types::{
 };
 
 // Microcrate imports for direct testing
-use perfgate_budget::{aggregate_verdict, evaluate_budget, reason_token as budget_reason_token};
+use perfgate_domain::budget::{
+    aggregate_verdict, evaluate_budget, reason_token as budget_reason_token,
+};
 use perfgate_domain::host::detect_host_mismatch;
 use perfgate_domain::significance::compute_significance;
 use perfgate_domain::stats::summarize_u64;
@@ -126,7 +128,7 @@ pub struct PerfgateWorld {
     /// Microcrate test state: budget configuration
     test_budget: Option<perfgate_types::Budget>,
     /// Microcrate test state: budget result
-    budget_result: Option<perfgate_budget::BudgetResult>,
+    budget_result: Option<perfgate_domain::budget::BudgetResult>,
     /// Microcrate test state: budget error
     budget_error: Option<String>,
     /// Microcrate test state: budget statuses for aggregation

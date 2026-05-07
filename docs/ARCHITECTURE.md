@@ -111,7 +111,7 @@ promise:
 │                         perfgate-adapters                       │
 │                    (Infrastructure/IO)                          │
 ├─────────────────────────────────────────────────────────────────┤
-│                 perfgate-domain | perfgate-budget              │
+│                         perfgate-domain                        │
 │                    (Domain Business Logic)                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                         perfgate-types                          │
@@ -124,7 +124,7 @@ promise:
 Dependencies flow inward toward the core types and domain logic:
 
 1. **Core**: `perfgate-types` is the stable receipt/config and validation foundation.
-2. **Domain**: `perfgate-domain` owns statistics, significance testing, host mismatch detection, and comparison policy, while `perfgate-budget` evaluates threshold rules on top of core types.
+2. **Domain**: `perfgate-domain` owns statistics, significance testing, host mismatch detection, budget evaluation, and comparison policy.
 3. **Infrastructure**: `perfgate-adapters` provides the "outer" world access (process execution, system info).
 4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
 5. **Presentation**: `perfgate-render`, `perfgate-export`, and `perfgate-sensor` format the results for various consumers.
@@ -134,7 +134,7 @@ Dependencies flow inward toward the core types and domain logic:
 
 - **perfgate-domain::stats**: Pure statistical aggregators (U64Summary, F64Summary).
 - **perfgate-domain::significance**: P-value and statistical significance testing.
-- **perfgate-budget**: Logic for comparing metrics against thresholds.
+- **perfgate-domain::budget**: Logic for comparing metrics against thresholds.
 - **perfgate-render**: Markdown and terminal rendering logic.
 - **perfgate-export**: Multi-format data exporters (CSV, Prometheus, etc.).
 - **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.

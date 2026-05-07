@@ -1,6 +1,8 @@
 //! Demonstrates evaluate_budget and related budget functions.
 
-use perfgate_budget::{aggregate_verdict, calculate_regression, determine_status, evaluate_budget};
+use perfgate_domain::budget::{
+    aggregate_verdict, calculate_regression, determine_status, evaluate_budget,
+};
 use perfgate_types::{Budget, Direction, MetricStatus};
 
 fn main() {

@@ -39,7 +39,7 @@ public packages above.
 **Before (0.15.x)**:
 ```rust
 use perfgate_stats::summarize_u64;
-use perfgate_budget::{eval_budget, Verdict};
+use perfgate_budget::evaluate_budget;
 use perfgate_domain::CompareResult;
 use perfgate_render::markdown;
 ```
@@ -47,7 +47,7 @@ use perfgate_render::markdown;
 **After the relevant absorption PR lands**:
 ```rust
 use perfgate_domain::stats::summarize_u64;
-use perfgate::core::budget::{eval_budget, Verdict};
+use perfgate::core::budget::evaluate_budget;
 use perfgate::domain::CompareResult;
 use perfgate::presentation::render::markdown;
 ```
@@ -61,7 +61,7 @@ Use this table to find the new import path for any old crate:
 | Old Crate | Current / Target Module | Example |
 |-----------|-------------------------|---------|
 | `perfgate-stats` | `perfgate_domain::stats` now; facade path later | `use perfgate_domain::stats::summarize_u64;` |
-| `perfgate-budget` | `perfgate::core::budget` | `use perfgate::core::budget::eval_budget;` |
+| `perfgate-budget` | `perfgate_domain::budget` now; `perfgate::core::budget` facade path | `use perfgate::core::budget::evaluate_budget;` |
 | `perfgate-significance` | `perfgate::core::significance` | `use perfgate::core::significance::*;` |
 | `perfgate-paired` | `perfgate_domain::paired` now; facade path later | `use perfgate_domain::paired::*;` |
 | `perfgate-sha256` | `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path | `use perfgate::core::fingerprint::*;` |
@@ -159,23 +159,23 @@ fn analyze() -> Result<(), Box<dyn std::error::Error>> {
 
 **Before (0.15.x)**:
 ```rust
-use perfgate_budget::eval_budget;
-use perfgate_types::{Budget, Run};
+use perfgate_budget::evaluate_budget;
+use perfgate_types::{Budget, MetricStatus};
 
-fn check(run: &Run, budget: &Budget) {
-    let verdict = eval_budget(run, budget);
-    println!("Verdict: {}", verdict);
+fn check(budget: &Budget) {
+    let result = evaluate_budget(100.0, 115.0, budget, None).unwrap();
+    assert_eq!(result.status, MetricStatus::Warn);
 }
 ```
 
 **Target after the corresponding absorption PR**:
 ```rust
-use perfgate::core::budget::eval_budget;
-use perfgate_types::{Budget, Run};
+use perfgate::core::budget::evaluate_budget;
+use perfgate_types::{Budget, MetricStatus};
 
-fn check(run: &Run, budget: &Budget) {
-    let verdict = eval_budget(run, budget);
-    println!("Verdict: {}", verdict);
+fn check(budget: &Budget) {
+    let result = evaluate_budget(100.0, 115.0, budget, None).unwrap();
+    assert_eq!(result.status, MetricStatus::Warn);
 }
 ```
 

@@ -27,7 +27,6 @@ exclude_globs = [
 include_globs = [
     "crates/perfgate-domain/src/**",
     "crates/perfgate-types/src/**",
-    "crates/perfgate-budget/src/**",
     "crates/perfgate-app/src/**",
     "crates/perfgate-cli/src/**",
     "crates/perfgate-adapters/src/**",

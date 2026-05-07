@@ -91,13 +91,12 @@ gate once transition packages stop being publishable.
 | `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
 | `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-config` | Configuration loading and merging logic |
-| `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
+| `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, and host mismatch logic |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-cli` | Command-line interface and argument parsing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
-| `perfgate-budget` | Budget evaluation and verdict logic |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |

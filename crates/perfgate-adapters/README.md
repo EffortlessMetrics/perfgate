@@ -45,7 +45,7 @@ keeping the rest of the codebase testable and portable.
   so the app layer can inject fakes without spawning real processes.
 - **Output capping** -- stdout/stderr are truncated to `output_cap_bytes` (default 8 KB).
 - **No policy logic** -- this crate only collects data; thresholds and verdicts
-  live in `perfgate-budget` and `perfgate-domain`.
+  live in `perfgate-domain`.
 
 ```text
 perfgate-types + perfgate-domain + perfgate-adapters --> perfgate-app

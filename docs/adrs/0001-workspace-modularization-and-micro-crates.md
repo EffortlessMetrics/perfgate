@@ -12,7 +12,7 @@ As `perfgate` evolved, the core logic became increasingly complex. Maintaining a
 ## Decision
 We decided to decompose the workspace into 19 specialized "micro-crates". Each crate has a single, narrow responsibility and a minimal dependency footprint.
 
-The workspace is now organized into:
+The workspace was organized into:
 - **Core logic**: `perfgate-types`, `perfgate-domain`, `perfgate-stats`, `perfgate-budget`.
 - **Infrastructure**: `perfgate-adapters`.
 - **Use cases**: `perfgate-app`, `perfgate-paired`.
@@ -25,3 +25,9 @@ The workspace is now organized into:
 - **Enforced Boundaries**: Circular dependencies are impossible, and internal details are hidden behind public APIs of small crates.
 - **Testability**: Crates can be tested in isolation with minimal mocking.
 - **Complexity**: The number of `Cargo.toml` files increased, requiring more workspace management overhead.
+
+## 0.16 Update
+
+The public-surface collapse keeps the same SRP boundaries but moves several
+former microcrates back behind owner modules. Budget policy now lives in
+`perfgate_domain::budget` with a `perfgate::core::budget` facade path.

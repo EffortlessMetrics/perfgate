@@ -3,7 +3,7 @@
 //! These tests verify that budget evaluation integrates correctly
 //! with significance testing and paired statistics.
 
-use perfgate_budget::{
+use perfgate_domain::budget::{
     BudgetError, aggregate_verdict, calculate_regression, determine_status, evaluate_budget,
     evaluate_budgets, reason_token,
 };

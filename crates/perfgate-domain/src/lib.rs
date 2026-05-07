@@ -7,6 +7,7 @@
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 mod blame;
+pub mod budget;
 pub mod host;
 pub mod paired;
 pub mod significance;
@@ -21,7 +22,7 @@ pub use paired::{
 
 pub use host::detect_host_mismatch;
 
-pub use perfgate_budget::{
+pub use budget::{
     BudgetError, BudgetResult, aggregate_verdict, calculate_regression, determine_status,
     evaluate_budget, evaluate_budgets, reason_token,
 };
