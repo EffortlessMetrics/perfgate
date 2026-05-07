@@ -2,7 +2,7 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: (Vec<f64>, Vec<f64>)| {
-    use perfgate_domain::significance::compute_significance;
+    use perfgate::domain::significance::compute_significance;
 
     let (baseline, current) = data;
     if baseline.len() >= 2 && current.len() >= 2 {

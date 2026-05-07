@@ -30,7 +30,7 @@ cargo run -p xtask -- public-surface
 cargo run -p xtask -- arch
 cargo run -p xtask -- doc-test
 cargo run -p xtask -- conform
-cargo run -p xtask -- mutants --crate perfgate-domain --summary
+cargo run -p xtask -- mutants --crate perfgate-domain --summary  # logical alias for perfgate::domain
 ```
 
 ## License

@@ -15,11 +15,10 @@ categories = ["mathematics", "development-tools"]
 publish = false
 
 [dependencies]
-perfgate-domain.workspace = true
+perfgate.workspace = true
 
 [dev-dependencies]
 perfgate-types.workspace = true
-proptest = "1.7"
-approx = "0.5"
+
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 //! Demonstrates summarize_u64, compute_stats, and compare_stats.
 
-use perfgate_domain::{compare_stats, compute_stats, summarize_u64};
+use perfgate::domain::{compare_stats, compute_stats, summarize_u64};
 use perfgate_types::{Budget, Direction, Metric, Sample};
 use std::collections::BTreeMap;
 

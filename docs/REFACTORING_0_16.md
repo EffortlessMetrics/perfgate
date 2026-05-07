@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, external benchmark ingestion now lives under `perfgate::integrations::ingest`, deterministic fingerprinting now lives in `perfgate_types::fingerprint` with a `perfgate::core::fingerprint` facade path, host mismatch detection now lives in `perfgate_domain::host` with a `perfgate::domain::host` facade path, budget evaluation now lives in `perfgate_domain::budget` with a `perfgate::core::budget` facade path, scaling analysis now lives in `perfgate_domain::scaling` with a `perfgate::domain::scaling` facade path, rendering now has the facade path `perfgate::presentation::render` behind a workspace-only `perfgate-render` compatibility wrapper, export now has the facade path `perfgate::presentation::export` behind a workspace-only `perfgate-export` compatibility wrapper, sensor report generation now has the facade path `perfgate::presentation::sensor` behind a workspace-only `perfgate-sensor` compatibility wrapper, GitHub PR-comment integration now has the feature-gated facade path `perfgate::integrations::github` behind a workspace-only `perfgate-github` compatibility wrapper, and baseline-service API contracts now live in `perfgate_types::baseline_service` behind a workspace-only `perfgate-api` compatibility wrapper. Many remaining internal seams are still publishable crates (`perfgate-domain`, `perfgate-app`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: The public-surface collapse has landed across the former leaf crates and the final structural seams. Domain logic now lives in `perfgate::domain`, app orchestration and runtime adapters live under `perfgate::app` / `perfgate::runtime`, and old `perfgate-domain` / `perfgate-app` packages are workspace-only compatibility wrappers. Strict public-surface mode is expected to pass with only the five target public packages publishable.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -49,10 +49,10 @@ Pure logic with no runtime dependencies:
 
 | Current Crate | New Module | Why |
 |---------------|-----------|-----|
-| `perfgate-stats` | `perfgate_domain::stats` now; facade re-export later | Statistical descriptors (median, p95, etc.) |
-| `perfgate-budget` | `perfgate_domain::budget` now; `perfgate::core::budget` facade path | Budget evaluation and verdict logic |
-| `perfgate-significance` | `perfgate_domain::significance` now; `perfgate::core::significance` facade path | Welch's t-test and statistical testing |
-| `perfgate-paired` | `perfgate_domain::paired` now; facade re-export later | Paired benchmarking computation |
+| `perfgate-stats` | `perfgate::domain::stats` | Statistical descriptors (median, p95, etc.) |
+| `perfgate-budget` | `perfgate::domain::budget`; facade path `perfgate::core::budget` | Budget evaluation and verdict logic |
+| `perfgate-significance` | `perfgate::domain::significance`; facade path `perfgate::core::significance` | Welch's t-test and statistical testing |
+| `perfgate-paired` | `perfgate::domain::paired` | Paired benchmarking computation |
 | `perfgate-sha256` | `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path | Minimal SHA-256 for baseline fingerprints |
 
 These should be feature-gated minimally (or always-on) and have no dependency on runtime, CLI, or server code.
@@ -65,8 +65,8 @@ Product policy and comparison semantics (I/O-free):
 | Current Crate | New Module | Why |
 |---------------|-----------|-----|
 | `perfgate-domain` | `perfgate::domain` | Core business logic |
-| `perfgate-host-detect` | `perfgate_domain::host` now; `perfgate::domain::host` facade path | Host fingerprinting and mismatch detection |
-| `perfgate-scaling` | `perfgate_domain::scaling` now; `perfgate::domain::scaling` facade path | Autoscaling policy and trend analysis |
+| `perfgate-host-detect` | `perfgate::domain::host` | Host fingerprinting and mismatch detection |
+| `perfgate-scaling` | `perfgate::domain::scaling` | Autoscaling policy and trend analysis |
 
 These remain I/O-free but depend on `core::*` modules and define product verdicts.
 
@@ -91,7 +91,7 @@ I/O and external interactions:
 
 | Current Crate | New Module | Why |
 |---------------|-----------|-----|
-| `perfgate-adapters` | `perfgate_app::runtime`; facade `perfgate::runtime` | absorbed; wrapper remains |
+| `perfgate-adapters` | `perfgate::runtime` | absorbed; wrapper remains |
 | `perfgate-profile` | `perfgate::runtime::profile` | absorbed |
 
 Keep ports/interfaces separate from stdlib implementations:
@@ -246,7 +246,7 @@ For already-published crates that must preserve a public import path for one
 transition release, provide a deprecation shim or compatibility wrapper:
 ```rust
 // crates/perfgate-paired/src/lib.rs
-pub use perfgate_domain::paired::*;
+pub use perfgate::domain::paired::*;
 ```
 
 This allows a transition release before removing the crate from future
@@ -300,19 +300,19 @@ Update all downstream crate imports. Verify `perfgate-types` remains self-contai
 
 ### Phase 3: Collapse Core Logic (PR 3)
 Move into `perfgate::core`:
-- `perfgate-stats` -> already landed in `perfgate_domain::stats`; add facade path later
-- `perfgate-budget` -> already landed in `perfgate_domain::budget`; facade path is `perfgate::core::budget`
-- `perfgate-significance` -> already landed in `perfgate_domain::significance`; facade path is `perfgate::core::significance`
-- `perfgate-paired` -> implementation already landed in `perfgate_domain::paired`; add facade path later
+- `perfgate-stats` -> already landed in `perfgate::domain::stats`
+- `perfgate-budget` -> already landed in `perfgate::domain::budget`; facade path is `perfgate::core::budget`
+- `perfgate-significance` -> already landed in `perfgate::domain::significance`; facade path is `perfgate::core::significance`
+- `perfgate-paired` -> implementation already landed in `perfgate::domain::paired`
 - `perfgate-sha256` -> `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path
 
 Provide deprecation shims if crates are published. Update `perfgate` prelude.
 
 ### Phase 4: Collapse Domain (PR 4)
 Move into `perfgate::domain`:
-- `perfgate-domain` -> `perfgate::domain`
-- `perfgate-host-detect` -> already landed in `perfgate_domain::host`; facade path is `perfgate::domain::host`
-- `perfgate-scaling` -> already landed in `perfgate_domain::scaling`; facade path is `perfgate::domain::scaling`
+- `perfgate-domain` -> `perfgate::domain` (done; workspace-only wrapper remains)
+- `perfgate-host-detect` -> already landed in `perfgate::domain::host`; facade path is `perfgate::domain::host`
+- `perfgate-scaling` -> already landed in `perfgate::domain::scaling`; facade path is `perfgate::domain::scaling`
 
 Verify domain remains I/O-free.
 
@@ -327,9 +327,9 @@ Add feature gates and verify default build is lightweight.
 
 ### Phase 6: Collapse Runtime & App (PR 6)
 Move into `perfgate`:
-- `perfgate-adapters` -> `perfgate_app::runtime` with facade path `perfgate::runtime` (done)
+- `perfgate-adapters` -> `perfgate::runtime` with facade path `perfgate::runtime` (done)
 - `perfgate-profile` -> `perfgate::runtime::profile` (done)
-- `perfgate-app` -> `perfgate::app`
+- `perfgate-app` -> `perfgate::app` (done; workspace-only wrapper remains)
 - `perfgate-github` -> `perfgate::integrations::github` (feature-gated, wrapper remains)
 - `perfgate-ingest` -> `perfgate::integrations::ingest` (done)
 

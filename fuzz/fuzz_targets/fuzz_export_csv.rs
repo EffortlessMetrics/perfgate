@@ -8,5 +8,5 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     // CSV escape should never panic on any input
     let s = String::from_utf8_lossy(data);
-    let _ = perfgate_export::csv_escape(&s);
+    let _ = perfgate::presentation::export::csv_escape(&s);
 });

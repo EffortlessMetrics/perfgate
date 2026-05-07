@@ -30,4 +30,4 @@ The workspace was organized into:
 
 The public-surface collapse keeps the same SRP boundaries but moves several
 former microcrates back behind owner modules. Budget policy now lives in
-`perfgate_domain::budget` with a `perfgate::core::budget` facade path.
+`perfgate::domain::budget` with a `perfgate::core::budget` facade path.

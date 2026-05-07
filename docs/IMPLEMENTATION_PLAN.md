@@ -93,7 +93,7 @@ gate once transition packages stop being publishable.
 | `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, host mismatch logic, and scaling analysis |
 | `perfgate-app` | Orchestration layer for CLI commands and runtime adapters |
 | `perfgate-cli` | Command-line interface and argument parsing |
-| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate_app::runtime` |
+| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
@@ -142,7 +142,7 @@ Interleaved baseline/current runs to reduce environmental noise:
 
 Detection of OS, arch, CPU, and hostname differences:
 - `--host-mismatch` policy support (`warn`, `error`, `ignore`)
-- Implemented in `perfgate_domain::host`
+- Implemented in `perfgate::domain::host`
 
 ### Additional Metrics
 

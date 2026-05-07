@@ -247,7 +247,7 @@ impl<T: Into<PerfgateError>> IntoPerfgateError for T {
 
 #[test]
 fn error_chain_through_domain() {
-    use perfgate_domain::DomainError;
+    use perfgate::domain::DomainError;
 
     let domain_err = DomainError::NoSamples;
     let msg = domain_err.to_string();
@@ -256,7 +256,7 @@ fn error_chain_through_domain() {
 
 #[test]
 fn error_chain_through_budget() {
-    use perfgate_domain::budget::BudgetError;
+    use perfgate::domain::budget::BudgetError;
 
     let budget_err = BudgetError::InvalidBaseline;
     let msg = budget_err.to_string();

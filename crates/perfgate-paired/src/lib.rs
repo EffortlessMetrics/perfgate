@@ -1,7 +1,6 @@
 //! Compatibility wrapper for paired benchmarking statistics.
 //!
-//! The implementation now lives in `perfgate-domain`; this crate remains as a
-//! workspace-only migration shim while tests and fuzz targets move to the owner
-//! crate.
+//! The implementation now lives in `perfgate::domain::paired`; this crate
+//! remains as a workspace-only migration shim.
 
-pub use perfgate_domain::paired::*;
+pub use perfgate::domain::paired::*;

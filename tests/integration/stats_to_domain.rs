@@ -3,7 +3,7 @@
 //! These tests verify that domain statistics integrate correctly
 //! with perfgate-domain, and that errors propagate correctly between them.
 
-use perfgate_domain::stats::{StatsError, summarize_f64, summarize_u64};
+use perfgate::domain::stats::{StatsError, summarize_f64, summarize_u64};
 use perfgate_types::{F64Summary, U64Summary};
 
 #[test]
@@ -40,7 +40,7 @@ fn stats_empty_f64_returns_no_samples_error() {
 
 #[test]
 fn stats_u64_summary_is_used_by_domain_stats() {
-    use perfgate_domain::compute_stats;
+    use perfgate::domain::compute_stats;
     use perfgate_types::Sample;
 
     let samples = vec![Sample {
@@ -70,7 +70,7 @@ fn stats_u64_summary_is_used_by_domain_stats() {
 
 #[test]
 fn stats_error_propagates_through_domain() {
-    use perfgate_domain::{DomainError, compute_stats};
+    use perfgate::domain::{DomainError, compute_stats};
     use perfgate_types::Sample;
 
     let samples: Vec<Sample> = vec![];
@@ -110,7 +110,7 @@ fn stats_two_value_median_averages() {
 
 #[test]
 fn domain_uses_stats_for_metric_values() {
-    use perfgate_domain::compare_stats;
+    use perfgate::domain::compare_stats;
     use perfgate_types::{Budget, Direction, Metric, Stats, U64Summary};
     use std::collections::BTreeMap;
 
@@ -155,7 +155,7 @@ fn domain_uses_stats_for_metric_values() {
 
 #[test]
 fn stats_percentile_works_with_domain_percentile_logic() {
-    use perfgate_domain::stats::percentile;
+    use perfgate::domain::stats::percentile;
 
     let values = vec![10.0, 20.0, 30.0, 40.0, 50.0];
 
@@ -174,7 +174,7 @@ fn stats_percentile_works_with_domain_percentile_logic() {
 
 #[test]
 fn stats_mean_and_variance_integrate_with_significance_testing() {
-    use perfgate_domain::stats::mean_and_variance;
+    use perfgate::domain::stats::mean_and_variance;
 
     let values = vec![100.0, 102.0, 98.0, 101.0, 99.0];
     let (mean, variance) = mean_and_variance(&values).unwrap();

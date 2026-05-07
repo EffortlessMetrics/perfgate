@@ -15,7 +15,7 @@ categories = ["development-tools"]
 publish = false
 
 [dependencies]
-perfgate-app.workspace = true
+perfgate.workspace = true
 
 [lints]
 workspace = true

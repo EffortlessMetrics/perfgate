@@ -5,8 +5,8 @@ Application / use-case layer — orchestrates adapters and domain logic into wor
 ## Build and Test
 
 ```bash
-cargo test -p perfgate-app
-cargo test -p perfgate-app -- proptest   # property-based tests only
+cargo test -p perfgate --all-features app
+cargo test -p perfgate --all-features app -- proptest   # property-based tests only
 ```
 
 Mutation testing target: **90% kill rate**.

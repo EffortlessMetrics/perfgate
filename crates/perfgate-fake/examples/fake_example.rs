@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run -p perfgate-fake --example basic
 
-use perfgate_app::runtime::{CommandSpec, ProcessRunner};
+use perfgate::runtime::{CommandSpec, ProcessRunner};
 use perfgate_fake::{FakeProcessRunner, MockProcessBuilder};
 
 fn main() {

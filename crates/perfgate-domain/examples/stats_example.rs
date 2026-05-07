@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run -p perfgate-domain --example stats_example
 
-use perfgate_domain::stats::{mean_and_variance, percentile, summarize_f64, summarize_u64};
+use perfgate::domain::stats::{mean_and_variance, percentile, summarize_f64, summarize_u64};
 
 fn main() {
     println!("=== perfgate-domain stats Basic Example ===\n");

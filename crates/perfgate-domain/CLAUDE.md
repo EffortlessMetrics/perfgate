@@ -5,7 +5,7 @@ Pure domain logic for perfgate — statistics, budget evaluation, and comparison
 ## Build and Test
 
 ```bash
-cargo test -p perfgate-domain
+cargo test -p perfgate --all-features domain
 ```
 
 Mutation testing target: **100% kill rate**.

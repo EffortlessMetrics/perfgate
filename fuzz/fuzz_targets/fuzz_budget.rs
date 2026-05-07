@@ -11,7 +11,7 @@ struct BudgetInput {
 }
 
 fuzz_target!(|input: BudgetInput| {
-    use perfgate_domain::budget::{calculate_regression, determine_status};
+    use perfgate::domain::budget::{calculate_regression, determine_status};
     use perfgate_types::Direction;
 
     if input.baseline > 0.0 && input.threshold > 0.0 && input.warn_threshold > 0.0 {

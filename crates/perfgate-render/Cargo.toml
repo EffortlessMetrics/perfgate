@@ -15,10 +15,9 @@ readme = "README.md"
 publish = false
 
 [dependencies]
-perfgate-app.workspace = true
+perfgate.workspace = true
 
 [dev-dependencies]
-perfgate.workspace = true
 perfgate-types.workspace = true
 
 [lints]

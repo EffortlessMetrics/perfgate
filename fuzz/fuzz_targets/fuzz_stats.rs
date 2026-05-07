@@ -14,7 +14,7 @@ struct StatsInput {
 
 fuzz_target!(|input: StatsInput| {
     if !input.values.is_empty() {
-        if let Ok(summary) = perfgate_domain::stats::summarize_u64(&input.values) {
+        if let Ok(summary) = perfgate::domain::stats::summarize_u64(&input.values) {
             // Ordering invariant
             assert!(summary.min <= summary.median);
             assert!(summary.median <= summary.max);

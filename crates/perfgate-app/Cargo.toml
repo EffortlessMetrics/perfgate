@@ -12,34 +12,10 @@ authors.workspace = true
 readme = "README.md"
 keywords = ["performance", "benchmarking", "budgets", "reporting", "ci"]
 categories = ["development-tools"]
+publish = false
 
 [dependencies]
-perfgate-types.workspace = true
-perfgate-domain.workspace = true
-anyhow.workspace = true
-glob.workspace = true
-handlebars = "6.3"
-humantime.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-time.workspace = true
-toml.workspace = true
-uuid.workspace = true
-thiserror.workspace = true
-hostname = "0.4"
-num_cpus = "1"
-which = "7"
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
-
-[target.'cfg(unix)'.dependencies]
-libc.workspace = true
-
-[dev-dependencies]
-insta.workspace = true
-proptest = "1.7"
-tempfile.workspace = true
+perfgate.workspace = true
 
 [lints]
 workspace = true

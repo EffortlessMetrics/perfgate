@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// ```
 /// use perfgate_fake::FakeProcessRunner;
-/// use perfgate_app::runtime::{ProcessRunner, CommandSpec, RunResult};
+/// use perfgate::runtime::{ProcessRunner, CommandSpec, RunResult};
 ///
 /// let runner = FakeProcessRunner::new();
 ///

@@ -1,9 +1,12 @@
 # perfgate-domain
 
-Pure business logic with zero I/O -- statistics, budget evaluation, scaling
-analysis, and verdict computation for perfgate.
+Workspace-only compatibility wrapper for `perfgate::domain`.
 
-This crate is intentionally I/O-free. All data arrives via function arguments;
+The pure business logic now lives under the public facade path
+`perfgate::domain`. This package remains in the workspace as a private
+migration shim and is marked `publish = false`.
+
+The domain module is intentionally I/O-free. All data arrives via function arguments;
 there is no filesystem access, no network, no process spawning. This makes every
 function deterministic and trivially testable.
 
@@ -13,7 +16,7 @@ function deterministic and trivially testable.
 
 - `compute_stats(samples, work_units) -> Stats` -- aggregate summary statistics
   from raw samples (excludes warmup iterations)
-- Re-exports from `perfgate-domain::stats`: `summarize_u64`, `summarize_f64`,
+- Re-exports from `perfgate::domain::stats`: `summarize_u64`, `summarize_f64`,
   `median_u64_sorted`, `median_f64_sorted`
 
 ### Budget Evaluation
@@ -23,7 +26,7 @@ function deterministic and trivially testable.
 - `compare_runs(baseline, current, budgets, statistics, significance) ->
   Comparison` -- full run-level comparison with per-metric statistic selection
   (median or p95) and optional Welch's t-test significance gating
-- Re-exports from `perfgate-domain::budget`: `evaluate_budget`, `evaluate_budgets`,
+- Re-exports from `perfgate::domain::budget`: `evaluate_budget`, `evaluate_budgets`,
   `calculate_regression`, `determine_status`, `aggregate_verdict`
 
 ### Report Derivation
@@ -67,7 +70,7 @@ function deterministic and trivially testable.
 
 `Comparison` (deltas + verdict), `SignificancePolicy`, `Report`, `Finding`,
 `FindingData`, `DomainError` (`NoSamples`, `Stats`, `InvalidAlpha`), and
-scaling types under `perfgate_domain::scaling`.
+scaling types under `perfgate::domain::scaling`.
 
 ## Verdict Logic
 

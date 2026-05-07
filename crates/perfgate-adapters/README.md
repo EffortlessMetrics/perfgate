@@ -2,7 +2,7 @@
 
 Workspace-only compatibility wrapper for runtime process and host adapters.
 
-The implementation now lives in `perfgate_app::runtime` and is exposed through
+The implementation now lives in `perfgate::runtime` and is exposed through
 the public facade at `perfgate::runtime`. This package is marked
 `publish = false` during the 0.16 public-surface collapse.
 
@@ -17,7 +17,7 @@ use perfgate::runtime::{CommandSpec, ProcessRunner, StdProcessRunner};
 Workspace-internal crates should use the owner module directly:
 
 ```rust
-use perfgate_app::runtime::{CommandSpec, ProcessRunner};
+use perfgate::runtime::{CommandSpec, ProcessRunner};
 ```
 
 ## License

@@ -1,6 +1,6 @@
 //! Fake host probe for deterministic testing.
 
-use perfgate_app::runtime::{HostProbe, HostProbeOptions};
+use perfgate::runtime::{HostProbe, HostProbeOptions};
 use perfgate_types::HostInfo;
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// ```
 /// use perfgate_fake::FakeHostProbe;
-/// use perfgate_app::runtime::{HostProbe, HostProbeOptions};
+/// use perfgate::runtime::{HostProbe, HostProbeOptions};
 /// use perfgate_types::HostInfo;
 ///
 /// let probe = FakeHostProbe::new()

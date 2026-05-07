@@ -14,7 +14,7 @@ categories = ["development-tools::testing"]
 publish = false
 
 [dependencies]
-perfgate-app.workspace = true
+perfgate.workspace = true
 perfgate-types.workspace = true
 anyhow.workspace = true
 

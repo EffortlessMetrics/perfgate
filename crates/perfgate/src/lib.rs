@@ -2,8 +2,9 @@
 //!
 //! High-performance, modular Rust library for performance budgeting and baseline diffing.
 //!
-//! This is a facade crate that re-exports functionality from the core perfgate micro-crates.
-//! Use it when you want a single dependency instead of picking individual sub-crates.
+//! This is the primary public library crate for perfgate. It keeps the
+//! clean-architecture seams as modules without making every seam a public
+//! package.
 //!
 //! See the [GitHub repository](https://github.com/EffortlessMetrics/perfgate) for full
 //! documentation and usage examples.
@@ -19,12 +20,13 @@
 //! assert_eq!(Metric::WallMs.default_direction(), Direction::Lower);
 //! ```
 
-pub use perfgate_app as app;
-pub use perfgate_domain as domain;
-pub use perfgate_domain::budget;
-pub use perfgate_domain::paired;
-pub use perfgate_domain::significance;
-pub use perfgate_domain::stats;
+pub mod app;
+pub mod domain;
+
+pub use domain::budget;
+pub use domain::paired;
+pub use domain::significance;
+pub use domain::stats;
 pub use perfgate_types as types;
 pub use perfgate_types::error;
 // validation is now part of types
@@ -46,20 +48,20 @@ pub mod runtime;
 /// Presentation helpers for rendering human- and CI-facing output.
 pub mod presentation {
     /// CSV, JSONL, HTML, Prometheus, and JUnit export helpers.
-    pub use perfgate_app::export;
+    pub use crate::app::export;
 
     /// Markdown, annotation, and summary rendering.
-    pub use perfgate_app::render;
+    pub use crate::app::render;
 
     /// Sensor report generation for cockpit-style integrations.
-    pub use perfgate_app::sensor;
+    pub use crate::app::sensor;
 
     /// Summary table rendering.
     ///
     /// Prefer [`render::summary`] in new code; this preserves the documented
     /// presentation summary path during the 0.16 public-surface migration.
     pub mod summary {
-        pub use perfgate_app::render::summary::*;
+        pub use crate::app::render::summary::*;
     }
 }
 
@@ -67,25 +69,25 @@ pub mod presentation {
 ///
 /// Prefer [`crate::presentation::export`] in new code; this module preserves
 /// the previous facade spelling during the 0.16 public-surface migration.
-pub use perfgate_app::export;
+pub use app::export;
 
 /// Sensor report generation for cockpit-style integrations.
 ///
 /// Prefer [`crate::presentation::sensor`] in new code; this module preserves
 /// the previous facade spelling during the 0.16 public-surface migration.
-pub use perfgate_app::sensor;
+pub use app::sensor;
 
 /// Markdown, annotation, and summary rendering.
 ///
 /// Prefer [`crate::presentation::render`] in new code; this module preserves
 /// the previous facade spelling during the 0.16 public-surface migration.
-pub use perfgate_app::render;
+pub use app::render;
 
 /// Core I/O-free building blocks for performance-gating policy.
 pub mod core {
-    pub use perfgate_domain::budget;
-    pub use perfgate_domain::significance;
-    pub use perfgate_domain::stats;
+    pub use crate::domain::budget;
+    pub use crate::domain::significance;
+    pub use crate::domain::stats;
     pub use perfgate_types::fingerprint;
 }
 
@@ -102,13 +104,13 @@ pub mod sha256 {
 /// Prefer [`crate::domain::host`] in new code; this module preserves the
 /// previous facade spelling during the 0.16 public-surface migration.
 pub mod host_detect {
-    pub use perfgate_domain::host::*;
+    pub use crate::domain::host::*;
 }
 
 // Common re-exports for ergonomic use
 pub mod prelude {
-    pub use perfgate_app::{CheckUseCase, CompareUseCase, RunBenchUseCase};
-    pub use perfgate_domain::{compare_runs, compute_stats};
+    pub use crate::app::{CheckUseCase, CompareUseCase, RunBenchUseCase};
+    pub use crate::domain::{compare_runs, compute_stats};
     pub use perfgate_types::{
         CompareReceipt, ConfigFile, Metric, MetricStatistic, RunReceipt, VerdictStatus,
     };

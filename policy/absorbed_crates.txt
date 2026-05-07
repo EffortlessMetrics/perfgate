@@ -12,8 +12,8 @@
 perfgate-validation -> perfgate_types::validation [deleted]
 perfgate-auth -> perfgate_types::baseline_service::auth [deleted]
 perfgate-summary -> perfgate::presentation::render::summary [deleted]
-perfgate-stats -> perfgate_domain::stats [deleted]
-perfgate-paired -> perfgate_domain::paired [compatibility wrapper] [publish=false]
+perfgate-stats -> perfgate::domain::stats [deleted]
+perfgate-paired -> perfgate::domain::paired [compatibility wrapper] [publish=false]
 perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
 
 # Contract-adjacent.
@@ -21,11 +21,11 @@ perfgate-config -> perfgate_types::config and perfgate_client::ResolvedServerCon
 perfgate-api -> perfgate_types::baseline_service; perfgate_server::CredentialSource [compatibility wrapper] [publish=false]
 
 # Pure core and domain policy.
-perfgate-domain -> perfgate::domain
-perfgate-budget -> perfgate_domain::budget; perfgate::core::budget facade [deleted]
-perfgate-significance -> perfgate_domain::significance [deleted]
-perfgate-host-detect -> perfgate_domain::host; perfgate::domain::host facade [deleted]
-perfgate-scaling -> perfgate_domain::scaling; perfgate::domain::scaling facade [deleted]
+perfgate-domain -> perfgate::domain [compatibility wrapper] [publish=false]
+perfgate-budget -> perfgate::domain::budget; perfgate::core::budget facade [deleted]
+perfgate-significance -> perfgate::domain::significance [deleted]
+perfgate-host-detect -> perfgate::domain::host [deleted]
+perfgate-scaling -> perfgate::domain::scaling [deleted]
 perfgate-sha256 -> perfgate_types::fingerprint; perfgate::core::fingerprint facade [deleted]
 
 # Presentation.
@@ -34,9 +34,9 @@ perfgate-export -> perfgate::presentation::export [compatibility wrapper] [publi
 perfgate-sensor -> perfgate::presentation::sensor [compatibility wrapper] [publish=false]
 
 # Runtime, app, and integrations.
-perfgate-adapters -> perfgate_app::runtime; perfgate::runtime facade [compatibility wrapper] [publish=false]
+perfgate-adapters -> perfgate::runtime [compatibility wrapper] [publish=false]
 perfgate-profile -> perfgate::runtime::profile [deleted]
-perfgate-app -> perfgate::app
+perfgate-app -> perfgate::app [compatibility wrapper] [publish=false]
 perfgate-github -> perfgate::integrations::github [compatibility wrapper] [publish=false]
 perfgate-ingest -> perfgate::integrations::ingest [deleted]
 

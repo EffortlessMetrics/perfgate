@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run -p perfgate-domain --example blame
 
-use perfgate_domain::compare_lockfiles;
+use perfgate::domain::compare_lockfiles;
 
 fn main() {
     let old_lock = r#"

@@ -3,14 +3,14 @@
 //! These tests verify that budget evaluation integrates correctly
 //! with significance testing and paired statistics.
 
-use perfgate_domain::budget::{
+use perfgate::domain::budget::{
     BudgetError, aggregate_verdict, calculate_regression, determine_status, evaluate_budget,
     evaluate_budgets, reason_token,
 };
-use perfgate_domain::{
+use perfgate::domain::paired::PairedError;
+use perfgate::domain::{
     SignificancePolicy, compare_paired_stats, compare_runs, compute_paired_stats,
 };
-use perfgate_paired::PairedError;
 use perfgate_types::{
     BenchMeta, Budget, Direction, HostInfo, Metric, MetricStatus, PairedSampleHalf, RUN_SCHEMA_V1,
     RunMeta, RunReceipt, Sample, ToolInfo, VerdictStatus,
@@ -39,7 +39,7 @@ fn make_sample(wall_ms: u64) -> Sample {
 
 fn make_run_receipt(samples: Vec<u64>) -> RunReceipt {
     let sample_vec: Vec<Sample> = samples.iter().map(|&ms| make_sample(ms)).collect();
-    let stats = perfgate_domain::compute_stats(&sample_vec, None).unwrap();
+    let stats = perfgate::domain::compute_stats(&sample_vec, None).unwrap();
 
     RunReceipt {
         schema: RUN_SCHEMA_V1.to_string(),

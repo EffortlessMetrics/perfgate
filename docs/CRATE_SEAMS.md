@@ -41,8 +41,8 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-validation` | `perfgate_types::validation` | crate deleted |
 | `perfgate-auth` | `perfgate_types::baseline_service::auth` | crate deleted |
 | `perfgate-summary` | `perfgate::presentation::render::summary` | crate deleted |
-| `perfgate-stats` | `perfgate_domain::stats` | crate deleted |
-| `perfgate-paired` | `perfgate_domain::paired` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-stats` | `perfgate::domain::stats` | crate deleted |
+| `perfgate-paired` | `perfgate::domain::paired` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-error` | `perfgate_types::error` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-render` | `perfgate::presentation::render` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-export` | `perfgate::presentation::export` | workspace-only compatibility wrapper, `publish = false` |
@@ -51,13 +51,15 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-api` | `perfgate_types::baseline_service`; runtime credential source in `perfgate_server::CredentialSource` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | crate deleted |
-| `perfgate-significance` | `perfgate_domain::significance` | crate deleted |
+| `perfgate-significance` | `perfgate::domain::significance` | crate deleted |
 | `perfgate-sha256` | `perfgate_types::fingerprint`; facade path `perfgate::core::fingerprint` | crate deleted |
-| `perfgate-host-detect` | `perfgate_domain::host`; facade path `perfgate::domain::host` | crate deleted |
-| `perfgate-budget` | `perfgate_domain::budget`; facade path `perfgate::core::budget` | crate deleted |
-| `perfgate-scaling` | `perfgate_domain::scaling`; facade path `perfgate::domain::scaling` | crate deleted |
+| `perfgate-host-detect` | `perfgate::domain::host` | crate deleted |
+| `perfgate-budget` | `perfgate::domain::budget`; facade path `perfgate::core::budget` | crate deleted |
+| `perfgate-scaling` | `perfgate::domain::scaling` | crate deleted |
 | `perfgate-github` | `perfgate::integrations::github` | workspace-only compatibility wrapper, `publish = false` |
-| `perfgate-adapters` | `perfgate_app::runtime`; facade path `perfgate::runtime` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-adapters` | `perfgate::runtime` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-domain` | `perfgate::domain` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-app` | `perfgate::app` | workspace-only compatibility wrapper, `publish = false` |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the
@@ -71,8 +73,6 @@ high-level target is:
 | Current package | Target owner |
 |-----------------|--------------|
 | `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` |
-| `perfgate-domain` | `perfgate::domain` |
-| `perfgate-app` | `perfgate::app` |
 | `perfgate-fake` | private workspace crate |
 | `perfgate-selfbench` | private workspace crate |
 
@@ -90,9 +90,8 @@ server must not depend on cli
 cli is the outermost adapter
 ```
 
-The current enforcement starts with Cargo metadata layer rules and source scans
-for the pure and presentation crates. As crates collapse into modules, extend
-`xtask arch` with module-level source rules.
+The current enforcement uses Cargo metadata layer rules plus module-level
+source scans for collapsed domain and presentation seams.
 
 ## Enforcement
 
@@ -104,8 +103,9 @@ cargo run -p xtask -- public-surface
 ```
 
 `xtask arch` fails when lower-level packages can reach forbidden higher-level
-packages through non-dev workspace dependencies, or when pure crates import
-filesystem/process APIs in production source.
+packages through non-dev workspace dependencies, or when pure domain and
+presentation modules import forbidden filesystem/process APIs in production
+source.
 
 `xtask public-surface` fails if a publishable workspace package is neither listed in
 `policy/public_crates.txt` nor assigned a disposition in
@@ -132,7 +132,7 @@ absorbed/internal workspace package.
 5. Collapse presentation, runtime, app, and integration crates.
 6. Convert remaining published packages into deprecated shims or mark them
    private.
-7. Extend `xtask arch` for source/module dependency rules as crates collapse.
+7. Extend `xtask arch` for any new source/module dependency rules as crates collapse.
 8. Update README, architecture docs, examples, and changelog for 0.16.
 
 ## Per-PR Checklist

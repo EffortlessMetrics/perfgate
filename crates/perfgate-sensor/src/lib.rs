@@ -2,4 +2,4 @@
 //!
 //! New code should import these APIs through `perfgate::presentation::sensor`.
 
-pub use perfgate_app::sensor::*;
+pub use perfgate::presentation::sensor::*;

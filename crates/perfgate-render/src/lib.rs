@@ -2,4 +2,4 @@
 //!
 //! New code should import these APIs through `perfgate::presentation::render`.
 
-pub use perfgate_app::render::*;
+pub use perfgate::presentation::render::*;

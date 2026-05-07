@@ -15,9 +15,9 @@ cargo test --all
 cargo test --test cucumber
 
 # Run tests for a specific crate
-cargo test -p perfgate-domain
+cargo test -p perfgate --all-features domain
 cargo test -p perfgate-types
-cargo test -p perfgate-app
+cargo test -p perfgate --all-features app
 cargo test -p perfgate-cli
 cargo test -p perfgate-server
 cargo test -p perfgate-client
@@ -52,7 +52,7 @@ cargo run -p xtask -- conform --fixtures path/to/dir
 
 # Run mutation testing (requires cargo-mutants installed)
 cargo run -p xtask -- mutants
-cargo run -p xtask -- mutants --crate perfgate-domain --summary
+cargo run -p xtask -- mutants --crate perfgate-domain --summary  # logical alias for perfgate::domain
 
 # Run the CLI
 cargo run -p perfgate-cli -- --help
@@ -90,17 +90,17 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 |-------|----------------|
 | `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
 | `perfgate-error` | Shared error types and categorization |
-| `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
-| `perfgate-domain::budget` | Budget evaluation and verdict logic |
-| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate_app::runtime` |
+| `perfgate::domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
+| `perfgate::domain::budget` | Budget evaluation and verdict logic |
+| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
-| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate::app` | Orchestration layer for CLI commands |
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
 | `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
 | `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
-| `perfgate-domain::scaling` | Complexity and scaling analysis |
+| `perfgate::domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-cli` | Command-line interface and argument parsing |
@@ -110,8 +110,8 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `xtask` | Repository automation (schemas, CI, conformance, mutants) |
 
 **Key design principles:**
-- `perfgate-domain` is intentionally I/O-free: it does statistics and budget policy only
-- `perfgate_app::runtime` contains platform-specific code (Unix `wait4()` for `max_rss_kb`); `perfgate-adapters` is a workspace-only compatibility wrapper
+- `perfgate::domain` is intentionally I/O-free: it does statistics and budget policy only
+- `perfgate::runtime` contains platform-specific code (Unix `wait4()` for `max_rss_kb`); `perfgate-adapters` is a workspace-only compatibility wrapper
 - Receipt types are versioned (`perfgate.run.v1`, `perfgate.compare.v1`, `perfgate.report.v1`) and have JSON Schema support via `schemars`
 - The `arbitrary` feature flag enables structure-aware fuzzing
 
@@ -132,7 +132,7 @@ artifacts/perfgate/
 
 ## Testing Strategy
 
-- **Property-based tests**: Use `proptest` in `perfgate-types` and `perfgate-app` for serialization round-trips and rendering completeness
+- **Property-based tests**: Use `proptest` in `perfgate-types` and `perfgate::app` for serialization round-trips and rendering completeness
 - **BDD tests**: Cucumber feature files in `features/` with step definitions in `tests/cucumber.rs`
 - **Integration tests**: CLI tests in `crates/perfgate-cli/tests/`
 - **Mutation testing**: Target kill rates by category:

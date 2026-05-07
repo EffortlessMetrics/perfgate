@@ -12,15 +12,13 @@ authors.workspace = true
 readme = "README.md"
 keywords = ["performance", "benchmarking", "budgets", "statistics", "regression"]
 categories = ["algorithms", "development-tools"]
+publish = false
 
 [dependencies]
-perfgate-types.workspace = true
-thiserror.workspace = true
-statrs.workspace = true
-serde.workspace = true
-schemars.workspace = true
+perfgate.workspace = true
 
 [dev-dependencies]
+perfgate-types.workspace = true
 insta.workspace = true
 proptest = "1"
 approx = "0.5"

@@ -1,6 +1,6 @@
 //! Demonstrates evaluate_budget and related budget functions.
 
-use perfgate_domain::budget::{
+use perfgate::domain::budget::{
     aggregate_verdict, calculate_regression, determine_status, evaluate_budget,
 };
 use perfgate_types::{Budget, Direction, MetricStatus};

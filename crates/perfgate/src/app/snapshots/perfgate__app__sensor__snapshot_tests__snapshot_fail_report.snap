@@ -1,0 +1,59 @@
+---
+source: crates/perfgate/src/app/sensor.rs
+assertion_line: 708
+expression: sensor_report
+---
+{
+  "schema": "sensor.report.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.1.0"
+  },
+  "run": {
+    "started_at": "2024-01-15T10:30:00Z",
+    "ended_at": "2024-01-15T10:31:00Z",
+    "duration_ms": 60000,
+    "capabilities": {
+      "baseline": {
+        "status": "available"
+      }
+    }
+  },
+  "verdict": {
+    "status": "fail",
+    "counts": {
+      "info": 1,
+      "warn": 0,
+      "error": 2
+    },
+    "reasons": [
+      "wall_ms_fail",
+      "max_rss_kb_fail"
+    ]
+  },
+  "findings": [
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "max_rss_kb regression: +25.00% (threshold: 15.0%)",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e"
+    },
+    {
+      "check_id": "perf.budget",
+      "code": "metric_fail",
+      "severity": "error",
+      "message": "wall_ms regression: +30.00% (threshold: 20.0%)",
+      "fingerprint": "de5e936e68d053aecfba60ca7b764fe09797fc99ee773c1bd50ff707647ebf6e"
+    }
+  ],
+  "data": {
+    "summary": {
+      "bench_count": 1,
+      "fail_count": 2,
+      "pass_count": 1,
+      "total_count": 3,
+      "warn_count": 0
+    }
+  }
+}

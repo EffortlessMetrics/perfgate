@@ -26,15 +26,15 @@ use perfgate_types::{
 };
 
 // Microcrate imports for direct testing
+use perfgate::domain::budget::{
+    aggregate_verdict, evaluate_budget, reason_token as budget_reason_token,
+};
+use perfgate::domain::host::detect_host_mismatch;
+use perfgate::domain::significance::compute_significance;
+use perfgate::domain::stats::summarize_u64;
 use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate::presentation::render::render_markdown;
 use perfgate::presentation::sensor::SensorReportBuilder;
-use perfgate_domain::budget::{
-    aggregate_verdict, evaluate_budget, reason_token as budget_reason_token,
-};
-use perfgate_domain::host::detect_host_mismatch;
-use perfgate_domain::significance::compute_significance;
-use perfgate_domain::stats::summarize_u64;
 use perfgate_error::{
     AdapterError, ConfigValidationError, IoError, PairedError, PerfgateError, StatsError,
     ValidationError,
@@ -128,7 +128,7 @@ pub struct PerfgateWorld {
     /// Microcrate test state: budget configuration
     test_budget: Option<perfgate_types::Budget>,
     /// Microcrate test state: budget result
-    budget_result: Option<perfgate_domain::budget::BudgetResult>,
+    budget_result: Option<perfgate::domain::budget::BudgetResult>,
     /// Microcrate test state: budget error
     budget_error: Option<String>,
     /// Microcrate test state: budget statuses for aggregation
@@ -154,7 +154,7 @@ pub struct PerfgateWorld {
     /// Microcrate test state: current Cargo.lock
     current_lockfile: Option<String>,
     /// Microcrate test state: binary blame result
-    binary_blame: Option<perfgate_domain::BinaryBlame>,
+    binary_blame: Option<perfgate::domain::BinaryBlame>,
 }
 
 impl PerfgateWorld {
@@ -5461,7 +5461,7 @@ async fn then_blame_report_updated(
         .expect("Change not found");
     assert_eq!(
         change.change_type,
-        perfgate_domain::DependencyChangeType::Updated
+        perfgate::domain::DependencyChangeType::Updated
     );
     assert_eq!(change.old_version.as_ref().unwrap(), &old);
     assert_eq!(change.new_version.as_ref().unwrap(), &new);
@@ -5477,7 +5477,7 @@ async fn then_blame_report_added(world: &mut PerfgateWorld, name: String) {
         .expect("Change not found");
     assert_eq!(
         change.change_type,
-        perfgate_domain::DependencyChangeType::Added
+        perfgate::domain::DependencyChangeType::Added
     );
 }
 
@@ -5491,7 +5491,7 @@ async fn then_blame_report_removed(world: &mut PerfgateWorld, name: String) {
         .expect("Change not found");
     assert_eq!(
         change.change_type,
-        perfgate_domain::DependencyChangeType::Removed
+        perfgate::domain::DependencyChangeType::Removed
     );
 }
 

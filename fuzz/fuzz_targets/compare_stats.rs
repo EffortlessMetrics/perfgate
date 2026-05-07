@@ -189,5 +189,5 @@ fuzz_target!(|input: CompareStatsInput| {
 
     // Call compare_stats - it should never panic regardless of input
     // It may return an error (e.g., InvalidBaseline), which is fine
-    let _ = perfgate_domain::compare_stats(&baseline, &current, &budgets);
+    let _ = perfgate::domain::compare_stats(&baseline, &current, &budgets);
 });

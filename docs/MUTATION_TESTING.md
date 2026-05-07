@@ -22,7 +22,7 @@ cargo install cargo-mutants
 # Run mutation testing on all configured crates
 cargo run -p xtask -- mutants
 
-# Run mutation testing on a specific crate
+# Run mutation testing for the logical domain target
 cargo run -p xtask -- mutants --crate perfgate-domain
 
 # Run with summary report
@@ -38,8 +38,8 @@ cargo run -p xtask -- mutants -- --jobs 4
 # Run on all crates
 cargo mutants
 
-# Run on specific crate
-cargo mutants --package perfgate-domain
+# Run on the facade package that now owns domain/app modules
+cargo mutants --package perfgate
 ```
 
 ## Configuration
@@ -58,9 +58,9 @@ exclude_globs = [
 
 # Focus on high-value targets
 include_globs = [
-    "crates/perfgate-domain/src/**",
+    "crates/perfgate/src/domain/**",
     "crates/perfgate-types/src/**",
-    "crates/perfgate-app/src/**",
+    "crates/perfgate/src/app/**",
 ]
 
 # Timeout per mutant (60s to allow for property-based tests)
@@ -72,12 +72,12 @@ minimum_test_timeout = 20
 
 | Crate | Target Kill Rate | Rationale |
 |-------|------------------|-----------|
-| perfgate-domain | 100% | Pure logic, fully testable |
+| perfgate-domain alias (`perfgate::domain`) | 100% | Pure logic, fully testable |
 | perfgate-types | 95% | Serialization logic, some derive macros |
-| perfgate-app | 90% | Use-cases, rendering logic, and runtime adapter implementations |
+| perfgate-app alias (`perfgate::app`) | 90% | Use-cases, rendering logic, and runtime adapter implementations |
 | perfgate-cli | 70% | I/O heavy, integration tested instead |
 
-## Initial Baseline (perfgate-domain)
+## Initial Baseline (`perfgate::domain`)
 
 ### Status: Infrastructure Ready
 
@@ -88,7 +88,7 @@ The mutation testing infrastructure is fully configured and ready for use. The a
 
 ### Running the Baseline
 
-To establish the initial mutation testing baseline for perfgate-domain:
+To establish the initial mutation testing baseline for the domain module:
 
 ```bash
 cargo run -p xtask -- mutants --crate perfgate-domain --summary
@@ -127,7 +127,7 @@ When mutants survive, review `mutants.out/missed.txt` to identify:
 
 Example surviving mutant entry:
 ```
-replace summarize_u64 -> Option<Summary<u64>> with None in crates/perfgate-domain/src/lib.rs
+replace summarize_u64 -> Option<Summary<u64>> with None in crates/perfgate/src/domain/mod.rs
 ```
 
 This indicates a test should verify that `summarize_u64` returns `Some(...)` for valid inputs.

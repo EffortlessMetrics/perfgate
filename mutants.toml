@@ -25,17 +25,15 @@ exclude_globs = [
 # Focus on high-value targets - core business logic crates
 # These crates contain the most critical logic that should be thoroughly tested
 include_globs = [
-    "crates/perfgate-domain/src/**",
+    "crates/perfgate/src/domain/**",
     "crates/perfgate-types/src/**",
-    "crates/perfgate-app/src/**",
+    "crates/perfgate/src/app/**",
+    "crates/perfgate/src/runtime/**",
+    "crates/perfgate/src/integrations/**",
     "crates/perfgate-cli/src/**",
     "crates/perfgate-server/src/**",
     "crates/perfgate-client/src/**",
-    "crates/perfgate-export/src/**",
-    "crates/perfgate-render/src/**",
-    "crates/perfgate-sensor/src/**",
-    "crates/perfgate-paired/src/**",
-    "crates/perfgate-error/src/**",
+    "crates/perfgate/src/lib.rs",
     "crates/perfgate-fake/src/**"
 ]
 

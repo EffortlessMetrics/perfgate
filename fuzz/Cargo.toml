@@ -15,10 +15,7 @@ serde_json = "1"
 toml = "0.8"
 humantime = "2"
 perfgate-types = { path = "../crates/perfgate-types", features = ["arbitrary"] }
-perfgate-domain = { path = "../crates/perfgate-domain" }
-perfgate-app = { path = "../crates/perfgate-app" }
-perfgate-export = { path = "../crates/perfgate-export" }
-perfgate-paired = { path = "../crates/perfgate-paired" }
+perfgate = { path = "../crates/perfgate" }
 
 [[bin]]
 name = "parse_run_receipt"

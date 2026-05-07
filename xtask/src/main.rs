@@ -68,9 +68,9 @@ enum MutantsCrate {
 impl MutantsCrate {
     fn as_package_name(&self) -> &'static str {
         match self {
-            MutantsCrate::Domain => "perfgate-domain",
+            MutantsCrate::Domain => "perfgate",
             MutantsCrate::Types => "perfgate-types",
-            MutantsCrate::App => "perfgate-app",
+            MutantsCrate::App => "perfgate",
             MutantsCrate::Cli => "perfgate-cli",
             MutantsCrate::Paired => "perfgate-paired",
             MutantsCrate::Fake => "perfgate-fake",
@@ -730,7 +730,7 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "core/domain packages stay below I/O, presentation, and entrypoints",
-        sources: &["perfgate-domain", "perfgate-paired"],
+        sources: &[],
         forbidden: &[
             "perfgate-adapters",
             "perfgate-app",
@@ -755,13 +755,18 @@ const ARCH_RULES: &[ArchRule] = &[
     },
     ArchRule {
         name: "runtime/app packages stay below service/client/cli entrypoints",
-        sources: &["perfgate-app", "perfgate-adapters"],
+        sources: &[],
         forbidden: &[
             "perfgate-client",
             "perfgate-server",
             "perfgate-cli",
             "perfgate",
         ],
+    },
+    ArchRule {
+        name: "facade must stay below service/client/cli entrypoints",
+        sources: &["perfgate"],
+        forbidden: &["perfgate-client", "perfgate-server", "perfgate-cli"],
     },
     ArchRule {
         name: "client must not depend on server or cli",
@@ -778,11 +783,13 @@ const ARCH_RULES: &[ArchRule] = &[
 #[derive(Debug)]
 struct SourceArchRule {
     packages: &'static [&'static str],
+    paths: &'static [&'static str],
     label: &'static str,
     banned_patterns: &'static [&'static str],
 }
 
-const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &["perfgate-domain", "perfgate-paired"];
+const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &[];
+const CORE_DOMAIN_ARCH_PATHS: &[&str] = &["crates/perfgate/src/domain"];
 
 const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
     "std::fs",
@@ -793,6 +800,13 @@ const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
 ];
 
 const PRESENTATION_ARCH_PACKAGES: &[&str] = &[];
+const PRESENTATION_ARCH_PATHS: &[&str] = &[
+    "crates/perfgate/src/app/export.rs",
+    "crates/perfgate/src/app/render.rs",
+    "crates/perfgate/src/app/render",
+    "crates/perfgate/src/app/sensor.rs",
+    "crates/perfgate/src/app/sensor_report.rs",
+];
 
 const PRESENTATION_BANNED_SOURCE_PATTERNS: &[&str] =
     &["std::process", "tokio::process", "Command::new"];
@@ -800,11 +814,13 @@ const PRESENTATION_BANNED_SOURCE_PATTERNS: &[&str] =
 const SOURCE_ARCH_RULES: &[SourceArchRule] = &[
     SourceArchRule {
         packages: CORE_DOMAIN_ARCH_PACKAGES,
+        paths: CORE_DOMAIN_ARCH_PATHS,
         label: "core/domain source must stay filesystem/process free",
         banned_patterns: CORE_DOMAIN_BANNED_SOURCE_PATTERNS,
     },
     SourceArchRule {
         packages: PRESENTATION_ARCH_PACKAGES,
+        paths: PRESENTATION_ARCH_PATHS,
         label: "presentation source must not execute processes",
         banned_patterns: PRESENTATION_BANNED_SOURCE_PATTERNS,
     },
@@ -833,6 +849,13 @@ fn cmd_arch() -> anyhow::Result<()> {
         SOURCE_ARCH_RULES
             .iter()
             .map(|rule| rule.packages.len())
+            .sum::<usize>()
+    );
+    println!(
+        "      scanned {} source path(s) for collapsed module seams",
+        SOURCE_ARCH_RULES
+            .iter()
+            .map(|rule| rule.paths.len())
             .sum::<usize>()
     );
 
@@ -961,28 +984,77 @@ fn collect_arch_source_errors(metadata: &CargoMetadata) -> anyhow::Result<Vec<St
             }
 
             for path in collect_rust_files_recursive(&src_dir)? {
-                let content = fs::read_to_string(&path)
-                    .with_context(|| format!("read {}", path.display()))?;
-                for (line_idx, line) in content.lines().enumerate() {
-                    let searchable = rust_code_before_comment(line);
-                    for pattern in rule.banned_patterns {
-                        if searchable.contains(pattern) {
-                            errors.push(format!(
-                                "{}: {} uses `{}` at {}:{}",
-                                rule.label,
-                                package_name,
-                                pattern,
-                                path.display(),
-                                line_idx + 1
-                            ));
-                        }
-                    }
-                }
+                collect_arch_source_file_errors(
+                    rule.label,
+                    package_name,
+                    &path,
+                    rule.banned_patterns,
+                    &mut errors,
+                )?;
+            }
+        }
+
+        for source_path in rule.paths {
+            let path = Path::new(source_path);
+            let files = collect_rust_files_from_path(path)?;
+            for file in files {
+                collect_arch_source_file_errors(
+                    rule.label,
+                    source_path,
+                    &file,
+                    rule.banned_patterns,
+                    &mut errors,
+                )?;
             }
         }
     }
 
     Ok(errors)
+}
+
+fn collect_arch_source_file_errors(
+    label: &str,
+    source_label: &str,
+    path: &Path,
+    banned_patterns: &[&str],
+    errors: &mut Vec<String>,
+) -> anyhow::Result<()> {
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    for (line_idx, line) in content.lines().enumerate() {
+        let searchable = rust_code_before_comment(line);
+        for pattern in banned_patterns {
+            if searchable.contains(pattern) {
+                errors.push(format!(
+                    "{}: {} uses `{}` at {}:{}",
+                    label,
+                    source_label,
+                    pattern,
+                    path.display(),
+                    line_idx + 1
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_rust_files_from_path(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    if path.is_file() {
+        if path.extension().is_some_and(|extension| extension == "rs") {
+            return Ok(vec![path.to_path_buf()]);
+        }
+        return Ok(Vec::new());
+    }
+
+    if path.is_dir() {
+        return collect_rust_files_recursive(path);
+    }
+
+    anyhow::bail!(
+        "architecture source path does not exist: {}",
+        path.display()
+    );
 }
 
 fn collect_rust_files_recursive(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
@@ -1778,8 +1850,18 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             90,
         ),
         (
+            "perfgate-domain",
+            "Workspace-only compatibility wrapper for perfgate::domain",
+            100,
+        ),
+        (
+            "perfgate-app",
+            "Workspace-only compatibility wrapper for perfgate::app",
+            90,
+        ),
+        (
             "perfgate-paired",
-            "Paired benchmarking statistics (A/B testing)",
+            "Workspace-only compatibility wrapper for perfgate::domain::paired",
             100,
         ),
         (
@@ -1805,10 +1887,9 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             "Receipt/config structs, JSON schema types",
             95,
         ),
-        ("perfgate-domain", "Pure math/policy (I/O-free)", 100),
         (
-            "perfgate-app",
-            "Use-cases, runtime adapters, rendering, sensor report builder",
+            "perfgate",
+            "Facade with domain, app, runtime, and presentation modules",
             90,
         ),
         (
@@ -1833,21 +1914,23 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-types::fingerprint (deterministic hashes)");
     println!("         ↓");
-    println!("  perfgate-types::validation, perfgate-domain::host (pure logic)");
+    println!("  perfgate-types::validation, perfgate::domain::host (pure logic)");
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
     println!("         ↓");
-    println!("  perfgate-domain::budget, perfgate-domain::significance, perfgate-domain::scaling");
+    println!(
+        "  perfgate::domain::budget, perfgate::domain::significance, perfgate::domain::scaling"
+    );
     println!("         ↓");
     println!(
         "  perfgate::presentation::export, perfgate-render, perfgate::presentation::sensor, perfgate-paired"
     );
     println!("         ↓");
-    println!("  perfgate-domain (policy)");
+    println!("  perfgate::domain (policy)");
     println!("         ↓");
-    println!("  perfgate-app::runtime (platform I/O)");
+    println!("  perfgate::runtime (platform I/O)");
     println!("         ↓");
-    println!("  perfgate-app (use cases)");
+    println!("  perfgate::app (use cases)");
     println!("         ↓");
     println!("  perfgate-cli (entry point)");
 
@@ -2021,13 +2104,13 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             println!("Generating trend variance summary...");
             let pattern = format!("{}/**/*.jsonl", dir.display());
 
-            let mut all_rows: Vec<perfgate_app::export::RunExportRow> = Vec::new();
+            let mut all_rows: Vec<perfgate::app::export::RunExportRow> = Vec::new();
             for entry in glob(&pattern)? {
                 let path = entry?;
                 let content = fs::read_to_string(&path)?;
                 for line in content.lines() {
                     if let Ok(row) =
-                        serde_json::from_str::<perfgate_app::export::RunExportRow>(line)
+                        serde_json::from_str::<perfgate::app::export::RunExportRow>(line)
                     {
                         all_rows.push(row);
                     }
@@ -2063,7 +2146,7 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
                 }
 
                 let (mean, variance) =
-                    perfgate_domain::stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
+                    perfgate::domain::stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
                 let stddev = variance.sqrt();
                 let cv = if mean > 0.0 {
                     (stddev / mean) * 100.0
@@ -2194,8 +2277,18 @@ fn generate_workspace_inventory_md() -> String {
             90,
         ),
         (
+            "perfgate-domain",
+            "Workspace-only compatibility wrapper for perfgate::domain",
+            100,
+        ),
+        (
+            "perfgate-app",
+            "Workspace-only compatibility wrapper for perfgate::app",
+            90,
+        ),
+        (
             "perfgate-paired",
-            "Paired benchmarking statistics (A/B testing)",
+            "Workspace-only compatibility wrapper for perfgate::domain::paired",
             100,
         ),
         (
@@ -2219,12 +2312,6 @@ fn generate_workspace_inventory_md() -> String {
             "Receipt/config structs, JSON schema types",
             95,
         ),
-        ("perfgate-domain", "Pure math/policy (I/O-free)", 100),
-        (
-            "perfgate-app",
-            "Use-cases, runtime adapters, orchestration layer",
-            90,
-        ),
         (
             "perfgate-cli",
             "CLI argument parsing and command dispatch",
@@ -2240,7 +2327,11 @@ fn generate_workspace_inventory_md() -> String {
             "API client for baseline server interaction",
             90,
         ),
-        ("perfgate", "Unified facade library", 90),
+        (
+            "perfgate",
+            "Facade with domain, app, runtime, and presentation modules",
+            90,
+        ),
     ];
 
     for (name, desc, rate) in &core_crates {
@@ -2251,18 +2342,17 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("```mermaid\ngraph TD\n");
     md.push_str("  error[perfgate-error compatibility wrapper] --> types[perfgate-types]\n");
     md.push_str("  types --> fingerprint[perfgate-types::fingerprint]\n");
-    md.push_str("  domain --> stats[perfgate-domain::stats]\n");
+    md.push_str("  facade[perfgate] --> domain[perfgate::domain]\n");
+    md.push_str("  domain --> stats[perfgate::domain::stats]\n");
     md.push_str("  types --> val[perfgate-types::validation]\n");
-    md.push_str("  domain --> host[perfgate-domain::host]\n");
-    md.push_str("  domain --> budget[perfgate-domain::budget]\n");
-    md.push_str("  domain --> sig[perfgate-domain::significance]\n");
-    md.push_str("  domain --> scaling[perfgate-domain::scaling]\n");
-    md.push_str("  domain --> runtime[perfgate-app::runtime]\n");
-    md.push_str("  runtime --> app[perfgate-app]\n");
+    md.push_str("  domain --> host[perfgate::domain::host]\n");
+    md.push_str("  domain --> budget[perfgate::domain::budget]\n");
+    md.push_str("  domain --> sig[perfgate::domain::significance]\n");
+    md.push_str("  domain --> scaling[perfgate::domain::scaling]\n");
+    md.push_str("  facade --> runtime[perfgate::runtime]\n");
+    md.push_str("  runtime --> app[perfgate::app]\n");
     md.push_str("  app --> cli[perfgate-cli]\n");
-    md.push_str("  app --> facade[perfgate]\n");
     md.push_str("  types --> client[perfgate-client]\n");
-    md.push_str("  client --> app\n");
     md.push_str("  types --> server[perfgate-server]\n");
     md.push_str("```\n");
     md
@@ -2945,9 +3035,9 @@ mod tests {
 
     #[test]
     fn mutants_crate_mapping_and_targets() {
-        assert_eq!(MutantsCrate::Domain.as_package_name(), "perfgate-domain");
+        assert_eq!(MutantsCrate::Domain.as_package_name(), "perfgate");
         assert_eq!(MutantsCrate::Types.as_package_name(), "perfgate-types");
-        assert_eq!(MutantsCrate::App.as_package_name(), "perfgate-app");
+        assert_eq!(MutantsCrate::App.as_package_name(), "perfgate");
         assert_eq!(MutantsCrate::Cli.as_package_name(), "perfgate-cli");
 
         assert_eq!(MutantsCrate::Domain.target_kill_rate(), 100);
@@ -3315,11 +3405,7 @@ mod tests {
     #[test]
     fn arch_rejects_transitive_forbidden_dependencies() {
         let metadata = arch_metadata(vec![
-            test_package_with_deps(
-                "perfgate-domain",
-                None,
-                vec![workspace_dep("perfgate-helper")],
-            ),
+            test_package_with_deps("perfgate", None, vec![workspace_dep("perfgate-helper")]),
             test_package_with_deps(
                 "perfgate-helper",
                 None,
@@ -3330,7 +3416,7 @@ mod tests {
 
         let errors = collect_arch_dependency_errors(&metadata);
         assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("perfgate-domain must not depend on perfgate-client"));
+        assert!(errors[0].contains("perfgate must not depend on perfgate-client"));
     }
 
     #[test]

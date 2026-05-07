@@ -46,7 +46,7 @@ use perfgate_render::render_markdown;
 
 **After the relevant absorption PR lands**:
 ```rust
-use perfgate_domain::stats::summarize_u64;
+use perfgate::domain::stats::summarize_u64;
 use perfgate::core::budget::evaluate_budget;
 use perfgate::domain::CompareResult;
 use perfgate::presentation::render::render_markdown;
@@ -60,14 +60,14 @@ Use this table to find the new import path for any old crate:
 
 | Old Crate | Current / Target Module | Example |
 |-----------|-------------------------|---------|
-| `perfgate-stats` | `perfgate_domain::stats` now; facade path later | `use perfgate_domain::stats::summarize_u64;` |
-| `perfgate-budget` | `perfgate_domain::budget` now; `perfgate::core::budget` facade path | `use perfgate::core::budget::evaluate_budget;` |
+| `perfgate-stats` | `perfgate::domain::stats` | `use perfgate::domain::stats::summarize_u64;` |
+| `perfgate-budget` | `perfgate::domain::budget`; facade path `perfgate::core::budget` | `use perfgate::core::budget::evaluate_budget;` |
 | `perfgate-significance` | `perfgate::core::significance` | `use perfgate::core::significance::*;` |
-| `perfgate-paired` | `perfgate_domain::paired` now; facade path later | `use perfgate_domain::paired::*;` |
+| `perfgate-paired` | `perfgate::domain::paired` | `use perfgate::domain::paired::*;` |
 | `perfgate-sha256` | `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path | `use perfgate::core::fingerprint::*;` |
 | `perfgate-domain` | `perfgate::domain` | `use perfgate::domain::*;` |
-| `perfgate-host-detect` | `perfgate_domain::host` now; `perfgate::domain::host` facade path | `use perfgate::domain::host::*;` |
-| `perfgate-scaling` | `perfgate_domain::scaling` now; `perfgate::domain::scaling` facade path | `use perfgate::domain::scaling::*;` |
+| `perfgate-host-detect` | `perfgate::domain::host` | `use perfgate::domain::host::*;` |
+| `perfgate-scaling` | `perfgate::domain::scaling` | `use perfgate::domain::scaling::*;` |
 | `perfgate-render` | `perfgate::presentation::render` | `use perfgate::presentation::render::*;` |
 | `perfgate-export` | `perfgate::presentation::export` | `use perfgate::presentation::export::*;` |
 | `perfgate-sensor` | `perfgate::presentation::sensor` | `use perfgate::presentation::sensor::*;` |
@@ -78,7 +78,7 @@ Use this table to find the new import path for any old crate:
 | `perfgate-config` | `perfgate_types::config` and `perfgate_client::ResolvedServerConfig` | `use perfgate_types::config::*; use perfgate_client::ResolvedServerConfig;` |
 | `perfgate-api` | `perfgate_types::baseline_service`; server credential loading in `perfgate_server::CredentialSource` | `use perfgate_types::baseline_service::*;` |
 | `perfgate-fake` | private workspace crate | No public replacement yet; keep local test helpers in your own crate. |
-| `perfgate-adapters` | `perfgate_app::runtime`; facade `perfgate::runtime` | `use perfgate::runtime::*;` |
+| `perfgate-adapters` | `perfgate::runtime` | `use perfgate::runtime::*;` |
 | `perfgate-app` | `perfgate::app` | `use perfgate::app::*;` |
 
 ---
@@ -146,7 +146,7 @@ fn analyze() -> Result<(), Box<dyn std::error::Error>> {
 
 **After the stats absorption**:
 ```rust
-use perfgate_domain::stats::summarize_u64;
+use perfgate::domain::stats::summarize_u64;
 
 fn analyze() -> Result<(), Box<dyn std::error::Error>> {
     let stats = summarize_u64(&[10, 30, 20])?;
@@ -294,7 +294,7 @@ The symbol might have moved to a different module or been renamed. Check the old
 
 ### Will my code break when I update to 0.16.0?
 
-**No**. In 0.16.0, old imports still work with deprecation warnings. You have until 0.17.0 (or later) to update your code.
+Some old imports may continue to work through temporary compatibility shims, but internal crates are not guaranteed to receive a new public release. Update code to the `perfgate` and `perfgate-types` paths before adopting 0.16.
 
 ### Do I need to update my Cargo.toml?
 

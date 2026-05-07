@@ -12,7 +12,7 @@ cargo run -p xtask -- publish-check       # validate publish metadata before rel
 cargo run -p xtask -- conform             # validate fixtures against schema
 cargo run -p xtask -- conform --file f.json  # validate a single file
 cargo run -p xtask -- mutants             # run mutation testing
-cargo run -p xtask -- mutants --crate perfgate-domain --summary
+cargo run -p xtask -- mutants --crate perfgate-domain --summary  # logical alias for perfgate::domain
 ```
 
 ## What This Crate Contains
@@ -57,9 +57,9 @@ A single `src/main.rs` with automation commands.
 
 | Crate | Target Kill Rate |
 |-------|-----------------|
-| `perfgate-domain` | 100% |
+| `perfgate-domain` alias (`perfgate::domain`) | 100% |
 | `perfgate-types` | 95% |
-| `perfgate-app` | 90% (includes runtime adapters) |
+| `perfgate-app` alias (`perfgate::app`) | 90% (includes runtime adapters) |
 | `perfgate-cli` | 70% |
 
 Parses `mutants.out/outcomes.json` to calculate actual rates.

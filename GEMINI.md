@@ -20,17 +20,17 @@ The architecture preserves SRP seams across the remaining workspace crates and a
 |-------|----------------|
 | `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
 | `perfgate-error` | Shared error types and categorization |
-| `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
-| `perfgate-domain::budget` | Budget evaluation and verdict logic |
-| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate_app::runtime` |
+| `perfgate::domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
+| `perfgate::domain::budget` | Budget evaluation and verdict logic |
+| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
-| `perfgate-app` | Orchestration layer for CLI commands |
+| `perfgate::app` | Orchestration layer for CLI commands |
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
 | `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
 | `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
-| `perfgate-domain::scaling` | Complexity and scaling analysis |
+| `perfgate::domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-cli` | Command-line interface and argument parsing |

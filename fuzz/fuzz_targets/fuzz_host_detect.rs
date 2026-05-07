@@ -16,8 +16,8 @@ struct HostDetectInput {
 }
 
 fuzz_target!(|input: HostDetectInput| {
-    let forward = perfgate_domain::host::detect_host_mismatch(&input.baseline, &input.current);
-    let reverse = perfgate_domain::host::detect_host_mismatch(&input.current, &input.baseline);
+    let forward = perfgate::domain::host::detect_host_mismatch(&input.baseline, &input.current);
+    let reverse = perfgate::domain::host::detect_host_mismatch(&input.current, &input.baseline);
 
     // Symmetry invariant: if forward detects mismatch, reverse should too
     match (&forward, &reverse) {
@@ -33,7 +33,7 @@ fuzz_target!(|input: HostDetectInput| {
 
     // Idempotence: same host should never mismatch
     assert!(
-        perfgate_domain::host::detect_host_mismatch(&input.baseline, &input.baseline).is_none()
+        perfgate::domain::host::detect_host_mismatch(&input.baseline, &input.baseline).is_none()
     );
-    assert!(perfgate_domain::host::detect_host_mismatch(&input.current, &input.current).is_none());
+    assert!(perfgate::domain::host::detect_host_mismatch(&input.current, &input.current).is_none());
 });

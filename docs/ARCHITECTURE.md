@@ -105,13 +105,13 @@ promise:
 │       perfgate::presentation::{render, export, sensor}           │
 │                    (Presentation Layer)                         │
 ├─────────────────────────────────────────────────────────────────┤
-│                  perfgate-app | perfgate-client                  │
+│                 perfgate::app | perfgate-client                  │
 │                    (Use-Case Orchestration)                     │
 ├─────────────────────────────────────────────────────────────────┤
-│                    perfgate-app::runtime                        │
+│                       perfgate::runtime                         │
 │                    (Infrastructure/IO seam)                     │
 ├─────────────────────────────────────────────────────────────────┤
-│                         perfgate-domain                        │
+│                       perfgate::domain                          │
 │                    (Domain Business Logic)                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                         perfgate-types                          │
@@ -124,24 +124,24 @@ promise:
 Dependencies flow inward toward the core types and domain logic:
 
 1. **Core**: `perfgate-types` is the stable receipt/config and validation foundation.
-2. **Domain**: `perfgate-domain` owns statistics, significance testing, host mismatch detection, budget evaluation, scaling analysis, and comparison policy.
-3. **Infrastructure**: `perfgate_app::runtime` provides the "outer" world access (process execution, system info), with `perfgate::runtime` as the public facade path.
-4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
+2. **Domain**: `perfgate::domain` owns statistics, significance testing, host mismatch detection, budget evaluation, scaling analysis, and comparison policy.
+3. **Infrastructure**: `perfgate::runtime` provides the "outer" world access (process execution, system info).
+4. **App**: `perfgate::app` wires together domain logic and infrastructure to fulfill user requests.
 5. **Presentation**: `perfgate::presentation::{render, export, sensor}` formats the results for various consumers, with workspace-only compatibility wrappers preserving the previous crate names during the 0.16 migration.
 6. **CLI**: `perfgate-cli` is the thin entry point.
 
 ### Internal Seam Responsibilities
 
-- **perfgate-domain::stats**: Pure statistical aggregators (U64Summary, F64Summary).
-- **perfgate-domain::significance**: P-value and statistical significance testing.
-- **perfgate-domain::budget**: Logic for comparing metrics against thresholds.
-- **perfgate-domain::scaling**: Complexity model fitting and scaling validation.
+- **perfgate::domain::stats**: Pure statistical aggregators (U64Summary, F64Summary).
+- **perfgate::domain::significance**: P-value and statistical significance testing.
+- **perfgate::domain::budget**: Logic for comparing metrics against thresholds.
+- **perfgate::domain::scaling**: Complexity model fitting and scaling validation.
 - **perfgate::presentation::render**: Markdown and terminal rendering logic; `perfgate-render` is a compatibility wrapper.
 - **perfgate::presentation::export**: Multi-format data exporters (CSV, Prometheus, etc.); `perfgate-export` is a compatibility wrapper.
 - **perfgate::presentation::sensor**: Sensor report envelopes for cockpit-style integrations; `perfgate-sensor` is a compatibility wrapper.
 - **perfgate-types::error**: Shared error taxonomy; `perfgate-error` is a compatibility wrapper.
 - **perfgate-types::fingerprint**: Deterministic fingerprinting for reports.
-- **perfgate_app::runtime**: Runtime process execution, host probing, and platform metrics; `perfgate-adapters` is a workspace-only compatibility wrapper.
+- **perfgate::runtime**: Runtime process execution, host probing, and platform metrics; `perfgate-adapters` is a workspace-only compatibility wrapper.
 
 ### Baseline Service Stack
 
@@ -166,11 +166,11 @@ Dependencies flow inward only:
 ```
 perfgate-types (innermost)
        ↓
-perfgate-domain
+perfgate::domain
        ↓
-perfgate-app::runtime
+perfgate::runtime
        ↓
-perfgate-app
+perfgate::app
        ↓
 perfgate-cli (outermost)
 ```
@@ -195,7 +195,7 @@ perfgate-cli (integrates client)
 - MUST maintain backward compatibility for schema versions
 - SHALL NOT perform I/O or contain business logic
 
-#### perfgate-domain
+#### perfgate::domain
 
 - MUST be I/O-free: statistics and policy only
 - MUST implement median computation, delta calculation, and verdict determination
@@ -204,7 +204,7 @@ perfgate-cli (integrates client)
 - MUST implement host mismatch detection logic
 - SHALL NOT depend on external services or filesystem
 
-#### perfgate_app::runtime
+#### perfgate::runtime
 
 - MUST implement platform-specific code (Unix `wait4()` and best-effort Windows process APIs)
 - MUST define trait abstractions for process execution (`ProcessRunner`)
@@ -214,7 +214,7 @@ perfgate-cli (integrates client)
 - SHOULD collect CPU time metrics (`cpu_ms`) on Unix via `rusage`
 - SHOULD collect best-effort CPU and RSS metrics on Windows
 
-#### perfgate-app
+#### perfgate::app
 
 - MUST orchestrate runtime adapters and domain logic
 - MUST implement use-cases: run, compare, check, report, promote, export, paired
@@ -245,7 +245,7 @@ perfgate-cli (integrates client)
 - MUST implement role-based access control (viewer, contributor, promoter, admin)
 - MUST support multi-tenancy via project namespacing
 - MUST track baseline version history
-- SHALL NOT depend on perfgate-cli or perfgate-app
+- SHALL NOT depend on perfgate-cli
 
 ## Ports and Adapters
 
