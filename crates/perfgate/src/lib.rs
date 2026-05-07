@@ -27,7 +27,6 @@ pub use perfgate_domain::paired;
 pub use perfgate_domain::significance;
 pub use perfgate_domain::stats;
 pub use perfgate_export as export;
-pub use perfgate_host_detect as host_detect;
 pub use perfgate_render as render;
 pub use perfgate_sensor as sensor;
 pub use perfgate_types as types;
@@ -55,6 +54,14 @@ pub mod core {
 /// previous facade spelling during the 0.16 public-surface migration.
 pub mod sha256 {
     pub use perfgate_types::fingerprint::*;
+}
+
+/// Host mismatch detection helpers.
+///
+/// Prefer [`crate::domain::host`] in new code; this module preserves the
+/// previous facade spelling during the 0.16 public-surface migration.
+pub mod host_detect {
+    pub use perfgate_domain::host::*;
 }
 
 // Common re-exports for ergonomic use

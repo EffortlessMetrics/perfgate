@@ -1,6 +1,6 @@
 //! Host mismatch detection for benchmarking noise reduction.
 //!
-//! This crate provides detection of host environment differences between
+//! This module provides detection of host environment differences between
 //! baseline and current benchmark runs. Host mismatches can introduce
 //! significant noise into performance measurements, leading to false
 //! positives or negatives in regression detection.
@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```
-//! use perfgate_host_detect::detect_host_mismatch;
+//! use perfgate_domain::host::detect_host_mismatch;
 //! use perfgate_types::HostInfo;
 //!
 //! let baseline = HostInfo {
@@ -64,7 +64,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// Detect an OS mismatch (e.g., running benchmarks on a different platform):
 ///
 /// ```
-/// use perfgate_host_detect::detect_host_mismatch;
+/// use perfgate_domain::host::detect_host_mismatch;
 /// use perfgate_types::HostInfo;
 ///
 /// let baseline = HostInfo {
@@ -91,7 +91,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// Detect an architecture mismatch (e.g., `x86_64` vs `aarch64`):
 ///
 /// ```
-/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_domain::host::detect_host_mismatch;
 /// # use perfgate_types::HostInfo;
 /// let baseline = HostInfo {
 ///     os: "linux".to_string(),
@@ -116,7 +116,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// different cloud instance type or machine class):
 ///
 /// ```
-/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_domain::host::detect_host_mismatch;
 /// # use perfgate_types::HostInfo;
 /// let baseline = HostInfo {
 ///     os: "linux".to_string(),
@@ -140,7 +140,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// Minor CPU differences (≤ 2x) are ignored to reduce false positives:
 ///
 /// ```
-/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_domain::host::detect_host_mismatch;
 /// # use perfgate_types::HostInfo;
 /// let baseline = HostInfo {
 ///     os: "linux".to_string(),
@@ -164,7 +164,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// Detect significant memory differences (different cloud instance sizes):
 ///
 /// ```
-/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_domain::host::detect_host_mismatch;
 /// # use perfgate_types::HostInfo;
 /// let baseline = HostInfo {
 ///     os: "linux".to_string(),
@@ -188,7 +188,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// Detect hostname hash mismatch (benchmarks ran on different machines):
 ///
 /// ```
-/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_domain::host::detect_host_mismatch;
 /// # use perfgate_types::HostInfo;
 /// let baseline = HostInfo {
 ///     os: "linux".to_string(),
@@ -212,7 +212,7 @@ use perfgate_types::{HostInfo, HostMismatchInfo};
 /// Optional fields that are `None` on either side are silently skipped:
 ///
 /// ```
-/// # use perfgate_host_detect::detect_host_mismatch;
+/// # use perfgate_domain::host::detect_host_mismatch;
 /// # use perfgate_types::HostInfo;
 /// let baseline = HostInfo {
 ///     os: "linux".to_string(),

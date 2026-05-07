@@ -28,7 +28,6 @@ on:
           - perfgate-render
           - perfgate-sensor
           - perfgate-paired
-          - perfgate-host-detect
           - perfgate-validation
           - perfgate-error
           - perfgate-fake

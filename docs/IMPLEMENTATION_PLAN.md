@@ -91,7 +91,7 @@ gate once transition packages stop being publishable.
 | `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
 | `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-config` | Configuration loading and merging logic |
-| `perfgate-domain` | Core business logic, statistics, significance, and paired analysis |
+| `perfgate-domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-cli` | Command-line interface and argument parsing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
@@ -101,7 +101,6 @@ gate once transition packages stop being publishable.
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
-| `perfgate-host-detect` | Host fingerprinting and mismatch detection |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |
@@ -146,7 +145,7 @@ Interleaved baseline/current runs to reduce environmental noise:
 
 Detection of OS, arch, CPU, and hostname differences:
 - `--host-mismatch` policy support (`warn`, `error`, `ignore`)
-- Implemented in `perfgate-host-detect`
+- Implemented in `perfgate_domain::host`
 
 ### Additional Metrics
 

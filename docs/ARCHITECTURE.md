@@ -108,7 +108,7 @@ promise:
 │                  perfgate-app | perfgate-client                  │
 │                    (Use-Case Orchestration)                     │
 ├─────────────────────────────────────────────────────────────────┤
-│            perfgate-adapters | perfgate-host-detect             │
+│                         perfgate-adapters                       │
 │                    (Infrastructure/IO)                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                 perfgate-domain | perfgate-budget              │
@@ -124,8 +124,8 @@ promise:
 Dependencies flow inward toward the core types and domain logic:
 
 1. **Core**: `perfgate-types` is the stable receipt/config and validation foundation.
-2. **Domain**: `perfgate-domain` owns statistics, significance testing, and comparison policy, while `perfgate-budget` evaluates threshold rules on top of core types.
-3. **Infrastructure**: `perfgate-adapters` and `perfgate-host-detect` provide the "outer" world access (process execution, system info).
+2. **Domain**: `perfgate-domain` owns statistics, significance testing, host mismatch detection, and comparison policy, while `perfgate-budget` evaluates threshold rules on top of core types.
+3. **Infrastructure**: `perfgate-adapters` provides the "outer" world access (process execution, system info).
 4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
 5. **Presentation**: `perfgate-render`, `perfgate-export`, and `perfgate-sensor` format the results for various consumers.
 6. **CLI**: `perfgate-cli` is the thin entry point.
