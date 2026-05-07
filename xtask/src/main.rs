@@ -1924,6 +1924,7 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             let mut count = 0;
             for entry in glob(&pattern)? {
                 let path = entry?;
+                validate_dogfood_run_receipt(&path)?;
                 println!("  OK  {}", path.display());
                 count += 1;
             }
@@ -1942,6 +1943,7 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             let mut count = 0;
             for entry in glob(pattern)? {
                 let src = entry?;
+                validate_dogfood_run_receipt(&src)?;
                 let rel = src
                     .strip_prefix("artifacts/perfgate/extras/")
                     .context("invalid path")?;
@@ -1975,6 +1977,9 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
                     &[],
                 )?;
                 count += 1;
+            }
+            if count == 0 {
+                anyhow::bail!("No nightly run receipts found matching {}", pattern);
             }
             println!("Promoted {} baselines.", count);
             Ok(())
@@ -2043,6 +2048,65 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+fn validate_dogfood_run_receipt(path: &Path) -> anyhow::Result<()> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("read run receipt {}", path.display()))?;
+    let receipt: perfgate_types::RunReceipt = serde_json::from_str(&content)
+        .with_context(|| format!("deserialize run receipt {}", path.display()))?;
+
+    if receipt.samples.is_empty() {
+        anyhow::bail!("dogfood run receipt {} has no samples", path.display());
+    }
+
+    let failed: Vec<_> = receipt
+        .samples
+        .iter()
+        .enumerate()
+        .filter(|(_, sample)| sample.exit_code != 0 || sample.timed_out)
+        .collect();
+
+    if failed.is_empty() {
+        return Ok(());
+    }
+
+    let preview = failed
+        .iter()
+        .take(3)
+        .map(|(idx, sample)| {
+            let first_stderr_line = sample
+                .stderr
+                .as_deref()
+                .and_then(|stderr| stderr.lines().find(|line| !line.trim().is_empty()))
+                .unwrap_or("")
+                .trim();
+            if first_stderr_line.is_empty() {
+                format!(
+                    "#{} exit_code={} timed_out={}",
+                    idx + 1,
+                    sample.exit_code,
+                    sample.timed_out
+                )
+            } else {
+                format!(
+                    "#{} exit_code={} timed_out={} stderr={}",
+                    idx + 1,
+                    sample.exit_code,
+                    sample.timed_out,
+                    first_stderr_line
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    anyhow::bail!(
+        "dogfood run receipt {} contains {} failed or timed-out sample(s): {}",
+        path.display(),
+        failed.len(),
+        preview
+    );
 }
 
 fn cmd_docs_sync() -> anyhow::Result<()> {
@@ -3315,6 +3379,89 @@ mod tests {
         });
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn dogfood_run_receipt_validator_accepts_successful_samples() {
+        let temp_dir = unique_temp_dir("perfgate_dogfood_ok");
+        let path = temp_dir.join("perfgate.run.v1.json");
+        write_test_run_receipt(&path, 0, false, None);
+
+        validate_dogfood_run_receipt(&path).expect("successful samples should validate");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn dogfood_run_receipt_validator_rejects_failed_samples() {
+        let temp_dir = unique_temp_dir("perfgate_dogfood_failed");
+        let path = temp_dir.join("perfgate.run.v1.json");
+        write_test_run_receipt(&path, 1, false, Some("missing workload"));
+
+        let err = validate_dogfood_run_receipt(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("failed or timed-out sample"),
+            "unexpected: {}",
+            msg
+        );
+        assert!(msg.contains("missing workload"), "unexpected: {}", msg);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn dogfood_run_receipt_validator_rejects_timed_out_samples() {
+        let temp_dir = unique_temp_dir("perfgate_dogfood_timeout");
+        let path = temp_dir.join("perfgate.run.v1.json");
+        write_test_run_receipt(&path, 0, true, None);
+
+        let err = validate_dogfood_run_receipt(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("timed-out sample"),
+            "unexpected: {}",
+            err
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    fn write_test_run_receipt(path: &Path, exit_code: i32, timed_out: bool, stderr: Option<&str>) {
+        let mut sample = serde_json::json!({
+            "wall_ms": 1,
+            "exit_code": exit_code,
+            "timed_out": timed_out
+        });
+        if let Some(stderr) = stderr {
+            sample["stderr"] = serde_json::Value::String(stderr.to_string());
+        }
+
+        let receipt = serde_json::json!({
+            "schema": "perfgate.run.v1",
+            "tool": { "name": "perfgate", "version": "test" },
+            "run": {
+                "id": "test",
+                "started_at": "1970-01-01T00:00:00Z",
+                "ended_at": "1970-01-01T00:00:01Z",
+                "host": { "os": "linux", "arch": "x86_64" }
+            },
+            "bench": {
+                "name": "dogfood/test",
+                "command": ["true"],
+                "repeat": 1,
+                "warmup": 0
+            },
+            "samples": [sample],
+            "stats": {
+                "wall_ms": { "median": 1, "min": 1, "max": 1 }
+            }
+        });
+
+        fs::write(
+            path,
+            serde_json::to_vec(&receipt).expect("serialize receipt"),
+        )
+        .expect("write receipt");
     }
 
     #[test]

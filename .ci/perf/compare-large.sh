@@ -3,7 +3,7 @@
 source "$(dirname "$0")/lib.sh"
 
 BIN=$(perfgate_bin)
-OUT_DIR=$(make_tempdir)
+make_tempdir OUT_DIR
 
 allow_policy_exit "$BIN" compare \
   --baseline .ci/fixtures/compare/large-baseline.json \

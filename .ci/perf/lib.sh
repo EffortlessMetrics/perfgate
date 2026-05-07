@@ -13,13 +13,19 @@ perfgate_bin() {
   fi
 }
 
+PERFGATE_TMPDIR=""
+
 # Creates a temporary directory and sets up a trap to remove it on exit.
-# Outputs the path to the created directory.
+# Pass a variable name to assign the path in the caller's shell.
 make_tempdir() {
-  local dir
-  dir="$(mktemp -d)"
-  trap 'rm -rf "$dir"' EXIT
-  printf '%s\n' "$dir"
+  local out_var="${1:-}"
+  PERFGATE_TMPDIR="$(mktemp -d)"
+  if [ -n "$out_var" ]; then
+    trap 'rm -rf "$PERFGATE_TMPDIR"' EXIT
+    printf -v "$out_var" '%s' "$PERFGATE_TMPDIR"
+  else
+    printf '%s\n' "$PERFGATE_TMPDIR"
+  fi
 }
 
 # Executes a command and allows policy-driven exit codes (0, 2, 3).

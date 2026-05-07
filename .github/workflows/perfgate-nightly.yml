@@ -19,8 +19,8 @@ jobs:
         with:
           toolchain: 1.93.0
 
-      - name: Build release binary
-        run: cargo build --release -p perfgate-cli --bin perfgate
+      - name: Build release binaries
+        run: cargo build --release -p perfgate-cli --bin perfgate -p perfgate-selfbench
 
       - name: Make scripts executable
         run: chmod +x .ci/perf/*.sh
