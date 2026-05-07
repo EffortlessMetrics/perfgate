@@ -99,7 +99,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
 | `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
 | `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
-| `perfgate-github` | GitHub API and PR-comment integration |
+| `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
 | `perfgate-domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |

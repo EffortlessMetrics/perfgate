@@ -102,7 +102,7 @@ gate once transition packages stop being publishable.
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |
-| `perfgate-github` | GitHub API and PR-comment integration |
+| `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
 | `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
 | `perfgate` | Unified facade library |
 

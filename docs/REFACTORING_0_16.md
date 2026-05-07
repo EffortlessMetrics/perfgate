@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, external benchmark ingestion now lives under `perfgate::integrations::ingest`, deterministic fingerprinting now lives in `perfgate_types::fingerprint` with a `perfgate::core::fingerprint` facade path, host mismatch detection now lives in `perfgate_domain::host` with a `perfgate::domain::host` facade path, budget evaluation now lives in `perfgate_domain::budget` with a `perfgate::core::budget` facade path, scaling analysis now lives in `perfgate_domain::scaling` with a `perfgate::domain::scaling` facade path, rendering now has the facade path `perfgate::presentation::render` behind a workspace-only `perfgate-render` compatibility wrapper, export now has the facade path `perfgate::presentation::export` behind a workspace-only `perfgate-export` compatibility wrapper, and sensor report generation now has the facade path `perfgate::presentation::sensor` behind a workspace-only `perfgate-sensor` compatibility wrapper. Many remaining internal seams are still publishable crates (`perfgate-api`, `perfgate-domain`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, external benchmark ingestion now lives under `perfgate::integrations::ingest`, deterministic fingerprinting now lives in `perfgate_types::fingerprint` with a `perfgate::core::fingerprint` facade path, host mismatch detection now lives in `perfgate_domain::host` with a `perfgate::domain::host` facade path, budget evaluation now lives in `perfgate_domain::budget` with a `perfgate::core::budget` facade path, scaling analysis now lives in `perfgate_domain::scaling` with a `perfgate::domain::scaling` facade path, rendering now has the facade path `perfgate::presentation::render` behind a workspace-only `perfgate-render` compatibility wrapper, export now has the facade path `perfgate::presentation::export` behind a workspace-only `perfgate-export` compatibility wrapper, sensor report generation now has the facade path `perfgate::presentation::sensor` behind a workspace-only `perfgate-sensor` compatibility wrapper, and GitHub PR-comment integration now has the feature-gated facade path `perfgate::integrations::github` behind a workspace-only `perfgate-github` compatibility wrapper. Many remaining internal seams are still publishable crates (`perfgate-api`, `perfgate-domain`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -120,7 +120,7 @@ Feature-gated external integrations:
 
 | Current Crate | New Module | Status |
 |---------------|-----------|--------|
-| `perfgate-github` | `perfgate::integrations::github` | planned `github` feature |
+| `perfgate-github` | `perfgate::integrations::github` | feature-gated compatibility wrapper |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | absorbed |
 
 These are not core to the product and should stay isolated from core paths.
@@ -330,7 +330,7 @@ Move into `perfgate`:
 - `perfgate-adapters` -> `perfgate::runtime`
 - `perfgate-profile` -> `perfgate::runtime::profile` (done)
 - `perfgate-app` -> `perfgate::app`
-- `perfgate-github` -> `perfgate::integrations::github` (feature-gated)
+- `perfgate-github` -> `perfgate::integrations::github` (feature-gated, wrapper remains)
 - `perfgate-ingest` -> `perfgate::integrations::ingest` (done)
 
 Simplify `perfgate-cli` dependencies to mostly: `perfgate`, `perfgate-types`, `perfgate-client`, `perfgate-server`.
