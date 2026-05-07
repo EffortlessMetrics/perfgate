@@ -4,7 +4,7 @@
 
 This document describes the planned refactoring of perfgate's public crate surface. The goal is to collapse the current 26+ microcrates into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, external benchmark ingestion now lives under `perfgate::integrations::ingest`, deterministic fingerprinting now lives in `perfgate_types::fingerprint` with a `perfgate::core::fingerprint` facade path, host mismatch detection now lives in `perfgate_domain::host` with a `perfgate::domain::host` facade path, and budget evaluation now lives in `perfgate_domain::budget` with a `perfgate::core::budget` facade path. Many remaining internal seams are still publishable crates (`perfgate-render`, `perfgate-export`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
+**Current state**: Public surface is still too broad. PR #223 already absorbed `perfgate-validation`, `perfgate-auth`, `perfgate-summary`, and `perfgate-stats`, and moved the paired implementation into `perfgate-domain` behind a workspace-only `perfgate-paired` compatibility wrapper. The error contract now lives in `perfgate_types::error` behind a workspace-only `perfgate-error` compatibility wrapper, profiling now lives under `perfgate::runtime::profile`, external benchmark ingestion now lives under `perfgate::integrations::ingest`, deterministic fingerprinting now lives in `perfgate_types::fingerprint` with a `perfgate::core::fingerprint` facade path, host mismatch detection now lives in `perfgate_domain::host` with a `perfgate::domain::host` facade path, budget evaluation now lives in `perfgate_domain::budget` with a `perfgate::core::budget` facade path, and scaling analysis now lives in `perfgate_domain::scaling` with a `perfgate::domain::scaling` facade path. Many remaining internal seams are still publishable crates (`perfgate-render`, `perfgate-export`, etc.), which makes the package ecosystem confusing for users and couples the public API tightly to internal refactoring decisions.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -66,7 +66,7 @@ Product policy and comparison semantics (I/O-free):
 |---------------|-----------|-----|
 | `perfgate-domain` | `perfgate::domain` | Core business logic |
 | `perfgate-host-detect` | `perfgate_domain::host` now; `perfgate::domain::host` facade path | Host fingerprinting and mismatch detection |
-| `perfgate-scaling` | `perfgate::domain::scaling` | Autoscaling policy and trend analysis |
+| `perfgate-scaling` | `perfgate_domain::scaling` now; `perfgate::domain::scaling` facade path | Autoscaling policy and trend analysis |
 
 These remain I/O-free but depend on `core::*` modules and define product verdicts.
 
@@ -312,7 +312,7 @@ Provide deprecation shims if crates are published. Update `perfgate` prelude.
 Move into `perfgate::domain`:
 - `perfgate-domain` -> `perfgate::domain`
 - `perfgate-host-detect` -> already landed in `perfgate_domain::host`; facade path is `perfgate::domain::host`
-- `perfgate-scaling` -> `perfgate::domain::scaling`
+- `perfgate-scaling` -> already landed in `perfgate_domain::scaling`; facade path is `perfgate::domain::scaling`
 
 Verify domain remains I/O-free.
 

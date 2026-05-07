@@ -10,6 +10,7 @@ mod blame;
 pub mod budget;
 pub mod host;
 pub mod paired;
+pub mod scaling;
 pub mod significance;
 pub mod stats;
 

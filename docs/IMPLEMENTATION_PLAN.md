@@ -91,7 +91,7 @@ gate once transition packages stop being publishable.
 | `perfgate-types` | Core domain types, stable schemas, and fingerprint helpers |
 | `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-config` | Configuration loading and merging logic |
-| `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, and host mismatch logic |
+| `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, host mismatch logic, and scaling analysis |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-cli` | Command-line interface and argument parsing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
@@ -104,7 +104,6 @@ gate once transition packages stop being publishable.
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |
 | `perfgate-github` | GitHub API and PR-comment integration |
-| `perfgate-scaling` | Complexity and scaling analysis |
 | `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
 | `perfgate` | Unified facade library |
 

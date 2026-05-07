@@ -37,6 +37,7 @@ graph TD
   domain --> host[perfgate-domain::host]
   domain --> budget[perfgate-domain::budget]
   domain --> sig[perfgate-domain::significance]
+  domain --> scaling[perfgate-domain::scaling]
   domain --> adapters[perfgate-adapters]
   adapters --> app[perfgate-app]
   app --> cli[perfgate-cli]

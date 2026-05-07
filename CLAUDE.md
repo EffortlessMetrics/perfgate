@@ -31,7 +31,6 @@ cargo test -p perfgate-fake
 cargo test -p perfgate-config
 cargo test -p perfgate-api
 cargo test -p perfgate-github
-cargo test -p perfgate-scaling
 cargo test -p perfgate-selfbench
 
 # Run a single test by name
@@ -103,7 +102,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-github` | GitHub API and PR-comment integration |
-| `perfgate-scaling` | Complexity and scaling analysis |
+| `perfgate-domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-cli` | Command-line interface and argument parsing |

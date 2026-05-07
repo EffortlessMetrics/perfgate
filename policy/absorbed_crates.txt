@@ -25,7 +25,7 @@ perfgate-domain -> perfgate::domain
 perfgate-budget -> perfgate_domain::budget; perfgate::core::budget facade [deleted]
 perfgate-significance -> perfgate_domain::significance [deleted]
 perfgate-host-detect -> perfgate_domain::host; perfgate::domain::host facade [deleted]
-perfgate-scaling -> perfgate::domain::scaling
+perfgate-scaling -> perfgate_domain::scaling; perfgate::domain::scaling facade [deleted]
 perfgate-sha256 -> perfgate_types::fingerprint; perfgate::core::fingerprint facade [deleted]
 
 # Presentation.

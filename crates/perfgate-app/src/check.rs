@@ -15,7 +15,7 @@ use crate::{
 use anyhow::Context;
 use perfgate_adapters::{CommandSpec, HostProbe, ProcessRunner};
 use perfgate_domain::SignificancePolicy;
-use perfgate_scaling::{
+use perfgate_domain::scaling::{
     SizeMeasurement, classify_complexity, is_complexity_degraded, parse_complexity,
 };
 use perfgate_types::{

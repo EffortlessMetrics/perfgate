@@ -1,6 +1,6 @@
 //! Scaling report types for serialization and output.
 
-use crate::models::ComplexityClass;
+use super::models::ComplexityClass;
 use serde::{Deserialize, Serialize};
 
 /// A single measurement: input size paired with observed time.
@@ -99,7 +99,7 @@ impl ScalingReport {
 
         match expected {
             Some(expected_class) => {
-                if crate::is_complexity_degraded(expected_class, result.best_fit) {
+                if super::is_complexity_degraded(expected_class, result.best_fit) {
                     (
                         false,
                         format!(

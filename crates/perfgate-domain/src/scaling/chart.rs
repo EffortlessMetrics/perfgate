@@ -1,7 +1,7 @@
 //! ASCII chart rendering for scaling analysis results.
 
-use crate::models::ComplexityClass;
-use crate::report::SizeMeasurement;
+use super::models::ComplexityClass;
+use super::report::SizeMeasurement;
 
 /// Render an ASCII chart showing measured data points and fitted curves.
 ///
