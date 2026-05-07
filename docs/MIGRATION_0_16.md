@@ -66,7 +66,7 @@ Use this table to find the new import path for any old crate:
 | `perfgate-paired` | `perfgate_domain::paired` now; facade path later | `use perfgate_domain::paired::*;` |
 | `perfgate-sha256` | `perfgate_types::fingerprint` now; `perfgate::core::fingerprint` facade path | `use perfgate::core::fingerprint::*;` |
 | `perfgate-domain` | `perfgate::domain` | `use perfgate::domain::*;` |
-| `perfgate-host-detect` | `perfgate::domain::host` | `use perfgate::domain::host::*;` |
+| `perfgate-host-detect` | `perfgate_domain::host` now; `perfgate::domain::host` facade path | `use perfgate::domain::host::*;` |
 | `perfgate-scaling` | `perfgate::domain::scaling` | `use perfgate::domain::scaling::*;` |
 | `perfgate-render` | `perfgate::presentation::render` | `use perfgate::presentation::render::*;` |
 | `perfgate-export` | `perfgate::presentation::export` | `use perfgate::presentation::export::*;` |

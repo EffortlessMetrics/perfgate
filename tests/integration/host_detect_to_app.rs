@@ -1,11 +1,11 @@
 //! Integration tests: host-detect crate → app layer.
 //!
-//! These tests verify that perfgate-host-detect integrates correctly
+//! These tests verify that perfgate-domain host detection integrates correctly
 //! with the perfgate-app layer, and that host mismatches flow through
 //! to CLI output.
 
 use perfgate_app::{CompareRequest, CompareUseCase};
-use perfgate_host_detect::detect_host_mismatch;
+use perfgate_domain::host::detect_host_mismatch;
 use perfgate_types::{
     BenchMeta, Budget, CompareRef, Direction, HostInfo, HostMismatchPolicy, Metric, RUN_SCHEMA_V1,
     RunMeta, RunReceipt, Stats, ToolInfo, U64Summary,

@@ -32,7 +32,8 @@ enum MutantsCrate {
     #[value(
         name = "perfgate-domain",
         alias = "perfgate-stats",
-        alias = "perfgate-significance"
+        alias = "perfgate-significance",
+        alias = "perfgate-host-detect"
     )]
     Domain,
     #[value(
@@ -50,8 +51,6 @@ enum MutantsCrate {
     Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
-    #[value(name = "perfgate-host-detect")]
-    HostDetect,
     #[value(name = "perfgate-export")]
     Export,
     #[value(name = "perfgate-render", alias = "perfgate-summary")]
@@ -73,7 +72,6 @@ impl MutantsCrate {
             MutantsCrate::Api => "perfgate-api",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
-            MutantsCrate::HostDetect => "perfgate-host-detect",
             MutantsCrate::Export => "perfgate-export",
             MutantsCrate::Render => "perfgate-render",
             MutantsCrate::Sensor => "perfgate-sensor",
@@ -90,7 +88,6 @@ impl MutantsCrate {
             MutantsCrate::Api => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
-            MutantsCrate::HostDetect => 100,
             MutantsCrate::Export => 90,
             MutantsCrate::Render => 90,
             MutantsCrate::Sensor => 90,
@@ -702,7 +699,6 @@ const ARCH_RULES: &[ArchRule] = &[
         sources: &[
             "perfgate-budget",
             "perfgate-domain",
-            "perfgate-host-detect",
             "perfgate-paired",
             "perfgate-scaling",
         ],
@@ -764,7 +760,6 @@ struct SourceArchRule {
 const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &[
     "perfgate-budget",
     "perfgate-domain",
-    "perfgate-host-detect",
     "perfgate-paired",
     "perfgate-scaling",
 ];
@@ -1740,11 +1735,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-host-detect",
-            "Host mismatch detection for CI noise reduction",
-            100,
-        ),
-        (
             "perfgate-budget",
             "Budget evaluation logic for performance thresholds",
             100,
@@ -1825,7 +1815,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-types::fingerprint (deterministic hashes)");
     println!("         ↓");
-    println!("  perfgate-types::validation, perfgate-host-detect (pure logic)");
+    println!("  perfgate-types::validation, perfgate-domain::host (pure logic)");
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
     println!("         ↓");
@@ -2093,11 +2083,6 @@ fn generate_workspace_inventory_md() -> String {
             100,
         ),
         (
-            "perfgate-host-detect",
-            "Host mismatch detection for CI noise reduction",
-            100,
-        ),
-        (
             "perfgate-budget",
             "Budget evaluation logic for performance thresholds",
             100,
@@ -2178,7 +2163,7 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("  types --> fingerprint[perfgate-types::fingerprint]\n");
     md.push_str("  domain --> stats[perfgate-domain::stats]\n");
     md.push_str("  types --> val[perfgate-types::validation]\n");
-    md.push_str("  host[perfgate-host-detect] --> types\n");
+    md.push_str("  domain --> host[perfgate-domain::host]\n");
     md.push_str("  types --> budget[perfgate-budget]\n");
     md.push_str("  domain --> sig[perfgate-domain::significance]\n");
     md.push_str("  budget --> domain[perfgate-domain]\n");

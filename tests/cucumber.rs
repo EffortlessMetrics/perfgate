@@ -27,6 +27,7 @@ use perfgate_types::{
 
 // Microcrate imports for direct testing
 use perfgate_budget::{aggregate_verdict, evaluate_budget, reason_token as budget_reason_token};
+use perfgate_domain::host::detect_host_mismatch;
 use perfgate_domain::significance::compute_significance;
 use perfgate_domain::stats::summarize_u64;
 use perfgate_error::{
@@ -34,7 +35,6 @@ use perfgate_error::{
     ValidationError,
 };
 use perfgate_export::{ExportFormat, ExportUseCase};
-use perfgate_host_detect::detect_host_mismatch;
 use perfgate_render::render_markdown;
 use perfgate_sensor::SensorReportBuilder;
 use perfgate_types::fingerprint::sha256_hex;
