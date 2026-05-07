@@ -56,7 +56,7 @@ inputs:
     required: false
     default: "perfgate-artifacts"
   version:
-    description: "Optional perfgate crate version from crates.io (e.g. 0.3.0); if empty, builds from this action source"
+    description: "Optional perfgate-cli crate version from crates.io (e.g. 0.16.0); if empty, builds from this action source"
     required: false
     default: ""
   comment:
@@ -163,10 +163,17 @@ runs:
       run: |
         set -euo pipefail
         if [[ -n "${{ inputs.version }}" ]]; then
-          cargo install perfgate --locked --force --version "${{ inputs.version }}"
+          cargo install perfgate-cli --locked --force --version "${{ inputs.version }}"
         else
           cargo install --path "${GITHUB_ACTION_PATH}/crates/perfgate-cli" --locked --force
         fi
+
+    - name: Verify perfgate installation
+      shell: bash
+      run: |
+        set -euo pipefail
+        perfgate --version
+        perfgate doctor --help
 
     - id: run_check
       name: Run perfgate check

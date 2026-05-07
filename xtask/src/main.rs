@@ -142,6 +142,17 @@ enum Command {
         allow_dirty: bool,
     },
 
+    /// Validate GitHub Action install and release asset wiring.
+    ActionCheck {
+        /// GitHub Action definition to validate.
+        #[arg(long, default_value = "action.yml")]
+        action: PathBuf,
+
+        /// perfgate-cli manifest containing cargo-binstall metadata.
+        #[arg(long, default_value = "crates/perfgate-cli/Cargo.toml")]
+        cli_manifest: PathBuf,
+    },
+
     /// Validate the target public crate policy and transition dispositions.
     PublicSurface {
         /// Target public crate policy file.
@@ -246,6 +257,10 @@ fn main() -> anyhow::Result<()> {
             dry_run,
             allow_dirty,
         } => cmd_publish_check(packages, package_list, dry_run, allow_dirty),
+        Command::ActionCheck {
+            action,
+            cli_manifest,
+        } => cmd_action_check(&action, &cli_manifest),
         Command::PublicSurface {
             public_policy,
             absorbed_policy,
@@ -324,6 +339,10 @@ fn cmd_ci() -> anyhow::Result<()> {
     cmd_schema_compat(Path::new("fixtures/schema"))?;
     cmd_conform(None, None)?;
     cmd_publish_check(Vec::new(), false, false, false)?;
+    cmd_action_check(
+        Path::new("action.yml"),
+        Path::new("crates/perfgate-cli/Cargo.toml"),
+    )?;
     cmd_public_surface(
         Path::new("policy/public_crates.txt"),
         Path::new("policy/absorbed_crates.txt"),
@@ -332,6 +351,202 @@ fn cmd_ci() -> anyhow::Result<()> {
     cmd_arch()?;
     cmd_doc_test(Vec::new())?;
     Ok(())
+}
+
+fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
+    let action_content =
+        fs::read_to_string(action).with_context(|| format!("reading {}", action.display()))?;
+    let manifest_content = fs::read_to_string(cli_manifest)
+        .with_context(|| format!("reading {}", cli_manifest.display()))?;
+    let errors = collect_action_check_errors(&action_content, &manifest_content);
+
+    if !errors.is_empty() {
+        println!(
+            "Found {} GitHub Action release/install error(s):",
+            errors.len()
+        );
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} GitHub Action release/install issue(s) found. Fix action.yml or binstall metadata.",
+            errors.len()
+        );
+    }
+
+    println!("  OK  GitHub Action install and release asset wiring is aligned");
+    Ok(())
+}
+
+fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    let action = match yaml_serde::from_str::<ActionDefinition>(action) {
+        Ok(action) => action,
+        Err(err) => {
+            errors.push(format!("action.yml must parse as YAML: {err}"));
+            return errors;
+        }
+    };
+    let manifest = match toml::from_str::<toml::Value>(cli_manifest) {
+        Ok(manifest) => manifest,
+        Err(err) => {
+            errors.push(format!("perfgate-cli Cargo.toml must parse as TOML: {err}"));
+            return errors;
+        }
+    };
+
+    let version_description = action
+        .inputs
+        .get("version")
+        .and_then(|input| input.description.as_deref());
+    if version_description.is_none_or(|description| !description.contains("perfgate-cli")) {
+        errors.push("action.yml version input must describe the perfgate-cli crate".to_string());
+    }
+
+    let Some(binary_install_run) = action.step_run("Install perfgate (pre-built binary)") else {
+        errors.push("action.yml must include the pre-built binary install step".to_string());
+        return errors;
+    };
+    let binary_install_lines = active_shell_lines(binary_install_run);
+    if !binary_install_lines
+        .iter()
+        .any(|line| line.contains("releases/download/v${version}/perfgate-${target}.${ext}"))
+    {
+        errors.push("action.yml prebuilt binary URL must match release archive naming".to_string());
+    }
+
+    let Some(cargo_install_run) = action.step_run("Install perfgate (cargo install fallback)")
+    else {
+        errors.push("action.yml must include the cargo-install fallback step".to_string());
+        return errors;
+    };
+    let cargo_install_lines = active_shell_lines(cargo_install_run);
+    if cargo_install_lines.iter().any(|line| {
+        line.starts_with("cargo install perfgate ")
+            || line == "cargo install perfgate --locked --force --version \"${{ inputs.version }}\""
+    }) {
+        errors.push(
+            "action.yml cargo-install fallback installs `perfgate`; install `perfgate-cli`"
+                .to_string(),
+        );
+    }
+    if !cargo_install_lines.iter().any(|line| {
+        line == "cargo install perfgate-cli --locked --force --version \"${{ inputs.version }}\""
+    }) {
+        errors.push(
+            "action.yml must cargo-install the published `perfgate-cli` package for versioned fallbacks"
+                .to_string(),
+        );
+    }
+    if !cargo_install_lines.iter().any(|line| {
+        line == "cargo install --path \"${GITHUB_ACTION_PATH}/crates/perfgate-cli\" --locked --force"
+    }) {
+        errors.push(
+            "action.yml must build the local crates/perfgate-cli package when no version is supplied"
+                .to_string(),
+        );
+    }
+
+    let Some(verify_install_run) = action.step_run("Verify perfgate installation") else {
+        errors.push("action.yml must include an installation verification step".to_string());
+        return errors;
+    };
+    let verify_install_lines = active_shell_lines(verify_install_run);
+    if !verify_install_lines
+        .iter()
+        .any(|line| line == "perfgate --version")
+    {
+        errors.push("action.yml must verify the installed perfgate binary".to_string());
+    }
+    if !verify_install_lines
+        .iter()
+        .any(|line| line == "perfgate doctor --help")
+    {
+        errors.push("action.yml must smoke-test the doctor command after install".to_string());
+    }
+
+    let binstall = toml_path(&manifest, &["package", "metadata", "binstall"]);
+    if toml_str_at(binstall, &["pkg-url"])
+        != Some("{ repo }/releases/download/v{ version }/perfgate-{ target }.tar.gz")
+    {
+        errors.push(
+            "perfgate-cli binstall metadata must point at perfgate-{target}.tar.gz release assets"
+                .to_string(),
+        );
+    }
+    if toml_str_at(
+        binstall,
+        &["overrides", "x86_64-pc-windows-msvc", "pkg-url"],
+    ) != Some("{ repo }/releases/download/v{ version }/perfgate-{ target }.zip")
+    {
+        errors.push(
+            "perfgate-cli Windows binstall metadata must point at perfgate-{target}.zip release assets"
+                .to_string(),
+        );
+    }
+    if toml_str_at(binstall, &["bin-dir"]) != Some("perfgate{ binary-ext }") {
+        errors.push(
+            "perfgate-cli binstall metadata must unpack the perfgate binary from the archive"
+                .to_string(),
+        );
+    }
+
+    errors
+}
+
+#[derive(Debug, Deserialize)]
+struct ActionDefinition {
+    #[serde(default)]
+    inputs: BTreeMap<String, ActionInput>,
+    runs: ActionRuns,
+}
+
+impl ActionDefinition {
+    fn step_run(&self, name: &str) -> Option<&str> {
+        self.runs.steps.iter().find_map(|step| {
+            (step.name.as_deref() == Some(name))
+                .then_some(step.run.as_deref())
+                .flatten()
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ActionInput {
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ActionRuns {
+    #[serde(default)]
+    steps: Vec<ActionStep>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ActionStep {
+    name: Option<String>,
+    run: Option<String>,
+}
+
+fn active_shell_lines(script: &str) -> Vec<String> {
+    script
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(String::from)
+        .collect()
+}
+
+fn toml_path<'a>(value: &'a toml::Value, path: &[&str]) -> Option<&'a toml::Value> {
+    path.iter()
+        .try_fold(value, |current, segment| current.get(*segment))
+}
+
+fn toml_str_at<'a>(value: Option<&'a toml::Value>, path: &[&str]) -> Option<&'a str> {
+    let value = value?;
+    toml_path(value, path)?.as_str()
 }
 
 #[derive(Debug, Deserialize)]
@@ -3430,6 +3645,135 @@ mod tests {
                 "--dry-run",
                 "--allow-dirty"
             ]
+        );
+    }
+
+    fn valid_action_install_surface() -> &'static str {
+        r#"
+inputs:
+  version:
+    description: "Optional perfgate-cli crate version from crates.io"
+runs:
+  using: "composite"
+  steps:
+    - name: Install perfgate (pre-built binary)
+      run: |
+        url="https://github.com/EffortlessMetrics/perfgate/releases/download/v${version}/perfgate-${target}.${ext}"
+    - name: Install perfgate (cargo install fallback)
+      run: |
+        if [[ -n "${{ inputs.version }}" ]]; then
+          cargo install perfgate-cli --locked --force --version "${{ inputs.version }}"
+        else
+          cargo install --path "${GITHUB_ACTION_PATH}/crates/perfgate-cli" --locked --force
+        fi
+    - name: Verify perfgate installation
+      run: |
+        perfgate --version
+        perfgate doctor --help
+"#
+    }
+
+    fn valid_cli_binstall_metadata() -> &'static str {
+        r#"
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/perfgate-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "perfgate{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/perfgate-{ target }.zip"
+pkg-fmt = "zip"
+"#
+    }
+
+    #[test]
+    fn action_check_accepts_expected_install_surface() {
+        let errors = collect_action_check_errors(
+            valid_action_install_surface(),
+            valid_cli_binstall_metadata(),
+        );
+
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn action_check_rejects_versioned_installing_facade_crate() {
+        let action =
+            valid_action_install_surface().replace("perfgate-cli --locked", "perfgate --locked");
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("installs `perfgate`")),
+            "errors should mention facade install mismatch: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_ignores_good_install_string_in_shell_comment() {
+        let action = valid_action_install_surface().replace(
+            "cargo install perfgate-cli --locked --force --version \"${{ inputs.version }}\"",
+            "# cargo install perfgate-cli --locked --force --version \"${{ inputs.version }}\"\n          cargo install perfgate --locked --force --version \"${{ inputs.version }}\"",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("installs `perfgate`")),
+            "errors should mention active facade install mismatch: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_local_cli_path_fallback() {
+        let action =
+            valid_action_install_surface().replace("/crates/perfgate-cli", "/crates/perfgate");
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("local crates/perfgate-cli package")),
+            "errors should mention local CLI package fallback: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_binstall_release_asset_url() {
+        let manifest = valid_cli_binstall_metadata().replace(
+            "perfgate-{ target }.tar.gz",
+            "perfgate-cli-{ target }.tar.gz",
+        );
+        let errors = collect_action_check_errors(valid_action_install_surface(), &manifest);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("perfgate-{target}.tar.gz")),
+            "errors should mention cargo-binstall asset naming: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_ignores_good_binstall_string_in_toml_comment() {
+        let manifest = valid_cli_binstall_metadata().replace(
+            "pkg-url = \"{ repo }/releases/download/v{ version }/perfgate-{ target }.tar.gz\"",
+            "# pkg-url = \"{ repo }/releases/download/v{ version }/perfgate-{ target }.tar.gz\"\npkg-url = \"{ repo }/releases/download/v{ version }/perfgate-cli-{ target }.tar.gz\"",
+        );
+        let errors = collect_action_check_errors(valid_action_install_surface(), &manifest);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("perfgate-{target}.tar.gz")),
+            "errors should mention active cargo-binstall asset naming: {:?}",
+            errors
         );
     }
 

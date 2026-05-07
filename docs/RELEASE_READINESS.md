@@ -17,6 +17,7 @@ surface is now in its intended release shape:
 | Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
 | Package file-list proof | Release-prep gate | `cargo run -p xtask -- publish-check --package-list` |
 | Publish dry-run proof | Per-package release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
+| GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
 | Full repo CI | Passing | Hosted `ci`, `fuzz`, and `perfgate-self` on PR #268 |
 
 The only publishable packages allowed by policy are:
@@ -36,6 +37,7 @@ cargo run -p xtask -- public-surface --strict
 cargo run -p xtask -- arch
 cargo run -p xtask -- publish-check --package-list
 cargo run -p xtask -- publish-check --dry-run --package perfgate-types
+cargo run -p xtask -- action-check
 cargo run -p xtask -- docs-check
 cargo run -p xtask -- doc-test
 cargo run -p xtask -- ci

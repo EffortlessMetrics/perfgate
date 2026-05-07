@@ -9,6 +9,7 @@ cargo run -p xtask -- schema              # generate JSON schemas
 cargo run -p xtask -- schema-check        # verify committed schemas are locked
 cargo run -p xtask -- ci                   # full CI check
 cargo run -p xtask -- publish-check       # validate publish metadata before release
+cargo run -p xtask -- action-check        # validate GitHub Action install/release wiring
 cargo run -p xtask -- conform             # validate fixtures against schema
 cargo run -p xtask -- conform --file f.json  # validate a single file
 cargo run -p xtask -- mutants             # run mutation testing
@@ -41,11 +42,18 @@ A single `src/main.rs` with automation commands.
 4. `cargo run -p xtask -- schema-check`
 5. `cargo run -p xtask -- conform`
 6. `cargo run -p xtask -- publish-check`
+7. `cargo run -p xtask -- action-check`
 
 **`publish-check`** — Performs fast static preflight checks for crates.io packaging:
 - Fails if a publishable workspace crate depends on a `publish = false` workspace crate
 - Fails if a publishable crate declares a `readme` file that does not exist
 - Intended as a release guardrail before `cargo publish`
+
+**`action-check`** — Validates GitHub Action release/install wiring:
+- Confirms versioned fallback installs the published `perfgate-cli` package
+- Confirms local fallback builds `crates/perfgate-cli`
+- Confirms action archive URLs match cargo-binstall release asset metadata
+- Confirms the action smoke-tests `perfgate --version` and `perfgate doctor --help`
 
 **`conform`** — Validates JSON fixtures against the vendored `sensor.report.v1` schema:
 - Default: validates all `sensor_report_*.json` files in golden fixture directories
