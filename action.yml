@@ -298,6 +298,134 @@ runs:
 
         exit "${status}"
 
+    - name: Print perfgate failure summary
+      if: always() && steps.run_check.outputs.exit_code != '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        exit_code="${{ steps.run_check.outputs.exit_code }}"
+        if [[ -z "${exit_code}" ]]; then
+          exit_code="unknown"
+        fi
+
+        repro=(perfgate check --config "${{ inputs.config }}")
+
+        if [[ "${{ inputs.all }}" == "true" ]]; then
+          repro+=(--all)
+        else
+          repro+=(--bench "${{ inputs.bench }}")
+        fi
+
+        if [[ -n "${{ inputs.out_dir }}" ]]; then
+          repro+=(--out-dir "${{ inputs.out_dir }}")
+        fi
+
+        if [[ "${{ inputs.host_mismatch }}" != "warn" ]]; then
+          repro+=(--host-mismatch "${{ inputs.host_mismatch }}")
+        fi
+
+        if [[ "${{ inputs.mode }}" != "standard" ]]; then
+          repro+=(--mode "${{ inputs.mode }}")
+        fi
+
+        if [[ "${{ inputs.fail_on_warn }}" == "true" ]]; then
+          repro+=(--fail-on-warn)
+        fi
+
+        if [[ "${{ inputs.require_baseline }}" == "true" ]]; then
+          repro+=(--require-baseline)
+        fi
+
+        if [[ -n "${{ inputs.md_template }}" ]]; then
+          repro+=(--md-template "${{ inputs.md_template }}")
+        fi
+
+        format_command() {
+          local formatted=""
+          local quoted=""
+          local arg
+
+          for arg in "$@"; do
+            if [[ -n "${formatted}" ]]; then
+              formatted+=" "
+            fi
+            printf -v quoted "%q" "${arg}"
+            formatted+="${quoted}"
+          done
+
+          printf "%s" "${formatted}"
+        }
+
+        print_artifacts() {
+          if [[ ! -d "${out}" ]]; then
+            echo "  ${out}/ (directory not found)"
+            return
+          fi
+
+          local listing
+          listing="$(mktemp)"
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
+
+          local count
+          count="$(wc -l < "${listing}" | tr -d ' ')"
+          if [[ "${count}" == "0" ]]; then
+            echo "  ${out}/ (no perfgate receipt files found)"
+          else
+            head -20 "${listing}" | sed 's/^/  /'
+            if [[ "${count}" -gt 20 ]]; then
+              echo "  ... ${count} perfgate receipt files total"
+            fi
+          fi
+
+          rm -f "${listing}"
+        }
+
+        repro_line="$(format_command "${repro[@]}")"
+
+        echo "perfgate exited with code ${exit_code}"
+        echo
+        echo "Reproduce locally:"
+        echo "  ${repro_line}"
+        echo
+        echo "Artifacts:"
+        print_artifacts
+        if [[ "${{ inputs.all }}" == "true" ]]; then
+          echo
+          echo "For --all, inspect per-benchmark artifacts under ${out}/<bench>/."
+        fi
+        if [[ "${{ inputs.mode }}" == "cockpit" ]]; then
+          echo
+          echo "For cockpit mode, inspect aggregate output plus versioned receipts under ${out}/extras/."
+        fi
+
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          {
+            echo "### perfgate local reproduction"
+            echo
+            echo "perfgate exited with code \`${exit_code}\`."
+            echo
+            echo "```bash"
+            echo "${repro_line}"
+            echo "```"
+            echo
+            echo "Artifacts:"
+            echo
+            echo "```text"
+            print_artifacts
+            echo "```"
+            if [[ "${{ inputs.all }}" == "true" ]]; then
+              echo
+              echo "For \`--all\`, inspect per-benchmark artifacts under \`${out}/<bench>/\`."
+            fi
+            if [[ "${{ inputs.mode }}" == "cockpit" ]]; then
+              echo
+              echo "For cockpit mode, inspect aggregate output plus versioned receipts under \`${out}/extras/\`."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+        fi
+
     - name: Post PR comment
       if: always() && inputs.comment == 'true' && github.event_name == 'pull_request'
       shell: bash

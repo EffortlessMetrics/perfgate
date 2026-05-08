@@ -97,6 +97,12 @@ Action outputs are available as:
 - `${{ steps.perfgate.outputs.bench_count }}`
 - `${{ steps.perfgate.outputs.exit_code }}`
 
+When `perfgate check` exits nonzero, the action writes a local reproduction
+command and the resolved artifact paths to the job log and step summary. With
+`all: "true"`, inspect per-benchmark artifacts under
+`artifacts/perfgate/<bench>/` unless `out_dir` or `[defaults].out_dir`
+overrides the location.
+
 ## 4) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:

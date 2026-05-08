@@ -362,7 +362,7 @@ fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
 
     if !errors.is_empty() {
         println!(
-            "Found {} GitHub Action release/install error(s):",
+            "Found {} GitHub Action release/install/diagnostic error(s):",
             errors.len()
         );
         for error in &errors {
@@ -370,12 +370,14 @@ fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
         }
 
         anyhow::bail!(
-            "{} GitHub Action release/install issue(s) found. Fix action.yml or binstall metadata.",
+            "{} GitHub Action release/install/diagnostic issue(s) found. Fix action.yml or binstall metadata.",
             errors.len()
         );
     }
 
-    println!("  OK  GitHub Action install and release asset wiring is aligned");
+    println!(
+        "  OK  GitHub Action install, release asset, and failure diagnostic wiring is aligned"
+    );
     Ok(())
 }
 
@@ -526,6 +528,62 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     {
         errors.push("action.yml must not unconditionally pass the out_dir input".to_string());
     }
+
+    let Some(failure_summary_run) = action.step_run("Print perfgate failure summary") else {
+        errors.push(
+            "action.yml must print a local reproduction command when perfgate fails".to_string(),
+        );
+        return errors;
+    };
+    let failure_summary_lines = active_shell_lines(failure_summary_run);
+    if !raw_action.contains("if: always() && steps.run_check.outputs.exit_code != '0'") {
+        errors.push("action.yml failure summary must run after failed perfgate checks".to_string());
+    }
+    if !failure_summary_lines
+        .iter()
+        .any(|line| line == "out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
+    {
+        errors.push(
+            "action.yml failure summary must use the resolved artifact directory".to_string(),
+        );
+    }
+    if !failure_summary_lines
+        .iter()
+        .any(|line| line == "exit_code=\"${{ steps.run_check.outputs.exit_code }}\"")
+    {
+        errors.push("action.yml failure summary must include the perfgate exit code".to_string());
+    }
+    if !failure_summary_lines
+        .iter()
+        .any(|line| line == "repro=(perfgate check --config \"${{ inputs.config }}\")")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "echo \"Reproduce locally:\"")
+    {
+        errors.push(
+            "action.yml failure summary must print a local perfgate check reproduction command"
+                .to_string(),
+        );
+    }
+    if !failure_summary_lines
+        .iter()
+        .any(|line| line == "echo \"### perfgate local reproduction\"")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "} >> \"${GITHUB_STEP_SUMMARY}\"")
+    {
+        errors.push("action.yml failure summary must write to GITHUB_STEP_SUMMARY".to_string());
+    }
+    if !failure_summary_lines.iter().any(|line| {
+        line.contains("-name run.json")
+            && line.contains("-name compare.json")
+            && line.contains("-name report.json")
+            && line.contains("-name comment.md")
+            && line.contains("-name 'perfgate.*.json'")
+    }) {
+        errors.push("action.yml failure summary must list perfgate receipt files".to_string());
+    }
+
     if !raw_action.contains("out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
         || !raw_action.contains("path: ${{ steps.resolve_out_dir.outputs.out_dir }}")
     {
@@ -3718,7 +3776,7 @@ mod tests {
     }
 
     fn valid_action_install_surface() -> &'static str {
-        r#"
+        r####"
 inputs:
   version:
     description: "Optional perfgate-cli crate version from crates.io"
@@ -3752,13 +3810,24 @@ runs:
         if [[ -n "${{ inputs.out_dir }}" ]]; then
           args+=(--out-dir "${{ inputs.out_dir }}")
         fi
+    - name: Print perfgate failure summary
+      if: always() && steps.run_check.outputs.exit_code != '0'
+      run: |
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        exit_code="${{ steps.run_check.outputs.exit_code }}"
+        repro=(perfgate check --config "${{ inputs.config }}")
+        {
+          echo "Reproduce locally:"
+          echo "### perfgate local reproduction"
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name comment.md -o -name 'perfgate.*.json' \) | sort
+        } >> "${GITHUB_STEP_SUMMARY}"
     - name: Post PR comment
       run: |
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
     - name: Upload perfgate artifacts
       with:
         path: ${{ steps.resolve_out_dir.outputs.out_dir }}
-"#
+"####
     }
 
     fn valid_cli_binstall_metadata() -> &'static str {
@@ -3827,6 +3896,55 @@ pkg-fmt = "zip"
                 .iter()
                 .any(|error| error.contains("local crates/perfgate-cli package")),
             "errors should mention local CLI package fallback: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_failure_summary_step() {
+        let action = valid_action_install_surface().replace(
+            "    - name: Print perfgate failure summary",
+            "    - name: Print generic failure summary",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("local reproduction command")),
+            "errors should mention local reproduction output: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_failure_summary_without_resolved_artifacts() {
+        let action = valid_action_install_surface().replace(
+            "out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"",
+            "out=\"artifacts/perfgate\"",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("resolved artifact directory")),
+            "errors should mention resolved artifact directory: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_failure_summary_without_step_summary() {
+        let action =
+            valid_action_install_surface().replace("} >> \"${GITHUB_STEP_SUMMARY}\"", "echo done");
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("GITHUB_STEP_SUMMARY")),
+            "errors should mention GitHub step summary: {:?}",
             errors
         );
     }
