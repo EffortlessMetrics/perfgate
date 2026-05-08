@@ -15,6 +15,8 @@ use perfgate_server::testing::{TestServer, spawn_test_server};
 use predicates::prelude::*;
 use std::env;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
@@ -34,6 +36,10 @@ impl RunningTestServer {
 
     fn url(&self) -> &str {
         &self.inner.url
+    }
+
+    fn root_url(&self) -> &str {
+        &self.inner.root_url
     }
 }
 
@@ -68,6 +74,10 @@ fn admin_key() -> String {
     ["pg_test_", "fixtureonlynotsecretadminserverclitest000000"].concat()
 }
 
+fn operations_admin_key() -> String {
+    ["pg_test_", "fixtureonlynotsecretoperationssmoke000000"].concat()
+}
+
 fn live_server_config(
     project: &str,
     backend: StorageBackend,
@@ -87,6 +97,37 @@ fn add_server_flags(cmd: &mut assert_cmd::Command, server_url: &str, project: &s
         .arg(api_key)
         .arg("--project")
         .arg(project);
+}
+
+fn add_server_auth_flags(cmd: &mut assert_cmd::Command, server_url: &str, api_key: &str) {
+    cmd.arg("--baseline-server")
+        .arg(server_url)
+        .arg("--api-key")
+        .arg(api_key);
+}
+
+fn assert_root_health_is_healthy(root_url: &str) {
+    let addr = root_url
+        .strip_prefix("http://")
+        .expect("test server root URL should use http");
+    let mut stream = TcpStream::connect(addr).expect("root health socket should connect");
+    stream
+        .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .expect("health request should write");
+
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .expect("health response should read");
+
+    assert!(
+        response.starts_with("HTTP/1.1 200 OK"),
+        "root health should return 200 OK: {response}"
+    );
+    assert!(
+        response.contains(r#""status":"healthy""#),
+        "root health should report healthy status: {response}"
+    );
 }
 
 /// Test that `--upload` fails without `--baseline-server` configured.
@@ -625,6 +666,194 @@ async fn live_server_cli_workflow_postgres() {
         .postgres_url(postgres_url);
 
     run_live_server_cli_workflow(config, &project, &api_key, &admin_key).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn server_operations_smoke_path_memory() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let serve_db = temp_dir.path().join("serve-doctor").join("perfgate.db");
+    perfgate_cmd()
+        .args(["serve", "--doctor", "--port", "0", "--db"])
+        .arg(&serve_db)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("perfgate serve doctor"))
+        .stdout(predicate::str::contains("OK   database dir"))
+        .stdout(predicate::str::contains("OK   sqlite storage"))
+        .stdout(predicate::str::contains("OK   dashboard bind"))
+        .stdout(predicate::str::contains("Summary: 0 failed checks"));
+
+    let project = unique_project("operations");
+    let api_key = operations_admin_key();
+    let config = ServerConfig::new()
+        .storage_backend(StorageBackend::Memory)
+        .scoped_api_key(&api_key, Role::Admin, &project, None);
+    let server = RunningTestServer::spawn(config).await;
+    assert_root_health_is_healthy(server.root_url());
+
+    let mut create_key = perfgate_cmd();
+    create_key
+        .arg("admin")
+        .arg("keys")
+        .arg("create")
+        .arg("--project")
+        .arg(&project)
+        .arg("--role")
+        .arg("promoter")
+        .arg("--description")
+        .arg("operations smoke key");
+    add_server_auth_flags(&mut create_key, server.url(), &api_key);
+    create_key
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&project))
+        .stdout(predicate::str::contains("pg_live_"))
+        .stderr(predicate::str::contains("Created API key"));
+
+    let mut list_keys = perfgate_cmd();
+    list_keys
+        .arg("admin")
+        .arg("keys")
+        .arg("list")
+        .arg("--project")
+        .arg(&project);
+    add_server_auth_flags(&mut list_keys, server.url(), &api_key);
+    list_keys
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("operations smoke key"))
+        .stdout(predicate::str::contains(&project));
+
+    let baseline_file = fixtures_dir().join("baseline.json");
+    let current_file = fixtures_dir().join("current_pass.json");
+    let downloaded_path = temp_dir.path().join("latest-baseline.json");
+    let compare_path = temp_dir.path().join("compare.json");
+    let benchmark = format!("{project}-ops");
+
+    let mut upload = perfgate_cmd();
+    upload
+        .arg("baseline")
+        .arg("upload")
+        .arg("--file")
+        .arg(&baseline_file)
+        .arg("--benchmark")
+        .arg(&benchmark)
+        .arg("--version")
+        .arg("ops-v1");
+    add_server_flags(&mut upload, server.url(), &project, &api_key);
+    upload
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(&benchmark));
+
+    let mut download_latest = perfgate_cmd();
+    download_latest
+        .arg("baseline")
+        .arg("download")
+        .arg("--benchmark")
+        .arg(&benchmark)
+        .arg("--output")
+        .arg(&downloaded_path);
+    add_server_flags(&mut download_latest, server.url(), &project, &api_key);
+    download_latest.assert().success();
+    assert!(
+        downloaded_path.exists(),
+        "latest baseline download should be written"
+    );
+    let downloaded: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&downloaded_path).expect("downloaded baseline should be readable"),
+    )
+    .expect("downloaded baseline should be valid JSON");
+    assert_eq!(downloaded["schema"].as_str(), Some("perfgate.run.v1"));
+
+    let mut compare = perfgate_cmd();
+    compare
+        .arg("compare")
+        .arg("--baseline")
+        .arg(format!("@server:{benchmark}"))
+        .arg("--current")
+        .arg(&current_file)
+        .arg("--out")
+        .arg(&compare_path)
+        .arg("--host-mismatch")
+        .arg("ignore");
+    add_server_flags(&mut compare, server.url(), &project, &api_key);
+    compare.assert().success();
+
+    let mut submit_verdict = perfgate_cmd();
+    submit_verdict
+        .arg("baseline")
+        .arg("submit-verdict")
+        .arg("--compare")
+        .arg(&compare_path)
+        .arg("--git-ref")
+        .arg("refs/heads/server-ops-smoke");
+    add_server_flags(&mut submit_verdict, server.url(), &project, &api_key);
+    submit_verdict
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Verdict submitted"));
+
+    let mut verdicts = perfgate_cmd();
+    verdicts
+        .arg("baseline")
+        .arg("verdicts")
+        .arg("--benchmark")
+        .arg("test-benchmark")
+        .arg("--limit")
+        .arg("5");
+    add_server_flags(&mut verdicts, server.url(), &project, &api_key);
+    verdicts
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Verdict history"))
+        .stdout(predicate::str::contains("test-benchmark"));
+
+    let mut delete = perfgate_cmd();
+    delete
+        .arg("baseline")
+        .arg("delete")
+        .arg("--benchmark")
+        .arg(&benchmark)
+        .arg("--force");
+    add_server_flags(&mut delete, server.url(), &project, &api_key);
+    delete
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(format!(
+            "Deleted baseline {benchmark} version ops-v1 from server"
+        )));
+
+    let mut audit_list = perfgate_cmd();
+    audit_list
+        .arg("audit")
+        .arg("list")
+        .arg("--project")
+        .arg(&project)
+        .arg("--limit")
+        .arg("20");
+    add_server_auth_flags(&mut audit_list, server.url(), &api_key);
+    audit_list
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Audit events"))
+        .stdout(predicate::str::contains(&project));
+
+    let mut audit_export = perfgate_cmd();
+    audit_export
+        .arg("audit")
+        .arg("export")
+        .arg("--project")
+        .arg(&project)
+        .arg("--format")
+        .arg("jsonl");
+    add_server_auth_flags(&mut audit_export, server.url(), &api_key);
+    audit_export
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            r#""project":"{project}""#
+        )));
 }
 
 async fn run_live_server_cli_workflow(
