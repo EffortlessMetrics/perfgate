@@ -88,6 +88,32 @@ The generated GitHub workflow uses the repository action:
 Use `@v0.15.1` for an exact patch pin, or `@v0.15` / `@v0` to follow the
 current compatible action tag.
 
+## Performance Decisions
+
+The normal gate is still `perfgate check`. When a repo has workload scenarios,
+probe evidence, or accepted tradeoff policy, use the one-command decision
+workflow after `check`:
+
+```bash
+perfgate decision evaluate --config perfgate.toml
+```
+
+It writes `scenario.json`, `tradeoff.json`, and `decision.md` under the
+configured artifact directory. `decision.md` is the review surface: it explains
+the weighted workload result, probe movement, accepted or rejected tradeoff
+rules, policy reasons, evidence files, and the local reproduction command.
+
+In GitHub Actions, opt in with:
+
+```yaml
+- uses: EffortlessMetrics/perfgate@v0
+  with:
+    config: perfgate.toml
+    all: "true"
+    require_baseline: "true"
+    decision: "true"
+```
+
 ## Daily Use
 
 Run the whole configured suite:
@@ -172,6 +198,7 @@ Start with:
 
 For specific workflows:
 
+- [Performance Decisions](docs/PERFORMANCE_DECISIONS.md)
 - [Step-by-Step Pipeline](docs/PIPELINE.md)
 - [Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md)
 - [Paired Benchmarking](docs/PAIRED_BENCHMARKING.md)

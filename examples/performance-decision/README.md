@@ -13,6 +13,10 @@ perfgate probe compare --baseline artifacts/perfgate/large-file/probes-baseline.
 perfgate decision evaluate --config examples/performance-decision/perfgate.toml
 ```
 
+`decision evaluate` is the command to teach users. It consumes the configured
+compare and probe-compare receipts, evaluates scenario weights and tradeoff
+policy, then writes the review-ready Markdown.
+
 Expected shape:
 
 ```text

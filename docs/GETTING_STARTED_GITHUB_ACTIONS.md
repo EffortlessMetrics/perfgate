@@ -126,6 +126,12 @@ defers the final policy result to the decision receipt so an accepted tradeoff
 can downgrade the result according to configured policy. Runtime errors and
 `--fail-on-warn` failures still stop the action.
 
+Use decision mode when `perfgate.toml` contains `[[scenario]]` weights,
+`[[tradeoff]]` policy, or probe comparison evidence. The lower-level
+`scenario evaluate`, `tradeoff evaluate`, and `md --tradeoff` commands remain
+available for custom pipelines, but the action path should usually be the
+single `decision: "true"` input.
+
 ## 4) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:

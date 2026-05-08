@@ -84,13 +84,19 @@ scaling = { sizes = [100, 1000, 10000], expected = "O(n)", repeat = 7, r_squared
 
 ## Scenario Configuration
 
-Scenarios define a weighted workload model over configured benchmarks. After
-`perfgate check --config perfgate.toml --all` has produced compare receipts,
-evaluate the workload into a `perfgate.scenario.v1` receipt:
+Scenarios define a weighted workload model over configured benchmarks. The
+taught path is to run the whole structured decision workflow after `check` has
+produced compare receipts:
 
 ```bash
-perfgate scenario evaluate --config perfgate.toml --out artifacts/perfgate/scenario.json
+perfgate check --config perfgate.toml --all
+perfgate decision evaluate --config perfgate.toml
 ```
+
+`decision evaluate` writes `scenario.json`, `tradeoff.json`, and `decision.md`
+under `[defaults].out_dir` unless output paths are overridden. Use
+`perfgate scenario evaluate` directly only when debugging or composing a custom
+pipeline.
 
 Each `[[scenario]]` references one `[[bench]]`. By default, `scenario evaluate`
 reads `compare.json` from `[defaults].out_dir/<bench>/compare.json`. Use
@@ -157,7 +163,18 @@ When `probe` is set, `tradeoff evaluate` follows the scenario component's
 delta. Missing probe evidence leaves the requirement unsatisfied; it does not
 silently fall back to weighted scenario deltas.
 
-Evaluate the rules against a scenario receipt to produce
+For the normal local workflow, run scenario evaluation, tradeoff evaluation, and
+decision Markdown rendering together:
+
+```bash
+perfgate decision evaluate --config perfgate.toml
+```
+
+It uses the configured artifact directory for compare lookups and writes
+`scenario.json`, `tradeoff.json`, and `decision.md` there by default.
+
+The primitive commands remain available when you need to inspect an intermediate
+receipt. Evaluate the rules against a scenario receipt to produce
 `perfgate.tradeoff.v1` decision evidence:
 
 ```bash
@@ -170,15 +187,6 @@ Render the decision for local review or PR comments:
 perfgate md --tradeoff artifacts/perfgate/tradeoff.json --out artifacts/perfgate/tradeoff.md
 perfgate comment --tradeoff artifacts/perfgate/tradeoff.json --dry-run
 ```
-
-To run the structured decision path as one local workflow, use:
-
-```bash
-perfgate decision evaluate --config perfgate.toml
-```
-
-It uses the configured artifact directory for compare lookups and writes
-`scenario.json`, `tradeoff.json`, and `decision.md` there by default.
 
 `min_improvement_ratio` follows metric direction. For lower-is-better metrics
 such as `wall_ms`, `1.10` means the baseline/current ratio must be at least

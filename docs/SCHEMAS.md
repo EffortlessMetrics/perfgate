@@ -21,6 +21,17 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.dependency_event.v1` | fleet API | Dependency-change event with performance impact |
 | `perfgate.fleet_alert.v1` | fleet API | Fleet-wide dependency regression alert |
 
+For the normal structured-decision workflow, users should not run these receipt
+producers one by one. Run:
+
+```bash
+perfgate decision evaluate --config perfgate.toml
+```
+
+That command reads the configured compare receipts, evaluates scenarios,
+evaluates tradeoff rules, and renders `decision.md` alongside
+`scenario.json` and `tradeoff.json`.
+
 ## Additional Generated Schemas
 
 perfgate also commits generated schemas for tooling and editor integration:
@@ -82,7 +93,8 @@ durable deltas that scenario and tradeoff workflows can attach.
 
 ## Scenario Evaluation
 
-`perfgate scenario evaluate` reads configured `[[scenario]]` entries and their
+`perfgate scenario evaluate` is the primitive command behind
+`decision evaluate`. It reads configured `[[scenario]]` entries and their
 benchmark compare receipts, then writes a `perfgate.scenario.v1` weighted
 workload receipt:
 
@@ -99,7 +111,8 @@ probe evidence does not change the scenario verdict yet.
 
 ## Tradeoff Evaluation
 
-`perfgate tradeoff evaluate` reads configured `[[tradeoff]]` rules and a
+`perfgate tradeoff evaluate` is the primitive command behind
+`decision evaluate`. It reads configured `[[tradeoff]]` rules and a
 `perfgate.scenario.v1` receipt, then writes a `perfgate.tradeoff.v1` decision
 receipt:
 
@@ -122,8 +135,8 @@ perfgate md --tradeoff artifacts/perfgate/tradeoff.json
 perfgate comment --tradeoff artifacts/perfgate/tradeoff.json --dry-run
 ```
 
-For the paved local workflow, `decision evaluate` runs the scenario evaluation,
-tradeoff evaluation, and markdown rendering steps together:
+For the paved local workflow, use `decision evaluate` instead of manually
+chaining the primitive commands:
 
 ```bash
 perfgate decision evaluate --config perfgate.toml
