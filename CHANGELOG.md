@@ -86,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Self-Dogfooding Infrastructure** — `perfgate` now uses itself to gate its own performance across three CI lanes (Smoke, Perf, and Nightly).
 - **Multi-Lane CI Workflows** — Implemented `perfgate-self.yml` and `perfgate-nightly.yml` with unique artifact naming and authoritative runner pinning (`ubuntu-24.04`).
-- **Hardened Workload Wrappers** — Introduced `.ci/perf/lib.sh` for shared binary resolution and strict exit code classification (allowing 0, 2, 3 while failing on crashes).
+- **Rust Workload Wrappers** — Moved dogfooding workload wrappers from `.ci/perf/*.sh` into `perfgate-selfbench` subcommands with shared binary resolution and strict exit code classification (allowing 0, 2, 3 while failing on crashes).
 - **Automated Baseline Lifecycle** — Nightly calibration now generates candidate baselines and automatically proposes refreshes via bot-driven Pull Requests.
 - **Learning Loop & Trends** — Added trend export to JSONL and Prometheus formats in the nightly lane for long-term drift analysis.
 - **Paired Observation Lane** — New "PR-vs-Main" lane dogfoods interleaved benchmarking by comparing the current binary directly against the last blessed `main` binary.
