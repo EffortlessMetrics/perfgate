@@ -659,6 +659,9 @@ pub struct ListAuditEventsResponse {
 pub struct StorageHealth {
     pub backend: String,
     pub status: String,
+    /// Coarse, sanitized failure detail when the backend is unhealthy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 /// Connection pool metrics exposed via the health endpoint.
@@ -1149,6 +1152,32 @@ mod tests {
         let dependency = DependencyImpactQuery::default();
         assert_eq!(dependency.limit, default_limit());
         assert!(dependency.since.is_none());
+    }
+
+    #[test]
+    fn health_storage_detail_is_additive() {
+        let legacy = serde_json::json!({
+            "status": "healthy",
+            "version": "0.15.1",
+            "storage": {
+                "backend": "memory",
+                "status": "healthy"
+            }
+        });
+        let legacy: HealthResponse = serde_json::from_value(legacy).expect("legacy health");
+        assert_eq!(legacy.storage.detail, None);
+
+        let detailed = serde_json::json!({
+            "status": "degraded",
+            "version": "0.15.1",
+            "storage": {
+                "backend": "postgres",
+                "status": "unhealthy",
+                "detail": "query_error"
+            }
+        });
+        let detailed: HealthResponse = serde_json::from_value(detailed).expect("detailed health");
+        assert_eq!(detailed.storage.detail.as_deref(), Some("query_error"));
     }
 
     #[test]

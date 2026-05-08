@@ -224,7 +224,9 @@ Point the CLI at the versioned API root, for example
 ## Operational Checks
 
 Use `/health` for liveness and storage readiness. PostgreSQL deployments also
-include current pool occupancy:
+include current pool occupancy. When storage is not healthy, `storage.detail`
+contains a coarse non-secret reason such as `query_error` or `connection_error`;
+inspect server logs for the full database error.
 
 ```json
 {

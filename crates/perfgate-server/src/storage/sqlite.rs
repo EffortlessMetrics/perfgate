@@ -532,7 +532,7 @@ impl BaselineStore for SqliteStore {
             .map_err(|e| StoreError::LockError(e.to_string()))?;
         match conn.query_row("SELECT 1", [], |_| Ok(())) {
             Ok(_) => Ok(StorageHealth::Healthy),
-            Err(_) => Ok(StorageHealth::Unhealthy),
+            Err(error) => Err(StoreError::QueryError(error.to_string())),
         }
     }
 

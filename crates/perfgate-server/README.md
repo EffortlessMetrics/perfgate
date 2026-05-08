@@ -128,7 +128,9 @@ skip WAL because SQLite reports `journal_mode=memory` for those connections.
 
 PostgreSQL storage uses a sqlx connection pool. The pool pings connections
 before reuse, applies `statement_timeout` on new connections, retries transient
-connection failures, and exposes pool occupancy from `/health`:
+connection failures, and exposes pool occupancy from `/health`. If storage is
+unhealthy, `/health` includes a coarse non-secret `storage.detail` code while
+the full storage error stays in server logs:
 
 ```bash
 perfgate-server \

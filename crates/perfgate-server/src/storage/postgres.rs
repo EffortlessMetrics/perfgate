@@ -649,13 +649,9 @@ impl BaselineStore for PostgresStore {
     }
 
     async fn health_check(&self) -> Result<StorageHealth, StoreError> {
-        match self
-            .with_retry(|pool| async move { sqlx::query("SELECT 1").execute(&pool).await })
-            .await
-        {
-            Ok(_) => Ok(StorageHealth::Healthy),
-            Err(_) => Ok(StorageHealth::Unhealthy),
-        }
+        self.with_retry(|pool| async move { sqlx::query("SELECT 1").execute(&pool).await })
+            .await?;
+        Ok(StorageHealth::Healthy)
     }
 
     fn backend_type(&self) -> &'static str {

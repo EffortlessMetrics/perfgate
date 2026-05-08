@@ -221,9 +221,10 @@ perfgate-server \
 ```
 
 Use `/health` to verify storage readiness and PostgreSQL pool occupancy before
-making the server a required CI dependency. Use `/metrics` for Prometheus
-scraping once the service is shared by more than one workflow. The operational
-series include:
+making the server a required CI dependency. Unhealthy storage responses include
+a coarse non-secret `storage.detail` code; the raw storage error is kept in
+server logs. Use `/metrics` for Prometheus scraping once the service is shared
+by more than one workflow. The operational series include:
 
 ```text
 perfgate_server_requests_total
