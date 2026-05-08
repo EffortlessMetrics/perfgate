@@ -26,8 +26,6 @@ jobs:
           ./target/release/perfgate --version
           ./target/release/perfgate-selfbench noop
 
-      - name: Make scripts executable
-        run: chmod +x .ci/perf/*.sh
 
       - name: Run calibration
         run: ./target/release/perfgate check --config .ci/perfgate-nightly.toml --all --mode cockpit --output-github

@@ -4,9 +4,10 @@ Internal benchmarking workloads for perfgate self-dogfooding.
 
 ## Overview
 
-`perfgate-selfbench` is a small binary crate that ships four deterministic
-workloads. These workloads are executed by perfgate's own CI dogfooding lanes
-so that perfgate can gate its own performance — eating its own dog food.
+`perfgate-selfbench` is a small binary crate that ships deterministic
+workloads and Rust-native wrappers for the end-to-end perfgate dogfooding checks.
+These workloads are executed by perfgate's own CI dogfooding lanes so that
+perfgate can gate its own performance — eating its own dog food.
 
 The binary is invoked by `perfgate run` the same way any user benchmark would
 be, making it a realistic end-to-end test of the entire pipeline.
@@ -22,12 +23,16 @@ be, making it a realistic end-to-end test of the entire pipeline.
 | `cpu-fixed` | Performs 10 million wrapping additions. Deterministic CPU-bound workload. |
 | `io-fixed` | Writes and reads back 1 MB to a temp file. Deterministic I/O-bound workload. |
 | `json-read` | Parses a JSON string (or file if a path argument is given). Exercises serde_json. |
+| `perf-wrapper <name>` | Runs one of the CI dogfooding wrapper workloads without requiring shell scripts. |
 
 ## Usage
 
 ```bash
 # Run directly
 cargo run -p perfgate-selfbench -- cpu-fixed
+
+# Run a Rust-native dogfooding wrapper after building release binaries
+./target/release/perfgate-selfbench perf-wrapper compare-small
 
 # Use with perfgate CLI for dogfooding
 cargo run -p perfgate-cli -- run \
