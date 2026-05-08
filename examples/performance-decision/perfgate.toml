@@ -1,0 +1,36 @@
+[defaults]
+threshold = 0.20
+warn_factor = 0.50
+out_dir = "artifacts/perfgate"
+baseline_dir = "baselines"
+
+[[bench]]
+name = "large-file"
+command = ["echo", "large-file fixture"]
+
+[[bench]]
+name = "small-edit"
+command = ["echo", "small-edit fixture"]
+
+[[scenario]]
+name = "large_file_parse"
+weight = 0.75
+bench = "large-file"
+compare = "examples/performance-decision/receipts/large-file.compare.json"
+probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
+
+[[scenario]]
+name = "small_edit"
+weight = 0.25
+bench = "small-edit"
+compare = "examples/performance-decision/receipts/small-edit.compare.json"
+
+[[tradeoff]]
+name = "memory_for_probe_speed"
+if_failed = "max_rss_kb"
+downgrade_to = "warn"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+probe = "parser.batch_loop"
+min_improvement_ratio = 1.10

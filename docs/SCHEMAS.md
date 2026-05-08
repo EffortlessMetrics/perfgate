@@ -78,7 +78,7 @@ perfgate probe compare --baseline baselines/probes.json --current artifacts/perf
 
 Missing probes or missing metrics are recorded as warnings instead of policy
 failures. This keeps early probe evidence advisory while still producing
-durable deltas that scenario and tradeoff workflows can attach later.
+durable deltas that scenario and tradeoff workflows can attach.
 
 ## Scenario Evaluation
 
@@ -136,6 +136,9 @@ artifacts/perfgate/scenario.json
 artifacts/perfgate/tradeoff.json
 artifacts/perfgate/decision.md
 ```
+
+For a runnable probe/scenario/tradeoff fixture, see
+[`examples/performance-decision`](../examples/performance-decision/README.md).
 
 ## Fixture Validation
 

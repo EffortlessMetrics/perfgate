@@ -1,0 +1,50 @@
+{
+  "schema": "perfgate.compare.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.16.0"
+  },
+  "bench": {
+    "name": "small-edit",
+    "command": ["echo", "small-edit fixture"],
+    "repeat": 1,
+    "warmup": 0
+  },
+  "baseline_ref": {
+    "path": "baselines/small-edit.json",
+    "run_id": "small-edit-baseline"
+  },
+  "current_ref": {
+    "path": "artifacts/perfgate/small-edit/run.json",
+    "run_id": "small-edit-current"
+  },
+  "budgets": {},
+  "deltas": {
+    "wall_ms": {
+      "baseline": 100.0,
+      "current": 102.0,
+      "ratio": 1.02,
+      "pct": 0.02,
+      "regression": 0.02,
+      "status": "pass"
+    },
+    "max_rss_kb": {
+      "baseline": 100.0,
+      "current": 101.0,
+      "ratio": 1.01,
+      "pct": 0.01,
+      "regression": 0.01,
+      "status": "pass"
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "counts": {
+      "pass": 2,
+      "warn": 0,
+      "fail": 0,
+      "skip": 0
+    },
+    "reasons": []
+  }
+}

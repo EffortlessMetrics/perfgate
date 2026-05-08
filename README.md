@@ -177,6 +177,7 @@ For specific workflows:
 - [Paired Benchmarking](docs/PAIRED_BENCHMARKING.md)
 - [Flakiness History](docs/FLAKINESS.md)
 - [Fleet Aggregation](docs/FLEET_AGGREGATION.md)
+- [Performance Decision Example](examples/performance-decision/README.md)
 - [Cockpit Integration](docs/COCKPIT_MODE.md)
 - [Exporting Data](docs/EXPORT.md)
 - [Host Mismatch Detection](docs/HOST_MISMATCH.md)

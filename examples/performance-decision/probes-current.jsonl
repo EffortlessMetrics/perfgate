@@ -1,0 +1,2 @@
+{"probe":"parser.tokenize","scope":"local","wall_ms":12.35,"alloc_bytes":184960,"items":10000}
+{"probe":"parser.batch_loop","scope":"dominant","wall_ms":89.60,"alloc_bytes":1000000,"items":10000}
