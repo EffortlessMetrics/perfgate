@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receipt compatibility.
 
 ### Changed
+- Replaced shell-based dogfooding benchmark wrappers with Rust-native `perfgate-selfbench` subcommands.
 - Bumped Rust minimum supported version (MSRV) to 1.93.
 - Collapsed the 0.16 public crate surface to the five intended publishable
   packages: `perfgate`, `perfgate-cli`, `perfgate-types`,

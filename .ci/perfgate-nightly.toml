@@ -9,28 +9,28 @@ significance_min_samples = 10
 
 [[bench]]
 name = "cli/compare-small"
-command = ["bash", ".ci/perf/compare-small.sh"]
+command = ["./target/release/perfgate-selfbench", "perfgate-compare-small"]
 budgets = { wall_ms = { threshold = 0.12, warn_factor = 0.90, statistic = "median" } }
 
 [[bench]]
 name = "cli/compare-large"
-command = ["bash", ".ci/perf/compare-large.sh"]
+command = ["./target/release/perfgate-selfbench", "perfgate-compare-large"]
 budgets = { wall_ms = { threshold = 0.15, warn_factor = 0.90, statistic = "median" } }
 
 [[bench]]
 name = "cli/check-single"
-command = ["bash", ".ci/perf/check-single.sh"]
+command = ["./target/release/perfgate-selfbench", "perfgate-check-single"]
 budgets = { wall_ms = { threshold = 0.18, warn_factor = 0.90, statistic = "p95" } }
 
 [[bench]]
 name = "cli/check-no-baseline"
-command = ["bash", ".ci/perf/check-no-baseline.sh"]
+command = ["./target/release/perfgate-selfbench", "perfgate-check-no-baseline"]
 budgets = { wall_ms = { threshold = 0.18, warn_factor = 0.90, statistic = "p95" } }
 
 [[bench]]
 name = "render/md"
-command = ["bash", ".ci/perf/render-md.sh"]
+command = ["./target/release/perfgate-selfbench", "perfgate-render-md"]
 
 [[bench]]
 name = "render/report"
-command = ["bash", ".ci/perf/render-report.sh"]
+command = ["./target/release/perfgate-selfbench", "perfgate-render-report"]

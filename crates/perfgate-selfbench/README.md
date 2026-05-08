@@ -4,8 +4,8 @@ Internal benchmarking workloads for perfgate self-dogfooding.
 
 ## Overview
 
-`perfgate-selfbench` is a small binary crate that ships four deterministic
-workloads. These workloads are executed by perfgate's own CI dogfooding lanes
+`perfgate-selfbench` is a small binary crate that ships deterministic
+workloads and Rust-native wrappers for perfgate dogfooding commands. These workloads are executed by perfgate's own CI dogfooding lanes
 so that perfgate can gate its own performance — eating its own dog food.
 
 The binary is invoked by `perfgate run` the same way any user benchmark would
@@ -22,6 +22,12 @@ be, making it a realistic end-to-end test of the entire pipeline.
 | `cpu-fixed` | Performs 10 million wrapping additions. Deterministic CPU-bound workload. |
 | `io-fixed` | Writes and reads back 1 MB to a temp file. Deterministic I/O-bound workload. |
 | `json-read` | Parses a JSON string (or file if a path argument is given). Exercises serde_json. |
+| `perfgate-compare-small` | Runs the small fixture comparison through the release `perfgate` binary. |
+| `perfgate-compare-large` | Runs the large fixture comparison through the release `perfgate` binary. |
+| `perfgate-check-single` | Runs the single-benchmark check fixture through the release `perfgate` binary. |
+| `perfgate-check-no-baseline` | Runs the no-baseline check fixture through the release `perfgate` binary. |
+| `perfgate-render-md` | Renders the compare fixture to markdown through the release `perfgate` binary. |
+| `perfgate-render-report` | Renders the compare fixture to a cockpit report through the release `perfgate` binary. |
 
 ## Usage
 
@@ -41,7 +47,7 @@ cargo run -p perfgate-cli -- run \
 
 `perfgate-selfbench` is a leaf binary used exclusively by CI:
 
-`perfgate-cli` spawns **`perfgate-selfbench`** as the benchmark command
+`perfgate-cli` spawns **`perfgate-selfbench`** as the benchmark command. The dogfooding wrappers resolve `./target/release/perfgate` first and then fall back to `perfgate` on `PATH`, allowing the same Rust binary to work in both direct CI lanes and the composite action smoke lane.
 
 ## License
 
