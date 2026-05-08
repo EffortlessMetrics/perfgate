@@ -23,6 +23,7 @@ Commands:
   audit List and export baseline service audit events
   summary Summarize one or more compare receipts in a terminal table
   aggregate Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt
+  decision Evaluate scenario and tradeoff evidence into a review-ready decision summary
   scenario Evaluate configured workload scenarios from compare receipts
   tradeoff Evaluate configured tradeoff rules against scenario evidence
   bisect Automatically find the commit that introduced a performance regression

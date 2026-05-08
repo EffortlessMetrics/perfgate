@@ -284,6 +284,33 @@ fn cli_help_tradeoff_evaluate() {
         .stdout(predicate::str::contains("--out"));
 }
 
+#[test]
+fn cli_help_decision() {
+    perfgate_cmd()
+        .args(["decision", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate scenario and tradeoff evidence",
+        ))
+        .stdout(predicate::str::contains("evaluate"));
+}
+
+#[test]
+fn cli_help_decision_evaluate() {
+    perfgate_cmd()
+        .args(["decision", "evaluate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured scenarios and tradeoffs",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--scenario-out"))
+        .stdout(predicate::str::contains("--tradeoff-out"))
+        .stdout(predicate::str::contains("--decision-out"));
+}
+
 // ── insta full-output snapshot tests ─────────────────────────────────
 
 fn help_output(args: &[&str]) -> String {
@@ -432,5 +459,18 @@ fn snapshot_help_tradeoff_evaluate() {
     insta::assert_snapshot!(
         "help_tradeoff_evaluate",
         help_output(&["tradeoff", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_decision() {
+    insta::assert_snapshot!("help_decision", help_output(&["decision", "--help"]));
+}
+
+#[test]
+fn snapshot_help_decision_evaluate() {
+    insta::assert_snapshot!(
+        "help_decision_evaluate",
+        help_output(&["decision", "evaluate", "--help"])
     );
 }

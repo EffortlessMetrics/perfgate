@@ -149,6 +149,15 @@ perfgate md --tradeoff artifacts/perfgate/tradeoff.json --out artifacts/perfgate
 perfgate comment --tradeoff artifacts/perfgate/tradeoff.json --dry-run
 ```
 
+To run the structured decision path as one local workflow, use:
+
+```bash
+perfgate decision evaluate --config perfgate.toml
+```
+
+It uses the configured artifact directory for compare lookups and writes
+`scenario.json`, `tradeoff.json`, and `decision.md` there by default.
+
 `min_improvement_ratio` follows metric direction. For lower-is-better metrics
 such as `wall_ms`, `1.10` means the baseline/current ratio must be at least
 1.10. For higher-is-better metrics such as `throughput_per_s`, the

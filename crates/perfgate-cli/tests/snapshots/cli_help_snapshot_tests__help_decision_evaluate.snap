@@ -1,0 +1,23 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+expression: "help_output(&[\"decision\", \"evaluate\", \"--help\"])"
+---
+Evaluate configured scenarios and tradeoffs, then render decision markdown
+
+Usage: perfgate decision evaluate [OPTIONS]
+
+Options:
+      --config <CONFIG> Path to perfgate.toml [default: perfgate.toml]
+      --scenario <SCENARIO> Evaluate only one configured scenario by name
+      --workload-name <WORKLOAD_NAME> Name to use for the combined weighted workload receipt
+      --out-dir <OUT_DIR> Override artifact directory used for compare lookup and default outputs
+      --scenario-out <SCENARIO_OUT> Output scenario receipt path
+      --tradeoff-out <TRADEOFF_OUT> Output tradeoff receipt path
+      --decision-out <DECISION_OUT> Output decision markdown path
+      --pretty Pretty-print JSON receipts
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

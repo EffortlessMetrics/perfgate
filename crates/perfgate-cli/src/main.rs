@@ -344,6 +344,12 @@ enum Command {
         pretty: bool,
     },
 
+    /// Evaluate scenario and tradeoff evidence into a review-ready decision summary.
+    Decision {
+        #[command(subcommand)]
+        action: DecisionAction,
+    },
+
     /// Evaluate configured workload scenarios from compare receipts.
     Scenario {
         #[command(subcommand)]
@@ -1279,6 +1285,12 @@ pub enum TradeoffAction {
     Evaluate(TradeoffEvaluateArgs),
 }
 
+#[derive(Debug, Subcommand)]
+pub enum DecisionAction {
+    /// Evaluate configured scenarios and tradeoffs, then render decision markdown.
+    Evaluate(DecisionEvaluateArgs),
+}
+
 #[derive(Debug, Args)]
 pub struct ScenarioEvaluateArgs {
     /// Path to perfgate.toml.
@@ -1321,6 +1333,41 @@ pub struct TradeoffEvaluateArgs {
     pub out: PathBuf,
 
     /// Pretty-print JSON.
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionEvaluateArgs {
+    /// Path to perfgate.toml.
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Evaluate only one configured scenario by name.
+    #[arg(long)]
+    pub scenario: Option<String>,
+
+    /// Name to use for the combined weighted workload receipt.
+    #[arg(long)]
+    pub workload_name: Option<String>,
+
+    /// Override artifact directory used for compare lookup and default outputs.
+    #[arg(long)]
+    pub out_dir: Option<PathBuf>,
+
+    /// Output scenario receipt path.
+    #[arg(long)]
+    pub scenario_out: Option<PathBuf>,
+
+    /// Output tradeoff receipt path.
+    #[arg(long)]
+    pub tradeoff_out: Option<PathBuf>,
+
+    /// Output decision markdown path.
+    #[arg(long)]
+    pub decision_out: Option<PathBuf>,
+
+    /// Pretty-print JSON receipts.
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
 }
@@ -3059,6 +3106,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             }
         }
 
+        Command::Decision { action } => execute_decision_action(action),
         Command::Scenario { action } => execute_scenario_action(action),
         Command::Tradeoff { action } => execute_tradeoff_action(action),
 
@@ -3238,47 +3286,18 @@ fn execute_scenario_action(action: ScenarioAction) -> anyhow::Result<()> {
 }
 
 fn execute_scenario_evaluate(args: ScenarioEvaluateArgs) -> anyhow::Result<()> {
-    let config = load_config_file(&args.config)
-        .with_context(|| format!("failed to load {}", args.config.display()))?;
-    config
-        .validate()
-        .map_err(|error| anyhow::anyhow!("{} is invalid: {error}", args.config.display()))?;
-
-    if config.scenarios.is_empty() {
-        anyhow::bail!(
-            "no [[scenario]] entries configured in {}",
-            args.config.display()
-        );
-    }
-
-    let selected = select_configured_scenarios(&config, args.scenario.as_deref())?;
+    let config = load_validated_config(&args.config)?;
     let out_dir = args
         .out_dir
         .clone()
         .unwrap_or_else(|| resolve_configured_out_dir(None, Some(&config)));
-
-    let mut inputs = Vec::new();
-    for scenario in selected {
-        let compare_path = scenario_compare_path(scenario, &out_dir);
-        let compare: CompareReceipt = read_json_from_location(&compare_path)
-            .with_context(|| format!("read scenario compare {}", compare_path.display()))?;
-        let run_id = compare.current_ref.run_id.clone();
-        inputs.push(ScenarioEvaluateInput {
-            config: scenario.clone(),
-            compare_ref: CompareRef {
-                path: Some(compare_path.display().to_string()),
-                run_id,
-            },
-            compare,
-        });
-    }
-
-    let outcome = ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+    let outcome = evaluate_configured_scenarios(
         config,
-        inputs,
-        workload_name: args.workload_name,
-        tool: tool_info(),
-    })?;
+        &args.config,
+        args.scenario.as_deref(),
+        args.workload_name,
+        &out_dir,
+    )?;
 
     write_json(&args.out, &outcome.receipt, args.pretty)?;
     eprintln!("Scenario receipt written to {}", args.out.display());
@@ -3287,6 +3306,58 @@ fn execute_scenario_evaluate(args: ScenarioEvaluateArgs) -> anyhow::Result<()> {
         VerdictStatus::Fail => exit_with_code(2),
         VerdictStatus::Pass | VerdictStatus::Warn | VerdictStatus::Skip => Ok(()),
     }
+}
+
+fn load_validated_config(config_path: &Path) -> anyhow::Result<ConfigFile> {
+    let config = load_config_file(config_path)
+        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    config
+        .validate()
+        .map_err(|error| anyhow::anyhow!("{} is invalid: {error}", config_path.display()))?;
+    Ok(config)
+}
+
+fn evaluate_configured_scenarios(
+    config: ConfigFile,
+    config_path: &Path,
+    scenario: Option<&str>,
+    workload_name: Option<String>,
+    out_dir: &Path,
+) -> anyhow::Result<perfgate_app::ScenarioEvaluateOutcome> {
+    if config.scenarios.is_empty() {
+        anyhow::bail!(
+            "no [[scenario]] entries configured in {}",
+            config_path.display()
+        );
+    }
+
+    let selected: Vec<_> = select_configured_scenarios(&config, scenario)?
+        .into_iter()
+        .cloned()
+        .collect();
+
+    let mut inputs = Vec::new();
+    for scenario in selected {
+        let compare_path = scenario_compare_path(&scenario, out_dir);
+        let compare: CompareReceipt = read_json_from_location(&compare_path)
+            .with_context(|| format!("read scenario compare {}", compare_path.display()))?;
+        let run_id = compare.current_ref.run_id.clone();
+        inputs.push(ScenarioEvaluateInput {
+            config: scenario,
+            compare_ref: CompareRef {
+                path: Some(compare_path.display().to_string()),
+                run_id,
+            },
+            compare,
+        });
+    }
+
+    ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+        config,
+        inputs,
+        workload_name,
+        tool: tool_info(),
+    })
 }
 
 fn select_configured_scenarios<'a>(
@@ -3323,31 +3394,87 @@ fn execute_tradeoff_action(action: TradeoffAction) -> anyhow::Result<()> {
 }
 
 fn execute_tradeoff_evaluate(args: TradeoffEvaluateArgs) -> anyhow::Result<()> {
-    let config = load_config_file(&args.config)
-        .with_context(|| format!("failed to load {}", args.config.display()))?;
-    config
-        .validate()
-        .map_err(|error| anyhow::anyhow!("{} is invalid: {error}", args.config.display()))?;
-
-    if config.tradeoffs.is_empty() {
-        anyhow::bail!(
-            "no [[tradeoff]] entries configured in {}",
-            args.config.display()
-        );
-    }
-
+    let config = load_validated_config(&args.config)?;
     let scenario: ScenarioReceipt = read_json(&args.scenario)
         .with_context(|| format!("read scenario receipt {}", args.scenario.display()))?;
-    let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
-        scenario,
-        rules: config.tradeoffs,
-        tool: tool_info(),
-    })?;
+    let outcome = evaluate_configured_tradeoffs(&config, &args.config, scenario)?;
 
     write_json(&args.out, &outcome.receipt, args.pretty)?;
     eprintln!("Tradeoff receipt written to {}", args.out.display());
 
     match outcome.receipt.verdict.status {
+        VerdictStatus::Fail => exit_with_code(2),
+        VerdictStatus::Pass | VerdictStatus::Warn | VerdictStatus::Skip => Ok(()),
+    }
+}
+
+fn evaluate_configured_tradeoffs(
+    config: &ConfigFile,
+    config_path: &Path,
+    scenario: ScenarioReceipt,
+) -> anyhow::Result<perfgate_app::TradeoffEvaluateOutcome> {
+    if config.tradeoffs.is_empty() {
+        anyhow::bail!(
+            "no [[tradeoff]] entries configured in {}",
+            config_path.display()
+        );
+    }
+
+    TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+        scenario,
+        rules: config.tradeoffs.clone(),
+        tool: tool_info(),
+    })
+}
+
+fn execute_decision_action(action: DecisionAction) -> anyhow::Result<()> {
+    match action {
+        DecisionAction::Evaluate(args) => execute_decision_evaluate(args),
+    }
+}
+
+fn execute_decision_evaluate(args: DecisionEvaluateArgs) -> anyhow::Result<()> {
+    let config = load_validated_config(&args.config)?;
+    let out_dir = resolve_configured_out_dir(args.out_dir.as_ref(), Some(&config));
+    let scenario_out = args
+        .scenario_out
+        .clone()
+        .unwrap_or_else(|| out_dir.join("scenario.json"));
+    let tradeoff_out = args
+        .tradeoff_out
+        .clone()
+        .unwrap_or_else(|| out_dir.join("tradeoff.json"));
+    let decision_out = args
+        .decision_out
+        .clone()
+        .unwrap_or_else(|| out_dir.join("decision.md"));
+
+    let scenario_outcome = evaluate_configured_scenarios(
+        config.clone(),
+        &args.config,
+        args.scenario.as_deref(),
+        args.workload_name,
+        &out_dir,
+    )?;
+    write_json(&scenario_out, &scenario_outcome.receipt, args.pretty)?;
+    eprintln!("Scenario receipt written to {}", scenario_out.display());
+
+    let tradeoff_outcome =
+        evaluate_configured_tradeoffs(&config, &args.config, scenario_outcome.receipt)?;
+    write_json(&tradeoff_out, &tradeoff_outcome.receipt, args.pretty)?;
+    eprintln!("Tradeoff receipt written to {}", tradeoff_out.display());
+
+    let markdown = render_tradeoff_markdown(&tradeoff_outcome.receipt);
+    if let Some(parent) = decision_out
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
+    }
+    atomic_write(&decision_out, markdown.as_bytes())?;
+    eprintln!("Decision markdown written to {}", decision_out.display());
+
+    match tradeoff_outcome.receipt.verdict.status {
         VerdictStatus::Fail => exit_with_code(2),
         VerdictStatus::Pass | VerdictStatus::Warn | VerdictStatus::Skip => Ok(()),
     }

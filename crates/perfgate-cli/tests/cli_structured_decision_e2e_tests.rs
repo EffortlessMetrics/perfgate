@@ -194,6 +194,71 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
     assert!(decision.contains("memory_for_speed"));
 }
 
+#[test]
+fn decision_evaluate_runs_structured_decision_workflow() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let root = temp_dir.path();
+    let config_path = root.join("perfgate.toml");
+    write_config(&config_path);
+
+    perfgate_cmd()
+        .current_dir(root)
+        .args(["check", "--config", "perfgate.toml", "--all"])
+        .assert()
+        .success();
+
+    perfgate_cmd()
+        .current_dir(root)
+        .args(["baseline", "promote", "--config", "perfgate.toml", "--all"])
+        .assert()
+        .success();
+
+    perfgate_cmd()
+        .current_dir(root)
+        .args([
+            "check",
+            "--config",
+            "perfgate.toml",
+            "--all",
+            "--require-baseline",
+        ])
+        .assert()
+        .success();
+
+    let compare_path = root.join("artifacts/perfgate/parser/compare.json");
+    assert!(compare_path.exists(), "check should write compare receipt");
+    write_controlled_compare_receipt(&compare_path);
+
+    perfgate_cmd()
+        .current_dir(root)
+        .args(["decision", "evaluate", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Scenario receipt written"))
+        .stderr(predicate::str::contains("Tradeoff receipt written"))
+        .stderr(predicate::str::contains("Decision markdown written"));
+
+    let scenario_path = root.join("artifacts/perfgate/scenario.json");
+    let tradeoff_path = root.join("artifacts/perfgate/tradeoff.json");
+    let decision_path = root.join("artifacts/perfgate/decision.md");
+
+    let scenario: perfgate_types::ScenarioReceipt =
+        serde_json::from_str(&fs::read_to_string(scenario_path).expect("read scenario receipt"))
+            .expect("scenario receipt should deserialize");
+    assert_eq!(scenario.schema, "perfgate.scenario.v1");
+
+    let tradeoff: perfgate_types::TradeoffReceipt =
+        serde_json::from_str(&fs::read_to_string(tradeoff_path).expect("read tradeoff receipt"))
+            .expect("tradeoff receipt should deserialize");
+    assert_eq!(tradeoff.schema, "perfgate.tradeoff.v1");
+    assert!(tradeoff.decision.accepted_tradeoff);
+    assert_eq!(tradeoff.decision.status, perfgate_types::MetricStatus::Warn);
+
+    let decision = fs::read_to_string(decision_path).expect("read decision md");
+    assert!(decision.contains("perfgate tradeoff: warn"));
+    assert!(decision.contains("tradeoff 'memory_for_speed' accepted"));
+}
+
 fn write_controlled_compare_receipt(path: &Path) {
     let receipt = json!({
         "schema": "perfgate.compare.v1",

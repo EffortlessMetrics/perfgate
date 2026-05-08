@@ -97,6 +97,21 @@ perfgate md --tradeoff artifacts/perfgate/tradeoff.json
 perfgate comment --tradeoff artifacts/perfgate/tradeoff.json --dry-run
 ```
 
+For the paved local workflow, `decision evaluate` runs the scenario evaluation,
+tradeoff evaluation, and markdown rendering steps together:
+
+```bash
+perfgate decision evaluate --config perfgate.toml
+```
+
+By default it writes:
+
+```text
+artifacts/perfgate/scenario.json
+artifacts/perfgate/tradeoff.json
+artifacts/perfgate/decision.md
+```
+
 ## Fixture Validation
 
 Validate JSON files against the vendored `sensor.report.v1` schema:
