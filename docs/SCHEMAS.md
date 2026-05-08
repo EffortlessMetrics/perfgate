@@ -8,7 +8,7 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 |--------|-------------|-------------|
 | `perfgate.run.v1` | `run`, `check` | Raw measurement data from a benchmark execution |
 | `perfgate.compare.v1` | `compare`, `check`, `paired` | Comparison of current run against baseline |
-| `perfgate.probe.v1` | schema-first contract | Named probe observations from internal phases or external instrumentation |
+| `perfgate.probe.v1` | `ingest probes` | Named probe observations from internal phases or external instrumentation |
 | `perfgate.scenario.v1` | schema-first contract | Weighted workload-scenario evidence across benchmarks, phases, or probe groups |
 | `perfgate.tradeoff.v1` | schema-first contract | Structured decision evidence for accepted or rejected performance tradeoffs |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
@@ -45,6 +45,23 @@ cargo run -p xtask -- schema-check
 
 # Verify old release fixtures still deserialize with current types
 cargo run -p xtask -- schema-compat
+```
+
+## Probe JSONL Ingestion
+
+`perfgate ingest probes` converts language-agnostic probe JSONL into a
+`perfgate.probe.v1` receipt:
+
+```bash
+perfgate ingest probes --file probes.jsonl --out probe.json
+```
+
+Each non-empty JSONL line is one probe observation. Lines may use the full
+`ProbeObservation` shape, or a compact flat shape where numeric top-level fields
+become metrics:
+
+```json
+{"probe":"parser.tokenize","scope":"local","wall_ms":12.4,"alloc_bytes":184320,"items":10000}
 ```
 
 ## Fixture Validation

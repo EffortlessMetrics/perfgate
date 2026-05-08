@@ -10,10 +10,12 @@ mod criterion;
 mod gobench;
 mod hyperfine;
 mod otel;
+mod probes;
 mod pytest;
 
 use perfgate_types::{
-    BenchMeta, HostInfo, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary,
+    BenchMeta, HostInfo, PROBE_SCHEMA_V1, ProbeReceipt, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample,
+    Stats, ToolInfo, U64Summary,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -22,6 +24,7 @@ pub use criterion::parse_criterion;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
 pub use otel::parse_otel_json;
+pub use probes::{ProbeIngestRequest, ingest_probes_jsonl};
 pub use pytest::parse_pytest_benchmark;
 
 /// Supported ingest formats.
@@ -77,6 +80,50 @@ pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
             &request.include_spans,
             &request.exclude_spans,
         ),
+    }
+}
+
+/// Build scaffolding for a `ProbeReceipt` with sensible defaults.
+fn make_probe_receipt(
+    bench_name: Option<&str>,
+    scenario: Option<String>,
+    probes: Vec<perfgate_types::ProbeObservation>,
+) -> ProbeReceipt {
+    let now = OffsetDateTime::now_utc();
+    let timestamp = now
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+
+    ProbeReceipt {
+        schema: PROBE_SCHEMA_V1.to_string(),
+        tool: ToolInfo {
+            name: "perfgate-ingest".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        run: RunMeta {
+            id: Uuid::new_v4().to_string(),
+            started_at: timestamp.clone(),
+            ended_at: timestamp,
+            host: HostInfo {
+                os: std::env::consts::OS.to_string(),
+                arch: std::env::consts::ARCH.to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+        },
+        bench: bench_name.map(|name| BenchMeta {
+            name: name.to_string(),
+            cwd: None,
+            command: vec!["(ingested probes)".to_string()],
+            repeat: probes.len() as u32,
+            warmup: 0,
+            work_units: None,
+            timeout_ms: None,
+        }),
+        scenario,
+        probes,
+        metadata: Default::default(),
     }
 }
 

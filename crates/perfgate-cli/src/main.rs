@@ -378,9 +378,9 @@ enum Command {
 
     /// Import benchmark results from external frameworks into perfgate format.
     ///
-    /// Supports Criterion, hyperfine, Go bench, and pytest-benchmark.
-    /// Produces a standard perfgate.run.v1 receipt that can be used with
-    /// compare, report, check, and other perfgate commands.
+    /// Supports Criterion, hyperfine, Go bench, pytest-benchmark, OTel spans,
+    /// and probe JSONL. Produces standard perfgate.run.v1 or perfgate.probe.v1
+    /// receipts.
     Ingest(Box<IngestArgs>),
 
     /// Generate an embeddable SVG status badge from a report or compare receipt.
@@ -1207,13 +1207,16 @@ pub struct PairedArgs {
 
 #[derive(Debug, Args)]
 pub struct IngestArgs {
+    #[command(subcommand)]
+    pub command: Option<IngestCommand>,
+
     /// Input format: criterion, hyperfine, gobench, pytest, otel
     #[arg(long)]
-    pub format: String,
+    pub format: Option<String>,
 
     /// Path to the input file (or directory for criterion)
     #[arg(long)]
-    pub input: PathBuf,
+    pub input: Option<PathBuf>,
 
     /// Benchmark name (default: derived from input data)
     #[arg(long)]
@@ -1232,6 +1235,35 @@ pub struct IngestArgs {
     pub out: PathBuf,
 
     /// Pretty-print JSON
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum IngestCommand {
+    /// Ingest language-agnostic probe JSONL into a perfgate.probe.v1 receipt.
+    Probes(IngestProbesArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct IngestProbesArgs {
+    /// Path to the probe JSONL file.
+    #[arg(long)]
+    pub file: PathBuf,
+
+    /// Optional benchmark name to attach to the probe receipt.
+    #[arg(long)]
+    pub bench: Option<String>,
+
+    /// Optional scenario name to attach to the probe receipt.
+    #[arg(long)]
+    pub scenario: Option<String>,
+
+    /// Output file path.
+    #[arg(long, default_value = "probe.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON.
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
 }
@@ -2969,6 +3001,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Ingest(args) => {
             let IngestArgs {
+                command,
                 format,
                 input,
                 name,
@@ -2977,6 +3010,19 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 out,
                 pretty,
             } = *args;
+
+            if let Some(command) = command {
+                return match command {
+                    IngestCommand::Probes(args) => execute_ingest_probes(args),
+                };
+            }
+
+            let format = format.ok_or_else(|| {
+                anyhow::anyhow!("ingest requires --format unless using a subcommand")
+            })?;
+            let input = input.ok_or_else(|| {
+                anyhow::anyhow!("ingest requires --input unless using a subcommand")
+            })?;
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
@@ -3071,6 +3117,24 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         Command::Comment(args) => execute_comment(*args),
         Command::Trend(args) => execute_trend(*args),
     }
+}
+
+fn execute_ingest_probes(args: IngestProbesArgs) -> anyhow::Result<()> {
+    let content = fs::read_to_string(&args.file)
+        .with_context(|| format!("read probe JSONL file {}", args.file.display()))?;
+    let request = ingest::ProbeIngestRequest {
+        input: content,
+        bench: args.bench,
+        scenario: args.scenario,
+    };
+    let receipt = ingest::ingest_probes_jsonl(&request)?;
+    write_json(&args.out, &receipt, args.pretty)?;
+    eprintln!(
+        "Ingested probes {} -> {}",
+        args.file.display(),
+        args.out.display()
+    );
+    Ok(())
 }
 
 fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {
