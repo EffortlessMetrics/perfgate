@@ -2751,13 +2751,24 @@ fn export_dogfood_trends(artifacts_dir: &Path, out_dir: &Path) -> anyhow::Result
     );
     fs::create_dir_all(out_dir)?;
 
-    let perfgate = release_perfgate_bin()?;
     let extras_dir = artifacts_dir.join("extras");
 
-    let run_pattern = format!("{}/**/perfgate.run.v1.json", extras_dir.display());
+    let run_pattern = dogfood_receipt_pattern(&extras_dir, "perfgate.run.v1.json");
+    let run_receipts: Vec<_> = glob(&run_pattern)?.collect::<Result<Vec<_>, _>>()?;
+    let compare_pattern = dogfood_receipt_pattern(&extras_dir, "perfgate.compare.v1.json");
+    let compare_receipts: Vec<_> = glob(&compare_pattern)?.collect::<Result<Vec<_>, _>>()?;
+
+    if run_receipts.is_empty() && compare_receipts.is_empty() {
+        anyhow::bail!(
+            "no dogfooding receipts found under {}",
+            extras_dir.display()
+        );
+    }
+
+    let perfgate = release_perfgate_bin()?;
+
     let mut run_count = 0;
-    for entry in glob(&run_pattern)? {
-        let receipt = entry?;
+    for receipt in run_receipts {
         let bench = dogfood_bench_slug(&extras_dir, &receipt, "perfgate.run.v1.json")?;
         let out = out_dir.join(format!("history-{bench}.jsonl"));
         println!(
@@ -2778,10 +2789,8 @@ fn export_dogfood_trends(artifacts_dir: &Path, out_dir: &Path) -> anyhow::Result
         run_count += 1;
     }
 
-    let compare_pattern = format!("{}/**/perfgate.compare.v1.json", extras_dir.display());
     let mut compare_count = 0;
-    for entry in glob(&compare_pattern)? {
-        let receipt = entry?;
+    for receipt in compare_receipts {
         let bench = dogfood_bench_slug(&extras_dir, &receipt, "perfgate.compare.v1.json")?;
         let out = out_dir.join(format!("metrics-{bench}.prom"));
         println!(
@@ -2802,15 +2811,13 @@ fn export_dogfood_trends(artifacts_dir: &Path, out_dir: &Path) -> anyhow::Result
         compare_count += 1;
     }
 
-    if run_count == 0 && compare_count == 0 {
-        anyhow::bail!(
-            "no dogfooding receipts found under {}",
-            extras_dir.display()
-        );
-    }
-
     println!("Exported {run_count} run trend file(s) and {compare_count} compare metric file(s).");
     Ok(())
+}
+
+fn dogfood_receipt_pattern(extras_dir: &Path, file_name: &str) -> String {
+    let root = extras_dir.display().to_string().replace('\\', "/");
+    format!("{}/**/{}", root.trim_end_matches('/'), file_name)
 }
 
 fn dogfood_bench_slug(
@@ -4560,6 +4567,48 @@ pkg-fmt = "zip"
             err.to_string().contains("timed-out sample"),
             "unexpected: {}",
             err
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn dogfood_receipt_pattern_uses_glob_safe_separators() {
+        let pattern = dogfood_receipt_pattern(
+            Path::new(r"artifacts\perfgate\extras"),
+            "perfgate.run.v1.json",
+        );
+
+        assert_eq!(pattern, "artifacts/perfgate/extras/**/perfgate.run.v1.json");
+    }
+
+    #[test]
+    fn dogfood_bench_slug_joins_nested_receipt_components() {
+        let extras = Path::new("artifacts").join("perfgate").join("extras");
+        let receipt = extras
+            .join("cli")
+            .join("compare-small")
+            .join("perfgate.run.v1.json");
+
+        let slug = dogfood_bench_slug(&extras, &receipt, "perfgate.run.v1.json")
+            .expect("nested dogfood receipt should produce slug");
+
+        assert_eq!(slug, "cli-compare-small");
+    }
+
+    #[test]
+    fn dogfood_export_trends_rejects_missing_receipts_before_requiring_binary() {
+        let temp_dir = unique_temp_dir("perfgate_dogfood_export_empty");
+        let artifacts_dir = temp_dir.join("artifacts").join("perfgate");
+        let out_dir = temp_dir.join("trends");
+
+        let err = export_dogfood_trends(&artifacts_dir, &out_dir).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains("no dogfooding receipts found"),
+            "unexpected: {}",
+            msg
         );
 
         let _ = fs::remove_dir_all(&temp_dir);
