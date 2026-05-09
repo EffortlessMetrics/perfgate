@@ -182,7 +182,7 @@ The current CLI surfaces that talk to the baseline service are:
 | `baseline submit-verdict` | Submit verdict data from a compare receipt |
 | `baseline migrate` | Upload local baseline JSON files to the server |
 | `decision upload` | Store a structured performance decision receipt |
-| `decision history` | List stored performance decisions |
+| `decision history` | List stored performance decisions, with scenario/status/verdict/review/rule filters |
 | `decision debt` | Summarize accepted tradeoff debt, cap usage, and accepted deltas by scenario |
 | `audit list` | List admin audit events |
 | `audit export --format jsonl` | Export audit events for external review |
@@ -218,6 +218,11 @@ The server exposes these top-level surfaces:
 - `POST /api/v1/projects/{project}/decisions`: upload a decision receipt
 - `GET /api/v1/projects/{project}/decisions`: list decision receipts
 - `GET /api/v1/projects/{project}/decisions/latest`: fetch latest decision
+
+Decision history accepts `scenario`, `status`, `verdict`, `review_required`,
+`accepted`, and `rule` query parameters so operators can drill into accepted
+tradeoffs, review-required records, and specific policy rules without scanning
+the full ledger locally.
 - `GET /api/v1/audit`: list audit events
 - `POST /api/v1/keys`: create an API key
 - `GET /api/v1/keys`: list API keys

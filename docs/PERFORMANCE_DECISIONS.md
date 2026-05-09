@@ -227,6 +227,17 @@ tradeoff receipt, optional scenario receipt, optional artifact index, accepted
 rule names, final status/verdict, review state, git metadata, and creation
 time. Uploads emit an audit event with resource type `decision`.
 
+Use `decision history` filters to inspect a specific part of the ledger:
+
+```bash
+perfgate decision history --accepted true --rule memory_for_probe_speed
+perfgate decision history --review-required true
+perfgate decision history --scenario large_file_parse --verdict warn
+```
+
+The dashboard exposes the same drilldowns for status, verdict, review state,
+accepted-tradeoff presence, scenario, and accepted rule.
+
 `decision debt` summarizes accepted tradeoff records by scenario so teams can
 spot repeated exceptions before they become invisible performance debt. When a
 tradeoff rule used local regression caps, the summary reports the highest cap

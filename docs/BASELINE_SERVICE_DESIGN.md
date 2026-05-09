@@ -153,7 +153,7 @@ The main server-aware CLI workflows are:
 | `baseline submit-verdict` | persist compare verdicts |
 | `baseline migrate` | upload local baseline JSON files recursively |
 | `decision upload` | store a structured performance decision receipt |
-| `decision history` | list stored performance decisions |
+| `decision history` | list stored performance decisions with scenario/status/verdict/review/rule filters |
 | `decision debt` | summarize accepted tradeoff debt, cap usage, and accepted deltas by scenario |
 | `audit list` | inspect append-only audit events |
 | `audit export --format jsonl` | export audit events for operators or compliance review |

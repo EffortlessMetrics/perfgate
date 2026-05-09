@@ -314,6 +314,23 @@ fn cli_help_decision_evaluate() {
 }
 
 #[test]
+fn cli_help_decision_history() {
+    perfgate_cmd()
+        .args(["decision", "history", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "List stored decision receipts from the baseline server",
+        ))
+        .stdout(predicate::str::contains("--scenario"))
+        .stdout(predicate::str::contains("--status"))
+        .stdout(predicate::str::contains("--verdict"))
+        .stdout(predicate::str::contains("--review-required"))
+        .stdout(predicate::str::contains("--accepted"))
+        .stdout(predicate::str::contains("--rule"));
+}
+
+#[test]
 fn cli_help_decision_debt() {
     perfgate_cmd()
         .args(["decision", "debt", "--help"])

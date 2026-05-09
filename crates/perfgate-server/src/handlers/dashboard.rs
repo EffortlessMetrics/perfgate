@@ -56,9 +56,14 @@ mod tests {
         assert!(INDEX_HTML.contains("<h2>Performance Decisions</h2>"));
         assert!(INDEX_HTML.contains("id=\"decisionsBody\""));
         assert!(INDEX_HTML.contains("function loadDecisions()"));
-        assert!(INDEX_HTML.contains("'/decisions?limit='"));
-        assert!(INDEX_HTML.contains("id=\"decisionSkip\""));
-        assert!(INDEX_HTML.contains("id=\"decisionReviewOnly\""));
+        assert!(INDEX_HTML.contains("'/decisions?' + params.toString()"));
+        assert!(INDEX_HTML.contains("id=\"decisionStatus\""));
+        assert!(INDEX_HTML.contains("id=\"decisionVerdict\""));
+        assert!(INDEX_HTML.contains("id=\"decisionReviewRequired\""));
+        assert!(INDEX_HTML.contains("id=\"decisionAccepted\""));
+        assert!(INDEX_HTML.contains("id=\"decisionScenario\""));
+        assert!(INDEX_HTML.contains("id=\"decisionRule\""));
+        assert!(INDEX_HTML.contains("params.set('rule', rule)"));
         assert!(INDEX_HTML.contains("id=\"decisionPagination\""));
         assert!(INDEX_HTML.contains("loadDecisions();"));
     }

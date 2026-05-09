@@ -654,6 +654,13 @@ async fn test_decision_history_and_latest_use_server_ledger() {
     Mock::given(method("GET"))
         .and(path("/api/v1/projects/test-project/decisions"))
         .and(header("Authorization", "Bearer decision-key"))
+        .and(query_param("scenario", "release_workload"))
+        .and(query_param("status", "warn"))
+        .and(query_param("verdict", "warn"))
+        .and(query_param("review_required", "false"))
+        .and(query_param("accepted", "true"))
+        .and(query_param("rule", "memory_for_speed"))
+        .and(query_param("limit", "20"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "decisions": [decision_record("test-project", "decision-1")],
             "pagination": {
@@ -684,7 +691,18 @@ async fn test_decision_history_and_latest_use_server_ledger() {
         .arg("--project")
         .arg("test-project")
         .arg("decision")
-        .arg("history");
+        .arg("history")
+        .arg("--scenario")
+        .arg("release_workload")
+        .arg("--status")
+        .arg("warn")
+        .arg("--verdict")
+        .arg("warn")
+        .arg("--review-required")
+        .arg("false")
+        .arg("--accepted")
+        .arg("--rule")
+        .arg("memory_for_speed");
 
     history
         .assert()

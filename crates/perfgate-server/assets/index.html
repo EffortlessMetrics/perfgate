@@ -714,12 +714,49 @@
             <h2>Performance Decisions</h2>
 
             <div class="filter-bar">
-                <div class="checkbox-group">
-                    <label><input type="checkbox" id="decisionPass" checked onchange="resetAndLoadDecisions()"> Pass</label>
-                    <label><input type="checkbox" id="decisionWarn" checked onchange="resetAndLoadDecisions()"> Warn</label>
-                    <label><input type="checkbox" id="decisionFail" checked onchange="resetAndLoadDecisions()"> Fail</label>
-                    <label><input type="checkbox" id="decisionSkip" checked onchange="resetAndLoadDecisions()"> Skip</label>
-                    <label><input type="checkbox" id="decisionReviewOnly" onchange="resetAndLoadDecisions()"> Needs Review</label>
+                <div class="filter-group">
+                    <label for="decisionStatus">Status</label>
+                    <select id="decisionStatus" onchange="resetAndLoadDecisions()">
+                        <option value="">Any</option>
+                        <option value="pass">Pass</option>
+                        <option value="warn">Warn</option>
+                        <option value="fail">Fail</option>
+                        <option value="skip">Skip</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="decisionVerdict">Verdict</label>
+                    <select id="decisionVerdict" onchange="resetAndLoadDecisions()">
+                        <option value="">Any</option>
+                        <option value="pass">Pass</option>
+                        <option value="warn">Warn</option>
+                        <option value="fail">Fail</option>
+                        <option value="skip">Skip</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="decisionReviewRequired">Review</label>
+                    <select id="decisionReviewRequired" onchange="resetAndLoadDecisions()">
+                        <option value="">Any</option>
+                        <option value="true">Required</option>
+                        <option value="false">Not required</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="decisionAccepted">Accepted</label>
+                    <select id="decisionAccepted" onchange="resetAndLoadDecisions()">
+                        <option value="">Any</option>
+                        <option value="true">Accepted</option>
+                        <option value="false">None</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="decisionScenario">Scenario</label>
+                    <input type="text" id="decisionScenario" placeholder="scenario" onkeydown="decisionFilterKeydown(event)">
+                </div>
+                <div class="filter-group">
+                    <label for="decisionRule">Rule</label>
+                    <input type="text" id="decisionRule" placeholder="accepted rule" onkeydown="decisionFilterKeydown(event)">
                 </div>
                 <button onclick="resetAndLoadDecisions()">Load Decisions</button>
             </div>
@@ -1204,21 +1241,33 @@
             loadDecisions();
         }
 
+        function decisionFilterKeydown(e) {
+            if (e.key === 'Enter') resetAndLoadDecisions();
+        }
+
         async function loadDecisions() {
             var project = getProject();
             var body = document.getElementById('decisionsBody');
             body.innerHTML = loadingRow(7);
 
-            var statusFilters = [];
-            if (document.getElementById('decisionPass').checked) statusFilters.push('pass');
-            if (document.getElementById('decisionWarn').checked) statusFilters.push('warn');
-            if (document.getElementById('decisionFail').checked) statusFilters.push('fail');
-            if (document.getElementById('decisionSkip').checked) statusFilters.push('skip');
-            var reviewOnly = document.getElementById('decisionReviewOnly').checked;
+            var params = new URLSearchParams();
+            params.set('limit', decisionPageSize);
+            params.set('offset', decisionPage * decisionPageSize);
+            var status = document.getElementById('decisionStatus').value;
+            var verdict = document.getElementById('decisionVerdict').value;
+            var reviewRequired = document.getElementById('decisionReviewRequired').value;
+            var accepted = document.getElementById('decisionAccepted').value;
+            var scenario = document.getElementById('decisionScenario').value.trim();
+            var rule = document.getElementById('decisionRule').value.trim();
+            if (status) params.set('status', status);
+            if (verdict) params.set('verdict', verdict);
+            if (reviewRequired) params.set('review_required', reviewRequired);
+            if (accepted) params.set('accepted', accepted);
+            if (scenario) params.set('scenario', scenario);
+            if (rule) params.set('rule', rule);
 
             var url = '/api/v1/projects/' + encodeURIComponent(project)
-                + '/decisions?limit=' + decisionPageSize
-                + '&offset=' + (decisionPage * decisionPageSize);
+                + '/decisions?' + params.toString();
 
             var data = await fetchApi(url);
             if (!data) {
@@ -1227,11 +1276,7 @@
                 return;
             }
 
-            var decisions = (data.decisions || []).filter(function(d) {
-                if (statusFilters.indexOf(d.status) === -1) return false;
-                if (reviewOnly && !d.review_required) return false;
-                return true;
-            });
+            var decisions = data.decisions || [];
             totalDecisions = data.pagination ? data.pagination.total : decisions.length;
 
             if (decisions.length === 0) {

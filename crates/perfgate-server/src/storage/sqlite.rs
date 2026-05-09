@@ -755,9 +755,26 @@ impl BaselineStore for SqliteStore {
             sql.push_str(" AND status = ?");
             params_vec.push(status.as_str().to_string().into());
         }
+        if let Some(verdict) = query.verdict {
+            sql.push_str(" AND verdict = ?");
+            params_vec.push(verdict.as_str().to_string().into());
+        }
         if let Some(review_required) = query.review_required {
             sql.push_str(" AND review_required = ?");
             params_vec.push((if review_required { 1i64 } else { 0i64 }).into());
+        }
+        if let Some(accepted) = query.accepted {
+            if accepted {
+                sql.push_str(" AND accepted_rules != '[]'");
+            } else {
+                sql.push_str(" AND accepted_rules = '[]'");
+            }
+        }
+        if let Some(rule) = &query.rule {
+            sql.push_str(" AND instr(accepted_rules, ?) > 0");
+            let encoded_rule =
+                serde_json::to_string(rule).map_err(StoreError::SerializationError)?;
+            params_vec.push(encoded_rule.into());
         }
 
         let count_sql = format!("SELECT COUNT(*) FROM ({})", sql);
@@ -1207,7 +1224,7 @@ mod tests {
             "2026-05-08T00:00:00Z",
             false,
         );
-        let second = create_test_decision(
+        let mut second = create_test_decision(
             "decision-2",
             "my-project",
             "interactive",
@@ -1215,6 +1232,16 @@ mod tests {
             "2026-05-09T00:00:00Z",
             true,
         );
+        second.accepted_rules = vec!["latency_guard".to_string()];
+        let mut no_tradeoff = create_test_decision(
+            "decision-4",
+            "my-project",
+            "batch",
+            perfgate_types::MetricStatus::Pass,
+            "2026-05-07T00:00:00Z",
+            false,
+        );
+        no_tradeoff.accepted_rules.clear();
         let other_project = create_test_decision(
             "decision-3",
             "other-project",
@@ -1226,6 +1253,7 @@ mod tests {
 
         store.create_decision(&first).await.unwrap();
         store.create_decision(&second).await.unwrap();
+        store.create_decision(&no_tradeoff).await.unwrap();
         store.create_decision(&other_project).await.unwrap();
 
         let latest = store
@@ -1257,6 +1285,42 @@ mod tests {
             .unwrap();
         assert_eq!(review_required.decisions.len(), 1);
         assert_eq!(review_required.decisions[0].id, "decision-2");
+
+        let accepted = store
+            .list_decisions("my-project", &ListDecisionsQuery::new().with_accepted(true))
+            .await
+            .unwrap();
+        assert_eq!(accepted.pagination.total, 2);
+
+        let no_accepted_tradeoff = store
+            .list_decisions(
+                "my-project",
+                &ListDecisionsQuery::new().with_accepted(false),
+            )
+            .await
+            .unwrap();
+        assert_eq!(no_accepted_tradeoff.decisions.len(), 1);
+        assert_eq!(no_accepted_tradeoff.decisions[0].id, "decision-4");
+
+        let rule = store
+            .list_decisions(
+                "my-project",
+                &ListDecisionsQuery::new().with_rule("latency_guard"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rule.decisions.len(), 1);
+        assert_eq!(rule.decisions[0].id, "decision-2");
+
+        let verdict = store
+            .list_decisions(
+                "my-project",
+                &ListDecisionsQuery::new().with_verdict(perfgate_types::VerdictStatus::Fail),
+            )
+            .await
+            .unwrap();
+        assert_eq!(verdict.decisions.len(), 1);
+        assert_eq!(verdict.decisions[0].id, "decision-2");
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -380,8 +380,27 @@ impl BaselineStore for InMemoryStore {
                 {
                     return false;
                 }
+                if let Some(verdict) = query.verdict
+                    && record.verdict != verdict
+                {
+                    return false;
+                }
                 if let Some(review_required) = query.review_required
                     && record.review_required != review_required
+                {
+                    return false;
+                }
+                if let Some(accepted) = query.accepted {
+                    let has_accepted_tradeoff = !record.accepted_rules.is_empty();
+                    if has_accepted_tradeoff != accepted {
+                        return false;
+                    }
+                }
+                if let Some(ref rule) = query.rule
+                    && !record
+                        .accepted_rules
+                        .iter()
+                        .any(|accepted| accepted == rule)
                 {
                     return false;
                 }

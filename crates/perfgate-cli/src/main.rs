@@ -1468,9 +1468,21 @@ pub struct DecisionHistoryArgs {
     #[arg(long, value_parser = parse_metric_status)]
     pub status: Option<MetricStatus>,
 
+    /// Optional final policy verdict to filter by (pass|warn|fail|skip).
+    #[arg(long, value_parser = parse_verdict_status)]
+    pub verdict: Option<VerdictStatus>,
+
     /// Optional review-required filter.
-    #[arg(long)]
+    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
     pub review_required: Option<bool>,
+
+    /// Optional accepted-tradeoff filter.
+    #[arg(long, num_args = 0..=1, default_missing_value = "true")]
+    pub accepted: Option<bool>,
+
+    /// Optional accepted tradeoff rule name to filter by.
+    #[arg(long)]
+    pub rule: Option<String>,
 
     /// Maximum number of records to list.
     #[arg(long, default_value_t = 20)]
@@ -4058,8 +4070,17 @@ fn execute_decision_history(
     if let Some(status) = args.status {
         query = query.with_status(status);
     }
+    if let Some(verdict) = args.verdict {
+        query = query.with_verdict(verdict);
+    }
     if let Some(review_required) = args.review_required {
         query = query.with_review_required(review_required);
+    }
+    if let Some(accepted) = args.accepted {
+        query = query.with_accepted(accepted);
+    }
+    if let Some(rule) = args.rule {
+        query = query.with_rule(rule);
     }
 
     let rt = tokio::runtime::Runtime::new()?;

@@ -275,7 +275,10 @@ pub struct UploadDecisionRequest {
 pub struct ListDecisionsQuery {
     pub scenario: Option<String>,
     pub status: Option<MetricStatus>,
+    pub verdict: Option<VerdictStatus>,
     pub review_required: Option<bool>,
+    pub accepted: Option<bool>,
+    pub rule: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: u32,
     #[serde(default)]
@@ -287,7 +290,10 @@ impl Default for ListDecisionsQuery {
         Self {
             scenario: None,
             status: None,
+            verdict: None,
             review_required: None,
+            accepted: None,
+            rule: None,
             limit: default_limit(),
             offset: 0,
         }
@@ -306,8 +312,20 @@ impl ListDecisionsQuery {
         self.status = Some(status);
         self
     }
+    pub fn with_verdict(mut self, verdict: VerdictStatus) -> Self {
+        self.verdict = Some(verdict);
+        self
+    }
     pub fn with_review_required(mut self, review_required: bool) -> Self {
         self.review_required = Some(review_required);
+        self
+    }
+    pub fn with_accepted(mut self, accepted: bool) -> Self {
+        self.accepted = Some(accepted);
+        self
+    }
+    pub fn with_rule(mut self, rule: impl Into<String>) -> Self {
+        self.rule = Some(rule.into());
         self
     }
     pub fn with_limit(mut self, limit: u32) -> Self {

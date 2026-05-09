@@ -887,9 +887,24 @@ impl BaselineStore for PostgresStore {
             params_count += 1;
             filter_sql.push_str(&format!(" AND status = ${}", params_count));
         }
+        if query.verdict.is_some() {
+            params_count += 1;
+            filter_sql.push_str(&format!(" AND verdict = ${}", params_count));
+        }
         if query.review_required.is_some() {
             params_count += 1;
             filter_sql.push_str(&format!(" AND review_required = ${}", params_count));
+        }
+        if let Some(accepted) = query.accepted {
+            if accepted {
+                filter_sql.push_str(" AND jsonb_array_length(accepted_rules) > 0");
+            } else {
+                filter_sql.push_str(" AND jsonb_array_length(accepted_rules) = 0");
+            }
+        }
+        if query.rule.is_some() {
+            params_count += 1;
+            filter_sql.push_str(&format!(" AND accepted_rules @> ${}::jsonb", params_count));
         }
 
         let count_sql = format!("SELECT COUNT(*){}", filter_sql);
@@ -900,8 +915,14 @@ impl BaselineStore for PostgresStore {
         if let Some(status) = query.status {
             count_query = count_query.bind(status.as_str());
         }
+        if let Some(verdict) = query.verdict {
+            count_query = count_query.bind(verdict.as_str());
+        }
         if let Some(review_required) = query.review_required {
             count_query = count_query.bind(review_required);
+        }
+        if let Some(rule) = &query.rule {
+            count_query = count_query.bind(serde_json::json!([rule]));
         }
         let total = count_query
             .fetch_one(&self.pool)
@@ -924,8 +945,14 @@ impl BaselineStore for PostgresStore {
         if let Some(status) = query.status {
             q = q.bind(status.as_str());
         }
+        if let Some(verdict) = query.verdict {
+            q = q.bind(verdict.as_str());
+        }
         if let Some(review_required) = query.review_required {
             q = q.bind(review_required);
+        }
+        if let Some(rule) = &query.rule {
+            q = q.bind(serde_json::json!([rule]));
         }
         q = q.bind(query.limit as i64).bind(query.offset as i64);
 
