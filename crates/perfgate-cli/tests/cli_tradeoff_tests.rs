@@ -186,6 +186,54 @@ fn test_tradeoff_evaluate_enforces_local_regression_cap() {
 }
 
 #[test]
+fn test_tradeoff_evaluate_marks_missing_local_cap_evidence_needs_review() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let scenario_path = temp_dir.path().join("scenario.json");
+    let probe_compare_path = temp_dir.path().join("probe-compare.json");
+    let output_path = temp_dir.path().join("tradeoff.json");
+
+    write_probe_tradeoff_config_with_allow(&config_path, 1.10, "warn", 0.03);
+    write_probe_compare_receipt_many(
+        &probe_compare_path,
+        &[("parser.batch_loop", 80.0, "dominant")],
+    );
+    write_scenario_receipt_with_probe_ref(&scenario_path, 96.0, "fail", &probe_compare_path);
+
+    perfgate_cmd()
+        .arg("tradeoff")
+        .arg("evaluate")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--out")
+        .arg(&output_path)
+        .assert()
+        .success();
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read tradeoff receipt"),
+    )
+    .expect("tradeoff receipt should be JSON");
+
+    assert_eq!(receipt["decision"]["accepted_tradeoff"], false);
+    assert_eq!(receipt["decision"]["review_required"], true);
+    assert_eq!(receipt["rules"][0]["status"], "needs_review");
+    assert_eq!(
+        receipt["weighted_deltas"]["max_rss_kb"]["status"].as_str(),
+        Some("warn")
+    );
+    assert!(
+        receipt["verdict"]["reasons"]
+            .as_array()
+            .expect("reasons array")
+            .iter()
+            .any(|reason| reason == "tradeoff_review_required")
+    );
+}
+
+#[test]
 fn test_tradeoff_evaluate_rejects_config_without_tradeoffs() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("perfgate.toml");

@@ -133,7 +133,9 @@ delta. Probe-backed requirement outcomes record the probe name, and matching
 probe deltas are copied into the tradeoff receipt's `probes` section for review.
 When a rule includes `[[tradeoff.allow]]`, the receipt also records local
 regression cap outcomes so reviewers can see whether a probe stayed within the
-accepted bound.
+accepted bound. If named probe evidence is missing but the available evidence
+otherwise supports the tradeoff, the receipt keeps the machine status at `warn`
+and sets `decision.review_required = true` with review reasons.
 
 Render the decision evidence for review:
 

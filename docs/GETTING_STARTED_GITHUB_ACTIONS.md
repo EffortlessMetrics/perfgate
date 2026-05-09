@@ -136,6 +136,11 @@ If scenarios configure `probe_baseline`, `probe_current`, and `probe_compare`,
 decision mode also creates the probe comparison receipt before evaluating the
 scenario and tradeoff receipts.
 
+When evidence is incomplete but otherwise supports a configured tradeoff,
+`decision.md` marks the result as review required. The action still treats the
+machine verdict as `warn`; reviewers should inspect the listed
+`review_reasons` before treating the tradeoff as accepted.
+
 ## 4) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:

@@ -165,6 +165,23 @@ summary. If `check` exits `2` for a policy failure, the action can defer the
 final result to the decision receipt so an accepted tradeoff owns the final
 policy outcome.
 
+## Needs Review
+
+Some evidence gaps should not silently pass or hard-fail the workflow. When a
+tradeoff's compensating evidence is otherwise satisfied but a configured named
+probe or local regression cap is missing, perfgate marks the decision as review
+required:
+
+```text
+Decision: warn, review required
+Reason: required tradeoff evidence is incomplete
+```
+
+The machine verdict remains `warn`, and the `perfgate.tradeoff.v1` receipt sets
+`decision.review_required = true` with `review_reasons`. Present evidence that
+disproves the tradeoff, such as a local probe exceeding `max_regression`, still
+rejects the tradeoff and preserves the failing verdict.
+
 ## Primitive Commands
 
 The lower-level commands are still useful for debugging and custom pipelines:

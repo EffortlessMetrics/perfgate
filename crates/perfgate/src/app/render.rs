@@ -111,7 +111,27 @@ pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
             "no"
         }
     ));
+    out.push_str(&format!(
+        "| review required | {} |\n",
+        if tradeoff.decision.review_required {
+            "yes"
+        } else {
+            "no"
+        }
+    ));
     out.push('\n');
+
+    if tradeoff.decision.review_required {
+        out.push_str("### Review Required\n\n");
+        if tradeoff.decision.review_reasons.is_empty() {
+            out.push_str("- evidence is incomplete; review required\n");
+        } else {
+            for reason in &tradeoff.decision.review_reasons {
+                out.push_str(&format!("- {reason}\n"));
+            }
+        }
+        out.push('\n');
+    }
 
     out.push_str("### Weighted Workload\n\n");
     if tradeoff.weighted_deltas.is_empty() {
@@ -491,6 +511,9 @@ pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
     if token == "tradeoff_missing_required_metric" {
         return "- tradeoff could not be evaluated: required metric missing\n".to_string();
     }
+    if token == "tradeoff_review_required" {
+        return "- tradeoff requires review: evidence is incomplete\n".to_string();
+    }
 
     let context = parse_reason_token(token).and_then(|(metric, status)| {
         compare
@@ -600,6 +623,7 @@ fn tradeoff_decision_label(status: TradeoffDecisionStatus) -> &'static str {
     match status {
         TradeoffDecisionStatus::Accepted => "accepted",
         TradeoffDecisionStatus::Rejected => "rejected",
+        TradeoffDecisionStatus::NeedsReview => "needs review",
         TradeoffDecisionStatus::NotEvaluated => "not evaluated",
     }
 }
@@ -808,6 +832,8 @@ mod tests {
             weighted_deltas,
             decision: TradeoffDecision {
                 accepted_tradeoff: true,
+                review_required: false,
+                review_reasons: Vec::new(),
                 status,
                 reason: "tradeoff 'memory_for_speed' accepted".to_string(),
             },
@@ -855,6 +881,25 @@ mod tests {
         assert!(md.contains("### Policy Reasons"));
         assert!(md.contains("### Evidence Files"));
         assert!(md.contains("### Local Reproduction"));
+    }
+
+    #[test]
+    fn tradeoff_markdown_renders_review_required() {
+        let mut receipt = make_tradeoff_receipt(MetricStatus::Warn);
+        receipt.decision.accepted_tradeoff = false;
+        receipt.decision.review_required = true;
+        receipt.decision.review_reasons =
+            vec!["tradeoff 'memory_for_speed' requires review: evidence is incomplete".to_string()];
+        receipt.decision.reason = "tradeoff 'memory_for_speed' requires review".to_string();
+        receipt.rules[0].status = TradeoffDecisionStatus::NeedsReview;
+        receipt.rules[0].accepted = false;
+
+        let md = render_tradeoff_markdown(&receipt);
+
+        assert!(md.contains("| review required | yes |"));
+        assert!(md.contains("### Review Required"));
+        assert!(md.contains("evidence is incomplete"));
+        assert!(md.contains("| `memory_for_speed` | needs review |"));
     }
 
     #[test]
@@ -911,9 +956,11 @@ mod tests {
         let applied = render_reason_line(&compare, "tradeoff_memory_for_speed_applied");
         let missing = render_reason_line(&compare, "tradeoff_missing_required_metric");
         let unsatisfied = render_reason_line(&compare, "tradeoff_rule_not_satisfied");
+        let review = render_reason_line(&compare, "tradeoff_review_required");
 
         assert!(applied.contains("tradeoff applied"));
         assert!(missing.contains("required metric missing"));
         assert!(unsatisfied.contains("not satisfied"));
+        assert!(review.contains("requires review"));
     }
 }

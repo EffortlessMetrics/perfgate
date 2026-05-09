@@ -427,6 +427,16 @@
         "reason": {
           "type": "string"
         },
+        "review_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "review_required": {
+          "type": "boolean",
+          "default": false
+        },
         "status": {
           "$ref": "#/$defs/MetricStatus"
         }
@@ -443,6 +453,7 @@
       "enum": [
         "accepted",
         "rejected",
+        "needs_review",
         "not_evaluated"
       ]
     },

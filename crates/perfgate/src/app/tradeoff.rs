@@ -5,9 +5,9 @@ use perfgate_types::{
     TradeoffAllowanceOutcome, TradeoffDecision, TradeoffDecisionStatus, TradeoffDowngrade,
     TradeoffProbeOutcome, TradeoffReceipt, TradeoffRequirement, TradeoffRequirementOutcome,
     TradeoffRule, TradeoffRuleOutcome, VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC,
-    VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED, Verdict,
+    VERDICT_REASON_TRADEOFF_REVIEW_REQUIRED, VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED, Verdict,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -46,6 +46,9 @@ impl TradeoffUseCase {
         let mut rule_outcomes = Vec::new();
         let mut accepted_reasons = Vec::new();
         let mut rejected_reasons = Vec::new();
+        let mut accepted_metrics = BTreeSet::new();
+        let mut review_candidates = Vec::new();
+        let mut review_reasons = Vec::new();
 
         for rule in &req.rules {
             let outcome = evaluate_rule(rule, &weighted_deltas, &probe_index);
@@ -53,7 +56,20 @@ impl TradeoffUseCase {
                 if let Some(delta) = weighted_deltas.get_mut(rule.if_failed.as_str()) {
                     delta.status = downgrade_status(rule.downgrade_to);
                 }
+                accepted_metrics.insert(rule.if_failed);
                 accepted_reasons.push(format!("tradeoff_{}_applied", rule.name));
+            } else if matches!(outcome.status, TradeoffDecisionStatus::NeedsReview) {
+                review_candidates.push((
+                    rule.if_failed,
+                    format!(
+                        "tradeoff '{}' requires review: {}",
+                        rule.name,
+                        outcome
+                            .reason
+                            .as_deref()
+                            .unwrap_or("evidence is incomplete")
+                    ),
+                ));
             } else if matches!(outcome.status, TradeoffDecisionStatus::Rejected) {
                 if outcome
                     .requirements
@@ -72,21 +88,40 @@ impl TradeoffUseCase {
             }
             rule_outcomes.push(outcome);
         }
+
+        for (metric, reason) in review_candidates {
+            if accepted_metrics.contains(&metric) {
+                continue;
+            }
+            if let Some(delta) = weighted_deltas.get_mut(metric.as_str()) {
+                delta.status = MetricStatus::Warn;
+            }
+            push_unique(&mut review_reasons, reason);
+        }
         let probes = tradeoff_probe_outcomes(&probe_index);
 
         let mut verdict = verdict_from_weighted_deltas(&weighted_deltas);
         verdict
             .reasons
             .extend(non_pass_reason_tokens(&weighted_deltas));
+        if !review_reasons.is_empty() {
+            push_unique(
+                &mut verdict.reasons,
+                VERDICT_REASON_TRADEOFF_REVIEW_REQUIRED.to_string(),
+            );
+        }
         for reason in accepted_reasons.iter().chain(rejected_reasons.iter()) {
             push_unique(&mut verdict.reasons, reason.clone());
         }
 
         let accepted = rule_outcomes.iter().any(|outcome| outcome.accepted);
+        let review_required = !review_reasons.is_empty();
         let decision = TradeoffDecision {
             accepted_tradeoff: accepted,
+            review_required,
+            review_reasons,
             status: metric_status_from_verdict(&verdict),
-            reason: decision_reason(accepted, &rule_outcomes, &verdict),
+            reason: decision_reason(accepted, review_required, &rule_outcomes, &verdict),
         };
 
         let mut warnings = req.scenario.warnings;
@@ -154,11 +189,14 @@ fn evaluate_rule(
     let accepted = !requirements.is_empty()
         && requirements.iter().all(|requirement| requirement.satisfied)
         && allowances.iter().all(|allowance| allowance.satisfied);
+    let needs_review = !accepted && evidence_incomplete_but_satisfied(&requirements, &allowances);
 
     TradeoffRuleOutcome {
         name: rule.name.clone(),
         status: if accepted {
             TradeoffDecisionStatus::Accepted
+        } else if needs_review {
+            TradeoffDecisionStatus::NeedsReview
         } else {
             TradeoffDecisionStatus::Rejected
         },
@@ -171,12 +209,40 @@ fn evaluate_rule(
                 "all required compensating improvements and local regression caps were satisfied"
                     .to_string()
             }
+        } else if needs_review {
+            "required tradeoff evidence is incomplete; review required".to_string()
         } else {
             "one or more required compensating improvements or local regression caps were not satisfied".to_string()
         }),
         requirements,
         allowances,
     }
+}
+
+fn evidence_incomplete_but_satisfied(
+    requirements: &[TradeoffRequirementOutcome],
+    allowances: &[TradeoffAllowanceOutcome],
+) -> bool {
+    let missing_review_evidence = requirements
+        .iter()
+        .any(|requirement| requirement.probe.is_some() && requirement.observed_change.is_none())
+        || allowances
+            .iter()
+            .any(|allowance| allowance.observed_regression.is_none());
+    if !missing_review_evidence {
+        return false;
+    }
+
+    let requirements_satisfied_or_missing_review_evidence =
+        requirements.iter().all(|requirement| {
+            requirement.satisfied
+                || (requirement.probe.is_some() && requirement.observed_change.is_none())
+        });
+    let allowances_satisfied_or_missing = allowances
+        .iter()
+        .all(|allowance| allowance.satisfied || allowance.observed_regression.is_none());
+
+    requirements_satisfied_or_missing_review_evidence && allowances_satisfied_or_missing
 }
 
 fn evaluate_requirements(
@@ -446,11 +512,20 @@ fn metric_status_from_verdict(verdict: &Verdict) -> MetricStatus {
 
 fn decision_reason(
     accepted: bool,
+    review_required: bool,
     rule_outcomes: &[TradeoffRuleOutcome],
     verdict: &Verdict,
 ) -> String {
     if accepted && let Some(rule) = rule_outcomes.iter().find(|outcome| outcome.accepted) {
         return format!("tradeoff '{}' accepted", rule.name);
+    }
+
+    if review_required
+        && let Some(rule) = rule_outcomes
+            .iter()
+            .find(|outcome| matches!(outcome.status, TradeoffDecisionStatus::NeedsReview))
+    {
+        return format!("tradeoff '{}' requires review", rule.name);
     }
 
     if matches!(verdict.status, perfgate_types::VerdictStatus::Fail) {
@@ -802,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn tradeoff_evaluate_rejects_missing_allowed_local_probe() {
+    fn tradeoff_evaluate_marks_missing_allowed_local_probe_needs_review() {
         let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
             probe_compares: vec![probe_compare_receipt("parser.batch_loop", 80.0)],
@@ -819,7 +894,8 @@ mod tests {
 
         let receipt = outcome.receipt;
         assert!(!receipt.decision.accepted_tradeoff);
-        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
+        assert!(receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::NeedsReview);
         assert_eq!(receipt.rules[0].allowances[0].observed_regression, None);
         assert!(
             receipt.rules[0].allowances[0]
@@ -827,11 +903,21 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("allowed probe"))
         );
-        assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
+        assert_eq!(
+            receipt.weighted_deltas["max_rss_kb"].status,
+            MetricStatus::Warn
+        );
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+        assert!(
+            receipt
+                .verdict
+                .reasons
+                .contains(&perfgate_types::VERDICT_REASON_TRADEOFF_REVIEW_REQUIRED.to_string())
+        );
     }
 
     #[test]
-    fn tradeoff_evaluate_rejects_missing_probe_requirement() {
+    fn tradeoff_evaluate_marks_missing_probe_requirement_needs_review() {
         let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
             probe_compares: vec![probe_compare_receipt("parser.tokenize", 80.0)],
@@ -845,7 +931,8 @@ mod tests {
 
         let receipt = outcome.receipt;
         assert!(!receipt.decision.accepted_tradeoff);
-        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
+        assert!(receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::NeedsReview);
         assert_eq!(receipt.rules[0].requirements[0].observed_change, None);
         assert!(
             receipt.rules[0].requirements[0]
@@ -855,6 +942,26 @@ mod tests {
         );
         assert_eq!(receipt.probes.len(), 1);
         assert_eq!(receipt.probes[0].name, "parser.tokenize");
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_rejects_unsatisfied_present_probe_requirement() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt("parser.batch_loop", 96.0)],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Pass)],
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(!receipt.decision.accepted_tradeoff);
+        assert!(!receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
         assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
     }
 }

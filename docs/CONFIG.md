@@ -181,8 +181,10 @@ max_regression = 0.03
 ```
 
 `max_regression = 0.03` allows at most a 3% regression for the named probe.
-Missing probe evidence or a regression above the cap rejects the tradeoff even
-when the compensating improvement requirement passes.
+Missing named probe evidence marks the decision as review required when the
+available compensating evidence otherwise satisfies the rule. A regression above
+the cap rejects the tradeoff even when the compensating improvement requirement
+passes.
 
 For the normal local workflow, run scenario evaluation, tradeoff evaluation, and
 decision Markdown rendering together:

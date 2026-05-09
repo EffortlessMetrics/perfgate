@@ -207,6 +207,7 @@ pub struct ScenarioReceipt {
 pub enum TradeoffDecisionStatus {
     Accepted,
     Rejected,
+    NeedsReview,
     NotEvaluated,
 }
 
@@ -296,6 +297,12 @@ pub struct TradeoffProbeOutcome {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TradeoffDecision {
     pub accepted_tradeoff: bool,
+    #[serde(default)]
+    pub review_required: bool,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_reasons: Vec<String>,
+
     pub status: MetricStatus,
     pub reason: String,
 }
@@ -564,6 +571,8 @@ mod tests {
             weighted_deltas: BTreeMap::from([("wall_ms".into(), wall_delta())]),
             decision: TradeoffDecision {
                 accepted_tradeoff: true,
+                review_required: false,
+                review_reasons: Vec::new(),
                 status: MetricStatus::Pass,
                 reason: "local slowdown offset by dominant-loop improvement".into(),
             },

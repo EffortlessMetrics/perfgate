@@ -87,6 +87,7 @@ pub const VERDICT_REASON_TRUNCATED: &str = "truncated";
 pub const VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED: &str = "tradeoff_rule_not_satisfied";
 pub const VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC: &str =
     "tradeoff_missing_required_metric";
+pub const VERDICT_REASON_TRADEOFF_REVIEW_REQUIRED: &str = "tradeoff_review_required";
 pub const VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED: &str = "complexity_expected_exceeded";
 pub const VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE: &str = "complexity_fit_low_confidence";
 pub const VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE: &str =
