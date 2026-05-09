@@ -48,5 +48,18 @@ mod tests {
         assert!(INDEX_HTML.contains("id=\"auditAction\""));
         assert!(INDEX_HTML.contains("id=\"auditResourceType\""));
         assert!(INDEX_HTML.contains("id=\"auditActor\""));
+        assert!(INDEX_HTML.contains("<option value=\"decision\">Decision</option>"));
+    }
+
+    #[test]
+    fn dashboard_exposes_decision_ledger_panel() {
+        assert!(INDEX_HTML.contains("<h2>Performance Decisions</h2>"));
+        assert!(INDEX_HTML.contains("id=\"decisionsBody\""));
+        assert!(INDEX_HTML.contains("function loadDecisions()"));
+        assert!(INDEX_HTML.contains("'/decisions?limit='"));
+        assert!(INDEX_HTML.contains("id=\"decisionSkip\""));
+        assert!(INDEX_HTML.contains("id=\"decisionReviewOnly\""));
+        assert!(INDEX_HTML.contains("id=\"decisionPagination\""));
+        assert!(INDEX_HTML.contains("loadDecisions();"));
     }
 }

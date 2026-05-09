@@ -709,6 +709,50 @@
             </div>
         </div>
 
+        <!-- Performance Decisions -->
+        <div class="card">
+            <h2>Performance Decisions</h2>
+
+            <div class="filter-bar">
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="decisionPass" checked onchange="resetAndLoadDecisions()"> Pass</label>
+                    <label><input type="checkbox" id="decisionWarn" checked onchange="resetAndLoadDecisions()"> Warn</label>
+                    <label><input type="checkbox" id="decisionFail" checked onchange="resetAndLoadDecisions()"> Fail</label>
+                    <label><input type="checkbox" id="decisionSkip" checked onchange="resetAndLoadDecisions()"> Skip</label>
+                    <label><input type="checkbox" id="decisionReviewOnly" onchange="resetAndLoadDecisions()"> Needs Review</label>
+                </div>
+                <button onclick="resetAndLoadDecisions()">Load Decisions</button>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Scenario</th>
+                            <th>Status</th>
+                            <th>Verdict</th>
+                            <th>Review</th>
+                            <th>Accepted Rules</th>
+                            <th>Git Ref</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="decisionsBody">
+                        <tr><td colspan="7" class="empty-state"><p>Load a project to see performance decisions</p></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="decisionPagination" class="pagination" style="display:none;">
+                <span id="decisionPaginationInfo"></span>
+                <div class="pagination-controls">
+                    <button class="btn-sm btn-secondary" id="decisionPrevBtn" onclick="changeDecisionPage(-1)" disabled>&laquo; Prev</button>
+                    <span id="decisionPageIndicator"></span>
+                    <button class="btn-sm btn-secondary" id="decisionNextBtn" onclick="changeDecisionPage(1)" disabled>Next &raquo;</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Audit Events -->
         <div class="card">
             <h2>Audit Events</h2>
@@ -729,6 +773,7 @@
                     <select id="auditResourceType" onchange="resetAndLoadAuditEvents()">
                         <option value="">All</option>
                         <option value="baseline">Baseline</option>
+                        <option value="decision">Decision</option>
                         <option value="key">Key</option>
                         <option value="verdict">Verdict</option>
                     </select>
@@ -836,6 +881,9 @@
         let verdictPage = 0;
         let verdictPageSize = 20;
         let totalVerdicts = 0;
+        let decisionPage = 0;
+        let decisionPageSize = 20;
+        let totalDecisions = 0;
         let auditPage = 0;
         let auditPageSize = 20;
         let totalAuditEvents = 0;
@@ -922,6 +970,13 @@
             return '<span class="badge">' + safe + '</span>';
         }
 
+        function reviewBadge(reviewRequired) {
+            if (reviewRequired) {
+                return '<span class="badge badge-warn">review</span>';
+            }
+            return '<span class="badge badge-pass">clear</span>';
+        }
+
         /* ======= API fetch ======= */
         async function fetchApi(url) {
             hideError();
@@ -1004,8 +1059,9 @@
             applyClientFilters();
             updatePagination();
 
-            // Also load verdicts
+            // Also load related operational views.
             loadVerdicts();
+            loadDecisions();
         }
 
         function applyClientFilters() {
@@ -1140,6 +1196,89 @@
             verdictPage += delta;
             if (verdictPage < 0) verdictPage = 0;
             loadVerdicts();
+        }
+
+        /* ======= Decision ledger ======= */
+        function resetAndLoadDecisions() {
+            decisionPage = 0;
+            loadDecisions();
+        }
+
+        async function loadDecisions() {
+            var project = getProject();
+            var body = document.getElementById('decisionsBody');
+            body.innerHTML = loadingRow(7);
+
+            var statusFilters = [];
+            if (document.getElementById('decisionPass').checked) statusFilters.push('pass');
+            if (document.getElementById('decisionWarn').checked) statusFilters.push('warn');
+            if (document.getElementById('decisionFail').checked) statusFilters.push('fail');
+            if (document.getElementById('decisionSkip').checked) statusFilters.push('skip');
+            var reviewOnly = document.getElementById('decisionReviewOnly').checked;
+
+            var url = '/api/v1/projects/' + encodeURIComponent(project)
+                + '/decisions?limit=' + decisionPageSize
+                + '&offset=' + (decisionPage * decisionPageSize);
+
+            var data = await fetchApi(url);
+            if (!data) {
+                body.innerHTML = emptyRow(7, 'Failed to load decisions.');
+                document.getElementById('decisionPagination').style.display = 'none';
+                return;
+            }
+
+            var decisions = (data.decisions || []).filter(function(d) {
+                if (statusFilters.indexOf(d.status) === -1) return false;
+                if (reviewOnly && !d.review_required) return false;
+                return true;
+            });
+            totalDecisions = data.pagination ? data.pagination.total : decisions.length;
+
+            if (decisions.length === 0) {
+                body.innerHTML = emptyRow(7, 'No decisions match your filters.');
+                document.getElementById('decisionPagination').style.display = 'none';
+                return;
+            }
+
+            body.innerHTML = '';
+            decisions.forEach(function(d) {
+                var rules = (d.accepted_rules || []).join(', ') || '-';
+                var gitRef = d.git_ref || d.git_sha || '-';
+                var row = document.createElement('tr');
+                row.innerHTML =
+                    '<td><strong>' + escHtml(d.scenario || 'unspecified') + '</strong></td>'
+                    + '<td>' + verdictBadge(d.status) + '</td>'
+                    + '<td>' + verdictBadge(d.verdict) + '</td>'
+                    + '<td>' + reviewBadge(!!d.review_required) + '</td>'
+                    + '<td>' + escHtml(rules) + '</td>'
+                    + '<td><code>' + escHtml(gitRef) + '</code></td>'
+                    + '<td>' + fmtDate(d.created_at) + '</td>';
+                body.appendChild(row);
+            });
+
+            updateDecisionPagination();
+        }
+
+        function updateDecisionPagination() {
+            var pag = document.getElementById('decisionPagination');
+            var totalPages = Math.max(1, Math.ceil(totalDecisions / decisionPageSize));
+            if (totalDecisions <= decisionPageSize) {
+                pag.style.display = 'none';
+                return;
+            }
+            pag.style.display = 'flex';
+            document.getElementById('decisionPaginationInfo').textContent =
+                totalDecisions + ' decisions total';
+            document.getElementById('decisionPageIndicator').textContent =
+                'Page ' + (decisionPage + 1) + ' of ' + totalPages;
+            document.getElementById('decisionPrevBtn').disabled = decisionPage === 0;
+            document.getElementById('decisionNextBtn').disabled = decisionPage >= totalPages - 1;
+        }
+
+        function changeDecisionPage(delta) {
+            decisionPage += delta;
+            if (decisionPage < 0) decisionPage = 0;
+            loadDecisions();
         }
 
         /* ======= Audit events ======= */
