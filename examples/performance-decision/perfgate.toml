@@ -36,3 +36,8 @@ downgrade_to = "warn"
 metric = "wall_ms"
 probe = "parser.batch_loop"
 min_improvement_ratio = 1.10
+
+[[tradeoff.allow]]
+metric = "wall_ms"
+probe = "parser.tokenize"
+max_regression = 0.03

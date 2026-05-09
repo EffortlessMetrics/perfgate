@@ -351,6 +351,72 @@
         "version"
       ]
     },
+    "TradeoffAllowance": {
+      "description": "A local regression allowance used by a tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "max_regression": {
+          "description": "Maximum accepted regression as a ratio.\n\nFor example, `0.03` allows up to a 3% local regression.",
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "description": "Metric whose local regression is capped.",
+          "$ref": "#/$defs/Metric"
+        },
+        "probe": {
+          "description": "Probe name that is allowed to regress within the configured cap.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "probe",
+        "max_regression"
+      ]
+    },
+    "TradeoffAllowanceOutcome": {
+      "description": "Evaluation result for one local regression allowance.",
+      "type": "object",
+      "properties": {
+        "max_regression": {
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "observed_regression": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "probe": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "satisfied": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "metric",
+        "probe",
+        "max_regression",
+        "satisfied",
+        "status"
+      ]
+    },
     "TradeoffDecision": {
       "description": "Final structured tradeoff decision.",
       "type": "object",
@@ -507,6 +573,13 @@
       "description": "A structured tradeoff rule for explicit, auditable budget downgrades.",
       "type": "object",
       "properties": {
+        "allow": {
+          "description": "Optional local regression caps that must remain satisfied.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffAllowance"
+          }
+        },
         "downgrade_to": {
           "description": "Downgrade target when all requirements are satisfied.",
           "$ref": "#/$defs/TradeoffDowngrade",
@@ -541,6 +614,12 @@
       "properties": {
         "accepted": {
           "type": "boolean"
+        },
+        "allowances": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffAllowanceOutcome"
+          }
         },
         "downgrade_to": {
           "anyOf": [

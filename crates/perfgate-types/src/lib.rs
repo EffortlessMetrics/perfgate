@@ -1489,6 +1489,21 @@ impl ConfigFile {
                     ));
                 }
             }
+            for allowance in &rule.allow {
+                if allowance.probe.trim().is_empty() {
+                    return Err(format!(
+                        "tradeoff '{}' allowance probe must not be empty",
+                        rule.name
+                    ));
+                }
+                if !allowance.max_regression.is_finite() || allowance.max_regression < 0.0 {
+                    return Err(format!(
+                        "tradeoff '{}' allowance for '{}' must use a non-negative finite max regression",
+                        rule.name,
+                        allowance.metric.as_str()
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -1782,6 +1797,22 @@ pub struct TradeoffRequirement {
     pub min_improvement_ratio: f64,
 }
 
+/// A local regression allowance used by a tradeoff rule.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffAllowance {
+    /// Metric whose local regression is capped.
+    pub metric: Metric,
+
+    /// Probe name that is allowed to regress within the configured cap.
+    pub probe: String,
+
+    /// Maximum accepted regression as a ratio.
+    ///
+    /// For example, `0.03` allows up to a 3% local regression.
+    pub max_regression: f64,
+}
+
 /// Target status when a tradeoff rule is satisfied.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -1805,6 +1836,10 @@ pub struct TradeoffRule {
     /// Required compensating improvements.
     #[schemars(length(min = 1))]
     pub require: Vec<TradeoffRequirement>,
+
+    /// Optional local regression caps that must remain satisfied.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<TradeoffAllowance>,
 
     /// Downgrade target when all requirements are satisfied.
     #[serde(default)]
@@ -2138,6 +2173,7 @@ mod tests {
                 name: "empty".to_string(),
                 if_failed: Metric::WallMs,
                 require: Vec::new(),
+                allow: Vec::new(),
                 downgrade_to: TradeoffDowngrade::Warn,
             }],
             ratchet: None,
@@ -2172,6 +2208,7 @@ mod tests {
                     probe: None,
                     min_improvement_ratio: 1.10,
                 }],
+                allow: Vec::new(),
                 downgrade_to: TradeoffDowngrade::Warn,
             }],
             ratchet: None,
@@ -2206,6 +2243,31 @@ mod tests {
 
         config.tradeoffs[0].require[0].min_improvement_ratio = f64::NAN;
         assert!(config.validate().unwrap_err().contains("positive finite"));
+
+        config.tradeoffs[0].require[0].min_improvement_ratio = 1.10;
+        config.tradeoffs[0].allow = vec![TradeoffAllowance {
+            metric: Metric::WallMs,
+            probe: " ".to_string(),
+            max_regression: 0.03,
+        }];
+        assert!(config.validate().unwrap_err().contains("must not be empty"));
+
+        config.tradeoffs[0].allow[0].probe = "parser.tokenize".to_string();
+        config.tradeoffs[0].allow[0].max_regression = -0.01;
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("non-negative finite")
+        );
+
+        config.tradeoffs[0].allow[0].max_regression = f64::NAN;
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("non-negative finite")
+        );
     }
 
     #[test]

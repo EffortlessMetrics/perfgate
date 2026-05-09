@@ -10,8 +10,8 @@ pub mod summary;
 use anyhow::Context;
 use perfgate_types::{
     CompareReceipt, ComplexityGateResult, ComplexityGateStatus, Delta, Direction, Metric,
-    MetricStatistic, MetricStatus, TradeoffDecisionStatus, TradeoffReceipt,
-    TradeoffRequirementOutcome,
+    MetricStatistic, MetricStatus, TradeoffAllowanceOutcome, TradeoffDecisionStatus,
+    TradeoffReceipt, TradeoffRequirementOutcome,
 };
 use serde_json::json;
 
@@ -174,8 +174,8 @@ pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
     if tradeoff.rules.is_empty() {
         out.push_str("No tradeoff rules evaluated.\n\n");
     } else {
-        out.push_str("| rule | decision | downgrade | requirements | reason |\n");
-        out.push_str("|---|---|---|---|---|\n");
+        out.push_str("| rule | decision | downgrade | requirements | local caps | reason |\n");
+        out.push_str("|---|---|---|---|---|---|\n");
         for rule in &tradeoff.rules {
             let requirements = if rule.requirements.is_empty() {
                 "none".to_string()
@@ -186,17 +186,27 @@ pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
                     .collect::<Vec<_>>()
                     .join("<br>")
             };
+            let allowances = if rule.allowances.is_empty() {
+                "none".to_string()
+            } else {
+                rule.allowances
+                    .iter()
+                    .map(render_tradeoff_allowance)
+                    .collect::<Vec<_>>()
+                    .join("<br>")
+            };
             let downgrade = rule
                 .downgrade_to
                 .map(tradeoff_downgrade_label)
                 .unwrap_or("-");
             let reason = rule.reason.as_deref().unwrap_or("-");
             out.push_str(&format!(
-                "| `{}` | {} | `{}` | {} | {} |\n",
+                "| `{}` | {} | `{}` | {} | {} | {} |\n",
                 rule.name,
                 tradeoff_decision_label(rule.status),
                 downgrade,
                 requirements,
+                allowances,
                 reason
             ));
         }
@@ -265,6 +275,25 @@ fn render_tradeoff_requirement(requirement: &TradeoffRequirementOutcome) -> Stri
         "{target} observed {observed} / required {required} {status}{reason}",
         required = format_pct(requirement.required_change),
         status = metric_status_icon(requirement.status)
+    )
+}
+
+fn render_tradeoff_allowance(allowance: &TradeoffAllowanceOutcome) -> String {
+    let observed = allowance
+        .observed_regression
+        .map(format_pct)
+        .unwrap_or_else(|| "missing".to_string());
+    let reason = allowance
+        .reason
+        .as_deref()
+        .map(|reason| format!(" ({reason})"))
+        .unwrap_or_default();
+    format!(
+        "probe `{probe}` `{metric}` regression {observed} / cap {cap} {status}{reason}",
+        probe = allowance.probe,
+        metric = allowance.metric,
+        cap = format_pct(allowance.max_regression),
+        status = metric_status_icon(allowance.status)
     )
 }
 
@@ -716,6 +745,15 @@ mod tests {
                     probe: None,
                     required_change: -0.10,
                     observed_change: Some(-0.12),
+                    satisfied: true,
+                    status: MetricStatus::Pass,
+                    reason: None,
+                }],
+                allowances: vec![perfgate_types::TradeoffAllowanceOutcome {
+                    metric: "wall_ms".to_string(),
+                    probe: "parser.tokenize".to_string(),
+                    max_regression: 0.03,
+                    observed_regression: Some(0.021),
                     satisfied: true,
                     status: MetricStatus::Pass,
                     reason: None,

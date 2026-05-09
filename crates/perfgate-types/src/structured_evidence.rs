@@ -231,6 +231,24 @@ pub struct TradeoffRequirementOutcome {
     pub reason: Option<String>,
 }
 
+/// Evaluation result for one local regression allowance.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct TradeoffAllowanceOutcome {
+    pub metric: String,
+    pub probe: String,
+    pub max_regression: f64,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub observed_regression: Option<f64>,
+
+    pub satisfied: bool,
+    pub status: MetricStatus,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reason: Option<String>,
+}
+
 /// Evaluation result for one named tradeoff rule.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -247,6 +265,9 @@ pub struct TradeoffRuleOutcome {
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requirements: Vec<TradeoffRequirementOutcome>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowances: Vec<TradeoffAllowanceOutcome>,
 }
 
 /// Probe-level tradeoff evidence.
@@ -518,6 +539,15 @@ mod tests {
                     probe: Some("parser.batch_loop".into()),
                     required_change: -0.08,
                     observed_change: Some(-0.104),
+                    satisfied: true,
+                    status: MetricStatus::Pass,
+                    reason: None,
+                }],
+                allowances: vec![TradeoffAllowanceOutcome {
+                    metric: "wall_ms".into(),
+                    probe: "parser.tokenize".into(),
+                    max_regression: 0.03,
+                    observed_regression: Some(0.021),
                     satisfied: true,
                     status: MetricStatus::Pass,
                     reason: None,

@@ -31,9 +31,10 @@ The fixture models a memory-for-speed decision:
 - the weighted workload improves on `wall_ms`;
 - `max_rss_kb` fails before tradeoff policy is applied;
 - `parser.batch_loop` improves enough to satisfy the probe-backed requirement;
+- `parser.tokenize` regresses, but stays under the configured 3% local cap;
 - the final decision is `warn` with an accepted tradeoff.
 
 `parser.tokenize` is also present in the probe comparison and regresses
 slightly. That evidence remains visible in the generated `probe-compare.json`;
-the tradeoff rule accepts the memory regression only because the dominant
-batch-loop probe improves.
+the tradeoff rule accepts the memory regression only because the local
+tokenizer regression stays bounded and the dominant batch-loop probe improves.

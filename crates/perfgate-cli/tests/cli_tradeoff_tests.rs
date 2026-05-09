@@ -133,6 +133,59 @@ fn test_tradeoff_evaluate_uses_probe_requirement() {
 }
 
 #[test]
+fn test_tradeoff_evaluate_enforces_local_regression_cap() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let scenario_path = temp_dir.path().join("scenario.json");
+    let probe_compare_path = temp_dir.path().join("probe-compare.json");
+    let output_path = temp_dir.path().join("tradeoff.json");
+
+    write_probe_tradeoff_config_with_allow(&config_path, 1.10, "warn", 0.03);
+    write_probe_compare_receipt_many(
+        &probe_compare_path,
+        &[
+            ("parser.batch_loop", 80.0, "dominant"),
+            ("parser.tokenize", 105.0, "local"),
+        ],
+    );
+    write_scenario_receipt_with_probe_ref(&scenario_path, 96.0, "fail", &probe_compare_path);
+
+    perfgate_cmd()
+        .arg("tradeoff")
+        .arg("evaluate")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--out")
+        .arg(&output_path)
+        .assert()
+        .code(2);
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read tradeoff receipt"),
+    )
+    .expect("tradeoff receipt should be JSON");
+
+    assert_eq!(receipt["decision"]["accepted_tradeoff"], false);
+    assert_eq!(receipt["rules"][0]["status"], "rejected");
+    assert_eq!(
+        receipt["rules"][0]["allowances"][0]["probe"],
+        "parser.tokenize"
+    );
+    assert_eq!(
+        receipt["rules"][0]["allowances"][0]["satisfied"].as_bool(),
+        Some(false)
+    );
+    assert!(
+        receipt["rules"][0]["allowances"][0]["reason"]
+            .as_str()
+            .expect("allowance reason")
+            .contains("exceeds cap")
+    );
+}
+
+#[test]
 fn test_tradeoff_evaluate_rejects_config_without_tradeoffs() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("perfgate.toml");
@@ -188,6 +241,35 @@ downgrade_to = "{downgrade_to}"
 metric = "wall_ms"
 probe = "parser.batch_loop"
 min_improvement_ratio = {min_improvement_ratio}
+"#
+        ),
+    )
+    .expect("failed to write config");
+}
+
+fn write_probe_tradeoff_config_with_allow(
+    path: &Path,
+    min_improvement_ratio: f64,
+    downgrade_to: &str,
+    max_regression: f64,
+) {
+    fs::write(
+        path,
+        format!(
+            r#"[[tradeoff]]
+name = "memory_for_probe_speed"
+if_failed = "max_rss_kb"
+downgrade_to = "{downgrade_to}"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+probe = "parser.batch_loop"
+min_improvement_ratio = {min_improvement_ratio}
+
+[[tradeoff.allow]]
+metric = "wall_ms"
+probe = "parser.tokenize"
+max_regression = {max_regression}
 "#
         ),
     )
@@ -300,6 +382,10 @@ fn write_scenario_receipt_inner(
 }
 
 fn write_probe_compare_receipt(path: &Path, probe: &str, wall_current: f64) {
+    write_probe_compare_receipt_many(path, &[(probe, wall_current, "dominant")]);
+}
+
+fn write_probe_compare_receipt_many(path: &Path, probes: &[(&str, f64, &str)]) {
     let receipt = json!({
         "schema": "perfgate.probe_compare.v1",
         "tool": {"name": "perfgate", "version": "0.16.0"},
@@ -310,23 +396,30 @@ fn write_probe_compare_receipt(path: &Path, probe: &str, wall_current: f64) {
             "host": {"os": "linux", "arch": "x86_64"}
         },
         "scenario": "release_workload",
-        "probes": [{
-            "name": probe,
-            "scope": "dominant",
-            "baseline_count": 1,
-            "current_count": 1,
-            "deltas": {
-                "wall_ms": {
-                    "baseline": 100.0,
-                    "current": wall_current,
-                    "ratio": wall_current / 100.0,
-                    "pct": (wall_current - 100.0) / 100.0,
-                    "regression": 0.0,
-                    "status": "pass"
-                }
-            },
-            "status": "pass"
-        }],
+        "probes": probes.iter().map(|(probe, wall_current, scope)| {
+            let regression = if *wall_current > 100.0 {
+                (*wall_current - 100.0) / 100.0
+            } else {
+                0.0
+            };
+            json!({
+                "name": probe,
+                "scope": scope,
+                "baseline_count": 1,
+                "current_count": 1,
+                "deltas": {
+                    "wall_ms": {
+                        "baseline": 100.0,
+                        "current": wall_current,
+                        "ratio": wall_current / 100.0,
+                        "pct": (wall_current - 100.0) / 100.0,
+                        "regression": regression,
+                        "status": if regression > 0.0 { "warn" } else { "pass" }
+                    }
+                },
+                "status": if regression > 0.0 { "warn" } else { "pass" }
+            })
+        }).collect::<Vec<_>>(),
         "verdict": {
             "status": "pass",
             "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},

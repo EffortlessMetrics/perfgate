@@ -1,11 +1,11 @@
 use crate::domain::budget::{aggregate_verdict, reason_token};
 use perfgate_types::{
     Delta, HostInfo, Metric, MetricStatus, PROBE_COMPARE_SCHEMA_V1, ProbeCompareObservation,
-    ProbeCompareReceipt, RunMeta, ScenarioReceipt, TRADEOFF_SCHEMA_V1, ToolInfo, TradeoffDecision,
-    TradeoffDecisionStatus, TradeoffDowngrade, TradeoffProbeOutcome, TradeoffReceipt,
-    TradeoffRequirement, TradeoffRequirementOutcome, TradeoffRule, TradeoffRuleOutcome,
-    VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC, VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED,
-    Verdict,
+    ProbeCompareReceipt, RunMeta, ScenarioReceipt, TRADEOFF_SCHEMA_V1, ToolInfo, TradeoffAllowance,
+    TradeoffAllowanceOutcome, TradeoffDecision, TradeoffDecisionStatus, TradeoffDowngrade,
+    TradeoffProbeOutcome, TradeoffReceipt, TradeoffRequirement, TradeoffRequirementOutcome,
+    TradeoffRule, TradeoffRuleOutcome, VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC,
+    VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED, Verdict,
 };
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
@@ -59,6 +59,10 @@ impl TradeoffUseCase {
                     .requirements
                     .iter()
                     .any(|requirement| requirement.observed_change.is_none())
+                    || outcome
+                        .allowances
+                        .iter()
+                        .any(|allowance| allowance.observed_regression.is_none())
                 {
                     rejected_reasons
                         .push(VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string());
@@ -126,6 +130,7 @@ fn evaluate_rule(
                 rule.if_failed.as_str()
             )),
             requirements: evaluate_requirements(&rule.require, weighted_deltas, probe_index),
+            allowances: evaluate_allowances(&rule.allow, probe_index),
         };
     };
 
@@ -140,12 +145,15 @@ fn evaluate_rule(
                 rule.if_failed.as_str()
             )),
             requirements: evaluate_requirements(&rule.require, weighted_deltas, probe_index),
+            allowances: evaluate_allowances(&rule.allow, probe_index),
         };
     }
 
     let requirements = evaluate_requirements(&rule.require, weighted_deltas, probe_index);
-    let accepted =
-        !requirements.is_empty() && requirements.iter().all(|requirement| requirement.satisfied);
+    let allowances = evaluate_allowances(&rule.allow, probe_index);
+    let accepted = !requirements.is_empty()
+        && requirements.iter().all(|requirement| requirement.satisfied)
+        && allowances.iter().all(|allowance| allowance.satisfied);
 
     TradeoffRuleOutcome {
         name: rule.name.clone(),
@@ -157,11 +165,17 @@ fn evaluate_rule(
         accepted,
         downgrade_to: accepted.then_some(rule.downgrade_to),
         reason: Some(if accepted {
-            "all required compensating improvements were satisfied".to_string()
+            if allowances.is_empty() {
+                "all required compensating improvements were satisfied".to_string()
+            } else {
+                "all required compensating improvements and local regression caps were satisfied"
+                    .to_string()
+            }
         } else {
-            "one or more required compensating improvements were not satisfied".to_string()
+            "one or more required compensating improvements or local regression caps were not satisfied".to_string()
         }),
         requirements,
+        allowances,
     }
 }
 
@@ -209,6 +223,64 @@ fn evaluate_requirements(
                 reason: (!satisfied).then_some(format!(
                     "requires improvement ratio >= {:.6}",
                     requirement.min_improvement_ratio
+                )),
+            }
+        })
+        .collect()
+}
+
+fn evaluate_allowances(
+    allowances: &[TradeoffAllowance],
+    probe_index: &BTreeMap<String, ProbeCompareObservation>,
+) -> Vec<TradeoffAllowanceOutcome> {
+    allowances
+        .iter()
+        .map(|allowance| {
+            let metric_key = allowance.metric.as_str();
+            let Some(probe) = probe_index.get(&allowance.probe) else {
+                return TradeoffAllowanceOutcome {
+                    metric: metric_key.to_string(),
+                    probe: allowance.probe.clone(),
+                    max_regression: allowance.max_regression,
+                    observed_regression: None,
+                    satisfied: false,
+                    status: MetricStatus::Fail,
+                    reason: Some(format!("allowed probe '{}' missing", allowance.probe)),
+                };
+            };
+
+            let Some(delta) = probe.deltas.get(metric_key) else {
+                return TradeoffAllowanceOutcome {
+                    metric: metric_key.to_string(),
+                    probe: allowance.probe.clone(),
+                    max_regression: allowance.max_regression,
+                    observed_regression: None,
+                    satisfied: false,
+                    status: MetricStatus::Fail,
+                    reason: Some(format!(
+                        "allowed probe '{}' metric '{metric_key}' missing",
+                        allowance.probe
+                    )),
+                };
+            };
+
+            let observed_regression = delta.regression;
+            let satisfied = observed_regression <= allowance.max_regression + f64::EPSILON;
+
+            TradeoffAllowanceOutcome {
+                metric: metric_key.to_string(),
+                probe: allowance.probe.clone(),
+                max_regression: allowance.max_regression,
+                observed_regression: Some(observed_regression),
+                satisfied,
+                status: if satisfied {
+                    MetricStatus::Pass
+                } else {
+                    MetricStatus::Fail
+                },
+                reason: (!satisfied).then_some(format!(
+                    "regression {:.6} exceeds cap {:.6}",
+                    observed_regression, allowance.max_regression
                 )),
             }
         })
@@ -488,6 +560,7 @@ mod tests {
                 probe: None,
                 min_improvement_ratio: 1.10,
             }],
+            allow: Vec::new(),
             downgrade_to,
         }
     }
@@ -501,11 +574,37 @@ mod tests {
                 probe: Some("parser.batch_loop".to_string()),
                 min_improvement_ratio: 1.10,
             }],
+            allow: Vec::new(),
+            downgrade_to,
+        }
+    }
+
+    fn memory_for_probe_speed_rule_with_allow(
+        downgrade_to: TradeoffDowngrade,
+        max_regression: f64,
+    ) -> TradeoffRule {
+        TradeoffRule {
+            name: "memory_for_probe_speed".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::WallMs,
+                probe: Some("parser.batch_loop".to_string()),
+                min_improvement_ratio: 1.10,
+            }],
+            allow: vec![TradeoffAllowance {
+                metric: Metric::WallMs,
+                probe: "parser.tokenize".to_string(),
+                max_regression,
+            }],
             downgrade_to,
         }
     }
 
     fn probe_compare_receipt(probe_name: &str, wall_current: f64) -> ProbeCompareReceipt {
+        probe_compare_receipt_many(&[(probe_name, wall_current, ProbeScope::Dominant)])
+    }
+
+    fn probe_compare_receipt_many(probes: &[(&str, f64, ProbeScope)]) -> ProbeCompareReceipt {
         ProbeCompareReceipt {
             schema: PROBE_COMPARE_SCHEMA_V1.to_string(),
             tool: ToolInfo {
@@ -517,19 +616,24 @@ mod tests {
             scenario: Some("release_workload".to_string()),
             baseline_ref: None,
             current_ref: None,
-            probes: vec![ProbeCompareObservation {
-                name: probe_name.to_string(),
-                parent: None,
-                scope: Some(ProbeScope::Dominant),
-                baseline_count: 1,
-                current_count: 1,
-                deltas: BTreeMap::from([(
-                    "wall_ms".to_string(),
-                    delta(100.0, wall_current, MetricStatus::Pass),
-                )]),
-                status: MetricStatus::Pass,
-                reasons: Vec::new(),
-            }],
+            probes: probes
+                .iter()
+                .map(
+                    |(probe_name, wall_current, scope)| ProbeCompareObservation {
+                        name: (*probe_name).to_string(),
+                        parent: None,
+                        scope: Some(*scope),
+                        baseline_count: 1,
+                        current_count: 1,
+                        deltas: BTreeMap::from([(
+                            "wall_ms".to_string(),
+                            delta(100.0, *wall_current, MetricStatus::Pass),
+                        )]),
+                        status: MetricStatus::Pass,
+                        reasons: Vec::new(),
+                    },
+                )
+                .collect(),
             verdict: Verdict {
                 status: VerdictStatus::Pass,
                 counts: VerdictCounts {
@@ -628,6 +732,102 @@ mod tests {
         assert_eq!(receipt.probes.len(), 1);
         assert_eq!(receipt.probes[0].name, "parser.batch_loop");
         assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_accepts_allowed_local_regression_cap() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt_many(&[
+                ("parser.batch_loop", 80.0, ProbeScope::Dominant),
+                ("parser.tokenize", 102.1, ProbeScope::Local),
+            ])],
+            rules: vec![memory_for_probe_speed_rule_with_allow(
+                TradeoffDowngrade::Warn,
+                0.03,
+            )],
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(receipt.rules[0].allowances[0].probe, "parser.tokenize");
+        assert_eq!(
+            receipt.rules[0].allowances[0].observed_regression,
+            Some(0.020999999999999943)
+        );
+        assert!(receipt.rules[0].allowances[0].satisfied);
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_rejects_local_regression_over_cap() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt_many(&[
+                ("parser.batch_loop", 80.0, ProbeScope::Dominant),
+                ("parser.tokenize", 105.0, ProbeScope::Local),
+            ])],
+            rules: vec![memory_for_probe_speed_rule_with_allow(
+                TradeoffDowngrade::Warn,
+                0.03,
+            )],
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(!receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
+        assert_eq!(
+            receipt.rules[0].allowances[0].observed_regression,
+            Some(0.05)
+        );
+        assert!(!receipt.rules[0].allowances[0].satisfied);
+        assert!(
+            receipt.rules[0].allowances[0]
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("exceeds cap"))
+        );
+        assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_rejects_missing_allowed_local_probe() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt("parser.batch_loop", 80.0)],
+            rules: vec![memory_for_probe_speed_rule_with_allow(
+                TradeoffDowngrade::Warn,
+                0.03,
+            )],
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(!receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
+        assert_eq!(receipt.rules[0].allowances[0].observed_regression, None);
+        assert!(
+            receipt.rules[0].allowances[0]
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("allowed probe"))
+        );
+        assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
     }
 
     #[test]

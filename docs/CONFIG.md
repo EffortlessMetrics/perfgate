@@ -171,6 +171,19 @@ When `probe` is set, `tradeoff evaluate` follows the scenario component's
 delta. Missing probe evidence leaves the requirement unsatisfied; it does not
 silently fall back to weighted scenario deltas.
 
+Use `[[tradeoff.allow]]` to cap the local regression that a tradeoff may accept:
+
+```toml
+[[tradeoff.allow]]
+metric = "wall_ms"
+probe = "parser.tokenize"
+max_regression = 0.03
+```
+
+`max_regression = 0.03` allows at most a 3% regression for the named probe.
+Missing probe evidence or a regression above the cap rejects the tradeoff even
+when the compensating improvement requirement passes.
+
 For the normal local workflow, run scenario evaluation, tradeoff evaluation, and
 decision Markdown rendering together:
 

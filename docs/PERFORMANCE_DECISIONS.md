@@ -134,10 +134,17 @@ downgrade_to = "warn"
 metric = "wall_ms"
 probe = "parser.batch_loop"
 min_improvement_ratio = 1.10
+
+[[tradeoff.allow]]
+metric = "wall_ms"
+probe = "parser.tokenize"
+max_regression = 0.03
 ```
 
 When `probe` is present, the requirement is satisfied only by that named probe's
-delta from scenario-attached probe comparison evidence.
+delta from scenario-attached probe comparison evidence. `[[tradeoff.allow]]`
+keeps the local regression bounded; if `parser.tokenize` regresses by more than
+3%, the tradeoff is rejected even if `parser.batch_loop` improves enough.
 
 ## GitHub Actions
 
