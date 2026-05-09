@@ -289,8 +289,9 @@ The **core local gating pipeline** is production-quality:
   check policy failure to an accepted tradeoff receipt.
 - **Decision ledger and debt** — the baseline server stores
   `perfgate.decision_record.v1` records, decision uploads emit audit events,
-  `decision history|latest|debt` expose the ledger from the CLI, and the
-  dashboard shows stored performance decisions.
+  `decision history|latest|debt` expose the ledger from the CLI, debt summaries
+  include cap usage and accepted failed-metric deltas when receipt evidence is
+  present, and the dashboard shows stored performance decisions.
 - **Dashboard decision visibility** — the dashboard now includes baseline,
   verdict/flakiness, decision-ledger, and audit-event views.
 

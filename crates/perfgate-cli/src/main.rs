@@ -4167,6 +4167,13 @@ struct DecisionDebtAreaSummary {
     review_required_count: u32,
     rule_counts: BTreeMap<String, u32>,
     max_cap_used: Option<f64>,
+    max_accepted_delta: Option<DecisionDebtMetricDelta>,
+}
+
+#[derive(Clone)]
+struct DecisionDebtMetricDelta {
+    metric: String,
+    regression: f64,
 }
 
 fn print_decision_debt_summary(
@@ -4209,6 +4216,13 @@ fn print_decision_debt_summary(
                 }
             }));
         }
+
+        if let Some(delta) = decision_record_max_accepted_delta(record) {
+            area.max_accepted_delta = Some(area.max_accepted_delta.as_ref().map_or_else(
+                || delta.clone(),
+                |current| max_metric_delta(current, &delta),
+            ));
+        }
     }
 
     let window = if days == 0 {
@@ -4233,17 +4247,19 @@ fn print_decision_debt_summary(
 
     println!();
     println!(
-        "{:<24} {:>5} {:>6} {:>8}  common rule",
-        "area", "count", "review", "cap used"
+        "{:<24} {:>5} {:>6} {:>8} {:>14} {:>11}  common rule",
+        "area", "count", "review", "cap used", "accepted delta", "budget used"
     );
 
     for (area, summary) in areas {
         println!(
-            "{:<24} {:>5} {:>6} {:>8}  {}",
+            "{:<24} {:>5} {:>6} {:>8} {:>14} {:>11}  {}",
             area,
             summary.accepted_count,
             summary.review_required_count,
             format_cap_used(summary.max_cap_used),
+            format_accepted_delta(summary.max_accepted_delta.as_ref()),
+            format_budget_headroom_used(None),
             most_common_rule(&summary.rule_counts)
         );
     }
@@ -4266,7 +4282,57 @@ fn decision_record_max_cap_used(record: &perfgate_client::DecisionRecord) -> Opt
         .reduce(f64::max)
 }
 
+fn decision_record_max_accepted_delta(
+    record: &perfgate_client::DecisionRecord,
+) -> Option<DecisionDebtMetricDelta> {
+    record
+        .tradeoff_receipt
+        .rules
+        .iter()
+        .filter(|rule| rule.accepted)
+        .filter_map(|rule| {
+            let configured = record
+                .tradeoff_receipt
+                .configured_rules
+                .iter()
+                .find(|configured| configured.name == rule.name)?;
+            let metric = configured.if_failed.as_str();
+            let delta = record.tradeoff_receipt.weighted_deltas.get(metric)?;
+            if delta.regression <= 0.0 {
+                return None;
+            }
+            Some(DecisionDebtMetricDelta {
+                metric: metric.to_string(),
+                regression: delta.regression,
+            })
+        })
+        .reduce(|current, next| max_metric_delta(&current, &next))
+}
+
+fn max_metric_delta(
+    left: &DecisionDebtMetricDelta,
+    right: &DecisionDebtMetricDelta,
+) -> DecisionDebtMetricDelta {
+    if right.regression > left.regression {
+        right.clone()
+    } else {
+        left.clone()
+    }
+}
+
 fn format_cap_used(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{:.0}%", value * 100.0))
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn format_accepted_delta(value: Option<&DecisionDebtMetricDelta>) -> String {
+    value
+        .map(|delta| format!("{} +{:.1}%", delta.metric, delta.regression * 100.0))
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn format_budget_headroom_used(value: Option<f64>) -> String {
     value
         .map(|value| format!("{:.0}%", value * 100.0))
         .unwrap_or_else(|| "n/a".to_string())

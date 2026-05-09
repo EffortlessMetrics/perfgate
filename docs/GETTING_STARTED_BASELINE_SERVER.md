@@ -183,7 +183,7 @@ The current CLI surfaces that talk to the baseline service are:
 | `baseline migrate` | Upload local baseline JSON files to the server |
 | `decision upload` | Store a structured performance decision receipt |
 | `decision history` | List stored performance decisions |
-| `decision debt` | Summarize accepted tradeoff debt by scenario |
+| `decision debt` | Summarize accepted tradeoff debt, cap usage, and accepted deltas by scenario |
 | `audit list` | List admin audit events |
 | `audit export --format jsonl` | Export audit events for external review |
 

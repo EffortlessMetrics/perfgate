@@ -230,7 +230,11 @@ time. Uploads emit an audit event with resource type `decision`.
 `decision debt` summarizes accepted tradeoff records by scenario so teams can
 spot repeated exceptions before they become invisible performance debt. When a
 tradeoff rule used local regression caps, the summary reports the highest cap
-usage observed in the selected window.
+usage observed in the selected window. When the uploaded tradeoff receipt still
+contains its configured rule and weighted deltas, the summary also reports the
+largest accepted failed-metric regression, such as `max_rss_kb +3.0%`. Budget
+headroom usage is reported as `n/a` until receipts include the original budget
+threshold denominator; perfgate does not infer that value from status alone.
 
 ## Primitive Commands
 

@@ -137,8 +137,36 @@ fn decision_record_with(
     cap_used: Option<(f64, f64)>,
 ) -> serde_json::Value {
     let mut tradeoff = tradeoff_receipt();
-    if let Some((observed_regression, max_regression)) = cap_used {
-        tradeoff["rules"][0]["allowances"] = serde_json::json!([{
+    let configured_rules: Vec<_> = accepted_rules
+        .iter()
+        .map(|rule| {
+            serde_json::json!({
+                "name": rule,
+                "if_failed": "max_rss_kb",
+                "require": [{
+                    "metric": "wall_ms",
+                    "min_improvement_ratio": 1.10
+                }],
+                "downgrade_to": "warn"
+            })
+        })
+        .collect();
+    let mut rule_outcomes: Vec<_> = accepted_rules
+        .iter()
+        .map(|rule| {
+            serde_json::json!({
+                "name": rule,
+                "status": "accepted",
+                "accepted": true,
+                "downgrade_to": "warn",
+                "reason": "tradeoff accepted"
+            })
+        })
+        .collect();
+    if let Some((observed_regression, max_regression)) = cap_used
+        && let Some(rule) = rule_outcomes.first_mut()
+    {
+        rule["allowances"] = serde_json::json!([{
             "metric": "wall_ms",
             "probe": "parser.tokenize",
             "max_regression": max_regression,
@@ -148,7 +176,17 @@ fn decision_record_with(
             "reason": "local regression stayed inside cap"
         }]);
     }
+    tradeoff["configured_rules"] = serde_json::Value::Array(configured_rules);
+    tradeoff["rules"] = serde_json::Value::Array(rule_outcomes);
     tradeoff["scenario"] = serde_json::Value::String(scenario.to_string());
+    tradeoff["weighted_deltas"]["max_rss_kb"] = serde_json::json!({
+        "baseline": 1000.0,
+        "current": 1030.0,
+        "ratio": 1.03,
+        "pct": 0.03,
+        "regression": 0.03,
+        "status": "warn"
+    });
 
     serde_json::json!({
         "schema": "perfgate.decision_record.v1",
@@ -745,6 +783,10 @@ async fn test_decision_debt_summarizes_accepted_tradeoffs() {
         ))
         .stdout(predicate::str::contains("parser"))
         .stdout(predicate::str::contains("70%"))
+        .stdout(predicate::str::contains("accepted delta"))
+        .stdout(predicate::str::contains("max_rss_kb +3.0%"))
+        .stdout(predicate::str::contains("budget used"))
+        .stdout(predicate::str::contains("n/a"))
         .stdout(predicate::str::contains(
             "tokenizer-cost-for-batch-loop-win (2)",
         ))
