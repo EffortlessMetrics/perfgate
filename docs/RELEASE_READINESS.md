@@ -25,7 +25,7 @@ performance-decision workflow are now in their intended release shape:
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
 | First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
 | Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
-| Structured decision workflow | Covered | `crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs`, `crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs`, and GitHub Action `decision: "true"` |
+| Structured decision workflow | Covered | `crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs`, `crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs`, `crates/perfgate-cli/tests/cli_release_decision_proof_tests.rs`, and GitHub Action `decision: "true"` |
 | Decision ledger and debt | Covered | `decision upload|history|latest|debt`, `perfgate.decision_record.v1`, decision upload audit events, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
@@ -92,6 +92,44 @@ perfgate init --ci github --profile standard
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all
 ```
+
+For the structured-decision release proof, start from that generated setup and
+prove the install-to-decision path. The first `check` creates a trusted first
+run for promotion; the second `check --require-baseline` represents the next
+change under review and writes compare receipts for `decision evaluate`:
+
+```bash
+cargo binstall perfgate-cli
+perfgate doctor
+perfgate init --ci github --profile standard
+perfgate doctor --config perfgate.toml
+perfgate check --config perfgate.toml --all
+perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
+perfgate ingest probes --file artifacts/probes-baseline.jsonl --out artifacts/perfgate/parser/probes-baseline.json
+perfgate ingest probes --file artifacts/probes.jsonl --out artifacts/perfgate/probes.json
+perfgate decision evaluate --config perfgate.toml
+```
+
+Expected decision artifacts, under `[defaults].out_dir` unless overridden:
+
+```text
+artifacts/perfgate/
+  <bench>/run.json
+  <bench>/compare.json
+  probes.json
+  <bench>/probe-compare.json
+  scenario.json
+  tradeoff.json
+  decision.md
+  decision.index.json
+```
+
+`xtask action-check` guards the GitHub Action decision path: when
+`decision: "true"` is enabled, the action runs `perfgate decision evaluate`,
+lists `probe-compare.json`, `scenario.json`, `tradeoff.json`, `decision.md`,
+and `decision.index.json` among discovered artifacts, and prints the local
+`perfgate decision evaluate --config perfgate.toml` reproduction command.
 
 ## Historical Record: v0.15.1
 
