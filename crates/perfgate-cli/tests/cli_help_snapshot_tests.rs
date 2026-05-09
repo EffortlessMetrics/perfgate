@@ -294,7 +294,8 @@ fn cli_help_decision() {
         .stdout(predicate::str::contains(
             "Evaluate scenario and tradeoff evidence",
         ))
-        .stdout(predicate::str::contains("evaluate"));
+        .stdout(predicate::str::contains("evaluate"))
+        .stdout(predicate::str::contains("debt"));
 }
 
 #[test]
@@ -310,6 +311,17 @@ fn cli_help_decision_evaluate() {
         .stdout(predicate::str::contains("--scenario-out"))
         .stdout(predicate::str::contains("--tradeoff-out"))
         .stdout(predicate::str::contains("--decision-out"));
+}
+
+#[test]
+fn cli_help_decision_debt() {
+    perfgate_cmd()
+        .args(["decision", "debt", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Summarize accepted tradeoff debt"))
+        .stdout(predicate::str::contains("--days"))
+        .stdout(predicate::str::contains("--limit"));
 }
 
 #[test]
