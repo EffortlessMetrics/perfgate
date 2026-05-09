@@ -33,6 +33,7 @@ num_cpus = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
+criterion = { version = "0.8.2", default-features = false, optional = true }
 which = "7"
 
 [target.'cfg(windows)'.dependencies]
@@ -54,6 +55,7 @@ wiremock.workspace = true
 default = []
 github = ["dep:reqwest", "dep:tracing"]
 probe = []
+probe-criterion = ["probe", "dep:criterion"]
 probe-tracing = ["probe", "dep:tracing", "dep:tracing-subscriber"]
 
 [lints]

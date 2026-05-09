@@ -155,6 +155,49 @@ The tracing layer writes one JSONL probe event when a span closes. Span active
 time becomes `wall_ms`; numeric fields become metrics; `scope`, `parent`,
 `items`, and `iteration` map to probe metadata.
 
+Criterion benchmarks can use the optional measurement adapter when they want
+Criterion samples to also become probe JSONL:
+
+```toml
+[dev-dependencies]
+criterion = "0.8"
+perfgate = { version = "0.15", features = ["probe-criterion"] }
+```
+
+```rust,no_run
+use criterion::{criterion_group, criterion_main, Criterion};
+use perfgate::probe::CriterionProbeMeasurement;
+use perfgate::types::ProbeScope;
+
+fn criterion_with_probes() -> Criterion<CriterionProbeMeasurement<std::fs::File>> {
+    Criterion::default().with_measurement(
+        CriterionProbeMeasurement::append("parser.batch_loop", "artifacts/probes.jsonl")
+            .expect("open probe JSONL")
+            .scope(ProbeScope::Dominant)
+            .items(10_000)
+            .attribute("harness", "criterion"),
+    )
+}
+
+fn bench_parser(c: &mut Criterion<CriterionProbeMeasurement<std::fs::File>>) {
+    c.bench_function("parser/batch_loop", |b| b.iter(|| parser_batch_loop()));
+}
+
+fn parser_batch_loop() {}
+
+criterion_group! {
+    name = benches;
+    config = criterion_with_probes();
+    targets = bench_parser
+}
+criterion_main!(benches);
+```
+
+The Criterion adapter preserves Criterion's normal wall-clock measurement while
+writing one probe JSONL event for each closed measurement sample. The emitted
+events use the configured probe name and record `wall_ms`, sample `iteration`,
+and any configured probe metadata.
+
 Compare probe receipts when you want deltas such as `parser.tokenize +2.1%`:
 
 ```bash

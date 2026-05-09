@@ -10,9 +10,11 @@ use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
-#[cfg(feature = "probe-tracing")]
+#[cfg(feature = "probe-criterion")]
+use std::sync::atomic::{AtomicU32, Ordering};
+#[cfg(any(feature = "probe-criterion", feature = "probe-tracing"))]
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "probe-tracing")]
+#[cfg(any(feature = "probe-criterion", feature = "probe-tracing"))]
 use std::time::Duration;
 use std::time::Instant;
 
@@ -279,6 +281,166 @@ impl ProbeTimer {
     pub fn finish(self) -> ProbeEvent {
         self.event
             .metric("wall_ms", self.start.elapsed().as_secs_f64() * 1000.0, "ms")
+    }
+}
+
+/// A Criterion measurement adapter that records each measurement as probe JSONL.
+///
+/// Enable the `probe-criterion` feature to use this adapter with
+/// `criterion::Criterion::with_measurement`. It preserves Criterion's normal
+/// wall-clock measurement behavior while writing one probe event for every
+/// measurement sample that Criterion closes. The emitted JSONL is accepted by
+/// `perfgate ingest probes`.
+#[cfg(feature = "probe-criterion")]
+#[derive(Debug)]
+pub struct CriterionProbeMeasurement<W> {
+    writer: Arc<Mutex<ProbeJsonlWriter<W>>>,
+    event: ProbeEvent,
+    next_iteration: Arc<AtomicU32>,
+    last_error: Arc<Mutex<Option<String>>>,
+}
+
+#[cfg(feature = "probe-criterion")]
+impl CriterionProbeMeasurement<File> {
+    /// Create or truncate a probe JSONL file.
+    pub fn create(name: impl Into<String>, path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self::new(name, ProbeJsonlWriter::create(path)?))
+    }
+
+    /// Open a probe JSONL file for appending.
+    pub fn append(name: impl Into<String>, path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self::new(name, ProbeJsonlWriter::append(path)?))
+    }
+}
+
+#[cfg(feature = "probe-criterion")]
+impl<W: Write> CriterionProbeMeasurement<W> {
+    /// Wrap an existing probe JSONL writer.
+    pub fn new(name: impl Into<String>, writer: ProbeJsonlWriter<W>) -> Self {
+        Self {
+            writer: Arc::new(Mutex::new(writer)),
+            event: ProbeEvent::new(name),
+            next_iteration: Arc::new(AtomicU32::new(0)),
+            last_error: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Wrap an existing writer.
+    pub fn from_writer(name: impl Into<String>, writer: W) -> Self {
+        Self::new(name, ProbeJsonlWriter::new(writer))
+    }
+
+    /// Set the parent probe name on emitted events.
+    pub fn parent(mut self, parent: impl Into<String>) -> Self {
+        self.event = self.event.parent(parent);
+        self
+    }
+
+    /// Set the probe scope on emitted events.
+    pub fn scope(mut self, scope: ProbeScope) -> Self {
+        self.event = self.event.scope(scope);
+        self
+    }
+
+    /// Set the number of work items represented by each emitted event.
+    pub fn items(mut self, items: u64) -> Self {
+        self.event = self.event.items(items);
+        self
+    }
+
+    /// Add an attribute to emitted events.
+    pub fn attribute(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.event = self.event.attribute(name, value);
+        self
+    }
+
+    /// Flush the wrapped JSONL writer.
+    pub fn flush(&self) -> io::Result<()> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| io::Error::other("probe criterion writer lock poisoned"))?;
+        writer.flush()
+    }
+
+    /// Return the last write error observed by the measurement adapter, if any.
+    pub fn last_error(&self) -> Option<String> {
+        self.last_error.lock().ok().and_then(|error| error.clone())
+    }
+
+    fn record_duration(&self, duration: Duration) {
+        let iteration = self
+            .next_iteration
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        let event = self.event.clone().iteration(iteration).metric(
+            "wall_ms",
+            duration.as_secs_f64() * 1000.0,
+            "ms",
+        );
+        self.record_event(&event);
+    }
+
+    fn record_event(&self, event: &ProbeEvent) {
+        match self.writer.lock() {
+            Ok(mut writer) => {
+                if let Err(error) = writer.record(event) {
+                    self.set_last_error(error.to_string());
+                }
+            }
+            Err(_) => self.set_last_error("probe criterion writer lock poisoned".to_string()),
+        }
+    }
+
+    fn set_last_error(&self, message: String) {
+        if let Ok(mut last_error) = self.last_error.lock() {
+            *last_error = Some(message);
+        }
+    }
+}
+
+#[cfg(feature = "probe-criterion")]
+impl<W> Clone for CriterionProbeMeasurement<W> {
+    fn clone(&self) -> Self {
+        Self {
+            writer: Arc::clone(&self.writer),
+            event: self.event.clone(),
+            next_iteration: Arc::clone(&self.next_iteration),
+            last_error: Arc::clone(&self.last_error),
+        }
+    }
+}
+
+#[cfg(feature = "probe-criterion")]
+impl<W: Write> criterion::measurement::Measurement for CriterionProbeMeasurement<W> {
+    type Intermediate = Instant;
+    type Value = Duration;
+
+    fn start(&self) -> Self::Intermediate {
+        Instant::now()
+    }
+
+    fn end(&self, started: Self::Intermediate) -> Self::Value {
+        let duration = started.elapsed();
+        self.record_duration(duration);
+        duration
+    }
+
+    fn add(&self, v1: &Self::Value, v2: &Self::Value) -> Self::Value {
+        *v1 + *v2
+    }
+
+    fn zero(&self) -> Self::Value {
+        Duration::ZERO
+    }
+
+    fn to_f64(&self, value: &Self::Value) -> f64 {
+        value.as_nanos() as f64
+    }
+
+    fn formatter(&self) -> &dyn criterion::measurement::ValueFormatter {
+        static WALL_TIME: criterion::measurement::WallTime = criterion::measurement::WallTime;
+        WALL_TIME.formatter()
     }
 }
 
@@ -715,6 +877,69 @@ mod tests {
         assert!(wall_ms.is_finite());
         assert!(wall_ms >= 0.0);
         assert_eq!(event.metrics["wall_ms"].unit.as_deref(), Some("ms"));
+    }
+
+    #[cfg(feature = "probe-criterion")]
+    #[test]
+    fn criterion_measurement_records_samples_as_probe_jsonl() {
+        use criterion::measurement::Measurement;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone)]
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl Write for SharedWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0
+                    .lock()
+                    .map_err(|_| io::Error::other("buffer lock poisoned"))?
+                    .write(buf)
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let measurement = CriterionProbeMeasurement::from_writer(
+            "parser.batch_loop",
+            SharedWriter(Arc::clone(&output)),
+        )
+        .scope(ProbeScope::Dominant)
+        .items(10_000)
+        .attribute("harness", "criterion");
+        let _criterion: criterion::Criterion<CriterionProbeMeasurement<SharedWriter>> =
+            criterion::Criterion::default().with_measurement(measurement.clone());
+
+        let started = measurement.start();
+        let duration = measurement.end(started);
+        measurement
+            .flush()
+            .expect("flush criterion probe measurement");
+        assert_eq!(measurement.last_error(), None);
+        assert_eq!(measurement.zero(), Duration::ZERO);
+        assert_eq!(measurement.add(&duration, &Duration::ZERO), duration);
+        assert_eq!(measurement.to_f64(&duration), duration.as_nanos() as f64);
+
+        let jsonl =
+            String::from_utf8(output.lock().expect("buffer lock").clone()).expect("utf8 JSONL");
+        let receipt = ingest_probes_jsonl(&ProbeIngestRequest {
+            input: jsonl,
+            bench: None,
+            scenario: None,
+        })
+        .expect("ingest criterion JSONL");
+
+        assert_eq!(receipt.probes.len(), 1);
+        let probe = &receipt.probes[0];
+        assert_eq!(probe.name, "parser.batch_loop");
+        assert_eq!(probe.scope, Some(ProbeScope::Dominant));
+        assert_eq!(probe.iteration, Some(1));
+        assert_eq!(probe.items, Some(10_000));
+        assert!(probe.metrics["wall_ms"].value.is_finite());
+        assert_eq!(probe.metrics["wall_ms"].unit.as_deref(), Some("ms"));
+        assert_eq!(probe.attributes["harness"], "criterion");
     }
 
     #[cfg(feature = "probe-tracing")]

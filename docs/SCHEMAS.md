@@ -90,6 +90,10 @@ With `features = ["probe-tracing"]`, `perfgate::probe::TracingProbeLayer`
 records closed `tracing` spans as the same JSONL shape: active span time becomes
 `wall_ms`, numeric fields become metrics, and `scope` / `parent` / `items` /
 `iteration` fields become probe metadata.
+With `features = ["probe-criterion"]`,
+`perfgate::probe::CriterionProbeMeasurement` implements Criterion's custom
+measurement trait and writes each closed wall-clock measurement sample as the
+same JSONL shape, with `wall_ms` and sample `iteration` populated.
 
 ## Probe Comparison
 
