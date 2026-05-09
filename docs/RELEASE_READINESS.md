@@ -123,6 +123,7 @@ artifacts/perfgate/
   tradeoff.json
   decision.md
   decision.index.json
+  decision-bundle.json   # optional portable export from decision.index.json
 ```
 
 `xtask action-check` guards the GitHub Action decision path: when
@@ -276,6 +277,9 @@ The **core local gating pipeline** is production-quality:
   compare, scenario, probe-compare, and tradeoff receipts, writes
   `decision.md` plus `decision.index.json`, and is the taught advanced workflow
   for reviewable performance tradeoffs.
+- **Portable decision bundles** — `perfgate decision bundle` exports
+  `perfgate.decision_bundle.v1` from `decision.index.json` for release,
+  audit, issue, or agent handoff attachment without requiring the server.
 - **Probe evidence and tradeoff guardrails** — `perfgate ingest probes`,
   `perfgate probe compare`, scenario-attached probe evidence, probe-backed
   tradeoff requirements, local-regression caps, and noise-aware review policies

@@ -35,6 +35,18 @@ files, and the local reproduction command.
 `decision.index.json` is the machine-readable artifact manifest for actions,
 servers, dashboards, and agents that need to find the generated evidence set.
 
+Export a portable JSON bundle when the decision evidence needs to travel with a
+release, issue, audit, or agent handoff:
+
+```bash
+perfgate decision bundle --index artifacts/perfgate/decision.index.json --out artifacts/perfgate/decision-bundle.json
+```
+
+The bundle uses `perfgate.decision_bundle.v1` and embeds the indexed scenario,
+tradeoff, decision markdown, probe-compare, and compare artifacts with SHA-256
+hashes plus git metadata when available. It is a transport artifact; the
+original receipts remain the source of truth.
+
 ## Workflow Levels
 
 ### Normal Gate

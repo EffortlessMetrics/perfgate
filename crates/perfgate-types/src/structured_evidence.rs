@@ -4,6 +4,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// Scope of a named performance probe inside a workload.
@@ -354,12 +355,70 @@ pub struct DecisionArtifactIndex {
     pub compare_receipts: Vec<String>,
 }
 
+/// Metadata captured when exporting a portable decision bundle.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct DecisionBundleMetadata {
+    pub index_path: String,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub git_ref: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub git_sha: Option<String>,
+}
+
+/// Kind of artifact embedded in a portable decision bundle.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionBundleArtifactKind {
+    DecisionIndex,
+    Scenario,
+    Tradeoff,
+    DecisionMarkdown,
+    ProbeCompare,
+    CompareReceipt,
+}
+
+/// Embedded artifact content.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DecisionBundleArtifactContent {
+    Json { value: Value },
+    Text { value: String },
+}
+
+/// One artifact embedded in a portable decision bundle.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct DecisionBundleArtifact {
+    pub path: String,
+    pub kind: DecisionBundleArtifactKind,
+    pub media_type: String,
+    pub sha256: String,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub schema: Option<String>,
+
+    pub content: DecisionBundleArtifactContent,
+}
+
+/// A portable receipt bundle for structured performance decisions.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct DecisionBundleReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: RunMeta,
+    pub metadata: DecisionBundleMetadata,
+    pub index: DecisionArtifactIndex,
+    pub artifacts: Vec<DecisionBundleArtifact>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        DECISION_INDEX_SCHEMA_V1, PROBE_COMPARE_SCHEMA_V1, PROBE_SCHEMA_V1, SCENARIO_SCHEMA_V1,
-        TRADEOFF_SCHEMA_V1, U64Summary, VerdictCounts, VerdictStatus,
+        DECISION_BUNDLE_SCHEMA_V1, DECISION_INDEX_SCHEMA_V1, PROBE_COMPARE_SCHEMA_V1,
+        PROBE_SCHEMA_V1, SCENARIO_SCHEMA_V1, TRADEOFF_SCHEMA_V1, U64Summary, VerdictCounts,
+        VerdictStatus,
     };
 
     fn tool() -> ToolInfo {
@@ -617,6 +676,68 @@ mod tests {
         assert_eq!(
             parsed.probe_compares,
             vec!["artifacts/perfgate/large-file/probe-compare.json"]
+        );
+    }
+
+    #[test]
+    fn decision_bundle_receipt_round_trips() {
+        let index = DecisionArtifactIndex {
+            schema: DECISION_INDEX_SCHEMA_V1.into(),
+            scenario: "artifacts/perfgate/scenario.json".into(),
+            tradeoff: "artifacts/perfgate/tradeoff.json".into(),
+            decision: "artifacts/perfgate/decision.md".into(),
+            probe_compares: vec!["artifacts/perfgate/large-file/probe-compare.json".into()],
+            compare_receipts: vec!["artifacts/perfgate/large-file/compare.json".into()],
+        };
+        let receipt = DecisionBundleReceipt {
+            schema: DECISION_BUNDLE_SCHEMA_V1.into(),
+            tool: tool(),
+            run: run(),
+            metadata: DecisionBundleMetadata {
+                index_path: "artifacts/perfgate/decision.index.json".into(),
+                git_ref: Some("main".into()),
+                git_sha: Some("abc123".into()),
+            },
+            index,
+            artifacts: vec![
+                DecisionBundleArtifact {
+                    path: "artifacts/perfgate/decision.index.json".into(),
+                    kind: DecisionBundleArtifactKind::DecisionIndex,
+                    media_type: "application/json".into(),
+                    sha256: "00".repeat(32),
+                    schema: Some(DECISION_INDEX_SCHEMA_V1.into()),
+                    content: DecisionBundleArtifactContent::Json {
+                        value: serde_json::json!({
+                            "schema": DECISION_INDEX_SCHEMA_V1,
+                            "scenario": "artifacts/perfgate/scenario.json",
+                            "tradeoff": "artifacts/perfgate/tradeoff.json",
+                            "decision": "artifacts/perfgate/decision.md",
+                            "probe_compares": [],
+                            "compare_receipts": []
+                        }),
+                    },
+                },
+                DecisionBundleArtifact {
+                    path: "artifacts/perfgate/decision.md".into(),
+                    kind: DecisionBundleArtifactKind::DecisionMarkdown,
+                    media_type: "text/markdown; charset=utf-8".into(),
+                    sha256: "11".repeat(32),
+                    schema: None,
+                    content: DecisionBundleArtifactContent::Text {
+                        value: "# Decision".into(),
+                    },
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&receipt).expect("serialize decision bundle");
+        let parsed: DecisionBundleReceipt =
+            serde_json::from_str(&json).expect("parse decision bundle");
+        assert_eq!(parsed.schema, DECISION_BUNDLE_SCHEMA_V1);
+        assert_eq!(parsed.artifacts.len(), 2);
+        assert_eq!(
+            parsed.artifacts[0].kind,
+            DecisionBundleArtifactKind::DecisionIndex
         );
     }
 

@@ -1,5 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 517
 expression: "help_output(&[\"decision\", \"--help\"])"
 ---
 Evaluate scenario and tradeoff evidence into a review-ready decision summary
@@ -8,6 +9,7 @@ Usage: perfgate decision [OPTIONS] <COMMAND>
 
 Commands:
   evaluate Evaluate configured scenarios and tradeoffs, then render decision markdown
+  bundle Export indexed decision evidence as one portable JSON bundle
   upload Upload a perfgate.tradeoff.v1 receipt to the baseline server decision ledger
   history List stored decision receipts from the baseline server
   latest Show the latest stored decision receipt from the baseline server

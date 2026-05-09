@@ -151,6 +151,65 @@ fn performance_decision_example_runs_end_to_end() {
             "examples/performance-decision/receipts/small-edit.compare.json"
         ]
     );
+
+    perfgate_cmd()
+        .current_dir(root)
+        .args([
+            "decision",
+            "bundle",
+            "--index",
+            "artifacts/perfgate/decision.index.json",
+            "--out",
+            "artifacts/perfgate/decision-bundle.json",
+            "--git-ref",
+            "main",
+            "--git-sha",
+            "abc123",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Decision bundle written"));
+
+    let bundle: perfgate_types::DecisionBundleReceipt = serde_json::from_str(
+        &fs::read_to_string(root.join("artifacts/perfgate/decision-bundle.json"))
+            .expect("read decision bundle"),
+    )
+    .expect("decision bundle should deserialize");
+    assert_eq!(bundle.schema, "perfgate.decision_bundle.v1");
+    assert_eq!(bundle.metadata.git_ref.as_deref(), Some("main"));
+    assert_eq!(bundle.metadata.git_sha.as_deref(), Some("abc123"));
+    assert_eq!(bundle.index.schema, "perfgate.decision_index.v1");
+    assert!(
+        bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.kind
+                == perfgate_types::DecisionBundleArtifactKind::DecisionIndex)
+    );
+    assert!(
+        bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.kind == perfgate_types::DecisionBundleArtifactKind::Scenario)
+    );
+    assert!(
+        bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.kind == perfgate_types::DecisionBundleArtifactKind::Tradeoff)
+    );
+    assert!(
+        bundle.artifacts.iter().any(|artifact| artifact.kind
+            == perfgate_types::DecisionBundleArtifactKind::DecisionMarkdown)
+    );
+    assert!(
+        bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.path == "artifacts/perfgate/large-file/probe-compare.json")
+    );
+    assert!(bundle.artifacts.iter().any(|artifact| artifact.path
+        == "examples/performance-decision/receipts/large-file.compare.json"));
 }
 
 fn copy_dir_all(source: &Path, destination: &Path) {
