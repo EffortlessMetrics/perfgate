@@ -1,0 +1,21 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 530
+expression: "help_output(&[\"decision\", \"bundle\", \"--help\"])"
+---
+Export indexed decision evidence as one portable JSON bundle
+
+Usage: perfgate decision bundle [OPTIONS]
+
+Options:
+      --index <INDEX> Path to a perfgate.decision_index.v1 receipt [default: artifacts/perfgate/decision.index.json]
+      --out <OUT> Output perfgate.decision_bundle.v1 receipt path
+      --git-ref <GIT_REF> Git reference associated with this bundle. Defaults to the current branch when available
+      --git-sha <GIT_SHA> Git commit SHA associated with this bundle. Defaults to the current commit when available
+      --pretty Pretty-print JSON
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

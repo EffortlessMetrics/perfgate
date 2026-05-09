@@ -106,6 +106,12 @@ local reproduction command. `decision.index.json` is the machine-readable
 manifest for the evidence files behind that review.
 When scenarios configure probe baseline/current paths, `decision evaluate` also
 writes the configured `probe-compare.json` before evaluating the decision.
+To attach or archive the whole decision evidence set, export the indexed
+bundle:
+
+```bash
+perfgate decision bundle --index artifacts/perfgate/decision.index.json --out artifacts/perfgate/decision-bundle.json
+```
 
 In GitHub Actions, opt in with:
 

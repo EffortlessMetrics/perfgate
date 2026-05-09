@@ -47,6 +47,7 @@ perfgate also commits generated schemas for tooling and editor integration:
 | `schemas/perfgate.tradeoff.v1.schema.json` | Validates tradeoff receipts that explain why local regressions were accepted or rejected |
 | `schemas/perfgate.decision_index.v1.schema.json` | Validates the decision artifact manifest produced by `decision evaluate` |
 | `schemas/perfgate.decision_record.v1.schema.json` | Validates server-side decision ledger records returned by `decision upload`, `decision latest`, and `decision history` |
+| `schemas/perfgate.decision_bundle.v1.schema.json` | Validates portable decision bundles exported from `decision.index.json` |
 | `schemas/perfgate.report.v1.schema.json` | Validates report receipts, including additive diagnostics such as `profile_path` |
 
 ## JSON Schema Generation
@@ -171,6 +172,19 @@ The index receipt uses `perfgate.decision_index.v1` and records the generated
 scenario, tradeoff, and Markdown paths plus the compare and probe-compare
 receipts that fed the decision.
 
+Use `decision bundle` when that indexed evidence needs to travel with a
+release, issue, audit, or agent handoff:
+
+```bash
+perfgate decision bundle --index artifacts/perfgate/decision.index.json --out artifacts/perfgate/decision-bundle.json
+```
+
+The bundle receipt uses `perfgate.decision_bundle.v1`, embeds the referenced
+JSON/Markdown artifacts, records SHA-256 hashes for each embedded file, and
+captures git metadata when available. It is additive: existing
+`decision.index.json`, scenario, tradeoff, and probe-compare receipts remain
+valid and independently consumable.
+
 Server mode can persist the resulting decision as a ledger entry:
 
 ```bash
@@ -210,7 +224,7 @@ Historical compatibility fixtures live under `fixtures/schema/<release>/`.
 `schema-compat` checks v0.15 examples for `perfgate.run.v1`,
 `perfgate.compare.v1`, `perfgate.report.v1`, `sensor.report.v1`,
 `perfgate.health.v1`, and structured-decision receipts including
-`perfgate.decision_index.v1`.
+`perfgate.decision_index.v1` and `perfgate.decision_bundle.v1`.
 It also checks v0.16 baseline-service and fleet contract fixtures for
 `perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
 `perfgate.health.v1`, `perfgate.decision_record.v1`,

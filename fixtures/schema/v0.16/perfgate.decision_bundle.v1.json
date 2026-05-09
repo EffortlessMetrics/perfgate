@@ -1,0 +1,83 @@
+{
+  "schema": "perfgate.decision_bundle.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.16.0"
+  },
+  "run": {
+    "id": "decision-bundle-run",
+    "started_at": "2026-05-08T00:00:00Z",
+    "ended_at": "2026-05-08T00:00:01Z",
+    "host": {
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  },
+  "metadata": {
+    "index_path": "artifacts/perfgate/decision.index.json",
+    "git_ref": "refs/heads/main",
+    "git_sha": "abc123"
+  },
+  "index": {
+    "schema": "perfgate.decision_index.v1",
+    "scenario": "artifacts/perfgate/scenario.json",
+    "tradeoff": "artifacts/perfgate/tradeoff.json",
+    "decision": "artifacts/perfgate/decision.md",
+    "probe_compares": [
+      "artifacts/perfgate/large-file/probe-compare.json"
+    ],
+    "compare_receipts": [
+      "artifacts/perfgate/large-file/compare.json"
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "artifacts/perfgate/decision.index.json",
+      "kind": "decision_index",
+      "media_type": "application/json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": "perfgate.decision_index.v1",
+      "content": {
+        "type": "json",
+        "value": {
+          "schema": "perfgate.decision_index.v1",
+          "scenario": "artifacts/perfgate/scenario.json",
+          "tradeoff": "artifacts/perfgate/tradeoff.json",
+          "decision": "artifacts/perfgate/decision.md",
+          "probe_compares": [
+            "artifacts/perfgate/large-file/probe-compare.json"
+          ],
+          "compare_receipts": [
+            "artifacts/perfgate/large-file/compare.json"
+          ]
+        }
+      }
+    },
+    {
+      "path": "artifacts/perfgate/tradeoff.json",
+      "kind": "tradeoff",
+      "media_type": "application/json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "schema": "perfgate.tradeoff.v1",
+      "content": {
+        "type": "json",
+        "value": {
+          "schema": "perfgate.tradeoff.v1",
+          "decision": {
+            "status": "warn"
+          }
+        }
+      }
+    },
+    {
+      "path": "artifacts/perfgate/decision.md",
+      "kind": "decision_markdown",
+      "media_type": "text/markdown; charset=utf-8",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "content": {
+        "type": "text",
+        "value": "# Performance Decision\n\nDecision: warn with accepted tradeoff\n"
+      }
+    }
+  ]
+}

@@ -73,6 +73,7 @@ Commands are organized by workflow stage.
 | `summary`            | Print a terminal table from one or more compare receipts |
 | `github-annotations` | Emit `::error::`/`::warning::` lines for GitHub Actions |
 | `export`             | Export to CSV, JSONL, HTML, Prometheus, or JUnit |
+| `decision bundle`    | Export indexed decision evidence as a portable JSON bundle |
 
 ### Manage
 

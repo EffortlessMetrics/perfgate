@@ -325,6 +325,19 @@ fn cli_help_decision_debt() {
 }
 
 #[test]
+fn cli_help_decision_bundle() {
+    perfgate_cmd()
+        .args(["decision", "bundle", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Export indexed decision evidence as one portable JSON bundle",
+        ))
+        .stdout(predicate::str::contains("--index"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
 fn cli_help_probe() {
     perfgate_cmd()
         .args(["probe", "--help"])
@@ -509,6 +522,14 @@ fn snapshot_help_decision_evaluate() {
     insta::assert_snapshot!(
         "help_decision_evaluate",
         help_output(&["decision", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_decision_bundle() {
+    insta::assert_snapshot!(
+        "help_decision_bundle",
+        help_output(&["decision", "bundle", "--help"])
     );
 }
 

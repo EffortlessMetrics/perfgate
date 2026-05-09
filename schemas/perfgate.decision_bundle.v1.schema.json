@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DecisionBundleReceipt",
+  "description": "A portable receipt bundle for structured performance decisions.",
+  "type": "object",
+  "properties": {
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DecisionBundleArtifact"
+      }
+    },
+    "index": {
+      "$ref": "#/$defs/DecisionArtifactIndex"
+    },
+    "metadata": {
+      "$ref": "#/$defs/DecisionBundleMetadata"
+    },
+    "run": {
+      "$ref": "#/$defs/RunMeta"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "run",
+    "metadata",
+    "index",
+    "artifacts"
+  ],
+  "$defs": {
+    "DecisionArtifactIndex": {
+      "description": "A manifest for the artifacts produced by `perfgate decision evaluate`.",
+      "type": "object",
+      "properties": {
+        "compare_receipts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decision": {
+          "type": "string"
+        },
+        "probe_compares": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "tradeoff": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "scenario",
+        "tradeoff",
+        "decision",
+        "probe_compares",
+        "compare_receipts"
+      ]
+    },
+    "DecisionBundleArtifact": {
+      "description": "One artifact embedded in a portable decision bundle.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/DecisionBundleArtifactContent"
+        },
+        "kind": {
+          "$ref": "#/$defs/DecisionBundleArtifactKind"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "media_type",
+        "sha256",
+        "content"
+      ]
+    },
+    "DecisionBundleArtifactContent": {
+      "description": "Embedded artifact content.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "json"
+            },
+            "value": true
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        }
+      ]
+    },
+    "DecisionBundleArtifactKind": {
+      "description": "Kind of artifact embedded in a portable decision bundle.",
+      "type": "string",
+      "enum": [
+        "decision_index",
+        "scenario",
+        "tradeoff",
+        "decision_markdown",
+        "probe_compare",
+        "compare_receipt"
+      ]
+    },
+    "DecisionBundleMetadata": {
+      "description": "Metadata captured when exporting a portable decision bundle.",
+      "type": "object",
+      "properties": {
+        "git_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index_path"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
+          "type": "string"
+        },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
+    },
+    "RunMeta": {
+      "type": "object",
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    }
+  }
+}

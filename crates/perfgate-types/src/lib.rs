@@ -63,6 +63,7 @@ pub const PROBE_COMPARE_SCHEMA_V1: &str = "perfgate.probe_compare.v1";
 pub const SCENARIO_SCHEMA_V1: &str = "perfgate.scenario.v1";
 pub const TRADEOFF_SCHEMA_V1: &str = "perfgate.tradeoff.v1";
 pub const DECISION_INDEX_SCHEMA_V1: &str = "perfgate.decision_index.v1";
+pub const DECISION_BUNDLE_SCHEMA_V1: &str = "perfgate.decision_bundle.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 pub const RATCHET_SCHEMA_V1: &str = "perfgate.ratchet.v1";

@@ -45,15 +45,19 @@ use perfgate_types::config::{
     apply_ratchet_toml_changes, load_config_file, preview_ratchet_toml_changes,
 };
 use perfgate_types::error::{ConfigValidationError, IoError, PerfgateError};
+use perfgate_types::fingerprint::sha256_hex;
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
-    ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, DECISION_INDEX_SCHEMA_V1,
-    DecisionArtifactIndex, FailIfNOfM, HostMismatchPolicy, MetricStatus, OtelSpanIdentifiers,
+    ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, DECISION_BUNDLE_SCHEMA_V1,
+    DECISION_INDEX_SCHEMA_V1, DecisionArtifactIndex, DecisionBundleArtifact,
+    DecisionBundleArtifactContent, DecisionBundleArtifactKind, DecisionBundleMetadata,
+    DecisionBundleReceipt, FailIfNOfM, HostMismatchPolicy, MetricStatus, OtelSpanIdentifiers,
     PerfgateReport, ProbeCompareReceipt, ProbeReceipt, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
     RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
     ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt, VerdictStatus,
 };
 use regex::Regex;
+use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1303,6 +1307,8 @@ pub enum TradeoffAction {
 pub enum DecisionAction {
     /// Evaluate configured scenarios and tradeoffs, then render decision markdown.
     Evaluate(DecisionEvaluateArgs),
+    /// Export indexed decision evidence as one portable JSON bundle.
+    Bundle(DecisionBundleArgs),
     /// Upload a perfgate.tradeoff.v1 receipt to the baseline server decision ledger.
     Upload(DecisionUploadArgs),
     /// List stored decision receipts from the baseline server.
@@ -1394,6 +1400,29 @@ pub struct DecisionEvaluateArgs {
     pub index_out: Option<PathBuf>,
 
     /// Pretty-print JSON receipts.
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionBundleArgs {
+    /// Path to a perfgate.decision_index.v1 receipt.
+    #[arg(long, default_value = "artifacts/perfgate/decision.index.json")]
+    pub index: PathBuf,
+
+    /// Output perfgate.decision_bundle.v1 receipt path.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+
+    /// Git reference associated with this bundle. Defaults to the current branch when available.
+    #[arg(long)]
+    pub git_ref: Option<String>,
+
+    /// Git commit SHA associated with this bundle. Defaults to the current commit when available.
+    #[arg(long)]
+    pub git_sha: Option<String>,
+
+    /// Pretty-print JSON.
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
 }
@@ -3749,11 +3778,213 @@ fn execute_decision_action(
 ) -> anyhow::Result<()> {
     match action {
         DecisionAction::Evaluate(args) => execute_decision_evaluate(args),
+        DecisionAction::Bundle(args) => execute_decision_bundle(args),
         DecisionAction::Upload(args) => execute_decision_upload(args, server_flags),
         DecisionAction::History(args) => execute_decision_history(args, server_flags),
         DecisionAction::Latest(args) => execute_decision_latest(args, server_flags),
         DecisionAction::Debt(args) => execute_decision_debt(args, server_flags),
     }
+}
+
+fn execute_decision_bundle(args: DecisionBundleArgs) -> anyhow::Result<()> {
+    let index: DecisionArtifactIndex = read_json(&args.index).with_context(|| {
+        format!(
+            "Failed to read decision artifact index from {}",
+            args.index.display()
+        )
+    })?;
+    if index.schema != DECISION_INDEX_SCHEMA_V1 {
+        anyhow::bail!(
+            "decision artifact index must use schema '{}', got '{}'",
+            DECISION_INDEX_SCHEMA_V1,
+            index.schema
+        );
+    }
+
+    let tradeoff_path = resolve_index_artifact_path(&args.index, &index.tradeoff);
+    let tradeoff: TradeoffReceipt = read_json(&tradeoff_path).with_context(|| {
+        format!(
+            "Failed to read tradeoff receipt from {}",
+            tradeoff_path.display()
+        )
+    })?;
+
+    let artifacts = build_decision_bundle_artifacts(&args.index, &index)?;
+    let git = git_metadata();
+    let metadata = DecisionBundleMetadata {
+        index_path: artifact_path_string(&args.index),
+        git_ref: args
+            .git_ref
+            .or_else(|| git.as_ref().and_then(|metadata| metadata.branch.clone())),
+        git_sha: args
+            .git_sha
+            .or_else(|| git.as_ref().and_then(|metadata| metadata.sha.clone())),
+    };
+    let bundle = DecisionBundleReceipt {
+        schema: DECISION_BUNDLE_SCHEMA_V1.to_string(),
+        tool: ToolInfo {
+            name: "perfgate".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        run: tradeoff.run,
+        metadata,
+        index,
+        artifacts,
+    };
+
+    let out = args.out.unwrap_or_else(|| {
+        args.index
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(|parent| parent.join("decision-bundle.json"))
+            .unwrap_or_else(|| PathBuf::from("decision-bundle.json"))
+    });
+    write_json(&out, &bundle, args.pretty)?;
+    eprintln!("Decision bundle written to {}", out.display());
+
+    Ok(())
+}
+
+fn build_decision_bundle_artifacts(
+    index_path: &Path,
+    index: &DecisionArtifactIndex,
+) -> anyhow::Result<Vec<DecisionBundleArtifact>> {
+    let mut artifacts = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    push_decision_bundle_artifact(
+        &mut artifacts,
+        &mut seen,
+        index_path,
+        &artifact_path_string(index_path),
+        DecisionBundleArtifactKind::DecisionIndex,
+    )?;
+    push_decision_bundle_artifact(
+        &mut artifacts,
+        &mut seen,
+        index_path,
+        &index.scenario,
+        DecisionBundleArtifactKind::Scenario,
+    )?;
+    push_decision_bundle_artifact(
+        &mut artifacts,
+        &mut seen,
+        index_path,
+        &index.tradeoff,
+        DecisionBundleArtifactKind::Tradeoff,
+    )?;
+    push_decision_bundle_artifact(
+        &mut artifacts,
+        &mut seen,
+        index_path,
+        &index.decision,
+        DecisionBundleArtifactKind::DecisionMarkdown,
+    )?;
+    for path in &index.probe_compares {
+        push_decision_bundle_artifact(
+            &mut artifacts,
+            &mut seen,
+            index_path,
+            path,
+            DecisionBundleArtifactKind::ProbeCompare,
+        )?;
+    }
+    for path in &index.compare_receipts {
+        push_decision_bundle_artifact(
+            &mut artifacts,
+            &mut seen,
+            index_path,
+            path,
+            DecisionBundleArtifactKind::CompareReceipt,
+        )?;
+    }
+
+    Ok(artifacts)
+}
+
+fn push_decision_bundle_artifact(
+    artifacts: &mut Vec<DecisionBundleArtifact>,
+    seen: &mut BTreeSet<String>,
+    index_path: &Path,
+    artifact_path: &str,
+    kind: DecisionBundleArtifactKind,
+) -> anyhow::Result<()> {
+    let normalized = normalize_artifact_path(artifact_path);
+    if !seen.insert(normalized.clone()) {
+        return Ok(());
+    }
+
+    let resolved = if matches!(kind, DecisionBundleArtifactKind::DecisionIndex) {
+        index_path.to_path_buf()
+    } else {
+        resolve_index_artifact_path(index_path, artifact_path)
+    };
+    let bytes = fs::read(&resolved)
+        .with_context(|| format!("read decision bundle artifact {}", resolved.display()))?;
+    let sha256 = sha256_hex(&bytes);
+
+    let (media_type, schema, content) = match kind {
+        DecisionBundleArtifactKind::DecisionMarkdown => {
+            let text = String::from_utf8(bytes).with_context(|| {
+                format!(
+                    "decision markdown artifact must be UTF-8: {}",
+                    resolved.display()
+                )
+            })?;
+            (
+                "text/markdown; charset=utf-8".to_string(),
+                None,
+                DecisionBundleArtifactContent::Text { value: text },
+            )
+        }
+        DecisionBundleArtifactKind::DecisionIndex
+        | DecisionBundleArtifactKind::Scenario
+        | DecisionBundleArtifactKind::Tradeoff
+        | DecisionBundleArtifactKind::ProbeCompare
+        | DecisionBundleArtifactKind::CompareReceipt => {
+            let value: JsonValue = serde_json::from_slice(&bytes).with_context(|| {
+                format!(
+                    "decision bundle artifact must be JSON: {}",
+                    resolved.display()
+                )
+            })?;
+            let schema = value
+                .get("schema")
+                .or_else(|| value.get("report_type"))
+                .and_then(|schema| schema.as_str())
+                .map(str::to_string);
+            (
+                "application/json".to_string(),
+                schema,
+                DecisionBundleArtifactContent::Json { value },
+            )
+        }
+    };
+
+    artifacts.push(DecisionBundleArtifact {
+        path: normalized,
+        kind,
+        media_type,
+        sha256,
+        schema,
+        content,
+    });
+
+    Ok(())
+}
+
+fn resolve_index_artifact_path(index_path: &Path, artifact_path: &str) -> PathBuf {
+    let path = PathBuf::from(artifact_path);
+    if path.is_absolute() || path.exists() {
+        return path;
+    }
+
+    index_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(|parent| parent.join(artifact_path))
+        .filter(|candidate| candidate.exists())
+        .unwrap_or(path)
 }
 
 fn execute_decision_upload(
