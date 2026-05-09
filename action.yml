@@ -64,7 +64,7 @@ inputs:
     required: false
     default: "false"
   decision:
-    description: "Run perfgate decision evaluate after check and publish scenario/tradeoff/decision artifacts"
+    description: "Run perfgate decision evaluate after check and publish scenario/tradeoff/decision artifacts plus the decision index"
     required: false
     default: "false"
   github_token:
@@ -423,7 +423,7 @@ runs:
 
           local listing
           listing="$(mktemp)"
-          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name decision.index.json -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
 
           local count
           count="$(wc -l < "${listing}" | tr -d ' ')"

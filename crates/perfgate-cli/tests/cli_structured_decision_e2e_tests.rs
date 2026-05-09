@@ -301,11 +301,13 @@ fn decision_evaluate_runs_structured_decision_workflow() {
         .stderr(predicate::str::contains("Probe compare receipt written"))
         .stderr(predicate::str::contains("Scenario receipt written"))
         .stderr(predicate::str::contains("Tradeoff receipt written"))
-        .stderr(predicate::str::contains("Decision markdown written"));
+        .stderr(predicate::str::contains("Decision markdown written"))
+        .stderr(predicate::str::contains("Decision artifact index written"));
 
     let scenario_path = root.join("artifacts/perfgate/scenario.json");
     let tradeoff_path = root.join("artifacts/perfgate/tradeoff.json");
     let decision_path = root.join("artifacts/perfgate/decision.md");
+    let decision_index_path = root.join("artifacts/perfgate/decision.index.json");
     assert!(
         probe_compare_path.exists(),
         "decision evaluate should write configured probe compare receipt"
@@ -354,6 +356,23 @@ fn decision_evaluate_runs_structured_decision_workflow() {
     assert!(decision.contains("perfgate tradeoff: warn"));
     assert!(decision.contains("tradeoff 'memory_for_probe_speed' accepted"));
     assert!(decision.contains("Probe Evidence"));
+
+    let decision_index: perfgate_types::DecisionArtifactIndex = serde_json::from_str(
+        &fs::read_to_string(decision_index_path).expect("read decision artifact index"),
+    )
+    .expect("decision artifact index should deserialize");
+    assert_eq!(decision_index.schema, "perfgate.decision_index.v1");
+    assert_eq!(decision_index.scenario, "artifacts/perfgate/scenario.json");
+    assert_eq!(decision_index.tradeoff, "artifacts/perfgate/tradeoff.json");
+    assert_eq!(decision_index.decision, "artifacts/perfgate/decision.md");
+    assert_eq!(
+        decision_index.probe_compares,
+        vec![toml_path(&probe_compare_path)]
+    );
+    assert_eq!(
+        decision_index.compare_receipts,
+        vec!["artifacts/perfgate/parser/compare.json".to_string()]
+    );
 }
 
 fn write_controlled_compare_receipt(path: &Path) {

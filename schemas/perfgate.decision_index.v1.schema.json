@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DecisionArtifactIndex",
+  "description": "A manifest for the artifacts produced by `perfgate decision evaluate`.",
+  "type": "object",
+  "properties": {
+    "compare_receipts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decision": {
+      "type": "string"
+    },
+    "probe_compares": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tradeoff": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "scenario",
+    "tradeoff",
+    "decision",
+    "probe_compares",
+    "compare_receipts"
+  ]
+}

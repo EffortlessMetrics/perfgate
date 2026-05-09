@@ -59,7 +59,8 @@ fn performance_decision_example_runs_end_to_end() {
         .stderr(predicate::str::contains("Probe compare receipt written"))
         .stderr(predicate::str::contains("Scenario receipt written"))
         .stderr(predicate::str::contains("Tradeoff receipt written"))
-        .stderr(predicate::str::contains("Decision markdown written"));
+        .stderr(predicate::str::contains("Decision markdown written"))
+        .stderr(predicate::str::contains("Decision artifact index written"));
 
     let probe_compare: perfgate_types::ProbeCompareReceipt = serde_json::from_str(
         &fs::read_to_string(root.join("artifacts/perfgate/large-file/probe-compare.json"))
@@ -132,6 +133,24 @@ fn performance_decision_example_runs_end_to_end() {
     assert!(decision.contains("Accepted / Rejected Tradeoffs"));
     assert!(decision.contains("Evidence Files"));
     assert!(decision.contains("Local Reproduction"));
+
+    let decision_index: perfgate_types::DecisionArtifactIndex = serde_json::from_str(
+        &fs::read_to_string(root.join("artifacts/perfgate/decision.index.json"))
+            .expect("read decision artifact index"),
+    )
+    .expect("decision artifact index should deserialize");
+    assert_eq!(decision_index.schema, "perfgate.decision_index.v1");
+    assert_eq!(
+        decision_index.probe_compares,
+        vec!["artifacts/perfgate/large-file/probe-compare.json"]
+    );
+    assert_eq!(
+        decision_index.compare_receipts,
+        vec![
+            "examples/performance-decision/receipts/large-file.compare.json",
+            "examples/performance-decision/receipts/small-edit.compare.json"
+        ]
+    );
 }
 
 fn copy_dir_all(source: &Path, destination: &Path) {

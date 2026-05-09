@@ -12,6 +12,7 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.probe_compare.v1` | `probe compare` | Probe-level deltas between two probe receipts |
 | `perfgate.scenario.v1` | `scenario evaluate` | Weighted workload-scenario evidence across benchmarks, phases, or probe groups |
 | `perfgate.tradeoff.v1` | `tradeoff evaluate` | Structured decision evidence for accepted or rejected performance tradeoffs |
+| `perfgate.decision_index.v1` | `decision evaluate` | Artifact manifest linking scenario, tradeoff, markdown, probe-compare, and compare evidence |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
 | `sensor.report.v1` | `check --mode cockpit` | Sensor integration envelope for dashboards |
 | `perfgate.baseline.v1` | baseline service | Stored baseline record returned by the server |
@@ -30,7 +31,7 @@ perfgate decision evaluate --config perfgate.toml
 
 That command reads the configured compare receipts, evaluates scenarios,
 evaluates tradeoff rules, and renders `decision.md` alongside
-`scenario.json` and `tradeoff.json`.
+`scenario.json`, `tradeoff.json`, and `decision.index.json`.
 
 ## Additional Generated Schemas
 
@@ -43,6 +44,7 @@ perfgate also commits generated schemas for tooling and editor integration:
 | `schemas/perfgate.probe_compare.v1.schema.json` | Validates probe delta receipts used to explain local phase movement |
 | `schemas/perfgate.scenario.v1.schema.json` | Validates weighted scenario receipts used to explain workload-level outcomes |
 | `schemas/perfgate.tradeoff.v1.schema.json` | Validates tradeoff receipts that explain why local regressions were accepted or rejected |
+| `schemas/perfgate.decision_index.v1.schema.json` | Validates the decision artifact manifest produced by `decision evaluate` |
 | `schemas/perfgate.report.v1.schema.json` | Validates report receipts, including additive diagnostics such as `profile_path` |
 
 ## JSON Schema Generation
@@ -160,7 +162,12 @@ By default it writes:
 artifacts/perfgate/scenario.json
 artifacts/perfgate/tradeoff.json
 artifacts/perfgate/decision.md
+artifacts/perfgate/decision.index.json
 ```
+
+The index receipt uses `perfgate.decision_index.v1` and records the generated
+scenario, tradeoff, and Markdown paths plus the compare and probe-compare
+receipts that fed the decision.
 
 For a runnable probe/scenario/tradeoff fixture, see
 [`examples/performance-decision`](../examples/performance-decision/README.md).
@@ -187,7 +194,8 @@ with external consumers.
 Historical compatibility fixtures live under `fixtures/schema/<release>/`.
 `schema-compat` checks v0.15 examples for `perfgate.run.v1`,
 `perfgate.compare.v1`, `perfgate.report.v1`, `sensor.report.v1`,
-and `perfgate.health.v1`.
+`perfgate.health.v1`, and structured-decision receipts including
+`perfgate.decision_index.v1`.
 It also checks v0.16 baseline-service and fleet contract fixtures for
 `perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
 `perfgate.health.v1`, `perfgate.dependency_event.v1`, and

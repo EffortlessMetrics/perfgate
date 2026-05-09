@@ -342,12 +342,24 @@ pub struct TradeoffReceipt {
     pub warnings: Vec<String>,
 }
 
+/// A manifest for the artifacts produced by `perfgate decision evaluate`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct DecisionArtifactIndex {
+    pub schema: String,
+    pub scenario: String,
+    pub tradeoff: String,
+    pub decision: String,
+    pub probe_compares: Vec<String>,
+    pub compare_receipts: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        PROBE_COMPARE_SCHEMA_V1, PROBE_SCHEMA_V1, SCENARIO_SCHEMA_V1, TRADEOFF_SCHEMA_V1,
-        U64Summary, VerdictCounts, VerdictStatus,
+        DECISION_INDEX_SCHEMA_V1, PROBE_COMPARE_SCHEMA_V1, PROBE_SCHEMA_V1, SCENARIO_SCHEMA_V1,
+        TRADEOFF_SCHEMA_V1, U64Summary, VerdictCounts, VerdictStatus,
     };
 
     fn tool() -> ToolInfo {
@@ -584,6 +596,28 @@ mod tests {
         let parsed: TradeoffReceipt = serde_json::from_str(&json).expect("parse tradeoff receipt");
         assert_eq!(parsed.schema, TRADEOFF_SCHEMA_V1);
         assert!(parsed.decision.accepted_tradeoff);
+    }
+
+    #[test]
+    fn decision_artifact_index_round_trips() {
+        let receipt = DecisionArtifactIndex {
+            schema: DECISION_INDEX_SCHEMA_V1.into(),
+            scenario: "artifacts/perfgate/scenario.json".into(),
+            tradeoff: "artifacts/perfgate/tradeoff.json".into(),
+            decision: "artifacts/perfgate/decision.md".into(),
+            probe_compares: vec!["artifacts/perfgate/large-file/probe-compare.json".into()],
+            compare_receipts: vec!["artifacts/perfgate/large-file/compare.json".into()],
+        };
+
+        let json = serde_json::to_string(&receipt).expect("serialize decision index");
+        let parsed: DecisionArtifactIndex =
+            serde_json::from_str(&json).expect("parse decision index");
+        assert_eq!(parsed.schema, DECISION_INDEX_SCHEMA_V1);
+        assert_eq!(parsed.scenario, "artifacts/perfgate/scenario.json");
+        assert_eq!(
+            parsed.probe_compares,
+            vec!["artifacts/perfgate/large-file/probe-compare.json"]
+        );
     }
 
     #[test]

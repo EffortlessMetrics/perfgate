@@ -16,13 +16,14 @@ const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
     "perfgate-cli",
 ];
 
-const SCHEMA_FILES: [&str; 12] = [
+const SCHEMA_FILES: [&str; 13] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
     "perfgate.probe.v1.schema.json",
     "perfgate.probe_compare.v1.schema.json",
     "perfgate.scenario.v1.schema.json",
     "perfgate.tradeoff.v1.schema.json",
+    "perfgate.decision_index.v1.schema.json",
     "perfgate.config.v1.schema.json",
     "perfgate.report.v1.schema.json",
     "perfgate.aggregate.v1.schema.json",
@@ -698,6 +699,7 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
             && line.contains("-name scenario.json")
             && line.contains("-name tradeoff.json")
             && line.contains("-name decision.md")
+            && line.contains("-name decision.index.json")
             && line.contains("-name comment.md")
             && line.contains("-name 'perfgate.*.json'")
     }) {
@@ -2200,36 +2202,42 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
     write_schema(
         out_dir,
         SCHEMA_FILES[6],
-        schema_for!(perfgate_types::ConfigFile),
+        schema_for!(perfgate_types::DecisionArtifactIndex),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[7],
-        schema_for!(perfgate_types::PerfgateReport),
+        schema_for!(perfgate_types::ConfigFile),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[8],
-        schema_for!(perfgate_types::AggregateReceipt),
+        schema_for!(perfgate_types::PerfgateReport),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[9],
-        schema_for!(perfgate_types::RatchetReceipt),
+        schema_for!(perfgate_types::AggregateReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[10],
+        schema_for!(perfgate_types::RatchetReceipt),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[11],
         schema_for!(perfgate_types::RepairContextReceipt),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.
     let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
-    let dest = out_dir.join(SCHEMA_FILES[11]);
+    let dest = out_dir.join(SCHEMA_FILES[12]);
     fs::copy(&vendored_schema, &dest).with_context(|| {
         format!(
             "copy vendored schema {} -> {}",
@@ -2337,6 +2345,9 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
             }
             "perfgate.tradeoff.v1" => {
                 serde_json::from_value::<perfgate_types::TradeoffReceipt>(value).map(|_| ())
+            }
+            "perfgate.decision_index.v1" => {
+                serde_json::from_value::<perfgate_types::DecisionArtifactIndex>(value).map(|_| ())
             }
             "perfgate.report.v1" => {
                 serde_json::from_value::<perfgate_types::PerfgateReport>(value).map(|_| ())
@@ -3806,6 +3817,11 @@ fn validate_versioned_json_example(
                 .context("deserialize perfgate.tradeoff.v1 example")?;
             Ok(Some(perfgate_types::TRADEOFF_SCHEMA_V1))
         }
+        Some(perfgate_types::DECISION_INDEX_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::DecisionArtifactIndex>(value)
+                .context("deserialize perfgate.decision_index.v1 example")?;
+            Ok(Some(perfgate_types::DECISION_INDEX_SCHEMA_V1))
+        }
         Some(perfgate_types::AGGREGATE_SCHEMA_V1) => {
             serde_json::from_value::<perfgate_types::AggregateReceipt>(value)
                 .context("deserialize perfgate.aggregate.v1 example")?;
@@ -4173,7 +4189,7 @@ runs:
           echo "  ${decision_repro_line}"
           echo "### perfgate local reproduction"
           echo "${decision_repro_line}"
-          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name comment.md -o -name 'perfgate.*.json' \) | sort
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name decision.index.json -o -name comment.md -o -name 'perfgate.*.json' \) | sort
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Post PR comment
       run: |

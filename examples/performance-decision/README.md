@@ -24,6 +24,7 @@ artifacts/perfgate/
   scenario.json
   tradeoff.json
   decision.md
+  decision.index.json
 ```
 
 The fixture models a memory-for-speed decision:
