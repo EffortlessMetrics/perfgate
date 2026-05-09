@@ -1,15 +1,17 @@
 # Release Readiness
 
-Last verified: 2026-05-08 after merging the 0.16 public-surface collapse,
-first-run onboarding hardening, server operations visibility, and health
-contract compatibility through PR #291.
+Last verified: 2026-05-09 after merging the 0.16 public-surface collapse,
+first-run onboarding hardening, server operations visibility, structured
+performance-decision workflow, decision ledger/debt, and dashboard
+decision-ledger visibility through PR #323.
 
 ## Current Main Snapshot
 
-Verified on 2026-05-08 after merging release-readiness work through PR #291.
+Verified on 2026-05-09 after merging release-readiness work through PR #323.
 
 The current `main` branch is not a published release, but the 0.16 public crate
-surface and paved first-run workflow are now in their intended release shape:
+surface, paved first-run workflow, baseline-service operations, and structured
+performance-decision workflow are now in their intended release shape:
 
 | Gate | Status | Evidence |
 |------|--------|----------|
@@ -23,8 +25,11 @@ surface and paved first-run workflow are now in their intended release shape:
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
 | First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
 | Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
-| Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, and dashboard audit view tests |
-| Full repo CI | Passing | Hosted `ci`, `fuzz`, and `perfgate-self` on PR #291 |
+| Structured decision workflow | Covered | `crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs`, `crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs`, and GitHub Action `decision: "true"` |
+| Decision ledger and debt | Covered | `decision upload|history|latest|debt`, `perfgate.decision_record.v1`, decision upload audit events, and dashboard decision-ledger tests |
+| Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
+| Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
+| Full repo CI | Passing | Hosted `ci`, `Coverage`, and `perfgate-self` on merge commit `a1ffb0e`; PR #323 also passed `fuzz` |
 
 The only publishable packages allowed by policy are:
 
@@ -229,6 +234,23 @@ The **core local gating pipeline** is production-quality:
 - **Schema compatibility coverage** — `cargo run -p xtask -- schema-compat`
   checks historical receipt fixtures plus 0.16 baseline-service, audit,
   health, and fleet API fixtures.
+- **Structured performance decisions** — `perfgate decision evaluate` consumes
+  compare, scenario, probe-compare, and tradeoff receipts, writes
+  `decision.md` plus `decision.index.json`, and is the taught advanced workflow
+  for reviewable performance tradeoffs.
+- **Probe evidence and tradeoff guardrails** — `perfgate ingest probes`,
+  `perfgate probe compare`, scenario-attached probe evidence, probe-backed
+  tradeoff requirements, local-regression caps, and noise-aware review policies
+  are implemented and documented.
+- **GitHub Action decision mode** — the action accepts `decision: "true"`,
+  runs `perfgate decision evaluate`, uploads decision artifacts, and can defer a
+  check policy failure to an accepted tradeoff receipt.
+- **Decision ledger and debt** — the baseline server stores
+  `perfgate.decision_record.v1` records, decision uploads emit audit events,
+  `decision history|latest|debt` expose the ledger from the CLI, and the
+  dashboard shows stored performance decisions.
+- **Dashboard decision visibility** — the dashboard now includes baseline,
+  verdict/flakiness, decision-ledger, and audit-event views.
 
 ## Post-Release Follow-Up
 
