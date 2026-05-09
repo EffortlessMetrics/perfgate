@@ -44,10 +44,12 @@ pub mod integrations;
 
 /// Optional helpers for emitting probe JSONL.
 ///
-/// Enable the `probe` feature to use this module:
+/// Enable the `probe` feature to use the explicit JSONL helpers, or
+/// `probe-tracing` to add the optional tracing layer:
 ///
 /// ```toml
 /// perfgate = { version = "0.15", features = ["probe"] }
+/// perfgate = { version = "0.15", features = ["probe-tracing"] }
 /// ```
 #[cfg(feature = "probe")]
 pub mod probe;
@@ -121,6 +123,8 @@ pub mod host_detect {
 pub mod prelude {
     pub use crate::app::{CheckUseCase, CompareUseCase, RunBenchUseCase};
     pub use crate::domain::{compare_runs, compute_stats};
+    #[cfg(feature = "probe-tracing")]
+    pub use crate::probe::TracingProbeLayer;
     #[cfg(feature = "probe")]
     pub use crate::probe::{ProbeEvent, ProbeJsonlWriter, ProbeTimer, probe_event, probe_timer};
     pub use perfgate_types::{

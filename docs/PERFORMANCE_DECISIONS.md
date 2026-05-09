@@ -117,6 +117,44 @@ fn main() -> std::io::Result<()> {
 The helper writes language-agnostic JSONL; `perfgate ingest probes` remains the
 receipt-producing step.
 
+Projects that already use `tracing` can enable the optional span adapter:
+
+```toml
+[dependencies]
+perfgate = { version = "0.15", features = ["probe-tracing"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+```
+
+```rust,no_run
+use perfgate::probe::TracingProbeLayer;
+use tracing::{span, Level};
+use tracing_subscriber::prelude::*;
+
+fn main() -> std::io::Result<()> {
+    let layer = TracingProbeLayer::create("artifacts/probes.jsonl")?;
+    let subscriber = tracing_subscriber::registry().with(layer);
+
+    tracing::subscriber::with_default(subscriber, || {
+        let span = span!(
+            Level::INFO,
+            "parser.tokenize",
+            scope = "local",
+            items = 10_000_u64,
+            alloc_bytes = 184_320.0,
+            phase = "tokenize"
+        );
+        let _guard = span.enter();
+    });
+
+    Ok(())
+}
+```
+
+The tracing layer writes one JSONL probe event when a span closes. Span active
+time becomes `wall_ms`; numeric fields become metrics; `scope`, `parent`,
+`items`, and `iteration` map to probe metadata.
+
 Compare probe receipts when you want deltas such as `parser.tokenize +2.1%`:
 
 ```bash

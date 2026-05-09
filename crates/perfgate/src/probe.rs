@@ -10,6 +10,10 @@ use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
+#[cfg(feature = "probe-tracing")]
+use std::sync::{Arc, Mutex};
+#[cfg(feature = "probe-tracing")]
+use std::time::Duration;
 use std::time::Instant;
 
 /// Start building a probe JSONL event.
@@ -278,6 +282,374 @@ impl ProbeTimer {
     }
 }
 
+/// A `tracing-subscriber` layer that records closed spans as probe JSONL.
+///
+/// Enable the `probe-tracing` feature to use this adapter. It observes span
+/// active time and writes one probe event per closed span. Span fields named
+/// `scope`, `parent`, and `items` map to probe metadata. Numeric fields become
+/// probe metrics; string and boolean fields become attributes.
+#[cfg(feature = "probe-tracing")]
+#[derive(Debug)]
+pub struct TracingProbeLayer<W> {
+    writer: Arc<Mutex<ProbeJsonlWriter<W>>>,
+    last_error: Arc<Mutex<Option<String>>>,
+}
+
+#[cfg(feature = "probe-tracing")]
+impl TracingProbeLayer<File> {
+    /// Create or truncate a probe JSONL file.
+    pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self::new(ProbeJsonlWriter::create(path)?))
+    }
+
+    /// Open a probe JSONL file for appending.
+    pub fn append(path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self::new(ProbeJsonlWriter::append(path)?))
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+impl<W: Write> TracingProbeLayer<W> {
+    /// Wrap an existing probe JSONL writer.
+    pub fn new(writer: ProbeJsonlWriter<W>) -> Self {
+        Self {
+            writer: Arc::new(Mutex::new(writer)),
+            last_error: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Wrap an existing writer.
+    pub fn from_writer(writer: W) -> Self {
+        Self::new(ProbeJsonlWriter::new(writer))
+    }
+
+    /// Flush the wrapped JSONL writer.
+    pub fn flush(&self) -> io::Result<()> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| io::Error::other("probe tracing writer lock poisoned"))?;
+        writer.flush()
+    }
+
+    /// Return the last write error observed by the layer, if any.
+    pub fn last_error(&self) -> Option<String> {
+        self.last_error.lock().ok().and_then(|error| error.clone())
+    }
+
+    fn record_event(&self, event: &ProbeEvent) {
+        match self.writer.lock() {
+            Ok(mut writer) => {
+                if let Err(error) = writer.record(event) {
+                    self.set_last_error(error.to_string());
+                }
+            }
+            Err(_) => self.set_last_error("probe tracing writer lock poisoned".to_string()),
+        }
+    }
+
+    fn set_last_error(&self, message: String) {
+        if let Ok(mut last_error) = self.last_error.lock() {
+            *last_error = Some(message);
+        }
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+impl<W> Clone for TracingProbeLayer<W> {
+    fn clone(&self) -> Self {
+        Self {
+            writer: Arc::clone(&self.writer),
+            last_error: Arc::clone(&self.last_error),
+        }
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+impl<S, W> tracing_subscriber::Layer<S> for TracingProbeLayer<W>
+where
+    S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+    W: Write + Send + 'static,
+{
+    fn on_new_span(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+
+        let mut fields = ProbeFieldVisitor::default();
+        attrs.record(&mut fields);
+
+        let metadata = attrs.metadata();
+        let name = fields.name.unwrap_or_else(|| metadata.name().to_string());
+        let parent = fields.parent.or_else(|| {
+            span.parent()
+                .map(|parent| parent.metadata().name().to_string())
+        });
+
+        span.extensions_mut().insert(TracingProbeState {
+            event: ProbeEvent {
+                name,
+                parent,
+                scope: fields.scope,
+                iteration: fields.iteration,
+                started_at: None,
+                ended_at: None,
+                items: fields.items,
+                metrics: fields.metrics,
+                attributes: fields.attributes,
+            },
+            active_since: None,
+            active_duration: Duration::ZERO,
+        });
+    }
+
+    fn on_record(
+        &self,
+        id: &tracing::Id,
+        values: &tracing::span::Record<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+        let mut extensions = span.extensions_mut();
+        let Some(state) = extensions.get_mut::<TracingProbeState>() else {
+            return;
+        };
+
+        let mut fields = ProbeFieldVisitor::default();
+        values.record(&mut fields);
+        state.event.merge_fields(fields);
+    }
+
+    fn on_enter(&self, id: &tracing::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+        let mut extensions = span.extensions_mut();
+        let Some(state) = extensions.get_mut::<TracingProbeState>() else {
+            return;
+        };
+        if state.active_since.is_none() {
+            state.active_since = Some(Instant::now());
+        }
+    }
+
+    fn on_exit(&self, id: &tracing::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+        let mut extensions = span.extensions_mut();
+        let Some(state) = extensions.get_mut::<TracingProbeState>() else {
+            return;
+        };
+        if let Some(started) = state.active_since.take() {
+            state.active_duration += started.elapsed();
+        }
+    }
+
+    fn on_close(&self, id: tracing::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let Some(span) = ctx.span(&id) else {
+            return;
+        };
+        let mut extensions = span.extensions_mut();
+        let Some(mut state) = extensions.remove::<TracingProbeState>() else {
+            return;
+        };
+        if let Some(started) = state.active_since.take() {
+            state.active_duration += started.elapsed();
+        }
+
+        state.event = state.event.metric(
+            "wall_ms",
+            state.active_duration.as_secs_f64() * 1000.0,
+            "ms",
+        );
+        self.record_event(&state.event);
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+#[derive(Debug)]
+struct TracingProbeState {
+    event: ProbeEvent,
+    active_since: Option<Instant>,
+    active_duration: Duration,
+}
+
+#[cfg(feature = "probe-tracing")]
+#[derive(Default)]
+struct ProbeFieldVisitor {
+    name: Option<String>,
+    parent: Option<String>,
+    scope: Option<ProbeScope>,
+    iteration: Option<u32>,
+    items: Option<u64>,
+    metrics: BTreeMap<String, ProbeMetricValue>,
+    attributes: BTreeMap<String, String>,
+}
+
+#[cfg(feature = "probe-tracing")]
+impl ProbeEvent {
+    fn merge_fields(&mut self, fields: ProbeFieldVisitor) {
+        if let Some(name) = fields.name {
+            self.name = name;
+        }
+        if fields.parent.is_some() {
+            self.parent = fields.parent;
+        }
+        if fields.scope.is_some() {
+            self.scope = fields.scope;
+        }
+        if fields.iteration.is_some() {
+            self.iteration = fields.iteration;
+        }
+        if fields.items.is_some() {
+            self.items = fields.items;
+        }
+        self.metrics.extend(fields.metrics);
+        self.attributes.extend(fields.attributes);
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+impl tracing::field::Visit for ProbeFieldVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.record_text(field.name(), format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.record_text(field.name(), value.to_string());
+    }
+
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.record_text(field.name(), value.to_string());
+    }
+
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.record_number(field.name(), value as f64);
+        self.record_u64_metadata(field.name(), value.try_into().ok());
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.record_number(field.name(), value as f64);
+        self.record_u64_metadata(field.name(), Some(value));
+    }
+
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        self.record_number(field.name(), value);
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+impl ProbeFieldVisitor {
+    fn record_text(&mut self, name: &str, value: String) {
+        match name {
+            "probe" | "probe.name" | "perfgate.probe" | "perfgate.probe.name" => {
+                self.name = Some(value);
+            }
+            "parent" | "probe.parent" | "perfgate.probe.parent" => {
+                self.parent = Some(value);
+            }
+            "scope" | "probe.scope" | "perfgate.probe.scope" => {
+                self.scope = parse_scope(&value);
+                if self.scope.is_none() {
+                    self.attributes.insert(name.to_string(), value);
+                }
+            }
+            "items" | "probe.items" | "perfgate.probe.items" => {
+                if let Ok(items) = value.parse() {
+                    self.items = Some(items);
+                } else {
+                    self.attributes.insert(name.to_string(), value);
+                }
+            }
+            "iteration" | "probe.iteration" | "perfgate.probe.iteration" => {
+                if let Ok(iteration) = value.parse() {
+                    self.iteration = Some(iteration);
+                } else {
+                    self.attributes.insert(name.to_string(), value);
+                }
+            }
+            _ => {
+                self.attributes.insert(name.to_string(), value);
+            }
+        }
+    }
+
+    fn record_number(&mut self, name: &str, value: f64) {
+        if matches!(
+            name,
+            "items"
+                | "probe.items"
+                | "perfgate.probe.items"
+                | "iteration"
+                | "probe.iteration"
+                | "perfgate.probe.iteration"
+        ) {
+            return;
+        }
+
+        let metric_name = name
+            .strip_prefix("metric.")
+            .or_else(|| name.strip_prefix("metrics."))
+            .unwrap_or(name);
+        self.metrics.insert(
+            metric_name.to_string(),
+            ProbeMetricValue {
+                value,
+                unit: infer_unit(metric_name).map(str::to_string),
+                statistic: None,
+            },
+        );
+    }
+
+    fn record_u64_metadata(&mut self, name: &str, value: Option<u64>) {
+        let Some(value) = value else {
+            return;
+        };
+        match name {
+            "items" | "probe.items" | "perfgate.probe.items" => {
+                self.items = Some(value);
+            }
+            "iteration" | "probe.iteration" | "perfgate.probe.iteration" => {
+                if let Ok(iteration) = value.try_into() {
+                    self.iteration = Some(iteration);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+fn parse_scope(value: &str) -> Option<ProbeScope> {
+    match value {
+        "local" => Some(ProbeScope::Local),
+        "enclosing" => Some(ProbeScope::Enclosing),
+        "dominant" => Some(ProbeScope::Dominant),
+        "total" => Some(ProbeScope::Total),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "probe-tracing")]
+fn infer_unit(metric: &str) -> Option<&'static str> {
+    match metric {
+        name if name.ends_with("_ms") => Some("ms"),
+        name if name.ends_with("_bytes") => Some("bytes"),
+        name if name.ends_with("_kb") => Some("KB"),
+        name if name.ends_with("_uj") => Some("uj"),
+        name if name.ends_with("_per_s") => Some("/s"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,5 +715,70 @@ mod tests {
         assert!(wall_ms.is_finite());
         assert!(wall_ms >= 0.0);
         assert_eq!(event.metrics["wall_ms"].unit.as_deref(), Some("ms"));
+    }
+
+    #[cfg(feature = "probe-tracing")]
+    #[test]
+    fn tracing_layer_records_closed_spans_as_probe_jsonl() {
+        use std::sync::{Arc, Mutex};
+        use tracing::{Level, span};
+        use tracing_subscriber::prelude::*;
+
+        #[derive(Clone)]
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl Write for SharedWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0
+                    .lock()
+                    .map_err(|_| io::Error::other("buffer lock poisoned"))?
+                    .write(buf)
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let layer = TracingProbeLayer::from_writer(SharedWriter(Arc::clone(&output)));
+        let subscriber = tracing_subscriber::registry().with(layer.clone());
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = span!(
+                Level::INFO,
+                "parser.tokenize",
+                scope = "local",
+                items = 10_000_u64,
+                alloc_bytes = 184_320.0,
+                phase = "tokenize"
+            );
+            {
+                let _guard = span.enter();
+            }
+            drop(span);
+        });
+
+        layer.flush().expect("flush tracing probe layer");
+        assert_eq!(layer.last_error(), None);
+
+        let jsonl =
+            String::from_utf8(output.lock().expect("buffer lock").clone()).expect("utf8 JSONL");
+        let receipt = ingest_probes_jsonl(&ProbeIngestRequest {
+            input: jsonl,
+            bench: None,
+            scenario: None,
+        })
+        .expect("ingest tracing JSONL");
+
+        assert_eq!(receipt.probes.len(), 1);
+        let probe = &receipt.probes[0];
+        assert_eq!(probe.name, "parser.tokenize");
+        assert_eq!(probe.scope, Some(ProbeScope::Local));
+        assert_eq!(probe.items, Some(10_000));
+        assert_eq!(probe.metrics["alloc_bytes"].unit.as_deref(), Some("bytes"));
+        assert!(probe.metrics["wall_ms"].value.is_finite());
+        assert_eq!(probe.metrics["wall_ms"].unit.as_deref(), Some("ms"));
+        assert_eq!(probe.attributes["phase"], "tokenize");
     }
 }

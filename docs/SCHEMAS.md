@@ -86,6 +86,10 @@ Rust projects can enable `perfgate = { features = ["probe"] }` and use
 `perfgate::probe::ProbeJsonlWriter` plus `probe_event(...)` to write the same
 JSONL shape explicitly. This is an ergonomics layer only; the durable contract
 is still the `perfgate.probe.v1` receipt produced by `perfgate ingest probes`.
+With `features = ["probe-tracing"]`, `perfgate::probe::TracingProbeLayer`
+records closed `tracing` spans as the same JSONL shape: active span time becomes
+`wall_ms`, numeric fields become metrics, and `scope` / `parent` / `items` /
+`iteration` fields become probe metadata.
 
 ## Probe Comparison
 
