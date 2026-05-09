@@ -82,6 +82,11 @@ become metrics:
 {"probe":"parser.tokenize","scope":"local","wall_ms":12.4,"alloc_bytes":184320,"items":10000}
 ```
 
+Rust projects can enable `perfgate = { features = ["probe"] }` and use
+`perfgate::probe::ProbeJsonlWriter` plus `probe_event(...)` to write the same
+JSONL shape explicitly. This is an ergonomics layer only; the durable contract
+is still the `perfgate.probe.v1` receipt produced by `perfgate ingest probes`.
+
 ## Probe Comparison
 
 `perfgate probe compare` reads two `perfgate.probe.v1` receipts, matches

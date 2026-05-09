@@ -52,6 +52,7 @@ wiremock.workspace = true
 [features]
 default = []
 github = ["dep:reqwest", "dep:tracing"]
+probe = []
 
 [lints]
 workspace = true
