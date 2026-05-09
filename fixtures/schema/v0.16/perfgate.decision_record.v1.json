@@ -1,0 +1,84 @@
+{
+  "schema": "perfgate.decision_record.v1",
+  "id": "decision-1",
+  "project": "demo-project",
+  "scenario": "large_file_parse",
+  "status": "warn",
+  "verdict": "warn",
+  "accepted_rules": ["memory_for_speed"],
+  "review_required": false,
+  "review_reasons": [],
+  "git_ref": "refs/heads/main",
+  "git_sha": "abc123",
+  "tradeoff_receipt": {
+    "schema": "perfgate.tradeoff.v1",
+    "tool": {
+      "name": "perfgate",
+      "version": "0.16.0"
+    },
+    "run": {
+      "id": "tradeoff-run-1",
+      "started_at": "2026-05-08T00:00:00Z",
+      "ended_at": "2026-05-08T00:00:01Z",
+      "host": {
+        "os": "linux",
+        "arch": "x86_64"
+      }
+    },
+    "scenario": "large_file_parse",
+    "configured_rules": [],
+    "rules": [
+      {
+        "name": "memory_for_speed",
+        "status": "accepted",
+        "accepted": true,
+        "downgrade_to": "warn",
+        "reason": "tradeoff accepted"
+      }
+    ],
+    "weighted_deltas": {
+      "wall_ms": {
+        "baseline": 100.0,
+        "current": 94.0,
+        "ratio": 0.94,
+        "pct": -0.06,
+        "regression": 0.0,
+        "status": "pass"
+      },
+      "max_rss_kb": {
+        "baseline": 1000.0,
+        "current": 1030.0,
+        "ratio": 1.03,
+        "pct": 0.03,
+        "regression": 0.03,
+        "status": "warn"
+      }
+    },
+    "decision": {
+      "accepted_tradeoff": true,
+      "review_required": false,
+      "review_reasons": [],
+      "status": "warn",
+      "reason": "memory_for_speed accepted"
+    },
+    "verdict": {
+      "status": "warn",
+      "counts": {
+        "pass": 1,
+        "warn": 1,
+        "fail": 0,
+        "skip": 0
+      },
+      "reasons": ["tradeoff_memory_for_speed_applied"]
+    }
+  },
+  "artifact_index": {
+    "schema": "perfgate.decision_index.v1",
+    "scenario": "artifacts/perfgate/scenario.json",
+    "tradeoff": "artifacts/perfgate/tradeoff.json",
+    "decision": "artifacts/perfgate/decision.md",
+    "probe_compares": ["artifacts/perfgate/large-file/probe-compare.json"],
+    "compare_receipts": ["artifacts/perfgate/large-file/compare.json"]
+  },
+  "created_at": "2026-05-08T00:00:00Z"
+}

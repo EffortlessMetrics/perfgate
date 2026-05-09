@@ -71,6 +71,67 @@ fn verdict_record(project: &str, benchmark: &str, run_id: &str) -> serde_json::V
     })
 }
 
+fn tradeoff_receipt() -> serde_json::Value {
+    serde_json::json!({
+        "schema": "perfgate.tradeoff.v1",
+        "tool": {"name": "perfgate", "version": "0.16.0"},
+        "run": {
+            "id": "tradeoff-run",
+            "started_at": "2026-05-08T00:00:00Z",
+            "ended_at": "2026-05-08T00:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "scenario": "release_workload",
+        "configured_rules": [],
+        "rules": [{
+            "name": "memory_for_speed",
+            "status": "accepted",
+            "accepted": true,
+            "downgrade_to": "warn",
+            "reason": "tradeoff accepted"
+        }],
+        "weighted_deltas": {
+            "wall_ms": {
+                "baseline": 100.0,
+                "current": 94.0,
+                "ratio": 0.94,
+                "pct": -0.06,
+                "regression": 0.0,
+                "status": "pass"
+            }
+        },
+        "decision": {
+            "accepted_tradeoff": true,
+            "review_required": false,
+            "review_reasons": [],
+            "status": "warn",
+            "reason": "tradeoff 'memory_for_speed' accepted"
+        },
+        "verdict": {
+            "status": "warn",
+            "counts": {"pass": 1, "warn": 1, "fail": 0, "skip": 0},
+            "reasons": ["tradeoff_memory_for_speed_applied"]
+        }
+    })
+}
+
+fn decision_record(project: &str, id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "schema": "perfgate.decision_record.v1",
+        "id": id,
+        "project": project,
+        "scenario": "release_workload",
+        "status": "warn",
+        "verdict": "warn",
+        "accepted_rules": ["memory_for_speed"],
+        "review_required": false,
+        "review_reasons": [],
+        "git_ref": "refs/heads/main",
+        "tradeoff_receipt": tradeoff_receipt(),
+        "created_at": "2026-05-08T00:00:00Z"
+    })
+}
+
 fn write_run_receipt(path: &std::path::Path, run_id: &str, benchmark: &str, wall_ms: u64) {
     fs::write(
         path,
@@ -473,6 +534,111 @@ async fn test_audit_list_reports_authorization_failure() {
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Failed to list audit events"));
+}
+
+#[tokio::test]
+async fn test_decision_upload_posts_tradeoff_receipt() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let tradeoff_path = temp_dir.path().join("tradeoff.json");
+    fs::write(
+        &tradeoff_path,
+        serde_json::to_string(&tradeoff_receipt()).unwrap(),
+    )
+    .unwrap();
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/projects/test-project/decisions"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(decision_record("test-project", "decision-1")),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("upload")
+        .arg("--file")
+        .arg(&tradeoff_path);
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Uploaded decision decision-1"))
+        .stdout(predicate::str::contains("scenario=release_workload"))
+        .stdout(predicate::str::contains("accepted_rules=memory_for_speed"));
+}
+
+#[tokio::test]
+async fn test_decision_history_and_latest_use_server_ledger() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/projects/test-project/decisions"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "decisions": [decision_record("test-project", "decision-1")],
+            "pagination": {
+                "total": 1,
+                "offset": 0,
+                "limit": 20,
+                "has_more": false
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/projects/test-project/decisions/latest"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(decision_record("test-project", "decision-1")),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let mut history = perfgate_cmd();
+    history
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("history");
+
+    history
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Decision history for test-project",
+        ))
+        .stdout(predicate::str::contains("Decision decision-1"));
+
+    let mut latest = perfgate_cmd();
+    latest
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("latest");
+
+    latest
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Latest decision decision-1"))
+        .stdout(predicate::str::contains("status=warn"))
+        .stdout(predicate::str::contains("verdict=warn"));
 }
 
 #[tokio::test]

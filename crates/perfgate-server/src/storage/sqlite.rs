@@ -9,10 +9,11 @@ use super::{ArtifactStore, AuditStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource, BaselineVersion,
-    ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
-    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
+    DecisionRecord, ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery,
+    ListBaselinesResponse, ListDecisionsQuery, ListDecisionsResponse, ListVerdictsQuery,
+    ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
-use perfgate_types::{VerdictCounts, VerdictStatus};
+use perfgate_types::{MetricStatus, VerdictCounts, VerdictStatus};
 
 /// SQLite storage backend for baselines.
 #[derive(Debug)]
@@ -158,6 +159,26 @@ impl SqliteStore {
             );
             CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark ON verdicts(project, benchmark);
             CREATE INDEX IF NOT EXISTS idx_verdicts_created_at ON verdicts(created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS decisions (
+                id TEXT PRIMARY KEY,
+                schema_id TEXT NOT NULL,
+                project TEXT NOT NULL,
+                scenario TEXT,
+                status TEXT NOT NULL,
+                verdict TEXT NOT NULL,
+                accepted_rules TEXT NOT NULL,
+                review_required INTEGER NOT NULL DEFAULT 0,
+                review_reasons TEXT NOT NULL,
+                git_ref TEXT,
+                git_sha TEXT,
+                scenario_receipt TEXT,
+                tradeoff_receipt TEXT NOT NULL,
+                artifact_index TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_decisions_project_created ON decisions(project, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_decisions_project_scenario ON decisions(project, scenario);
 
             CREATE TABLE IF NOT EXISTS audit_events (
                 id TEXT PRIMARY KEY,
@@ -648,6 +669,140 @@ impl BaselineStore for SqliteStore {
             },
         })
     }
+
+    async fn create_decision(&self, record: &DecisionRecord) -> Result<(), StoreError> {
+        let accepted_rules_json = serde_json::to_string(&record.accepted_rules)
+            .map_err(StoreError::SerializationError)?;
+        let review_reasons_json = serde_json::to_string(&record.review_reasons)
+            .map_err(StoreError::SerializationError)?;
+        let scenario_receipt_json = record
+            .scenario_receipt
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(StoreError::SerializationError)?;
+        let tradeoff_receipt_json = serde_json::to_string(&record.tradeoff_receipt)
+            .map_err(StoreError::SerializationError)?;
+        let artifact_index_json = record
+            .artifact_index
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(StoreError::SerializationError)?;
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+
+        conn.execute(
+            r#"
+            INSERT INTO decisions (
+                id, schema_id, project, scenario, status, verdict, accepted_rules,
+                review_required, review_reasons, git_ref, git_sha, scenario_receipt,
+                tradeoff_receipt, artifact_index, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            "#,
+            params![
+                record.id,
+                record.schema,
+                record.project,
+                record.scenario,
+                record.status.as_str(),
+                record.verdict.as_str(),
+                accepted_rules_json,
+                if record.review_required { 1i64 } else { 0i64 },
+                review_reasons_json,
+                record.git_ref,
+                record.git_sha,
+                scenario_receipt_json,
+                tradeoff_receipt_json,
+                artifact_index_json,
+                record.created_at.to_rfc3339(),
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    async fn latest_decision(&self, project: &str) -> Result<Option<DecisionRecord>, StoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+        conn.query_row(
+            "SELECT * FROM decisions WHERE project = ?1 ORDER BY created_at DESC LIMIT 1",
+            params![project],
+            Self::row_to_decision,
+        )
+        .optional()
+        .map_err(StoreError::from)
+    }
+
+    async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, StoreError> {
+        let mut sql = "SELECT * FROM decisions WHERE project = ?".to_string();
+        let mut params_vec: Vec<rusqlite::types::Value> = vec![project.to_string().into()];
+
+        if let Some(scenario) = &query.scenario {
+            sql.push_str(" AND scenario = ?");
+            params_vec.push(scenario.clone().into());
+        }
+        if let Some(status) = query.status {
+            sql.push_str(" AND status = ?");
+            params_vec.push(status.as_str().to_string().into());
+        }
+        if let Some(review_required) = query.review_required {
+            sql.push_str(" AND review_required = ?");
+            params_vec.push((if review_required { 1i64 } else { 0i64 }).into());
+        }
+
+        let count_sql = format!("SELECT COUNT(*) FROM ({})", sql);
+        sql.push_str(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        params_vec.push((query.limit as i64).into());
+        params_vec.push((query.offset as i64).into());
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+        let count_params: Vec<rusqlite::types::Value> =
+            params_vec[..params_vec.len().saturating_sub(2)].to_vec();
+        let total: i64 = conn
+            .query_row(
+                &count_sql,
+                rusqlite::params_from_iter(count_params.iter()),
+                |row| row.get(0),
+            )
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+                Self::row_to_decision(row)
+            })
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut decisions = Vec::new();
+        for row in rows {
+            decisions.push(row?);
+        }
+
+        Ok(ListDecisionsResponse {
+            decisions,
+            pagination: PaginationInfo {
+                total: total as u64,
+                offset: query.offset,
+                limit: query.limit,
+                has_more: (query.offset + query.limit as u64) < total as u64,
+            },
+        })
+    }
 }
 
 impl SqliteStore {
@@ -690,6 +845,52 @@ impl SqliteStore {
             git_sha: row.get(9)?,
             wall_ms_cv: row.get(10)?,
             flakiness_score: row.get(11)?,
+            created_at,
+        })
+    }
+
+    fn row_to_decision(row: &rusqlite::Row) -> Result<DecisionRecord, rusqlite::Error> {
+        let status = match row.get::<_, String>(4)?.as_str() {
+            "pass" => MetricStatus::Pass,
+            "warn" => MetricStatus::Warn,
+            "fail" => MetricStatus::Fail,
+            "skip" => MetricStatus::Skip,
+            _ => MetricStatus::Warn,
+        };
+        let verdict = match row.get::<_, String>(5)?.as_str() {
+            "pass" => VerdictStatus::Pass,
+            "warn" => VerdictStatus::Warn,
+            "fail" => VerdictStatus::Fail,
+            "skip" => VerdictStatus::Skip,
+            _ => VerdictStatus::Warn,
+        };
+        let created_at_str: String = row.get(14)?;
+        let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+        let scenario_receipt_json: Option<String> = row.get(11)?;
+        let artifact_index_json: Option<String> = row.get(13)?;
+
+        Ok(DecisionRecord {
+            id: row.get(0)?,
+            schema: row.get(1)?,
+            project: row.get(2)?,
+            scenario: row.get(3)?,
+            status,
+            verdict,
+            accepted_rules: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
+            review_required: row.get::<_, i64>(7)? != 0,
+            review_reasons: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or_default(),
+            git_ref: row.get(9)?,
+            git_sha: row.get(10)?,
+            scenario_receipt: scenario_receipt_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok()),
+            tradeoff_receipt: serde_json::from_str(&row.get::<_, String>(12)?)
+                .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?,
+            artifact_index: artifact_index_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok()),
             created_at,
         })
     }
@@ -913,6 +1114,77 @@ mod tests {
         )
     }
 
+    fn create_test_decision(
+        id: &str,
+        project: &str,
+        scenario: &str,
+        status: perfgate_types::MetricStatus,
+        created_at: &str,
+        review_required: bool,
+    ) -> DecisionRecord {
+        let mut tradeoff: perfgate_types::TradeoffReceipt =
+            serde_json::from_value(serde_json::json!({
+                "schema": "perfgate.tradeoff.v1",
+                "tool": {"name": "perfgate", "version": "0.16.0"},
+                "run": {
+                    "id": id,
+                    "started_at": "2026-05-08T00:00:00Z",
+                    "ended_at": "2026-05-08T00:00:01Z",
+                    "host": {"os": "linux", "arch": "x86_64"}
+                },
+                "scenario": scenario,
+                "configured_rules": [],
+                "rules": [{
+                    "name": "memory_for_speed",
+                    "status": "accepted",
+                    "accepted": true,
+                    "downgrade_to": "warn",
+                    "reason": "accepted"
+                }],
+                "weighted_deltas": {},
+                "decision": {
+                    "accepted_tradeoff": true,
+                    "review_required": review_required,
+                    "review_reasons": [],
+                    "status": status.as_str(),
+                    "reason": "accepted"
+                },
+                "verdict": {
+                    "status": status.as_str(),
+                    "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
+                    "reasons": []
+                }
+            }))
+            .expect("test tradeoff receipt should deserialize");
+        tradeoff.decision.status = status;
+        tradeoff.verdict.status = match status {
+            perfgate_types::MetricStatus::Pass => VerdictStatus::Pass,
+            perfgate_types::MetricStatus::Warn => VerdictStatus::Warn,
+            perfgate_types::MetricStatus::Fail => VerdictStatus::Fail,
+            perfgate_types::MetricStatus::Skip => VerdictStatus::Skip,
+        };
+
+        DecisionRecord {
+            schema: perfgate_types::baseline_service::DECISION_RECORD_SCHEMA_V1.to_string(),
+            id: id.to_string(),
+            project: project.to_string(),
+            scenario: Some(scenario.to_string()),
+            status,
+            verdict: tradeoff.verdict.status,
+            accepted_rules: vec!["memory_for_speed".to_string()],
+            review_required,
+            review_reasons: Vec::new(),
+            git_ref: Some("refs/heads/main".to_string()),
+            git_sha: Some("abc123".to_string()),
+            scenario_receipt: None,
+            tradeoff_receipt: tradeoff,
+            artifact_index: None,
+            created_at: chrono::DateTime::parse_from_rfc3339(created_at)
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn test_in_memory_database() {
         let store = SqliteStore::in_memory().unwrap();
@@ -922,6 +1194,69 @@ mod tests {
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.project, "my-project");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_decision_records_round_trip_and_filter() {
+        let store = SqliteStore::in_memory().unwrap();
+        let first = create_test_decision(
+            "decision-1",
+            "my-project",
+            "release_workload",
+            perfgate_types::MetricStatus::Warn,
+            "2026-05-08T00:00:00Z",
+            false,
+        );
+        let second = create_test_decision(
+            "decision-2",
+            "my-project",
+            "interactive",
+            perfgate_types::MetricStatus::Fail,
+            "2026-05-09T00:00:00Z",
+            true,
+        );
+        let other_project = create_test_decision(
+            "decision-3",
+            "other-project",
+            "release_workload",
+            perfgate_types::MetricStatus::Pass,
+            "2026-05-10T00:00:00Z",
+            false,
+        );
+
+        store.create_decision(&first).await.unwrap();
+        store.create_decision(&second).await.unwrap();
+        store.create_decision(&other_project).await.unwrap();
+
+        let latest = store
+            .latest_decision("my-project")
+            .await
+            .unwrap()
+            .expect("latest decision should exist");
+        assert_eq!(latest.id, "decision-2");
+        assert_eq!(latest.tradeoff_receipt.schema, "perfgate.tradeoff.v1");
+
+        let filtered = store
+            .list_decisions(
+                "my-project",
+                &ListDecisionsQuery::new()
+                    .with_scenario("release_workload")
+                    .with_status(perfgate_types::MetricStatus::Warn),
+            )
+            .await
+            .unwrap();
+        assert_eq!(filtered.pagination.total, 1);
+        assert_eq!(filtered.decisions[0].id, "decision-1");
+
+        let review_required = store
+            .list_decisions(
+                "my-project",
+                &ListDecisionsQuery::new().with_review_required(true),
+            )
+            .await
+            .unwrap();
+        assert_eq!(review_required.decisions.len(), 1);
+        assert_eq!(review_required.decisions[0].id, "decision-2");
     }
 
     #[tokio::test(flavor = "multi_thread")]

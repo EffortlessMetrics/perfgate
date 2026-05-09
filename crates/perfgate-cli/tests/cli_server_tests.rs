@@ -106,6 +106,56 @@ fn add_server_auth_flags(cmd: &mut assert_cmd::Command, server_url: &str, api_ke
         .arg(api_key);
 }
 
+fn write_decision_tradeoff_receipt(path: &std::path::Path, scenario: &str) {
+    let receipt = serde_json::json!({
+        "schema": "perfgate.tradeoff.v1",
+        "tool": {"name": "perfgate", "version": "0.16.0"},
+        "run": {
+            "id": "decision-run",
+            "started_at": "2026-05-08T00:00:00Z",
+            "ended_at": "2026-05-08T00:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "scenario": scenario,
+        "configured_rules": [],
+        "rules": [{
+            "name": "memory_for_speed",
+            "status": "accepted",
+            "accepted": true,
+            "downgrade_to": "warn",
+            "reason": "tradeoff accepted"
+        }],
+        "weighted_deltas": {
+            "wall_ms": {
+                "baseline": 100.0,
+                "current": 94.0,
+                "ratio": 0.94,
+                "pct": -0.06,
+                "regression": 0.0,
+                "status": "pass"
+            }
+        },
+        "decision": {
+            "accepted_tradeoff": true,
+            "review_required": false,
+            "review_reasons": [],
+            "status": "warn",
+            "reason": "tradeoff 'memory_for_speed' accepted"
+        },
+        "verdict": {
+            "status": "warn",
+            "counts": {"pass": 1, "warn": 1, "fail": 0, "skip": 0},
+            "reasons": ["tradeoff_memory_for_speed_applied"]
+        }
+    });
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize decision tradeoff receipt"),
+    )
+    .expect("write decision tradeoff receipt");
+}
+
 fn assert_root_health_is_healthy(root_url: &str) {
     let addr = root_url
         .strip_prefix("http://")
@@ -872,6 +922,8 @@ async fn run_live_server_cli_workflow(
     let downloaded_path = temp_dir.path().join("downloaded-baseline.json");
     let run_path = temp_dir.path().join("uploaded-run.json");
     let compare_path = temp_dir.path().join("server-compare.json");
+    let decision_path = temp_dir.path().join("server-decision-tradeoff.json");
+    let decision_scenario = format!("{project}-decision-scenario");
 
     let mut upload = perfgate_cmd();
     upload
@@ -1004,6 +1056,47 @@ async fn run_live_server_cli_workflow(
         .stdout(predicate::str::contains("Verdict history"))
         .stdout(predicate::str::contains("test-benchmark"))
         .stdout(predicate::str::contains("refs/heads/live-server-cli"));
+
+    write_decision_tradeoff_receipt(&decision_path, &decision_scenario);
+    let mut decision_upload = perfgate_cmd();
+    decision_upload
+        .arg("decision")
+        .arg("upload")
+        .arg("--file")
+        .arg(&decision_path)
+        .arg("--git-ref")
+        .arg("refs/heads/live-server-cli");
+    add_server_flags(&mut decision_upload, server.url(), project, api_key);
+    decision_upload
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Uploaded decision"))
+        .stdout(predicate::str::contains(&decision_scenario));
+
+    let mut decision_latest = perfgate_cmd();
+    decision_latest.arg("decision").arg("latest");
+    add_server_flags(&mut decision_latest, server.url(), project, api_key);
+    decision_latest
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Latest decision"))
+        .stdout(predicate::str::contains(&decision_scenario))
+        .stdout(predicate::str::contains("accepted_rules=memory_for_speed"));
+
+    let mut decision_history = perfgate_cmd();
+    decision_history
+        .arg("decision")
+        .arg("history")
+        .arg("--scenario")
+        .arg(&decision_scenario)
+        .arg("--limit")
+        .arg("5");
+    add_server_flags(&mut decision_history, server.url(), project, api_key);
+    decision_history
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision history"))
+        .stdout(predicate::str::contains(&decision_scenario));
 
     let mut delete = perfgate_cmd();
     delete

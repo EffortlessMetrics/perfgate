@@ -1,0 +1,1044 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DecisionRecord",
+  "description": "A stored performance decision receipt for the server-side decision ledger.",
+  "type": "object",
+  "properties": {
+    "accepted_rules": {
+      "description": "Accepted tradeoff rule names.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifact_index": {
+      "description": "Optional artifact index for the decision evidence set.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionArtifactIndex"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "created_at": {
+      "description": "Creation timestamp.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "git_ref": {
+      "description": "Git reference.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "git_sha": {
+      "description": "Git commit SHA.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "description": "Unique decision identifier.",
+      "type": "string"
+    },
+    "project": {
+      "description": "Project identifier.",
+      "type": "string"
+    },
+    "review_reasons": {
+      "description": "Reasons the decision needs review.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "review_required": {
+      "description": "Whether a human review is required before treating the decision as accepted.",
+      "type": "boolean",
+      "default": false
+    },
+    "scenario": {
+      "description": "Scenario/workload name, when present in the tradeoff receipt.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scenario_receipt": {
+      "description": "Optional scenario receipt captured with the decision.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScenarioReceipt"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema": {
+      "description": "Schema identifier (perfgate.decision_record.v1)",
+      "type": "string"
+    },
+    "status": {
+      "description": "Final decision metric status after tradeoff policy.",
+      "$ref": "#/$defs/MetricStatus"
+    },
+    "tradeoff_receipt": {
+      "description": "Tradeoff decision receipt.",
+      "$ref": "#/$defs/TradeoffReceipt"
+    },
+    "verdict": {
+      "description": "Final policy verdict exposed by the tradeoff receipt.",
+      "$ref": "#/$defs/VerdictStatus"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "project",
+    "status",
+    "verdict",
+    "tradeoff_receipt",
+    "created_at"
+  ],
+  "$defs": {
+    "CompareRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "DecisionArtifactIndex": {
+      "description": "A manifest for the artifacts produced by `perfgate decision evaluate`.",
+      "type": "object",
+      "properties": {
+        "compare_receipts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decision": {
+          "type": "string"
+        },
+        "probe_compares": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "tradeoff": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "scenario",
+        "tradeoff",
+        "decision",
+        "probe_compares",
+        "compare_receipts"
+      ]
+    },
+    "Delta": {
+      "type": "object",
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "cv": {
+          "description": "Coefficient of variation for the current run.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "noise_threshold": {
+          "description": "Noise threshold used for this comparison.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "pct": {
+          "description": "(current - baseline) / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "ratio": {
+          "description": "current / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "regression": {
+          "description": "Positive regression amount, normalized as a fraction.",
+          "type": "number",
+          "format": "double"
+        },
+        "significance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Significance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statistic": {
+          "$ref": "#/$defs/MetricStatistic"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "baseline",
+        "current",
+        "ratio",
+        "pct",
+        "regression",
+        "status"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
+          "type": "string"
+        },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
+    },
+    "Metric": {
+      "type": "string",
+      "enum": [
+        "binary_bytes",
+        "cpu_ms",
+        "ctx_switches",
+        "energy_uj",
+        "io_read_bytes",
+        "io_write_bytes",
+        "max_rss_kb",
+        "network_packets",
+        "page_faults",
+        "throughput_per_s",
+        "wall_ms"
+      ]
+    },
+    "MetricStatistic": {
+      "type": "string",
+      "enum": [
+        "median",
+        "p95"
+      ]
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "ProbeScope": {
+      "description": "Scope of a named performance probe inside a workload.",
+      "type": "string",
+      "enum": [
+        "local",
+        "enclosing",
+        "dominant",
+        "total"
+      ]
+    },
+    "RunMeta": {
+      "type": "object",
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
+    },
+    "ScenarioComponent": {
+      "description": "A scenario component such as one benchmark, phase, or probe group.",
+      "type": "object",
+      "properties": {
+        "benchmark": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compare_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Delta"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "probe_compare_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        },
+        "weight": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "weight",
+        "status"
+      ]
+    },
+    "ScenarioMeta": {
+      "description": "Scenario definition captured in a scenario evaluation receipt.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "weight": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "weight"
+      ]
+    },
+    "ScenarioReceipt": {
+      "description": "A versioned receipt for weighted workload scenarios (`perfgate.scenario.v1`).",
+      "type": "object",
+      "properties": {
+        "baseline_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScenarioComponent"
+          }
+        },
+        "current_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run": {
+          "$ref": "#/$defs/RunMeta"
+        },
+        "scenario": {
+          "$ref": "#/$defs/ScenarioMeta"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolInfo"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weighted_deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Delta"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "tool",
+        "run",
+        "scenario",
+        "components",
+        "verdict"
+      ]
+    },
+    "Significance": {
+      "type": "object",
+      "properties": {
+        "alpha": {
+          "type": "number",
+          "format": "double"
+        },
+        "baseline_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "ci_lower": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "ci_upper": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "current_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "p_value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "significant": {
+          "type": "boolean"
+        },
+        "test": {
+          "$ref": "#/$defs/SignificanceTest"
+        }
+      },
+      "required": [
+        "test",
+        "alpha",
+        "significant",
+        "baseline_samples",
+        "current_samples"
+      ]
+    },
+    "SignificanceTest": {
+      "type": "string",
+      "enum": [
+        "welch_t"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "TradeoffAllowance": {
+      "description": "A local regression allowance used by a tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "max_regression": {
+          "description": "Maximum accepted regression as a ratio.\n\nFor example, `0.03` allows up to a 3% local regression.",
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "description": "Metric whose local regression is capped.",
+          "$ref": "#/$defs/Metric"
+        },
+        "probe": {
+          "description": "Probe name that is allowed to regress within the configured cap.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "probe",
+        "max_regression"
+      ]
+    },
+    "TradeoffAllowanceOutcome": {
+      "description": "Evaluation result for one local regression allowance.",
+      "type": "object",
+      "properties": {
+        "max_regression": {
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "observed_regression": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "probe": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "satisfied": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "metric",
+        "probe",
+        "max_regression",
+        "satisfied",
+        "status"
+      ]
+    },
+    "TradeoffDecision": {
+      "description": "Final structured tradeoff decision.",
+      "type": "object",
+      "properties": {
+        "accepted_tradeoff": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "review_required": {
+          "type": "boolean",
+          "default": false
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "accepted_tradeoff",
+        "status",
+        "reason"
+      ]
+    },
+    "TradeoffDecisionStatus": {
+      "description": "Outcome of a tradeoff policy decision.",
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected",
+        "needs_review",
+        "not_evaluated"
+      ]
+    },
+    "TradeoffDowngrade": {
+      "description": "Target status when a tradeoff rule is satisfied.",
+      "type": "string",
+      "enum": [
+        "warn",
+        "pass"
+      ]
+    },
+    "TradeoffProbeOutcome": {
+      "description": "Probe-level tradeoff evidence.",
+      "type": "object",
+      "properties": {
+        "deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Delta"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProbeScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        },
+        "weight": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "status"
+      ]
+    },
+    "TradeoffReceipt": {
+      "description": "A versioned receipt explaining accepted or rejected tradeoffs (`perfgate.tradeoff.v1`).",
+      "type": "object",
+      "properties": {
+        "baseline_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "configured_rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffRule"
+          }
+        },
+        "current_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision": {
+          "$ref": "#/$defs/TradeoffDecision"
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffProbeOutcome"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffRuleOutcome"
+          }
+        },
+        "run": {
+          "$ref": "#/$defs/RunMeta"
+        },
+        "scenario": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolInfo"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weighted_deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Delta"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "tool",
+        "run",
+        "rules",
+        "decision",
+        "verdict"
+      ]
+    },
+    "TradeoffRequirement": {
+      "description": "A required improvement used by a tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "description": "Metric that must improve sufficiently for the tradeoff to apply.",
+          "$ref": "#/$defs/Metric"
+        },
+        "min_improvement_ratio": {
+          "description": "Minimum required improvement ratio.\n\nFor higher-is-better metrics, this is `current / baseline`.\nFor lower-is-better metrics, this is `baseline / current`.",
+          "type": "number",
+          "format": "double"
+        },
+        "probe": {
+          "description": "Optional probe name. When set, the requirement is evaluated against\nattached probe comparison evidence instead of weighted scenario deltas.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "metric",
+        "min_improvement_ratio"
+      ]
+    },
+    "TradeoffRequirementOutcome": {
+      "description": "Evaluation result for one tradeoff requirement.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "type": "string"
+        },
+        "observed_change": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "probe": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required_change": {
+          "type": "number",
+          "format": "double"
+        },
+        "satisfied": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "metric",
+        "required_change",
+        "satisfied",
+        "status"
+      ]
+    },
+    "TradeoffRule": {
+      "description": "A structured tradeoff rule for explicit, auditable budget downgrades.",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Optional local regression caps that must remain satisfied.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffAllowance"
+          }
+        },
+        "downgrade_to": {
+          "description": "Downgrade target when all requirements are satisfied.",
+          "$ref": "#/$defs/TradeoffDowngrade",
+          "default": "warn"
+        },
+        "if_failed": {
+          "description": "The failed metric that this rule can downgrade.",
+          "$ref": "#/$defs/Metric"
+        },
+        "name": {
+          "description": "Unique rule name used in reason tokens.",
+          "type": "string"
+        },
+        "require": {
+          "description": "Required compensating improvements.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffRequirement"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "if_failed",
+        "require"
+      ]
+    },
+    "TradeoffRuleOutcome": {
+      "description": "Evaluation result for one named tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "allowances": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffAllowanceOutcome"
+          }
+        },
+        "downgrade_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TradeoffDowngrade"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffRequirementOutcome"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/TradeoffDecisionStatus"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "accepted"
+      ]
+    },
+    "Verdict": {
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus"
+        }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    }
+  }
+}

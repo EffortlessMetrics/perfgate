@@ -396,8 +396,9 @@ mod tests {
     use super::*;
     use crate::auth::{ApiKey, Role};
     use crate::models::{
-        BaselineVersion, ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesResponse,
-        ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
+        BaselineVersion, DecisionRecord, ListAuditEventsQuery, ListAuditEventsResponse,
+        ListBaselinesResponse, ListDecisionsQuery, ListDecisionsResponse, ListVerdictsQuery,
+        ListVerdictsResponse, PaginationInfo, VerdictRecord,
     };
     use crate::storage::{AuditStore, BaselineStore, StorageHealth};
     use async_trait::async_trait;
@@ -490,6 +491,25 @@ mod tests {
             _project: &str,
             _query: &ListVerdictsQuery,
         ) -> Result<ListVerdictsResponse, StoreError> {
+            Err(storage_failure())
+        }
+
+        async fn create_decision(&self, _record: &DecisionRecord) -> Result<(), StoreError> {
+            Err(storage_failure())
+        }
+
+        async fn latest_decision(
+            &self,
+            _project: &str,
+        ) -> Result<Option<DecisionRecord>, StoreError> {
+            Err(storage_failure())
+        }
+
+        async fn list_decisions(
+            &self,
+            _project: &str,
+            _query: &ListDecisionsQuery,
+        ) -> Result<ListDecisionsResponse, StoreError> {
             Err(storage_failure())
         }
     }

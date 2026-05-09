@@ -349,6 +349,108 @@ impl BaselineClient {
         .await
     }
 
+    /// Uploads a structured performance decision receipt to the server ledger.
+    pub async fn upload_decision(
+        &self,
+        project: &str,
+        request: &UploadDecisionRequest,
+    ) -> Result<DecisionRecord, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("projects/{}/decisions", project));
+            debug!(url = %url, "Uploading performance decision");
+
+            let client = self.inner.clone();
+            let request = request.clone();
+            async move {
+                let response = client
+                    .post(url)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<DecisionRecord>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Lists stored performance decisions for a project.
+    pub async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("projects/{}/decisions", project));
+            debug!(url = %url, "Listing performance decisions");
+
+            let client = self.inner.clone();
+            let query = query.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .query(&query)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<ListDecisionsResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Gets the latest stored performance decision for a project.
+    pub async fn latest_decision(&self, project: &str) -> Result<DecisionRecord, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("projects/{}/decisions/latest", project));
+            debug!(url = %url, "Getting latest performance decision");
+
+            let client = self.inner.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<DecisionRecord>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
     /// Lists audit events. Requires an admin API key on authenticated servers.
     pub async fn list_audit_events(
         &self,

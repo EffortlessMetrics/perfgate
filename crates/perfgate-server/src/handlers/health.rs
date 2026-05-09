@@ -68,9 +68,10 @@ fn storage_health_detail(error: &StoreError) -> &'static str {
 mod tests {
     use super::*;
     use crate::models::{
-        AuditEvent, BaselineRecord, BaselineVersion, ListAuditEventsQuery, ListAuditEventsResponse,
-        ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery, ListVerdictsResponse,
-        PaginationInfo, VerdictRecord,
+        AuditEvent, BaselineRecord, BaselineVersion, DecisionRecord, ListAuditEventsQuery,
+        ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse, ListDecisionsQuery,
+        ListDecisionsResponse, ListVerdictsQuery, ListVerdictsResponse, PaginationInfo,
+        VerdictRecord,
     };
     use crate::storage::{AuditStore, BaselineStore};
     use async_trait::async_trait;
@@ -164,6 +165,25 @@ mod tests {
             _project: &str,
             _query: &ListVerdictsQuery,
         ) -> Result<ListVerdictsResponse, StoreError> {
+            Err(storage_failure())
+        }
+
+        async fn create_decision(&self, _record: &DecisionRecord) -> Result<(), StoreError> {
+            Err(storage_failure())
+        }
+
+        async fn latest_decision(
+            &self,
+            _project: &str,
+        ) -> Result<Option<DecisionRecord>, StoreError> {
+            Err(storage_failure())
+        }
+
+        async fn list_decisions(
+            &self,
+            _project: &str,
+            _query: &ListDecisionsQuery,
+        ) -> Result<ListDecisionsResponse, StoreError> {
             Err(storage_failure())
         }
     }

@@ -16,7 +16,10 @@
 
 pub mod auth;
 
-use crate::{RunReceipt, VerdictCounts, VerdictStatus};
+use crate::{
+    DecisionArtifactIndex, MetricStatus, RunReceipt, ScenarioReceipt, TradeoffReceipt,
+    VerdictCounts, VerdictStatus,
+};
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -30,6 +33,9 @@ pub const PROJECT_SCHEMA_V1: &str = "perfgate.project.v1";
 
 /// Schema identifier for verdict records.
 pub const VERDICT_SCHEMA_V1: &str = "perfgate.verdict.v1";
+
+/// Schema identifier for decision ledger records.
+pub const DECISION_RECORD_SCHEMA_V1: &str = "perfgate.decision_record.v1";
 
 /// Schema identifier for audit event records.
 pub const AUDIT_SCHEMA_V1: &str = "perfgate.audit.v1";
@@ -206,6 +212,118 @@ impl ListVerdictsQuery {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ListVerdictsResponse {
     pub verdicts: Vec<VerdictRecord>,
+    pub pagination: PaginationInfo,
+}
+
+/// A stored performance decision receipt for the server-side decision ledger.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct DecisionRecord {
+    /// Schema identifier (perfgate.decision_record.v1)
+    pub schema: String,
+    /// Unique decision identifier.
+    pub id: String,
+    /// Project identifier.
+    pub project: String,
+    /// Scenario/workload name, when present in the tradeoff receipt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scenario: Option<String>,
+    /// Final decision metric status after tradeoff policy.
+    pub status: MetricStatus,
+    /// Final policy verdict exposed by the tradeoff receipt.
+    pub verdict: VerdictStatus,
+    /// Accepted tradeoff rule names.
+    #[serde(default)]
+    pub accepted_rules: Vec<String>,
+    /// Whether a human review is required before treating the decision as accepted.
+    #[serde(default)]
+    pub review_required: bool,
+    /// Reasons the decision needs review.
+    #[serde(default)]
+    pub review_reasons: Vec<String>,
+    /// Git reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
+    /// Git commit SHA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_sha: Option<String>,
+    /// Optional scenario receipt captured with the decision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scenario_receipt: Option<ScenarioReceipt>,
+    /// Tradeoff decision receipt.
+    pub tradeoff_receipt: TradeoffReceipt,
+    /// Optional artifact index for the decision evidence set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_index: Option<DecisionArtifactIndex>,
+    /// Creation timestamp.
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request for uploading a performance decision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UploadDecisionRequest {
+    pub tradeoff: TradeoffReceipt,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scenario: Option<ScenarioReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_index: Option<DecisionArtifactIndex>,
+    pub git_ref: Option<String>,
+    pub git_sha: Option<String>,
+}
+
+/// Query parameters for listing decision records.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListDecisionsQuery {
+    pub scenario: Option<String>,
+    pub status: Option<MetricStatus>,
+    pub review_required: Option<bool>,
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u64,
+}
+
+impl Default for ListDecisionsQuery {
+    fn default() -> Self {
+        Self {
+            scenario: None,
+            status: None,
+            review_required: None,
+            limit: default_limit(),
+            offset: 0,
+        }
+    }
+}
+
+impl ListDecisionsQuery {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn with_scenario(mut self, scenario: impl Into<String>) -> Self {
+        self.scenario = Some(scenario.into());
+        self
+    }
+    pub fn with_status(mut self, status: MetricStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+    pub fn with_review_required(mut self, review_required: bool) -> Self {
+        self.review_required = Some(review_required);
+        self
+    }
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = limit;
+        self
+    }
+    pub fn with_offset(mut self, offset: u64) -> Self {
+        self.offset = offset;
+        self
+    }
+}
+
+/// Response for decision list operation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListDecisionsResponse {
+    pub decisions: Vec<DecisionRecord>,
     pub pagination: PaginationInfo,
 }
 
@@ -563,6 +681,8 @@ pub enum AuditResourceType {
     Key,
     /// A verdict record
     Verdict,
+    /// A performance decision record
+    Decision,
 }
 
 impl std::fmt::Display for AuditResourceType {
@@ -571,6 +691,7 @@ impl std::fmt::Display for AuditResourceType {
             AuditResourceType::Baseline => write!(f, "baseline"),
             AuditResourceType::Key => write!(f, "key"),
             AuditResourceType::Verdict => write!(f, "verdict"),
+            AuditResourceType::Decision => write!(f, "decision"),
         }
     }
 }
@@ -583,6 +704,7 @@ impl std::str::FromStr for AuditResourceType {
             "baseline" => Ok(AuditResourceType::Baseline),
             "key" => Ok(AuditResourceType::Key),
             "verdict" => Ok(AuditResourceType::Verdict),
+            "decision" => Ok(AuditResourceType::Decision),
             other => Err(format!("Unknown resource type: {}", other)),
         }
     }

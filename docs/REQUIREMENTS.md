@@ -13,6 +13,8 @@ Receipt schemas are public API. The following schema IDs are stable:
 - `perfgate.probe_compare.v1`
 - `perfgate.scenario.v1`
 - `perfgate.tradeoff.v1`
+- `perfgate.decision_index.v1`
+- `perfgate.decision_record.v1`
 - `perfgate.report.v1`
 - `perfgate.config.v1`
 - `sensor.report.v1` (cockpit mode envelope, vendored at `contracts/schemas/`)

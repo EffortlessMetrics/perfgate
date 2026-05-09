@@ -113,13 +113,14 @@ pub use error::ClientError;
 pub use fallback::FallbackClient;
 pub use types::{
     AffectedProject, AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource,
-    BaselineSummary, DeleteBaselineResponse, DependencyChange, DependencyEvent,
+    BaselineSummary, DecisionRecord, DeleteBaselineResponse, DependencyChange, DependencyEvent,
     DependencyImpactQuery, DependencyImpactResponse, FleetAlert, HealthResponse,
     ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
-    ListFleetAlertsQuery, ListFleetAlertsResponse, ListVerdictsQuery, ListVerdictsResponse,
-    PaginationInfo, PromoteBaselineRequest, PromoteBaselineResponse, RecordDependencyEventRequest,
-    RecordDependencyEventResponse, StorageHealth, SubmitVerdictRequest, UploadBaselineRequest,
-    UploadBaselineResponse, VerdictRecord,
+    ListDecisionsQuery, ListDecisionsResponse, ListFleetAlertsQuery, ListFleetAlertsResponse,
+    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, PromoteBaselineRequest,
+    PromoteBaselineResponse, RecordDependencyEventRequest, RecordDependencyEventResponse,
+    StorageHealth, SubmitVerdictRequest, UploadBaselineRequest, UploadBaselineResponse,
+    UploadDecisionRequest, VerdictRecord,
 };
 
 #[cfg(test)]

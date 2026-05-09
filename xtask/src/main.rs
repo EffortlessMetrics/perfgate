@@ -16,7 +16,7 @@ const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
     "perfgate-cli",
 ];
 
-const SCHEMA_FILES: [&str; 13] = [
+const SCHEMA_FILES: [&str; 14] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
     "perfgate.probe.v1.schema.json",
@@ -24,6 +24,7 @@ const SCHEMA_FILES: [&str; 13] = [
     "perfgate.scenario.v1.schema.json",
     "perfgate.tradeoff.v1.schema.json",
     "perfgate.decision_index.v1.schema.json",
+    "perfgate.decision_record.v1.schema.json",
     "perfgate.config.v1.schema.json",
     "perfgate.report.v1.schema.json",
     "perfgate.aggregate.v1.schema.json",
@@ -2208,36 +2209,42 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
     write_schema(
         out_dir,
         SCHEMA_FILES[7],
-        schema_for!(perfgate_types::ConfigFile),
+        schema_for!(perfgate_types::baseline_service::DecisionRecord),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[8],
-        schema_for!(perfgate_types::PerfgateReport),
+        schema_for!(perfgate_types::ConfigFile),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[9],
-        schema_for!(perfgate_types::AggregateReceipt),
+        schema_for!(perfgate_types::PerfgateReport),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[10],
-        schema_for!(perfgate_types::RatchetReceipt),
+        schema_for!(perfgate_types::AggregateReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[11],
+        schema_for!(perfgate_types::RatchetReceipt),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[12],
         schema_for!(perfgate_types::RepairContextReceipt),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.
     let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
-    let dest = out_dir.join(SCHEMA_FILES[12]);
+    let dest = out_dir.join(SCHEMA_FILES[13]);
     fs::copy(&vendored_schema, &dest).with_context(|| {
         format!(
             "copy vendored schema {} -> {}",
@@ -2348,6 +2355,10 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
             }
             "perfgate.decision_index.v1" => {
                 serde_json::from_value::<perfgate_types::DecisionArtifactIndex>(value).map(|_| ())
+            }
+            "perfgate.decision_record.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::DecisionRecord>(value)
+                    .map(|_| ())
             }
             "perfgate.report.v1" => {
                 serde_json::from_value::<perfgate_types::PerfgateReport>(value).map(|_| ())
@@ -3821,6 +3832,13 @@ fn validate_versioned_json_example(
             serde_json::from_value::<perfgate_types::DecisionArtifactIndex>(value)
                 .context("deserialize perfgate.decision_index.v1 example")?;
             Ok(Some(perfgate_types::DECISION_INDEX_SCHEMA_V1))
+        }
+        Some(perfgate_types::baseline_service::DECISION_RECORD_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::baseline_service::DecisionRecord>(value)
+                .context("deserialize perfgate.decision_record.v1 example")?;
+            Ok(Some(
+                perfgate_types::baseline_service::DECISION_RECORD_SCHEMA_V1,
+            ))
         }
         Some(perfgate_types::AGGREGATE_SCHEMA_V1) => {
             serde_json::from_value::<perfgate_types::AggregateReceipt>(value)

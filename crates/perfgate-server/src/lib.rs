@@ -40,6 +40,9 @@
 //! | GET | `/api/v1/projects/{project}/baselines` | List baselines |
 //! | DELETE | `/api/v1/projects/{project}/baselines/{benchmark}/versions/{version}` | Delete baseline |
 //! | POST | `/api/v1/projects/{project}/baselines/{benchmark}/promote` | Promote version |
+//! | POST | `/api/v1/projects/{project}/decisions` | Upload a performance decision receipt |
+//! | GET | `/api/v1/projects/{project}/decisions/latest` | Get latest performance decision |
+//! | GET | `/api/v1/projects/{project}/decisions` | List performance decisions |
 //! | GET | `/api/v1/audit` | List audit events (admin only) |
 //! | POST | `/api/v1/keys` | Create an API key (admin only) |
 //! | GET | `/api/v1/keys` | List API keys (admin only) |
