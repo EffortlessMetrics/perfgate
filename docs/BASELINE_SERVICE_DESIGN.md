@@ -97,6 +97,7 @@ are real server capabilities, but they are not yet first-class CLI flags.
 `perfgate serve` runs the service in local mode:
 
 - dashboard enabled
+- baseline, verdict, flakiness, decision-ledger, and audit-event views
 - auth disabled for API routes
 - SQLite-backed local storage
 - intended for one developer on one machine
@@ -122,6 +123,9 @@ Public routes currently exposed by the server are:
 | `GET /api/v1/projects/{project}/baselines/{benchmark}/trend` | fetch trend data |
 | `POST /api/v1/projects/{project}/verdicts` | submit a verdict |
 | `GET /api/v1/projects/{project}/verdicts` | list verdicts |
+| `POST /api/v1/projects/{project}/decisions` | upload a decision receipt |
+| `GET /api/v1/projects/{project}/decisions` | list decision receipts |
+| `GET /api/v1/projects/{project}/decisions/latest` | fetch latest decision |
 | `GET /api/v1/audit` | list audit events |
 | `POST /api/v1/keys` | create an API key |
 | `GET /api/v1/keys` | list API keys |
@@ -148,6 +152,9 @@ The main server-aware CLI workflows are:
 | `baseline flaky` | inspect benchmarks with elevated historical noise |
 | `baseline submit-verdict` | persist compare verdicts |
 | `baseline migrate` | upload local baseline JSON files recursively |
+| `decision upload` | store a structured performance decision receipt |
+| `decision history` | list stored performance decisions |
+| `decision debt` | summarize accepted tradeoff debt by scenario |
 | `audit list` | inspect append-only audit events |
 | `audit export --format jsonl` | export audit events for operators or compliance review |
 | `fleet alerts` | list fleet-wide dependency regression alerts |

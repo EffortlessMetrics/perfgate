@@ -68,9 +68,9 @@ perfgate compare \
 
 `perfgate serve` runs in local mode and is intended for one developer on one
 machine. Do not treat it as a shared or internet-facing deployment.
-The dashboard at `/` includes baseline, verdict, flakiness, and audit-event
-views; shared authenticated servers require an API key in the dashboard header
-before protected API data can load.
+The dashboard at `/` includes baseline, verdict, flakiness, decision-ledger,
+and audit-event views; shared authenticated servers require an API key in the
+dashboard header before protected API data can load.
 
 ## Shared Server
 
