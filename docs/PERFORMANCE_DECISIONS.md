@@ -207,12 +207,18 @@ server can store decisions as audit-backed ledger entries:
 perfgate decision upload --file artifacts/perfgate/tradeoff.json --index artifacts/perfgate/decision.index.json
 perfgate decision latest
 perfgate decision history --limit 20
+perfgate decision debt --days 30
 ```
 
 The server returns `perfgate.decision_record.v1` records. Each record stores the
 tradeoff receipt, optional scenario receipt, optional artifact index, accepted
 rule names, final status/verdict, review state, git metadata, and creation
 time. Uploads emit an audit event with resource type `decision`.
+
+`decision debt` summarizes accepted tradeoff records by scenario so teams can
+spot repeated exceptions before they become invisible performance debt. When a
+tradeoff rule used local regression caps, the summary reports the highest cap
+usage observed in the selected window.
 
 ## Primitive Commands
 

@@ -60,7 +60,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use url::Url;
 
 const BASELINE_SERVER_NOT_CONFIGURED: &str = "baseline server is not configured; set `--baseline-server`, `PERFGATE_SERVER_URL`, or `[baseline_server].url` in `perfgate.toml`";
@@ -1309,6 +1309,8 @@ pub enum DecisionAction {
     History(DecisionHistoryArgs),
     /// Show the latest stored decision receipt from the baseline server.
     Latest(DecisionLatestArgs),
+    /// Summarize accepted tradeoff debt from the baseline server decision ledger.
+    Debt(DecisionDebtArgs),
 }
 
 #[derive(Debug, Args)]
@@ -1451,6 +1453,21 @@ pub struct DecisionLatestArgs {
     /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
     #[arg(long)]
     pub project: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionDebtArgs {
+    /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
+    #[arg(long)]
+    pub project: Option<String>,
+
+    /// Number of recent days to summarize. Use 0 to include all fetched records.
+    #[arg(long, default_value_t = 30)]
+    pub days: u32,
+
+    /// Maximum number of decision records to fetch from the server.
+    #[arg(long, default_value_t = 1000)]
+    pub limit: u32,
 }
 
 #[derive(Debug, Args)]
@@ -3735,6 +3752,7 @@ fn execute_decision_action(
         DecisionAction::Upload(args) => execute_decision_upload(args, server_flags),
         DecisionAction::History(args) => execute_decision_history(args, server_flags),
         DecisionAction::Latest(args) => execute_decision_latest(args, server_flags),
+        DecisionAction::Debt(args) => execute_decision_debt(args, server_flags),
     }
 }
 
@@ -3859,6 +3877,180 @@ fn execute_decision_latest(
     })?;
 
     Ok(())
+}
+
+fn execute_decision_debt(args: DecisionDebtArgs, server_flags: &ServerFlags) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let project = server_config.resolve_project(args.project)?;
+    let cutoff = decision_debt_cutoff(args.days)?;
+    let query = ListDecisionsQuery::new().with_limit(args.limit);
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let response = client
+            .list_decisions(&project, &query)
+            .await
+            .with_context(|| format!("Failed to list decisions for project '{}'", project))?;
+
+        let records: Vec<_> = response
+            .decisions
+            .iter()
+            .filter(|record| {
+                cutoff
+                    .map(|cutoff| record.created_at.timestamp() >= cutoff)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if response.pagination.has_more {
+            eprintln!(
+                "Warning: scanned {} of {} decisions; increase --limit for a fuller debt summary.",
+                response.decisions.len(),
+                response.pagination.total
+            );
+        }
+
+        print_decision_debt_summary(&project, args.days, &records);
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+fn decision_debt_cutoff(days: u32) -> anyhow::Result<Option<i64>> {
+    if days == 0 {
+        return Ok(None);
+    }
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("system time is before UNIX_EPOCH")?
+        .as_secs() as i64;
+    Ok(Some(now - i64::from(days) * 86_400))
+}
+
+#[derive(Default)]
+struct DecisionDebtAreaSummary {
+    accepted_count: u32,
+    review_required_count: u32,
+    rule_counts: BTreeMap<String, u32>,
+    max_cap_used: Option<f64>,
+}
+
+fn print_decision_debt_summary(
+    project: &str,
+    days: u32,
+    records: &[&perfgate_client::DecisionRecord],
+) {
+    let mut areas: BTreeMap<String, DecisionDebtAreaSummary> = BTreeMap::new();
+    let mut accepted_total = 0_u32;
+    let mut review_required_total = 0_u32;
+
+    for record in records {
+        if record.accepted_rules.is_empty() {
+            continue;
+        }
+
+        let area_name = record
+            .scenario
+            .clone()
+            .unwrap_or_else(|| "unspecified".to_string());
+        let area = areas.entry(area_name).or_default();
+        area.accepted_count += 1;
+        accepted_total += 1;
+
+        if record.review_required {
+            area.review_required_count += 1;
+            review_required_total += 1;
+        }
+
+        for rule in &record.accepted_rules {
+            *area.rule_counts.entry(rule.clone()).or_insert(0) += 1;
+        }
+
+        if let Some(cap_used) = decision_record_max_cap_used(record) {
+            area.max_cap_used = Some(area.max_cap_used.map_or(cap_used, |current| {
+                if cap_used > current {
+                    cap_used
+                } else {
+                    current
+                }
+            }));
+        }
+    }
+
+    let window = if days == 0 {
+        "all fetched records".to_string()
+    } else {
+        format!("last {days} days")
+    };
+
+    println!(
+        "Decision debt for {} ({}, {} records scanned):",
+        project,
+        window,
+        records.len()
+    );
+    println!("Accepted tradeoff records: {accepted_total}");
+    println!("Review-required accepted records: {review_required_total}");
+
+    if areas.is_empty() {
+        println!("\nNo accepted tradeoffs found.");
+        return;
+    }
+
+    println!();
+    println!(
+        "{:<24} {:>5} {:>6} {:>8}  common rule",
+        "area", "count", "review", "cap used"
+    );
+
+    for (area, summary) in areas {
+        println!(
+            "{:<24} {:>5} {:>6} {:>8}  {}",
+            area,
+            summary.accepted_count,
+            summary.review_required_count,
+            format_cap_used(summary.max_cap_used),
+            most_common_rule(&summary.rule_counts)
+        );
+    }
+}
+
+fn decision_record_max_cap_used(record: &perfgate_client::DecisionRecord) -> Option<f64> {
+    record
+        .tradeoff_receipt
+        .rules
+        .iter()
+        .filter(|rule| rule.accepted)
+        .flat_map(|rule| rule.allowances.iter())
+        .filter_map(|allowance| {
+            if allowance.max_regression <= 0.0 {
+                return None;
+            }
+            let observed = allowance.observed_regression?;
+            Some((observed.max(0.0) / allowance.max_regression).max(0.0))
+        })
+        .reduce(f64::max)
+}
+
+fn format_cap_used(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{:.0}%", value * 100.0))
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn most_common_rule(rule_counts: &BTreeMap<String, u32>) -> String {
+    rule_counts
+        .iter()
+        .max_by(|(left_rule, left_count), (right_rule, right_count)| {
+            left_count
+                .cmp(right_count)
+                .then_with(|| right_rule.cmp(left_rule))
+        })
+        .map(|(rule, count)| format!("{rule} ({count})"))
+        .unwrap_or_else(|| "none".to_string())
 }
 
 fn print_decision_record(label: &str, record: &perfgate_client::DecisionRecord) {

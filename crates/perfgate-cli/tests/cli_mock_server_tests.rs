@@ -116,19 +116,53 @@ fn tradeoff_receipt() -> serde_json::Value {
 }
 
 fn decision_record(project: &str, id: &str) -> serde_json::Value {
+    decision_record_with(
+        project,
+        id,
+        "release_workload",
+        &["memory_for_speed"],
+        false,
+        "2026-05-08T00:00:00Z",
+        None,
+    )
+}
+
+fn decision_record_with(
+    project: &str,
+    id: &str,
+    scenario: &str,
+    accepted_rules: &[&str],
+    review_required: bool,
+    created_at: &str,
+    cap_used: Option<(f64, f64)>,
+) -> serde_json::Value {
+    let mut tradeoff = tradeoff_receipt();
+    if let Some((observed_regression, max_regression)) = cap_used {
+        tradeoff["rules"][0]["allowances"] = serde_json::json!([{
+            "metric": "wall_ms",
+            "probe": "parser.tokenize",
+            "max_regression": max_regression,
+            "observed_regression": observed_regression,
+            "satisfied": observed_regression <= max_regression,
+            "status": "warn",
+            "reason": "local regression stayed inside cap"
+        }]);
+    }
+    tradeoff["scenario"] = serde_json::Value::String(scenario.to_string());
+
     serde_json::json!({
         "schema": "perfgate.decision_record.v1",
         "id": id,
         "project": project,
-        "scenario": "release_workload",
+        "scenario": scenario,
         "status": "warn",
         "verdict": "warn",
-        "accepted_rules": ["memory_for_speed"],
-        "review_required": false,
+        "accepted_rules": accepted_rules,
+        "review_required": review_required,
         "review_reasons": [],
         "git_ref": "refs/heads/main",
-        "tradeoff_receipt": tradeoff_receipt(),
-        "created_at": "2026-05-08T00:00:00Z"
+        "tradeoff_receipt": tradeoff,
+        "created_at": created_at
     })
 }
 
@@ -639,6 +673,83 @@ async fn test_decision_history_and_latest_use_server_ledger() {
         .stdout(predicate::str::contains("Latest decision decision-1"))
         .stdout(predicate::str::contains("status=warn"))
         .stdout(predicate::str::contains("verdict=warn"));
+}
+
+#[tokio::test]
+async fn test_decision_debt_summarizes_accepted_tradeoffs() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/projects/test-project/decisions"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "decisions": [
+                decision_record_with(
+                    "test-project",
+                    "decision-1",
+                    "parser",
+                    &["tokenizer-cost-for-batch-loop-win"],
+                    false,
+                    "2026-05-08T00:00:00Z",
+                    Some((0.021, 0.03))
+                ),
+                decision_record_with(
+                    "test-project",
+                    "decision-2",
+                    "parser",
+                    &["tokenizer-cost-for-batch-loop-win"],
+                    true,
+                    "2026-05-07T00:00:00Z",
+                    Some((0.015, 0.03))
+                ),
+                decision_record_with(
+                    "test-project",
+                    "decision-3",
+                    "renderer",
+                    &["memory-for-latency"],
+                    false,
+                    "2026-05-06T00:00:00Z",
+                    None
+                )
+            ],
+            "pagination": {
+                "total": 3,
+                "offset": 0,
+                "limit": 1000,
+                "has_more": false
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("debt")
+        .arg("--days")
+        .arg("0");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Decision debt for test-project (all fetched records, 3 records scanned)",
+        ))
+        .stdout(predicate::str::contains("Accepted tradeoff records: 3"))
+        .stdout(predicate::str::contains(
+            "Review-required accepted records: 1",
+        ))
+        .stdout(predicate::str::contains("parser"))
+        .stdout(predicate::str::contains("70%"))
+        .stdout(predicate::str::contains(
+            "tokenizer-cost-for-batch-loop-win (2)",
+        ))
+        .stdout(predicate::str::contains("renderer"))
+        .stdout(predicate::str::contains("memory-for-latency (1)"));
 }
 
 #[tokio::test]

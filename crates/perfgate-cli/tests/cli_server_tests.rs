@@ -1098,6 +1098,20 @@ async fn run_live_server_cli_workflow(
         .stdout(predicate::str::contains("Decision history"))
         .stdout(predicate::str::contains(&decision_scenario));
 
+    let mut decision_debt = perfgate_cmd();
+    decision_debt
+        .arg("decision")
+        .arg("debt")
+        .arg("--days")
+        .arg("0");
+    add_server_flags(&mut decision_debt, server.url(), project, api_key);
+    decision_debt
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision debt"))
+        .stdout(predicate::str::contains(&decision_scenario))
+        .stdout(predicate::str::contains("memory_for_speed (1)"));
+
     let mut delete = perfgate_cmd();
     delete
         .arg("baseline")

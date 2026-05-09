@@ -181,6 +181,9 @@ The current CLI surfaces that talk to the baseline service are:
 | `baseline verdicts` | Query pass/warn/fail verdict history |
 | `baseline submit-verdict` | Submit verdict data from a compare receipt |
 | `baseline migrate` | Upload local baseline JSON files to the server |
+| `decision upload` | Store a structured performance decision receipt |
+| `decision history` | List stored performance decisions |
+| `decision debt` | Summarize accepted tradeoff debt by scenario |
 | `audit list` | List admin audit events |
 | `audit export --format jsonl` | Export audit events for external review |
 
@@ -212,6 +215,9 @@ The server exposes these top-level surfaces:
   data
 - `POST /api/v1/projects/{project}/verdicts`: submit a verdict
 - `GET /api/v1/projects/{project}/verdicts`: list verdicts
+- `POST /api/v1/projects/{project}/decisions`: upload a decision receipt
+- `GET /api/v1/projects/{project}/decisions`: list decision receipts
+- `GET /api/v1/projects/{project}/decisions/latest`: fetch latest decision
 - `GET /api/v1/audit`: list audit events
 - `POST /api/v1/keys`: create an API key
 - `GET /api/v1/keys`: list API keys
