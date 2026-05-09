@@ -4,6 +4,10 @@ This fixture demonstrates the structured decision path without requiring a
 benchmark harness. It uses committed compare receipts plus language-agnostic
 probe JSONL so the decision is deterministic.
 
+Rust projects can generate compatible probe JSONL with the optional `perfgate`
+`probe` feature, but the fixture keeps the JSONL checked in so the example is
+reproducible in any environment.
+
 Run from the repository root:
 
 ```bash

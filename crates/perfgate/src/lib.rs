@@ -42,6 +42,16 @@ pub mod adapters {
 /// Integrations for external benchmark formats and CI platforms.
 pub mod integrations;
 
+/// Optional helpers for emitting probe JSONL.
+///
+/// Enable the `probe` feature to use this module:
+///
+/// ```toml
+/// perfgate = { version = "0.15", features = ["probe"] }
+/// ```
+#[cfg(feature = "probe")]
+pub mod probe;
+
 /// Runtime helpers for optional diagnostics and local execution support.
 pub mod runtime;
 
@@ -111,6 +121,8 @@ pub mod host_detect {
 pub mod prelude {
     pub use crate::app::{CheckUseCase, CompareUseCase, RunBenchUseCase};
     pub use crate::domain::{compare_runs, compute_stats};
+    #[cfg(feature = "probe")]
+    pub use crate::probe::{ProbeEvent, ProbeJsonlWriter, ProbeTimer, probe_event, probe_timer};
     pub use perfgate_types::{
         CompareReceipt, ConfigFile, Metric, MetricStatistic, RunReceipt, VerdictStatus,
     };

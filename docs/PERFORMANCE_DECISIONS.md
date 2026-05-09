@@ -90,6 +90,33 @@ language or harness:
 perfgate ingest probes --file probes.jsonl --out artifacts/perfgate/probes.json
 ```
 
+Rust projects can emit the same JSONL with the optional facade helper:
+
+```toml
+[dependencies]
+perfgate = { version = "0.15", features = ["probe"] }
+```
+
+```rust,no_run
+use perfgate::probe::{ProbeJsonlWriter, probe_event};
+use perfgate::types::ProbeScope;
+
+fn main() -> std::io::Result<()> {
+    let mut probes = ProbeJsonlWriter::create("artifacts/probes.jsonl")?;
+    probes.record(
+        &probe_event("parser.tokenize")
+            .scope(ProbeScope::Local)
+            .items(10_000)
+            .metric("wall_ms", 12.4, "ms")
+            .metric("alloc_bytes", 184_320.0, "bytes"),
+    )?;
+    Ok(())
+}
+```
+
+The helper writes language-agnostic JSONL; `perfgate ingest probes` remains the
+receipt-producing step.
+
 Compare probe receipts when you want deltas such as `parser.tokenize +2.1%`:
 
 ```bash
