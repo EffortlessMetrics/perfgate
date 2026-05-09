@@ -1,0 +1,13 @@
+{
+  "schema": "perfgate.decision_index.v1",
+  "scenario": "artifacts/perfgate/scenario.json",
+  "tradeoff": "artifacts/perfgate/tradeoff.json",
+  "decision": "artifacts/perfgate/decision.md",
+  "probe_compares": [
+    "artifacts/perfgate/large-file/probe-compare.json"
+  ],
+  "compare_receipts": [
+    "artifacts/perfgate/large-file/compare.json",
+    "artifacts/perfgate/small-edit/compare.json"
+  ]
+}

@@ -93,8 +93,9 @@ perfgate check --config perfgate.toml --all
 perfgate decision evaluate --config perfgate.toml
 ```
 
-`decision evaluate` writes `scenario.json`, `tradeoff.json`, and `decision.md`
-under `[defaults].out_dir` unless output paths are overridden. Use
+`decision evaluate` writes `scenario.json`, `tradeoff.json`, `decision.md`,
+and `decision.index.json` under `[defaults].out_dir` unless output paths are
+overridden. Use
 `perfgate scenario evaluate` directly only when debugging or composing a custom
 pipeline.
 
@@ -211,7 +212,8 @@ perfgate decision evaluate --config perfgate.toml
 ```
 
 It uses the configured artifact directory for compare lookups and writes
-`scenario.json`, `tradeoff.json`, and `decision.md` there by default.
+`scenario.json`, `tradeoff.json`, `decision.md`, and `decision.index.json`
+there by default.
 
 The primitive commands remain available when you need to inspect an intermediate
 receipt. Evaluate the rules against a scenario receipt to produce

@@ -119,12 +119,13 @@ comment, opt in to decision mode:
 ```
 
 Decision mode runs `perfgate decision evaluate --config perfgate.toml` after
-`check`, writes `scenario.json`, `tradeoff.json`, and `decision.md` under the
-resolved artifact directory, and appends `decision.md` to the GitHub step
-summary. If `check` reports a policy failure with exit code `2`, the action
-defers the final policy result to the decision receipt so an accepted tradeoff
-can downgrade the result according to configured policy. Runtime errors and
-`--fail-on-warn` failures still stop the action.
+`check`, writes `scenario.json`, `tradeoff.json`, `decision.md`, and
+`decision.index.json` under the resolved artifact directory, and appends
+`decision.md` to the GitHub step summary. If `check` reports a policy failure
+with exit code `2`, the action defers the final policy result to the decision
+receipt so an accepted tradeoff can downgrade the result according to
+configured policy. Runtime errors and `--fail-on-warn` failures still stop the
+action.
 
 Use decision mode when `perfgate.toml` contains `[[scenario]]` weights,
 `[[tradeoff]]` policy, or probe comparison evidence. The lower-level

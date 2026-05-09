@@ -98,10 +98,12 @@ workflow after `check`:
 perfgate decision evaluate --config perfgate.toml
 ```
 
-It writes `scenario.json`, `tradeoff.json`, and `decision.md` under the
-configured artifact directory. `decision.md` is the review surface: it explains
-the weighted workload result, probe movement, accepted or rejected tradeoff
-rules, policy reasons, evidence files, and the local reproduction command.
+It writes `scenario.json`, `tradeoff.json`, `decision.md`, and
+`decision.index.json` under the configured artifact directory. `decision.md` is
+the review surface: it explains the weighted workload result, probe movement,
+accepted or rejected tradeoff rules, policy reasons, evidence files, and the
+local reproduction command. `decision.index.json` is the machine-readable
+manifest for the evidence files behind that review.
 When scenarios configure probe baseline/current paths, `decision evaluate` also
 writes the configured `probe-compare.json` before evaluating the decision.
 

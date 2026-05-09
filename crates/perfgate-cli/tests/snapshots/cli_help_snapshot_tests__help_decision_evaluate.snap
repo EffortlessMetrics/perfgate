@@ -14,6 +14,7 @@ Options:
       --scenario-out <SCENARIO_OUT> Output scenario receipt path
       --tradeoff-out <TRADEOFF_OUT> Output tradeoff receipt path
       --decision-out <DECISION_OUT> Output decision markdown path
+      --index-out <INDEX_OUT> Output decision artifact index path
       --pretty Pretty-print JSON receipts
   -h, --help Print help
 

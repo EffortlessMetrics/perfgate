@@ -47,11 +47,11 @@ use perfgate_types::config::{
 use perfgate_types::error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
-    ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
-    MetricStatus, OtelSpanIdentifiers, PerfgateReport, ProbeCompareReceipt, ProbeReceipt,
-    REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
-    RepairMetricBreach, RunReceipt, ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus,
-    ToolInfo, TradeoffReceipt, VerdictStatus,
+    ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, DECISION_INDEX_SCHEMA_V1,
+    DecisionArtifactIndex, FailIfNOfM, HostMismatchPolicy, MetricStatus, OtelSpanIdentifiers,
+    PerfgateReport, ProbeCompareReceipt, ProbeReceipt, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
+    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
+    ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1380,6 +1380,10 @@ pub struct DecisionEvaluateArgs {
     /// Output decision markdown path.
     #[arg(long)]
     pub decision_out: Option<PathBuf>,
+
+    /// Output decision artifact index path.
+    #[arg(long)]
+    pub index_out: Option<PathBuf>,
 
     /// Pretty-print JSON receipts.
     #[arg(long, default_value_t = false)]
@@ -3680,6 +3684,10 @@ fn execute_decision_evaluate(args: DecisionEvaluateArgs) -> anyhow::Result<()> {
         .decision_out
         .clone()
         .unwrap_or_else(|| out_dir.join("decision.md"));
+    let index_out = args
+        .index_out
+        .clone()
+        .unwrap_or_else(|| out_dir.join("decision.index.json"));
 
     run_configured_probe_compares(&config, args.scenario.as_deref(), args.pretty)?;
 
@@ -3690,11 +3698,12 @@ fn execute_decision_evaluate(args: DecisionEvaluateArgs) -> anyhow::Result<()> {
         args.workload_name,
         &out_dir,
     )?;
-    write_json(&scenario_out, &scenario_outcome.receipt, args.pretty)?;
+    let scenario_receipt = scenario_outcome.receipt;
+    write_json(&scenario_out, &scenario_receipt, args.pretty)?;
     eprintln!("Scenario receipt written to {}", scenario_out.display());
 
     let tradeoff_outcome =
-        evaluate_configured_tradeoffs(&config, &args.config, scenario_outcome.receipt)?;
+        evaluate_configured_tradeoffs(&config, &args.config, scenario_receipt.clone())?;
     write_json(&tradeoff_out, &tradeoff_outcome.receipt, args.pretty)?;
     eprintln!("Tradeoff receipt written to {}", tradeoff_out.display());
 
@@ -3708,10 +3717,63 @@ fn execute_decision_evaluate(args: DecisionEvaluateArgs) -> anyhow::Result<()> {
     atomic_write(&decision_out, markdown.as_bytes())?;
     eprintln!("Decision markdown written to {}", decision_out.display());
 
+    let index = build_decision_artifact_index(
+        &scenario_out,
+        &tradeoff_out,
+        &decision_out,
+        &scenario_receipt,
+    );
+    write_json(&index_out, &index, args.pretty)?;
+    eprintln!("Decision artifact index written to {}", index_out.display());
+
     match tradeoff_outcome.receipt.verdict.status {
         VerdictStatus::Fail => exit_with_code(2),
         VerdictStatus::Pass | VerdictStatus::Warn | VerdictStatus::Skip => Ok(()),
     }
+}
+
+fn build_decision_artifact_index(
+    scenario_out: &Path,
+    tradeoff_out: &Path,
+    decision_out: &Path,
+    scenario: &ScenarioReceipt,
+) -> DecisionArtifactIndex {
+    let mut probe_compares = BTreeSet::new();
+    let mut compare_receipts = BTreeSet::new();
+
+    for component in &scenario.components {
+        if let Some(path) = component
+            .probe_compare_ref
+            .as_ref()
+            .and_then(|reference| reference.path.as_ref())
+        {
+            probe_compares.insert(normalize_artifact_path(path));
+        }
+        if let Some(path) = component
+            .compare_ref
+            .as_ref()
+            .and_then(|reference| reference.path.as_ref())
+        {
+            compare_receipts.insert(normalize_artifact_path(path));
+        }
+    }
+
+    DecisionArtifactIndex {
+        schema: DECISION_INDEX_SCHEMA_V1.to_string(),
+        scenario: artifact_path_string(scenario_out),
+        tradeoff: artifact_path_string(tradeoff_out),
+        decision: artifact_path_string(decision_out),
+        probe_compares: probe_compares.into_iter().collect(),
+        compare_receipts: compare_receipts.into_iter().collect(),
+    }
+}
+
+fn artifact_path_string(path: &Path) -> String {
+    normalize_artifact_path(&path.display().to_string())
+}
+
+fn normalize_artifact_path(path: &str) -> String {
+    path.replace('\\', "/")
 }
 
 fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {

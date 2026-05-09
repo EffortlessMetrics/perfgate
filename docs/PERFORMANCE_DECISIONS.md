@@ -26,11 +26,14 @@ artifacts/perfgate/
   scenario.json
   tradeoff.json
   decision.md
+  decision.index.json
 ```
 
 `decision.md` is the human review surface. It summarizes the weighted workload,
 probe evidence, accepted or rejected tradeoff rules, policy reasons, evidence
 files, and the local reproduction command.
+`decision.index.json` is the machine-readable artifact manifest for actions,
+servers, dashboards, and agents that need to find the generated evidence set.
 
 ## Workflow Levels
 
