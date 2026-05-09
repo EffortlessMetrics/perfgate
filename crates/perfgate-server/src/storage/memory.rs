@@ -8,9 +8,10 @@ use tokio::sync::RwLock;
 use super::{AuditStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
-    AuditEvent, BaselineRecord, BaselineSummary, BaselineVersion, ListAuditEventsQuery,
-    ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery,
-    ListVerdictsResponse, PaginationInfo, VerdictRecord,
+    AuditEvent, BaselineRecord, BaselineSummary, BaselineVersion, DecisionRecord,
+    ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
+    ListDecisionsQuery, ListDecisionsResponse, ListVerdictsQuery, ListVerdictsResponse,
+    PaginationInfo, VerdictRecord,
 };
 
 /// In-memory storage backend for baselines.
@@ -19,6 +20,7 @@ pub struct InMemoryStore {
     #[allow(clippy::type_complexity)]
     baselines: Arc<RwLock<BTreeMap<(String, String, String), BaselineRecord>>>,
     verdicts: Arc<RwLock<Vec<VerdictRecord>>>,
+    decisions: Arc<RwLock<Vec<DecisionRecord>>>,
     audit_events: Arc<RwLock<Vec<AuditEvent>>>,
 }
 
@@ -28,6 +30,7 @@ impl InMemoryStore {
         Self {
             baselines: Arc::new(RwLock::new(BTreeMap::new())),
             verdicts: Arc::new(RwLock::new(Vec::new())),
+            decisions: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
         }
     }
@@ -331,6 +334,71 @@ impl BaselineStore for InMemoryStore {
 
         Ok(ListVerdictsResponse {
             verdicts: paginated,
+            pagination: PaginationInfo {
+                total,
+                limit: query.limit,
+                offset: query.offset,
+                has_more,
+            },
+        })
+    }
+
+    async fn create_decision(&self, record: &DecisionRecord) -> Result<(), StoreError> {
+        let mut decisions = self.decisions.write().await;
+        decisions.push(record.clone());
+        Ok(())
+    }
+
+    async fn latest_decision(&self, project: &str) -> Result<Option<DecisionRecord>, StoreError> {
+        let decisions = self.decisions.read().await;
+        Ok(decisions
+            .iter()
+            .filter(|record| record.project == project)
+            .max_by_key(|record| record.created_at)
+            .cloned())
+    }
+
+    async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, StoreError> {
+        let decisions = self.decisions.read().await;
+        let mut filtered: Vec<_> = decisions
+            .iter()
+            .filter(|record| {
+                if record.project != project {
+                    return false;
+                }
+                if let Some(ref scenario) = query.scenario
+                    && record.scenario.as_deref() != Some(scenario)
+                {
+                    return false;
+                }
+                if let Some(status) = query.status
+                    && record.status != status
+                {
+                    return false;
+                }
+                if let Some(review_required) = query.review_required
+                    && record.review_required != review_required
+                {
+                    return false;
+                }
+                true
+            })
+            .cloned()
+            .collect();
+
+        filtered.sort_by_key(|record| std::cmp::Reverse(record.created_at));
+        let total = filtered.len() as u64;
+        let offset = query.offset as usize;
+        let limit = query.limit as usize;
+        let paginated: Vec<_> = filtered.into_iter().skip(offset).take(limit).collect();
+        let has_more = (offset + paginated.len()) < total as usize;
+
+        Ok(ListDecisionsResponse {
+            decisions: paginated,
             pagination: PaginationInfo {
                 total,
                 limit: query.limit,

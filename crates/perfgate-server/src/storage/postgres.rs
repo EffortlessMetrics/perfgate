@@ -7,12 +7,13 @@ use super::{ArtifactStore, AuditStore, BaselineStore, StorageHealth};
 use crate::error::StoreError;
 use crate::models::{
     AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource, BaselineVersion,
-    ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
-    ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, VerdictRecord,
+    DecisionRecord, ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery,
+    ListBaselinesResponse, ListDecisionsQuery, ListDecisionsResponse, ListVerdictsQuery,
+    ListVerdictsResponse, PaginationInfo, VerdictRecord,
 };
 use crate::server::PostgresPoolConfig;
 use async_trait::async_trait;
-use perfgate_types::VerdictStatus;
+use perfgate_types::{MetricStatus, VerdictStatus};
 use sqlx::{Connection, Executor, PgPool, Row, postgres::PgPoolOptions};
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,7 +58,7 @@ fn is_transient(err: &sqlx::Error) -> bool {
     }
 }
 
-fn postgres_schema_statements() -> [&'static str; 11] {
+fn postgres_schema_statements() -> [&'static str; 14] {
     [
         r#"
             CREATE TABLE IF NOT EXISTS baselines (
@@ -108,6 +109,33 @@ fn postgres_schema_statements() -> [&'static str; 11] {
         r#"
             CREATE INDEX IF NOT EXISTS idx_verdicts_created_at
             ON verdicts(created_at)
+            "#,
+        r#"
+            CREATE TABLE IF NOT EXISTS decisions (
+                id VARCHAR(64) PRIMARY KEY,
+                schema_id VARCHAR(64) NOT NULL,
+                project VARCHAR(255) NOT NULL,
+                scenario VARCHAR(255),
+                status VARCHAR(32) NOT NULL,
+                verdict VARCHAR(32) NOT NULL,
+                accepted_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
+                review_required BOOLEAN NOT NULL DEFAULT FALSE,
+                review_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+                git_ref VARCHAR(255),
+                git_sha VARCHAR(40),
+                scenario_receipt JSONB,
+                tradeoff_receipt JSONB NOT NULL,
+                artifact_index JSONB,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_decisions_project_created
+            ON decisions(project, created_at DESC)
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_decisions_project_scenario
+            ON decisions(project, scenario)
             "#,
         r#"
             CREATE TABLE IF NOT EXISTS audit_events (
@@ -779,6 +807,148 @@ impl BaselineStore for PostgresStore {
             },
         })
     }
+
+    async fn create_decision(&self, record: &DecisionRecord) -> Result<(), StoreError> {
+        let sql = r#"
+            INSERT INTO decisions (
+                id, schema_id, project, scenario, status, verdict, accepted_rules,
+                review_required, review_reasons, git_ref, git_sha, scenario_receipt,
+                tradeoff_receipt, artifact_index, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        "#;
+
+        let accepted_rules =
+            serde_json::to_value(&record.accepted_rules).map_err(StoreError::SerializationError)?;
+        let review_reasons =
+            serde_json::to_value(&record.review_reasons).map_err(StoreError::SerializationError)?;
+        let scenario_receipt = record
+            .scenario_receipt
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(StoreError::SerializationError)?;
+        let tradeoff_receipt = serde_json::to_value(&record.tradeoff_receipt)
+            .map_err(StoreError::SerializationError)?;
+        let artifact_index = record
+            .artifact_index
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(StoreError::SerializationError)?;
+
+        sqlx::query(sql)
+            .bind(&record.id)
+            .bind(&record.schema)
+            .bind(&record.project)
+            .bind(&record.scenario)
+            .bind(record.status.as_str())
+            .bind(record.verdict.as_str())
+            .bind(accepted_rules)
+            .bind(record.review_required)
+            .bind(review_reasons)
+            .bind(&record.git_ref)
+            .bind(&record.git_sha)
+            .bind(scenario_receipt)
+            .bind(tradeoff_receipt)
+            .bind(artifact_index)
+            .bind(record.created_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn latest_decision(&self, project: &str) -> Result<Option<DecisionRecord>, StoreError> {
+        let row = sqlx::query(
+            "SELECT * FROM decisions WHERE project = $1 ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(project)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        row.map(|row| self.row_to_decision(row)).transpose()
+    }
+
+    async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, StoreError> {
+        let mut filter_sql = " FROM decisions WHERE project = $1".to_string();
+        let mut params_count = 1;
+
+        if query.scenario.is_some() {
+            params_count += 1;
+            filter_sql.push_str(&format!(" AND scenario = ${}", params_count));
+        }
+        if query.status.is_some() {
+            params_count += 1;
+            filter_sql.push_str(&format!(" AND status = ${}", params_count));
+        }
+        if query.review_required.is_some() {
+            params_count += 1;
+            filter_sql.push_str(&format!(" AND review_required = ${}", params_count));
+        }
+
+        let count_sql = format!("SELECT COUNT(*){}", filter_sql);
+        let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql).bind(project);
+        if let Some(scenario) = &query.scenario {
+            count_query = count_query.bind(scenario);
+        }
+        if let Some(status) = query.status {
+            count_query = count_query.bind(status.as_str());
+        }
+        if let Some(review_required) = query.review_required {
+            count_query = count_query.bind(review_required);
+        }
+        let total = count_query
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        params_count += 1;
+        let limit_param = params_count;
+        params_count += 1;
+        let offset_param = params_count;
+        let sql = format!(
+            "SELECT *{} ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+            filter_sql, limit_param, offset_param
+        );
+
+        let mut q = sqlx::query(&sql).bind(project);
+        if let Some(scenario) = &query.scenario {
+            q = q.bind(scenario);
+        }
+        if let Some(status) = query.status {
+            q = q.bind(status.as_str());
+        }
+        if let Some(review_required) = query.review_required {
+            q = q.bind(review_required);
+        }
+        q = q.bind(query.limit as i64).bind(query.offset as i64);
+
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+
+        let mut decisions = Vec::with_capacity(rows.len());
+        for row in rows {
+            decisions.push(self.row_to_decision(row)?);
+        }
+
+        Ok(ListDecisionsResponse {
+            decisions,
+            pagination: PaginationInfo {
+                total: total as u64,
+                offset: query.offset,
+                limit: query.limit,
+                has_more: (query.offset + query.limit as u64) < total as u64,
+            },
+        })
+    }
 }
 
 impl PostgresStore {
@@ -814,6 +984,63 @@ impl PostgresStore {
             flakiness_score: row.get("flakiness_score"),
             created_at: row.get("created_at"),
         })
+    }
+
+    fn row_to_decision(&self, row: sqlx::postgres::PgRow) -> Result<DecisionRecord, StoreError> {
+        let status_str: String = row.get("status");
+        let verdict_str: String = row.get("verdict");
+        let accepted_rules_json: serde_json::Value = row.get("accepted_rules");
+        let review_reasons_json: serde_json::Value = row.get("review_reasons");
+        let scenario_receipt_json: Option<serde_json::Value> = row.get("scenario_receipt");
+        let tradeoff_receipt_json: serde_json::Value = row.get("tradeoff_receipt");
+        let artifact_index_json: Option<serde_json::Value> = row.get("artifact_index");
+
+        Ok(DecisionRecord {
+            schema: row.get("schema_id"),
+            id: row.get("id"),
+            project: row.get("project"),
+            scenario: row.get("scenario"),
+            status: parse_metric_status(&status_str),
+            verdict: parse_verdict_status(&verdict_str),
+            accepted_rules: serde_json::from_value(accepted_rules_json)
+                .map_err(StoreError::SerializationError)?,
+            review_required: row.get("review_required"),
+            review_reasons: serde_json::from_value(review_reasons_json)
+                .map_err(StoreError::SerializationError)?,
+            git_ref: row.get("git_ref"),
+            git_sha: row.get("git_sha"),
+            scenario_receipt: scenario_receipt_json
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(StoreError::SerializationError)?,
+            tradeoff_receipt: serde_json::from_value(tradeoff_receipt_json)
+                .map_err(StoreError::SerializationError)?,
+            artifact_index: artifact_index_json
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(StoreError::SerializationError)?,
+            created_at: row.get("created_at"),
+        })
+    }
+}
+
+fn parse_metric_status(status: &str) -> MetricStatus {
+    match status {
+        "pass" => MetricStatus::Pass,
+        "warn" => MetricStatus::Warn,
+        "fail" => MetricStatus::Fail,
+        "skip" => MetricStatus::Skip,
+        _ => MetricStatus::Warn,
+    }
+}
+
+fn parse_verdict_status(status: &str) -> VerdictStatus {
+    match status {
+        "pass" => VerdictStatus::Pass,
+        "warn" => VerdictStatus::Warn,
+        "fail" => VerdictStatus::Fail,
+        "skip" => VerdictStatus::Skip,
+        _ => VerdictStatus::Warn,
     }
 }
 
@@ -992,7 +1219,7 @@ mod tests {
         let generated_id = crate::models::generate_ulid();
         assert!(generated_id.len() <= 64);
 
-        for table in ["baselines", "verdicts"] {
+        for table in ["baselines", "verdicts", "decisions"] {
             let table_ddl = postgres_schema_statements()
                 .into_iter()
                 .find(|statement| {

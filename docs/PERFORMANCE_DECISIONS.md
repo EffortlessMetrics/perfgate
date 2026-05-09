@@ -198,6 +198,22 @@ review-required when a required metric or local cap has `cv > max_cv`. Missing
 CV evidence follows `missing_noise`; the conservative default is
 `"needs_review"`.
 
+## Server Ledger
+
+Local receipts remain the default workflow, but teams that run the baseline
+server can store decisions as audit-backed ledger entries:
+
+```bash
+perfgate decision upload --file artifacts/perfgate/tradeoff.json --index artifacts/perfgate/decision.index.json
+perfgate decision latest
+perfgate decision history --limit 20
+```
+
+The server returns `perfgate.decision_record.v1` records. Each record stores the
+tradeoff receipt, optional scenario receipt, optional artifact index, accepted
+rule names, final status/verdict, review state, git metadata, and creation
+time. Uploads emit an audit event with resource type `decision`.
+
 ## Primitive Commands
 
 The lower-level commands are still useful for debugging and custom pipelines:

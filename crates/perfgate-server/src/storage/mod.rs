@@ -20,9 +20,9 @@ pub(crate) use sqlite::open_configured_connection as open_configured_sqlite_conn
 
 use crate::error::StoreError;
 use crate::models::{
-    AuditEvent, BaselineRecord, BaselineVersion, ListAuditEventsQuery, ListAuditEventsResponse,
-    ListBaselinesQuery, ListBaselinesResponse, ListVerdictsQuery, ListVerdictsResponse,
-    PoolMetrics, VerdictRecord,
+    AuditEvent, BaselineRecord, BaselineVersion, DecisionRecord, ListAuditEventsQuery,
+    ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse, ListDecisionsQuery,
+    ListDecisionsResponse, ListVerdictsQuery, ListVerdictsResponse, PoolMetrics, VerdictRecord,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -134,6 +134,19 @@ pub trait BaselineStore: Send + Sync {
         project: &str,
         query: &ListVerdictsQuery,
     ) -> Result<ListVerdictsResponse, StoreError>;
+
+    /// Stores a new performance decision record.
+    async fn create_decision(&self, record: &DecisionRecord) -> Result<(), StoreError>;
+
+    /// Retrieves the latest performance decision for a project.
+    async fn latest_decision(&self, project: &str) -> Result<Option<DecisionRecord>, StoreError>;
+
+    /// Lists performance decisions with optional filtering.
+    async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, StoreError>;
 }
 
 /// Trait for append-only audit event storage.

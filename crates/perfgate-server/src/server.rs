@@ -28,10 +28,10 @@ use crate::cleanup::spawn_cleanup_task;
 use crate::error::ConfigError;
 use crate::handlers::{
     DefaultRetentionDays, admin_cleanup, create_key, dashboard_index, delete_baseline,
-    dependency_impact, get_baseline, get_latest_baseline, get_trend, health_check,
-    list_audit_events, list_baselines, list_fleet_alerts, list_keys, list_verdicts,
+    dependency_impact, get_baseline, get_latest_baseline, get_trend, health_check, latest_decision,
+    list_audit_events, list_baselines, list_decisions, list_fleet_alerts, list_keys, list_verdicts,
     promote_baseline, record_dependency_event, revoke_key, static_asset, submit_verdict,
-    upload_baseline,
+    upload_baseline, upload_decision,
 };
 use crate::metrics::{metrics_handler, metrics_middleware, setup_metrics_recorder};
 use crate::oidc::{OidcConfig, OidcProvider, OidcRegistry};
@@ -555,6 +555,9 @@ pub(crate) fn create_router(
         .route("/projects/{project}/baselines", get(list_baselines))
         .route("/projects/{project}/verdicts", post(submit_verdict))
         .route("/projects/{project}/verdicts", get(list_verdicts))
+        .route("/projects/{project}/decisions", post(upload_decision))
+        .route("/projects/{project}/decisions", get(list_decisions))
+        .route("/projects/{project}/decisions/latest", get(latest_decision))
         .route(
             "/projects/{project}/baselines/{benchmark}/promote",
             post(promote_baseline),

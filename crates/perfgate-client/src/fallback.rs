@@ -174,6 +174,29 @@ impl FallbackClient {
         self.client.list_verdicts(project, query).await
     }
 
+    /// Uploads a performance decision (server only, no fallback).
+    pub async fn upload_decision(
+        &self,
+        project: &str,
+        request: &UploadDecisionRequest,
+    ) -> Result<DecisionRecord, ClientError> {
+        self.client.upload_decision(project, request).await
+    }
+
+    /// Lists performance decisions (server only, no fallback).
+    pub async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, ClientError> {
+        self.client.list_decisions(project, query).await
+    }
+
+    /// Gets the latest performance decision (server only, no fallback).
+    pub async fn latest_decision(&self, project: &str) -> Result<DecisionRecord, ClientError> {
+        self.client.latest_decision(project).await
+    }
+
     /// Lists audit events (server only, no fallback).
     pub async fn list_audit_events(
         &self,

@@ -13,6 +13,7 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.scenario.v1` | `scenario evaluate` | Weighted workload-scenario evidence across benchmarks, phases, or probe groups |
 | `perfgate.tradeoff.v1` | `tradeoff evaluate` | Structured decision evidence for accepted or rejected performance tradeoffs |
 | `perfgate.decision_index.v1` | `decision evaluate` | Artifact manifest linking scenario, tradeoff, markdown, probe-compare, and compare evidence |
+| `perfgate.decision_record.v1` | baseline service | Server-side decision ledger record containing the tradeoff receipt and optional scenario/index evidence |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
 | `sensor.report.v1` | `check --mode cockpit` | Sensor integration envelope for dashboards |
 | `perfgate.baseline.v1` | baseline service | Stored baseline record returned by the server |
@@ -45,6 +46,7 @@ perfgate also commits generated schemas for tooling and editor integration:
 | `schemas/perfgate.scenario.v1.schema.json` | Validates weighted scenario receipts used to explain workload-level outcomes |
 | `schemas/perfgate.tradeoff.v1.schema.json` | Validates tradeoff receipts that explain why local regressions were accepted or rejected |
 | `schemas/perfgate.decision_index.v1.schema.json` | Validates the decision artifact manifest produced by `decision evaluate` |
+| `schemas/perfgate.decision_record.v1.schema.json` | Validates server-side decision ledger records returned by `decision upload`, `decision latest`, and `decision history` |
 | `schemas/perfgate.report.v1.schema.json` | Validates report receipts, including additive diagnostics such as `profile_path` |
 
 ## JSON Schema Generation
@@ -169,6 +171,19 @@ The index receipt uses `perfgate.decision_index.v1` and records the generated
 scenario, tradeoff, and Markdown paths plus the compare and probe-compare
 receipts that fed the decision.
 
+Server mode can persist the resulting decision as a ledger entry:
+
+```bash
+perfgate decision upload --file artifacts/perfgate/tradeoff.json --index artifacts/perfgate/decision.index.json
+perfgate decision latest
+perfgate decision history --limit 20
+```
+
+Those commands exchange `perfgate.decision_record.v1` records with the baseline
+service. Each record stores the tradeoff receipt, optional scenario receipt,
+optional artifact index, final status/verdict, accepted rule names, review
+state, git metadata, and creation time.
+
 For a runnable probe/scenario/tradeoff fixture, see
 [`examples/performance-decision`](../examples/performance-decision/README.md).
 
@@ -198,8 +213,9 @@ Historical compatibility fixtures live under `fixtures/schema/<release>/`.
 `perfgate.decision_index.v1`.
 It also checks v0.16 baseline-service and fleet contract fixtures for
 `perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
-`perfgate.health.v1`, `perfgate.dependency_event.v1`, and
-`perfgate.fleet_alert.v1`, plus structured-evidence fixtures for
+`perfgate.health.v1`, `perfgate.decision_record.v1`,
+`perfgate.dependency_event.v1`, and `perfgate.fleet_alert.v1`, plus
+structured-evidence fixtures for
 `perfgate.probe.v1`, `perfgate.probe_compare.v1`,
 `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 

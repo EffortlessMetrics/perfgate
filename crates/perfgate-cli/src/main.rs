@@ -34,8 +34,8 @@ use perfgate_client::types::auth::Role;
 use perfgate_client::types::{BaselineRecord, CreateKeyRequest, KeyEntry};
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListAuditEventsQuery, ListAuditEventsResponse,
-    ListBaselinesQuery, ListVerdictsQuery, ResolvedServerConfig, RetryConfig, SubmitVerdictRequest,
-    UploadBaselineRequest, resolve_server_config,
+    ListBaselinesQuery, ListDecisionsQuery, ListVerdictsQuery, ResolvedServerConfig, RetryConfig,
+    SubmitVerdictRequest, UploadBaselineRequest, UploadDecisionRequest, resolve_server_config,
 };
 use perfgate_domain::scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
@@ -1303,6 +1303,12 @@ pub enum TradeoffAction {
 pub enum DecisionAction {
     /// Evaluate configured scenarios and tradeoffs, then render decision markdown.
     Evaluate(DecisionEvaluateArgs),
+    /// Upload a perfgate.tradeoff.v1 receipt to the baseline server decision ledger.
+    Upload(DecisionUploadArgs),
+    /// List stored decision receipts from the baseline server.
+    History(DecisionHistoryArgs),
+    /// Show the latest stored decision receipt from the baseline server.
+    Latest(DecisionLatestArgs),
 }
 
 #[derive(Debug, Args)]
@@ -1388,6 +1394,63 @@ pub struct DecisionEvaluateArgs {
     /// Pretty-print JSON receipts.
     #[arg(long, default_value_t = false)]
     pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionUploadArgs {
+    /// Path to a perfgate.tradeoff.v1 receipt.
+    #[arg(long)]
+    pub file: PathBuf,
+
+    /// Optional perfgate.scenario.v1 receipt to store with the decision.
+    #[arg(long = "scenario-receipt")]
+    pub scenario_receipt: Option<PathBuf>,
+
+    /// Optional perfgate.decision_index.v1 receipt to store with the decision.
+    #[arg(long)]
+    pub index: Option<PathBuf>,
+
+    /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
+    #[arg(long)]
+    pub project: Option<String>,
+
+    /// Git reference associated with this decision.
+    #[arg(long)]
+    pub git_ref: Option<String>,
+
+    /// Git commit SHA associated with this decision.
+    #[arg(long)]
+    pub git_sha: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionHistoryArgs {
+    /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
+    #[arg(long)]
+    pub project: Option<String>,
+
+    /// Optional scenario name to filter by.
+    #[arg(long)]
+    pub scenario: Option<String>,
+
+    /// Optional decision metric status to filter by (pass|warn|fail|skip).
+    #[arg(long, value_parser = parse_metric_status)]
+    pub status: Option<MetricStatus>,
+
+    /// Optional review-required filter.
+    #[arg(long)]
+    pub review_required: Option<bool>,
+
+    /// Maximum number of records to list.
+    #[arg(long, default_value_t = 20)]
+    pub limit: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionLatestArgs {
+    /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
+    #[arg(long)]
+    pub project: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -3143,7 +3206,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             }
         }
 
-        Command::Decision { action } => execute_decision_action(action),
+        Command::Decision { action } => execute_decision_action(action, &server_flags),
         Command::Probe { action } => execute_probe_action(action),
         Command::Scenario { action } => execute_scenario_action(action),
         Command::Tradeoff { action } => execute_tradeoff_action(action),
@@ -3663,10 +3726,167 @@ fn load_tradeoff_probe_compares(
     Ok((receipts, warnings))
 }
 
-fn execute_decision_action(action: DecisionAction) -> anyhow::Result<()> {
+fn execute_decision_action(
+    action: DecisionAction,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
     match action {
         DecisionAction::Evaluate(args) => execute_decision_evaluate(args),
+        DecisionAction::Upload(args) => execute_decision_upload(args, server_flags),
+        DecisionAction::History(args) => execute_decision_history(args, server_flags),
+        DecisionAction::Latest(args) => execute_decision_latest(args, server_flags),
     }
+}
+
+fn execute_decision_upload(
+    args: DecisionUploadArgs,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let project = server_config.resolve_project(args.project)?;
+
+    let tradeoff: TradeoffReceipt = read_json(&args.file).with_context(|| {
+        format!(
+            "Failed to read tradeoff receipt from {}",
+            args.file.display()
+        )
+    })?;
+    let scenario: Option<ScenarioReceipt> = args
+        .scenario_receipt
+        .as_ref()
+        .map(|path| {
+            read_json(path)
+                .with_context(|| format!("Failed to read scenario receipt from {}", path.display()))
+        })
+        .transpose()?;
+    let artifact_index: Option<DecisionArtifactIndex> = args
+        .index
+        .as_ref()
+        .map(|path| {
+            read_json(path).with_context(|| {
+                format!(
+                    "Failed to read decision artifact index from {}",
+                    path.display()
+                )
+            })
+        })
+        .transpose()?;
+
+    let request = UploadDecisionRequest {
+        tradeoff,
+        scenario,
+        artifact_index,
+        git_ref: args.git_ref,
+        git_sha: args.git_sha,
+    };
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let record = client
+            .upload_decision(&project, &request)
+            .await
+            .with_context(|| format!("Failed to upload decision for project '{}'", project))?;
+        print_decision_record("Uploaded decision", &record);
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+fn execute_decision_history(
+    args: DecisionHistoryArgs,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let project = server_config.resolve_project(args.project)?;
+
+    let mut query = ListDecisionsQuery::new().with_limit(args.limit);
+    if let Some(scenario) = args.scenario {
+        query = query.with_scenario(scenario);
+    }
+    if let Some(status) = args.status {
+        query = query.with_status(status);
+    }
+    if let Some(review_required) = args.review_required {
+        query = query.with_review_required(review_required);
+    }
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let response = client
+            .list_decisions(&project, &query)
+            .await
+            .with_context(|| format!("Failed to list decisions for project '{}'", project))?;
+
+        if response.decisions.is_empty() {
+            println!("No decisions found for project '{}'.", project);
+        } else {
+            println!(
+                "Decision history for {} ({} of {}):",
+                project,
+                response.decisions.len(),
+                response.pagination.total
+            );
+            for record in &response.decisions {
+                print_decision_record("  Decision", record);
+            }
+        }
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+fn execute_decision_latest(
+    args: DecisionLatestArgs,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let project = server_config.resolve_project(args.project)?;
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let record = client
+            .latest_decision(&project)
+            .await
+            .with_context(|| format!("Failed to get latest decision for project '{}'", project))?;
+        print_decision_record("Latest decision", &record);
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+fn print_decision_record(label: &str, record: &perfgate_client::DecisionRecord) {
+    let scenario = record.scenario.as_deref().unwrap_or("unspecified");
+    let git_ref = record.git_ref.as_deref().unwrap_or("unknown");
+    let review = if record.review_required {
+        "review-required"
+    } else {
+        "no-review"
+    };
+    let accepted_rules = if record.accepted_rules.is_empty() {
+        "none".to_string()
+    } else {
+        record.accepted_rules.join(",")
+    };
+
+    println!(
+        "{} {} scenario={} status={} verdict={} {} git_ref={} accepted_rules={} created_at={}",
+        label,
+        record.id,
+        scenario,
+        record.status.as_str(),
+        record.verdict.as_str(),
+        review,
+        git_ref,
+        accepted_rules,
+        record.created_at
+    );
 }
 
 fn execute_decision_evaluate(args: DecisionEvaluateArgs) -> anyhow::Result<()> {
@@ -7393,6 +7613,18 @@ fn parse_verdict_status(s: &str) -> Result<VerdictStatus, String> {
         "skip" => Ok(VerdictStatus::Skip),
         _ => Err(format!(
             "invalid verdict status: {s} (expected pass|warn|fail|skip)"
+        )),
+    }
+}
+
+fn parse_metric_status(s: &str) -> Result<MetricStatus, String> {
+    match s.to_lowercase().as_str() {
+        "pass" => Ok(MetricStatus::Pass),
+        "warn" => Ok(MetricStatus::Warn),
+        "fail" => Ok(MetricStatus::Fail),
+        "skip" => Ok(MetricStatus::Skip),
+        _ => Err(format!(
+            "invalid metric status: {s} (expected pass|warn|fail|skip)"
         )),
     }
 }
