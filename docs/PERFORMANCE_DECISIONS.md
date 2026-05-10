@@ -287,13 +287,17 @@ Enable decision mode in the repository action:
     all: "true"
     require_baseline: "true"
     decision: "true"
+    review_required: "warn"
 ```
 
 Decision mode runs `perfgate decision evaluate --config perfgate.toml` after
 `check`, uploads the decision artifacts, and appends `decision.md` to the job
 summary. If `check` exits `2` for a policy failure, the action can defer the
 final result to the decision receipt so an accepted tradeoff owns the final
-policy outcome.
+policy outcome. `review_required` controls how needs-review decisions affect
+branch protection: `warn` keeps the action successful and emits a warning,
+`fail` blocks the action, and `pass` leaves the review signal to downstream
+steps.
 
 ## Needs Review
 

@@ -122,7 +122,12 @@ In GitHub Actions, opt in with:
     all: "true"
     require_baseline: "true"
     decision: "true"
+    review_required: "warn"
 ```
+
+Use `review_required: "fail"` when review-required decisions should block
+branch protection, or `review_required: "pass"` when another workflow step owns
+that review policy.
 
 ## Daily Use
 
