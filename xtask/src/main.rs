@@ -947,6 +947,11 @@ fn cmd_publish_check(
     if package_list || dry_run {
         let packages = select_publishable_packages(&metadata, &packages)?;
         println!("      publishable packages: {}", packages.join(", "));
+        let cargo_config_path = if dry_run {
+            publish_check_dry_run_config(&packages)?
+        } else {
+            None
+        };
 
         for package in &packages {
             if package_list {
@@ -954,13 +959,58 @@ fn cmd_publish_check(
                     .with_context(|| format!("checking package file list for {package}"))?;
             }
             if dry_run {
-                run_cargo_args(cargo_publish_dry_run_args(package, allow_dirty))
-                    .with_context(|| format!("running publish dry-run for {package}"))?;
+                run_cargo_args(cargo_publish_dry_run_args(
+                    package,
+                    allow_dirty,
+                    cargo_config_path.as_deref(),
+                ))
+                .with_context(|| format!("running publish dry-run for {package}"))?;
             }
         }
     }
 
     Ok(())
+}
+
+fn publish_check_dry_run_config(packages: &[String]) -> anyhow::Result<Option<PathBuf>> {
+    let mut patch_crates = std::collections::BTreeSet::new();
+    for package in packages {
+        for crate_name in publish_check_patch_crates(package) {
+            patch_crates.insert(crate_name.to_string());
+        }
+    }
+
+    if patch_crates.is_empty() {
+        return Ok(None);
+    }
+
+    let path = std::env::temp_dir().join("perfgate-publish-dry-run.toml");
+    let workspace_root = std::env::current_dir()?;
+    let mut contents = String::from("[patch.crates-io]\n");
+    for package in patch_crates {
+        let package = package.as_str();
+        let package_root = workspace_root.join("crates").join(package);
+        let package_root = package_root.to_string_lossy().replace('\\', "/");
+        contents.push_str(&format!("{package} = {{ path = \"{package_root}\" }}\n"));
+    }
+    fs::write(&path, contents)
+        .with_context(|| format!("writing publish dry-run patch config to {}", path.display()))?;
+    Ok(Some(path))
+}
+
+fn publish_check_patch_crates(package: &str) -> &'static [&'static str] {
+    match package {
+        "perfgate" => &["perfgate-types"],
+        "perfgate-client" => &["perfgate-types"],
+        "perfgate-server" => &["perfgate-types", "perfgate"],
+        "perfgate-cli" => &[
+            "perfgate-types",
+            "perfgate",
+            "perfgate-client",
+            "perfgate-server",
+        ],
+        _ => &[],
+    }
 }
 
 fn load_cargo_metadata() -> anyhow::Result<CargoMetadata> {
@@ -1088,13 +1138,17 @@ fn cargo_package_list_args(package: &str, allow_dirty: bool) -> Vec<String> {
     args
 }
 
-fn cargo_publish_dry_run_args(package: &str, allow_dirty: bool) -> Vec<String> {
-    let mut args = vec![
-        "publish".to_string(),
-        "-p".to_string(),
-        package.to_string(),
-        "--dry-run".to_string(),
-    ];
+fn cargo_publish_dry_run_args(
+    package: &str,
+    allow_dirty: bool,
+    cargo_config_path: Option<&Path>,
+) -> Vec<String> {
+    let mut args = vec!["publish".to_string(), "-p".to_string(), package.to_string()];
+    if let Some(cargo_config_path) = cargo_config_path {
+        args.push("--config".to_string());
+        args.push(cargo_config_path.to_string_lossy().to_string());
+    }
+    args.push("--dry-run".to_string());
     if allow_dirty {
         args.push("--allow-dirty".to_string());
     }
@@ -4232,7 +4286,7 @@ mod tests {
             vec!["package", "-p", "perfgate-cli", "--list", "--allow-dirty"]
         );
         assert_eq!(
-            cargo_publish_dry_run_args("perfgate-cli", true),
+            cargo_publish_dry_run_args("perfgate-cli", true, None),
             vec![
                 "publish",
                 "-p",
