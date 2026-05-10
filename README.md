@@ -138,6 +138,19 @@ Use `review_required: "fail"` when review-required decisions should block
 branch protection, or `review_required: "pass"` when another workflow step owns
 that review policy.
 
+### Adoption levels
+
+Perfgate is designed to be adopted in stages:
+
+- **Basic gate** — `perfgate check` and tracked baselines.
+- **Decision mode** — add `[[scenario]]` and `[[tradeoff]]` config plus
+  `perfgate decision evaluate`.
+- **Ledger mode** — connect a baseline server, upload decisions, and use
+  `decision export|history|debt|prune` for auditability.
+
+Use that order to start quickly, then opt into richer tradeoff review and
+auditable governance as teams become ready.
+
 ## Daily Use
 
 Run the whole configured suite:

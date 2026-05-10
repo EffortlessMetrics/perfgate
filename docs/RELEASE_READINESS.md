@@ -1,13 +1,13 @@
 # Release Readiness
 
-Last verified: 2026-05-09 after merging the 0.16 public-surface collapse,
+Last verified: 2026-05-10 after merging the 0.16 public-surface collapse,
 first-run onboarding hardening, server operations visibility, structured
-performance-decision workflow, decision ledger/debt, and dashboard
-decision-ledger visibility through PR #323.
+performance-decision workflow, decision ledger/debt, and server-ledger
+decision visibility through PR #333.
 
 ## Current Main Snapshot
 
-Verified on 2026-05-09 after merging release-readiness work through PR #323.
+Verified on 2026-05-10 after merging release-readiness work through PR #333.
 
 The current `main` branch is not a published release, but the 0.16 public crate
 surface, paved first-run workflow, baseline-service operations, and structured
@@ -19,10 +19,14 @@ performance-decision workflow are now in their intended release shape:
 | Architecture boundary enforcement | Passing | `cargo run -p xtask -- arch` |
 | Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
 | Package file-list proof | Release-prep gate | `cargo run -p xtask -- publish-check --package-list` |
+| Adoption path docs | Covered | `README.md`, `docs/PERFORMANCE_DECISIONS.md` |
 | Publish dry-run proof | Per-package release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
+| Publish dry-run matrix | Failing (expected) | `cargo run -p xtask -- publish-check --dry-run --package-list` not yet safe for all public crates: `perfgate-types` passes, remaining public crates currently fail on unresolved re-exports/API drift and dependency/version pin mismatches |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
+| Install smoke proof | Verified | `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force` and `cargo-binstall perfgate-cli --version 0.15.1 --force` |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
+| Structured decision end-to-end | Verified | `perfgate ingest probes`, `perfgate decision evaluate`, `perfgate decision bundle` on `examples/performance-decision`, plus `perfgate serve --no-open` and `decision upload/history/debt/prune --dry-run` |
 | First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
 | Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
 | Structured decision workflow | Covered | `crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs`, `crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs`, `crates/perfgate-cli/tests/cli_release_decision_proof_tests.rs`, and GitHub Action `decision: "true"` |
