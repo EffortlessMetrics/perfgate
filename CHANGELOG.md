@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 - Added `perfgate ingest probes --file probes.jsonl` to convert
   language-agnostic probe JSONL into `perfgate.probe.v1` receipts.
+- Added adoption documentation for a three-level structured decision path:
+  basic gate, decision mode, and server-ledger mode, plus a clear install ->
+  init -> check -> decision -> ledger sequence for early adopters.
 - Added `perfgate probe compare` and `perfgate.probe_compare.v1` receipts for
   named probe deltas between baseline and current structured evidence.
 - Added `perfgate scenario evaluate` to turn configured weighted scenarios and

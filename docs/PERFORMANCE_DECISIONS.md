@@ -81,7 +81,54 @@ markdown rendering
 It does not run benchmarks. It consumes the receipts already produced by
 `check`.
 
-### Probe Evidence
+## Adoption Levels
+
+Adopt these three levels in this order to minimize ramp-up:
+
+### 1) Basic gate
+
+Keep the local baseline path and make sure the normal gate is stable:
+
+```bash
+perfgate init --ci github --profile standard
+perfgate check --config perfgate.toml --all
+```
+
+Add baseline promotion after you trust the first run:
+
+```bash
+perfgate baseline promote --config perfgate.toml --all
+```
+
+### 2) Decision mode
+
+Enable weighted-workload tradeoff reasoning without server dependencies:
+
+```bash
+perfgate check --config perfgate.toml --all --require-baseline
+perfgate decision evaluate --config perfgate.toml
+perfgate decision bundle --index artifacts/perfgate/decision.index.json --out artifacts/perfgate/decision-bundle.json
+```
+
+You now have structured evidence for review (`decision.md`, `decision.index.json`)
+that can be pasted into PR comments, issue attachments, or incident notes.
+
+### 3) Server ledger
+
+Persist decisions in the baseline server for retention and audit:
+
+```bash
+perfgate serve
+perfgate decision upload --file artifacts/perfgate/tradeoff.json --index artifacts/perfgate/decision.index.json
+perfgate decision history --project default
+perfgate decision export --project default --days 90 --out artifacts/perfgate/decision-history.jsonl
+```
+
+Use `decision debt --project default` for debt/headroom insight, and `decision
+prune --project default --older-than 365d --dry-run` before any destructive
+prune.
+
+## Probe Evidence
 
 Named probes explain internal phase movement. Ingest probe observations from any
 language or harness:
