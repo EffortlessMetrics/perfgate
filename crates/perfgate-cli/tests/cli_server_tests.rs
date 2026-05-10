@@ -1112,6 +1112,113 @@ async fn run_live_server_cli_workflow(
         .stdout(predicate::str::contains(&decision_scenario))
         .stdout(predicate::str::contains("memory_for_speed (1)"));
 
+    let decision_export_path = temp_dir.path().join("decision-history.jsonl");
+    let mut decision_export = perfgate_cmd();
+    decision_export
+        .arg("decision")
+        .arg("export")
+        .arg("--days")
+        .arg("0")
+        .arg("--out")
+        .arg(&decision_export_path);
+    add_server_flags(&mut decision_export, server.url(), project, api_key);
+    decision_export
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Exported 1 decision record"));
+    let exported = fs::read_to_string(&decision_export_path).expect("read decision export");
+    assert!(
+        exported.contains(&decision_scenario),
+        "decision export should include uploaded scenario: {exported}"
+    );
+
+    let mut decision_prune_dry_run = perfgate_cmd();
+    decision_prune_dry_run
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s")
+        .arg("--dry-run");
+    add_server_flags(
+        &mut decision_prune_dry_run,
+        server.url(),
+        project,
+        admin_key,
+    );
+    decision_prune_dry_run
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision prune dry run"))
+        .stdout(predicate::str::contains("1 record"));
+
+    let mut decision_prune_unconfirmed = perfgate_cmd();
+    decision_prune_unconfirmed
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s");
+    add_server_flags(
+        &mut decision_prune_unconfirmed,
+        server.url(),
+        project,
+        admin_key,
+    );
+    decision_prune_unconfirmed
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Decision prune not confirmed"));
+
+    let mut decision_prune = perfgate_cmd();
+    decision_prune
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s")
+        .arg("--force");
+    add_server_flags(&mut decision_prune, server.url(), project, admin_key);
+    decision_prune
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pruned 1 decision record"));
+
+    let mut decision_history_after_prune = perfgate_cmd();
+    decision_history_after_prune
+        .arg("decision")
+        .arg("history")
+        .arg("--limit")
+        .arg("5");
+    add_server_flags(
+        &mut decision_history_after_prune,
+        server.url(),
+        project,
+        api_key,
+    );
+    decision_history_after_prune
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "No decisions found for project '{project}'."
+        )));
+
+    let mut decision_prune_audit = perfgate_cmd();
+    decision_prune_audit
+        .arg("audit")
+        .arg("list")
+        .arg("--project")
+        .arg(project)
+        .arg("--resource-type")
+        .arg("decision")
+        .arg("--action")
+        .arg("delete")
+        .arg("--limit")
+        .arg("5");
+    add_server_auth_flags(&mut decision_prune_audit, server.url(), admin_key);
+    decision_prune_audit
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("decision"))
+        .stdout(predicate::str::contains("delete"));
+
     let mut delete = perfgate_cmd();
     delete
         .arg("baseline")

@@ -154,7 +154,9 @@ The main server-aware CLI workflows are:
 | `baseline migrate` | upload local baseline JSON files recursively |
 | `decision upload` | store a structured performance decision receipt |
 | `decision history` | list stored performance decisions with scenario/status/verdict/review/rule filters |
+| `decision export` | export decision ledger records as JSONL or JSON |
 | `decision debt` | summarize accepted tradeoff debt, cap usage, and accepted deltas by scenario |
+| `decision prune --dry-run` / `--force` | preview or delete old decision ledger records |
 | `audit list` | inspect append-only audit events |
 | `audit export --format jsonl` | export audit events for operators or compliance review |
 | `fleet alerts` | list fleet-wide dependency regression alerts |

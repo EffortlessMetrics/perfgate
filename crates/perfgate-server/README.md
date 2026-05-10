@@ -55,6 +55,10 @@ All data endpoints live under `/api/v1`. The health check and dashboard are at t
 | `POST` | `/api/v1/projects/{project}/baselines/{bench}/promote` | Y | Promote a version |
 | `POST` | `/api/v1/projects/{project}/verdicts` | Y | Submit a verdict |
 | `GET` | `/api/v1/projects/{project}/verdicts` | Y | List verdicts |
+| `POST` | `/api/v1/projects/{project}/decisions` | Y | Upload a performance decision |
+| `GET` | `/api/v1/projects/{project}/decisions` | Y | List performance decisions |
+| `GET` | `/api/v1/projects/{project}/decisions/latest` | Y | Get latest performance decision |
+| `POST` | `/api/v1/projects/{project}/decisions/prune` | Y | Prune old performance decisions |
 | `GET` | `/api/v1/audit` | Y | List audit events |
 | `POST` | `/api/v1/keys` | Y | Create an API key |
 | `GET` | `/api/v1/keys` | Y | List API keys |

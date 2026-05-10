@@ -26,7 +26,7 @@ performance-decision workflow are now in their intended release shape:
 | First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
 | Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
 | Structured decision workflow | Covered | `crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs`, `crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs`, `crates/perfgate-cli/tests/cli_release_decision_proof_tests.rs`, and GitHub Action `decision: "true"` |
-| Decision ledger and debt | Covered | `decision upload|history|latest|debt`, `perfgate.decision_record.v1`, decision upload audit events, and dashboard decision-ledger tests |
+| Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
 | Full repo CI | Passing | Hosted `ci`, `Coverage`, and `perfgate-self` on merge commit `a1ffb0e`; PR #323 also passed `fuzz` |
@@ -185,7 +185,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 | `baseline list` | **Works** | Lists uploaded baselines correctly |
 | `baseline download` | **Works** | Note: uses `--output` not `--out` |
 | `baseline history` | **Works** | Local-mode smoke flow re-verified in 0.15.1 prep |
-| `baseline delete/verdicts` | **Not tested** | Server is functional, but these were not re-run for this patch |
+| `baseline delete/verdicts` | **Works** | Live server CLI workflow covers implicit-latest delete plus verdict submit/list |
 | `check --mode cockpit` | **Works** | Produces sensor.report.v1 envelope + extras |
 
 ## Known Bugs
@@ -293,11 +293,13 @@ The **core local gating pipeline** is production-quality:
   are explicit through `review_required: "warn" | "fail" | "pass"`.
 - **Decision ledger and debt** — the baseline server stores
   `perfgate.decision_record.v1` records, decision uploads emit audit events,
-  `decision history|latest|debt` expose the ledger from the CLI, debt summaries
-  include cap usage and accepted failed-metric deltas when receipt evidence is
-  present, history can be filtered by scenario, status, verdict, review state,
-  accepted-tradeoff presence, and rule, and the dashboard shows stored
-  performance decisions with the same drilldowns.
+  `decision history|latest|export|prune|debt` expose the ledger from the CLI,
+  prune operations require explicit `--dry-run` or `--force` and emit audit
+  events when records are deleted, debt summaries include cap usage and
+  accepted failed-metric deltas when receipt evidence is present, history can be
+  filtered by scenario, status, verdict, review state, accepted-tradeoff
+  presence, and rule, and the dashboard shows stored performance decisions with
+  the same drilldowns.
 - **Dashboard decision visibility** — the dashboard now includes baseline,
   verdict/flakiness, decision-ledger, and audit-event views.
 

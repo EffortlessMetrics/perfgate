@@ -451,6 +451,42 @@ impl BaselineClient {
         .await
     }
 
+    /// Prunes old performance decisions from the server ledger.
+    pub async fn prune_decisions(
+        &self,
+        project: &str,
+        request: &PruneDecisionsRequest,
+    ) -> Result<PruneDecisionsResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("projects/{}/decisions/prune", project));
+            debug!(url = %url, "Pruning performance decisions");
+
+            let client = self.inner.clone();
+            let request = request.clone();
+            async move {
+                let response = client
+                    .post(url)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<PruneDecisionsResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
     /// Lists audit events. Requires an admin API key on authenticated servers.
     pub async fn list_audit_events(
         &self,
@@ -899,5 +935,43 @@ mod tests {
         assert_eq!(response.events.len(), 1);
         assert_eq!(response.events[0].id, "audit_123");
         assert_eq!(response.events[0].project, "my-project");
+    }
+
+    #[tokio::test]
+    async fn test_prune_decisions() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/projects/my-project/decisions/prune"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "project": "my-project",
+                "older_than": "2026-01-01T00:00:00Z",
+                "dry_run": true,
+                "matched": 1,
+                "deleted": 0,
+                "decision_ids": ["decision-1"]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
+        let response = client
+            .prune_decisions(
+                "my-project",
+                &PruneDecisionsRequest {
+                    older_than: chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+                        .unwrap()
+                        .with_timezone(&chrono::Utc),
+                    dry_run: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.project, "my-project");
+        assert!(response.dry_run);
+        assert_eq!(response.matched, 1);
+        assert_eq!(response.deleted, 0);
+        assert_eq!(response.decision_ids, vec!["decision-1".to_string()]);
     }
 }

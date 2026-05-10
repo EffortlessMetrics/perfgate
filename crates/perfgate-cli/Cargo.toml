@@ -25,6 +25,7 @@ perfgate = { workspace = true, features = ["github"] }
 anyhow.workspace = true
 glob.workspace = true
 clap.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
 humantime.workspace = true
 serde.workspace = true
 serde_json.workspace = true

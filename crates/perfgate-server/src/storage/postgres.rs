@@ -9,7 +9,7 @@ use crate::models::{
     AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource, BaselineVersion,
     DecisionRecord, ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery,
     ListBaselinesResponse, ListDecisionsQuery, ListDecisionsResponse, ListVerdictsQuery,
-    ListVerdictsResponse, PaginationInfo, VerdictRecord,
+    ListVerdictsResponse, PaginationInfo, PruneDecisionsResponse, VerdictRecord,
 };
 use crate::server::PostgresPoolConfig;
 use async_trait::async_trait;
@@ -974,6 +974,44 @@ impl BaselineStore for PostgresStore {
                 limit: query.limit,
                 has_more: (query.offset + query.limit as u64) < total as u64,
             },
+        })
+    }
+
+    async fn prune_decisions(
+        &self,
+        project: &str,
+        older_than: chrono::DateTime<chrono::Utc>,
+        dry_run: bool,
+    ) -> Result<PruneDecisionsResponse, StoreError> {
+        let ids = sqlx::query_scalar::<_, String>(
+            "SELECT id FROM decisions WHERE project = $1 AND created_at < $2 ORDER BY created_at ASC",
+        )
+        .bind(project)
+        .bind(older_than)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| StoreError::QueryError(e.to_string()))?;
+        let matched = ids.len() as u64;
+
+        let deleted = if dry_run {
+            0
+        } else {
+            sqlx::query("DELETE FROM decisions WHERE project = $1 AND created_at < $2")
+                .bind(project)
+                .bind(older_than)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| StoreError::QueryError(e.to_string()))?
+                .rows_affected()
+        };
+
+        Ok(PruneDecisionsResponse {
+            project: project.to_string(),
+            older_than,
+            dry_run,
+            matched,
+            deleted,
+            decision_ids: ids,
         })
     }
 }

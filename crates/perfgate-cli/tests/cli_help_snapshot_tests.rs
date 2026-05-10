@@ -295,7 +295,9 @@ fn cli_help_decision() {
             "Evaluate scenario and tradeoff evidence",
         ))
         .stdout(predicate::str::contains("evaluate"))
-        .stdout(predicate::str::contains("debt"));
+        .stdout(predicate::str::contains("debt"))
+        .stdout(predicate::str::contains("export"))
+        .stdout(predicate::str::contains("prune"));
 }
 
 #[test]
@@ -339,6 +341,34 @@ fn cli_help_decision_debt() {
         .stdout(predicate::str::contains("Summarize accepted tradeoff debt"))
         .stdout(predicate::str::contains("--days"))
         .stdout(predicate::str::contains("--limit"));
+}
+
+#[test]
+fn cli_help_decision_export() {
+    perfgate_cmd()
+        .args(["decision", "export", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Export stored decision records as JSONL or JSON",
+        ))
+        .stdout(predicate::str::contains("--days"))
+        .stdout(predicate::str::contains("--format"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_decision_prune() {
+    perfgate_cmd()
+        .args(["decision", "prune", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Prune old decision records from the baseline server ledger",
+        ))
+        .stdout(predicate::str::contains("--older-than"))
+        .stdout(predicate::str::contains("--dry-run"))
+        .stdout(predicate::str::contains("--force"));
 }
 
 #[test]

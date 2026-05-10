@@ -34,8 +34,9 @@ use perfgate_client::types::auth::Role;
 use perfgate_client::types::{BaselineRecord, CreateKeyRequest, KeyEntry};
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListAuditEventsQuery, ListAuditEventsResponse,
-    ListBaselinesQuery, ListDecisionsQuery, ListVerdictsQuery, ResolvedServerConfig, RetryConfig,
-    SubmitVerdictRequest, UploadBaselineRequest, UploadDecisionRequest, resolve_server_config,
+    ListBaselinesQuery, ListDecisionsQuery, ListVerdictsQuery, PruneDecisionsRequest,
+    ResolvedServerConfig, RetryConfig, SubmitVerdictRequest, UploadBaselineRequest,
+    UploadDecisionRequest, resolve_server_config,
 };
 use perfgate_domain::scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
@@ -1317,6 +1318,10 @@ pub enum DecisionAction {
     Latest(DecisionLatestArgs),
     /// Summarize accepted tradeoff debt from the baseline server decision ledger.
     Debt(DecisionDebtArgs),
+    /// Export stored decision records as JSONL or JSON.
+    Export(DecisionExportArgs),
+    /// Prune old decision records from the baseline server ledger.
+    Prune(DecisionPruneArgs),
 }
 
 #[derive(Debug, Args)]
@@ -1509,6 +1514,54 @@ pub struct DecisionDebtArgs {
     /// Maximum number of decision records to fetch from the server.
     #[arg(long, default_value_t = 1000)]
     pub limit: u32,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum DecisionExportFormat {
+    Jsonl,
+    Json,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionExportArgs {
+    /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
+    #[arg(long)]
+    pub project: Option<String>,
+
+    /// Number of recent days to export. Use 0 to include all fetched records.
+    #[arg(long, default_value_t = 90)]
+    pub days: u32,
+
+    /// Maximum number of decision records to fetch from the server.
+    #[arg(long, default_value_t = 1000)]
+    pub limit: u32,
+
+    /// Output format.
+    #[arg(long, default_value = "jsonl")]
+    format: DecisionExportFormat,
+
+    /// Output file. Defaults to stdout.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct DecisionPruneArgs {
+    /// Project name (uses --project flag or PERFGATE_PROJECT if not specified).
+    #[arg(long)]
+    pub project: Option<String>,
+
+    /// Retention age such as 90d, 12w, or 365d.
+    #[arg(long)]
+    pub older_than: String,
+
+    /// Report matching decisions without deleting them.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+
+    /// Confirm deletion. Required unless --dry-run is set.
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1729,6 +1782,7 @@ enum AuditResourceFilter {
     Baseline,
     Key,
     Verdict,
+    Decision,
 }
 
 impl AuditResourceFilter {
@@ -1737,6 +1791,7 @@ impl AuditResourceFilter {
             Self::Baseline => "baseline",
             Self::Key => "key",
             Self::Verdict => "verdict",
+            Self::Decision => "decision",
         }
     }
 }
@@ -3795,6 +3850,8 @@ fn execute_decision_action(
         DecisionAction::History(args) => execute_decision_history(args, server_flags),
         DecisionAction::Latest(args) => execute_decision_latest(args, server_flags),
         DecisionAction::Debt(args) => execute_decision_debt(args, server_flags),
+        DecisionAction::Export(args) => execute_decision_export(args, server_flags),
+        DecisionAction::Prune(args) => execute_decision_prune(args, server_flags),
     }
 }
 
@@ -4170,6 +4227,150 @@ fn execute_decision_debt(args: DecisionDebtArgs, server_flags: &ServerFlags) -> 
     Ok(())
 }
 
+fn execute_decision_export(
+    args: DecisionExportArgs,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let project = server_config.resolve_project(args.project)?;
+    let cutoff = decision_debt_cutoff(args.days)?;
+    let query = ListDecisionsQuery::new().with_limit(args.limit);
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let response = client
+            .list_decisions(&project, &query)
+            .await
+            .with_context(|| format!("Failed to export decisions for project '{}'", project))?;
+
+        let records: Vec<_> = response
+            .decisions
+            .iter()
+            .filter(|record| {
+                cutoff
+                    .map(|cutoff| record.created_at.timestamp() >= cutoff)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        if response.pagination.has_more {
+            eprintln!(
+                "Warning: exported {} of {} fetched decisions; increase --limit for a fuller export.",
+                response.decisions.len(),
+                response.pagination.total
+            );
+        }
+
+        let rendered = render_decision_export(&project, args.days, &records, args.format)?;
+        if let Some(out) = args.out {
+            if let Some(parent) = out.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            atomic_write(&out, rendered.as_bytes())?;
+            eprintln!(
+                "Exported {} decision record(s) to {}",
+                records.len(),
+                out.display()
+            );
+        } else {
+            print!("{rendered}");
+        }
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+fn execute_decision_prune(
+    args: DecisionPruneArgs,
+    server_flags: &ServerFlags,
+) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let project = server_config.resolve_project(args.project)?;
+    let older_than = decision_prune_cutoff(&args.older_than)?;
+
+    if !args.dry_run && !args.force {
+        eprintln!(
+            "Warning: This will permanently delete decision records older than '{}' from project '{}'.",
+            args.older_than, project
+        );
+        eprintln!("Use --dry-run to preview or --force to confirm deletion.");
+        anyhow::bail!("Decision prune not confirmed. Use --force to proceed.");
+    }
+
+    let request = PruneDecisionsRequest {
+        older_than,
+        dry_run: args.dry_run,
+    };
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let response = client
+            .prune_decisions(&project, &request)
+            .await
+            .with_context(|| format!("Failed to prune decisions for project '{}'", project))?;
+
+        if response.dry_run {
+            println!(
+                "Decision prune dry run for {}: {} record(s) older than {} would be deleted.",
+                response.project,
+                response.matched,
+                response.older_than.to_rfc3339()
+            );
+        } else {
+            println!(
+                "Pruned {} decision record(s) from {} older than {}.",
+                response.deleted,
+                response.project,
+                response.older_than.to_rfc3339()
+            );
+        }
+
+        if !response.decision_ids.is_empty() {
+            println!("decision_ids={}", response.decision_ids.join(","));
+        }
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+fn render_decision_export(
+    project: &str,
+    days: u32,
+    records: &[&perfgate_client::DecisionRecord],
+    format: DecisionExportFormat,
+) -> anyhow::Result<String> {
+    match format {
+        DecisionExportFormat::Jsonl => {
+            let mut out = String::new();
+            for record in records {
+                out.push_str(&serde_json::to_string(record)?);
+                out.push('\n');
+            }
+            Ok(out)
+        }
+        DecisionExportFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
+            "project": project,
+            "days": days,
+            "exported": records.len(),
+            "decisions": records,
+        }))
+        .map(|mut json| {
+            json.push('\n');
+            json
+        })
+        .map_err(Into::into),
+    }
+}
+
 fn decision_debt_cutoff(days: u32) -> anyhow::Result<Option<i64>> {
     if days == 0 {
         return Ok(None);
@@ -4180,6 +4381,30 @@ fn decision_debt_cutoff(days: u32) -> anyhow::Result<Option<i64>> {
         .context("system time is before UNIX_EPOCH")?
         .as_secs() as i64;
     Ok(Some(now - i64::from(days) * 86_400))
+}
+
+fn decision_prune_cutoff(older_than: &str) -> anyhow::Result<chrono::DateTime<chrono::Utc>> {
+    let duration = parse_retention_duration(older_than)?;
+    let chrono_duration = chrono::Duration::from_std(duration)
+        .with_context(|| format!("retention duration is too large: {older_than}"))?;
+    Ok(chrono::Utc::now() - chrono_duration)
+}
+
+fn parse_retention_duration(input: &str) -> anyhow::Result<Duration> {
+    let trimmed = input.trim();
+    if let Some(days) = trimmed.strip_suffix('d') {
+        let days: u64 = days
+            .parse()
+            .with_context(|| format!("invalid retention duration: {input}"))?;
+        return Ok(Duration::from_secs(days.saturating_mul(86_400)));
+    }
+    if let Some(weeks) = trimmed.strip_suffix('w') {
+        let weeks: u64 = weeks
+            .parse()
+            .with_context(|| format!("invalid retention duration: {input}"))?;
+        return Ok(Duration::from_secs(weeks.saturating_mul(7 * 86_400)));
+    }
+    parse_duration(trimmed)
 }
 
 #[derive(Default)]
@@ -8533,6 +8758,26 @@ mod tests {
             msg
         );
         assert!(msg.contains("not-a-duration"), "unexpected error: {}", msg);
+    }
+
+    #[test]
+    fn parse_retention_duration_accepts_days_and_weeks() {
+        assert_eq!(
+            parse_retention_duration("365d").unwrap(),
+            Duration::from_secs(365 * 86_400)
+        );
+        assert_eq!(
+            parse_retention_duration("12w").unwrap(),
+            Duration::from_secs(12 * 7 * 86_400)
+        );
+    }
+
+    #[test]
+    fn parse_retention_duration_accepts_humantime() {
+        assert_eq!(
+            parse_retention_duration("2h").unwrap(),
+            Duration::from_secs(2 * 60 * 60)
+        );
     }
 
     #[test]

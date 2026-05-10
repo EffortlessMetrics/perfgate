@@ -113,6 +113,15 @@ bundle:
 perfgate decision bundle --index artifacts/perfgate/decision.index.json --out artifacts/perfgate/decision-bundle.json
 ```
 
+Teams running the baseline server can persist that decision evidence as a
+ledger, export it for audits, and prune old records explicitly:
+
+```bash
+perfgate decision upload --file artifacts/perfgate/tradeoff.json --index artifacts/perfgate/decision.index.json
+perfgate decision export --days 90 --out artifacts/perfgate/decision-history.jsonl
+perfgate decision prune --older-than 365d --dry-run
+```
+
 In GitHub Actions, opt in with:
 
 ```yaml

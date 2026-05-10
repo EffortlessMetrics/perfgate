@@ -22,7 +22,8 @@ use crate::error::StoreError;
 use crate::models::{
     AuditEvent, BaselineRecord, BaselineVersion, DecisionRecord, ListAuditEventsQuery,
     ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse, ListDecisionsQuery,
-    ListDecisionsResponse, ListVerdictsQuery, ListVerdictsResponse, PoolMetrics, VerdictRecord,
+    ListDecisionsResponse, ListVerdictsQuery, ListVerdictsResponse, PoolMetrics,
+    PruneDecisionsResponse, VerdictRecord,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -147,6 +148,14 @@ pub trait BaselineStore: Send + Sync {
         project: &str,
         query: &ListDecisionsQuery,
     ) -> Result<ListDecisionsResponse, StoreError>;
+
+    /// Prunes performance decision records created before a cutoff.
+    async fn prune_decisions(
+        &self,
+        project: &str,
+        older_than: DateTime<Utc>,
+        dry_run: bool,
+    ) -> Result<PruneDecisionsResponse, StoreError>;
 }
 
 /// Trait for append-only audit event storage.
