@@ -67,6 +67,10 @@ inputs:
     description: "Run perfgate decision evaluate after check and publish scenario/tradeoff/decision artifacts plus the decision index"
     required: false
     default: "false"
+  review_required:
+    description: "How decision=true handles review-required decisions: warn, fail, or pass"
+    required: false
+    default: "warn"
   github_token:
     description: "GitHub token for posting PR comments (defaults to github.token)"
     required: false
@@ -94,6 +98,12 @@ outputs:
   decision_exit_code:
     description: "perfgate decision evaluate exit code when decision=true"
     value: ${{ steps.run_decision.outputs.exit_code }}
+  review_required:
+    description: "Whether decision=true produced a review-required decision"
+    value: ${{ steps.handle_review_required.outputs.review_required }}
+  review_required_reason:
+    description: "Review-required reasons reported by the decision receipt"
+    value: ${{ steps.handle_review_required.outputs.review_required_reason }}
 
 runs:
   using: "composite"
@@ -349,8 +359,82 @@ runs:
           } >> "${GITHUB_STEP_SUMMARY}"
         fi
 
+    - id: handle_review_required
+      name: Handle review-required decision
+      if: always() && inputs.decision == 'true' && steps.run_decision.outputs.exit_code == '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        policy="${{ inputs.review_required }}"
+        case "${policy}" in
+          pass|warn|fail) ;;
+          *)
+            echo "::error::input 'review_required' must be pass, warn, or fail"
+            echo "review_required=false" >> "${GITHUB_OUTPUT}"
+            echo "review_required_reason=invalid review_required policy" >> "${GITHUB_OUTPUT}"
+            echo "exit_code=1" >> "${GITHUB_OUTPUT}"
+            exit 1
+            ;;
+        esac
+
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        tradeoff=""
+        for candidate in "${out}/tradeoff.json" "${out}/perfgate.tradeoff.v1.json" "${out}/extras/perfgate.tradeoff.v1.json"; do
+          if [[ -f "${candidate}" ]]; then
+            tradeoff="${candidate}"
+            break
+          fi
+        done
+
+        if [[ -z "${tradeoff}" ]]; then
+          echo "review_required=false" >> "${GITHUB_OUTPUT}"
+          echo "review_required_reason=" >> "${GITHUB_OUTPUT}"
+          echo "exit_code=0" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        if command -v python3 >/dev/null 2>&1; then
+          py=python3
+        elif command -v python >/dev/null 2>&1; then
+          py=python
+        else
+          echo "::warning::Python is not available; cannot inspect decision review_required state"
+          echo "review_required=false" >> "${GITHUB_OUTPUT}"
+          echo "review_required_reason=unable to inspect decision receipt" >> "${GITHUB_OUTPUT}"
+          echo "exit_code=0" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        review_required="$("${py}" -c 'import json, sys; data = json.load(open(sys.argv[1], encoding="utf-8")); decision = data.get("decision") or {}; print("true" if decision.get("review_required") else "false")' "${tradeoff}")"
+        review_reason="$("${py}" -c 'import json, sys; data = json.load(open(sys.argv[1], encoding="utf-8")); decision = data.get("decision") or {}; reasons = decision.get("review_reasons") or []; print("; ".join(str(reason).replace("\n", " ").replace("\r", " ") for reason in reasons) if reasons else "decision receipt requires review")' "${tradeoff}")"
+
+        echo "review_required=${review_required}" >> "${GITHUB_OUTPUT}"
+        echo "review_required_reason=${review_reason}" >> "${GITHUB_OUTPUT}"
+
+        if [[ "${review_required}" != "true" ]]; then
+          echo "exit_code=0" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        case "${policy}" in
+          pass)
+            echo "perfgate decision requires review, but review_required=pass leaves the action successful: ${review_reason}"
+            echo "exit_code=0" >> "${GITHUB_OUTPUT}"
+            ;;
+          warn)
+            echo "::warning::perfgate decision requires review: ${review_reason}"
+            echo "exit_code=0" >> "${GITHUB_OUTPUT}"
+            ;;
+          fail)
+            echo "::error::perfgate decision requires review: ${review_reason}"
+            echo "exit_code=2" >> "${GITHUB_OUTPUT}"
+            exit 2
+            ;;
+        esac
+
     - name: Print perfgate failure summary
-      if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0'))
+      if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0') || (inputs.decision == 'true' && steps.handle_review_required.outputs.exit_code != '' && steps.handle_review_required.outputs.exit_code != '0'))
       shell: bash
       run: |
         set -euo pipefail
@@ -358,10 +442,14 @@ runs:
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         exit_code="${{ steps.run_check.outputs.exit_code }}"
         decision_exit_code="${{ steps.run_decision.outputs.exit_code }}"
+        review_exit_code="${{ steps.handle_review_required.outputs.exit_code }}"
         exit_source="check"
         if [[ "${{ inputs.decision }}" == "true" && -n "${decision_exit_code}" && "${decision_exit_code}" != "0" ]]; then
           exit_code="${decision_exit_code}"
           exit_source="decision"
+        elif [[ "${{ inputs.decision }}" == "true" && -n "${review_exit_code}" && "${review_exit_code}" != "0" ]]; then
+          exit_code="${review_exit_code}"
+          exit_source="decision review"
         fi
         if [[ -z "${exit_code}" ]]; then
           exit_code="unknown"

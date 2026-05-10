@@ -115,6 +115,7 @@ comment, opt in to decision mode:
           all: "true"
           require_baseline: "true"
           decision: "true"
+          review_required: "warn"
           comment: "true"
 ```
 
@@ -139,8 +140,20 @@ scenario and tradeoff receipts.
 
 When evidence is incomplete or too noisy but otherwise supports a configured
 tradeoff, `decision.md` marks the result as review required. The action still
-treats the machine verdict as `warn`; reviewers should inspect the listed
-`review_reasons` before treating the tradeoff as accepted.
+treats the machine verdict as `warn` by default and emits a workflow warning;
+reviewers should inspect the listed `review_reasons` before treating the
+tradeoff as accepted.
+
+Set `review_required` to choose how branch protection handles those decisions:
+
+| value | behavior |
+| --- | --- |
+| `warn` | Default. Keep the action successful and emit a GitHub warning. |
+| `fail` | Fail the action when `decision.review_required = true`. |
+| `pass` | Keep the action successful without a GitHub warning. |
+
+The action also exposes `review_required` and `review_required_reason` outputs
+for downstream workflow steps.
 
 ## 4) Manual PR performance gate workflow
 

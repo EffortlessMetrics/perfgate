@@ -130,7 +130,10 @@ artifacts/perfgate/
 `decision: "true"` is enabled, the action runs `perfgate decision evaluate`,
 lists `probe-compare.json`, `scenario.json`, `tradeoff.json`, `decision.md`,
 and `decision.index.json` among discovered artifacts, and prints the local
-`perfgate decision evaluate --config perfgate.toml` reproduction command.
+`perfgate decision evaluate --config perfgate.toml` reproduction command. It
+also guards `review_required: "warn" | "fail" | "pass"` so teams can choose
+whether needs-review decisions emit a warning, block branch protection, or stay
+advisory for downstream workflow policy.
 
 ## Historical Record: v0.15.1
 
@@ -286,7 +289,8 @@ The **core local gating pipeline** is production-quality:
   are implemented and documented.
 - **GitHub Action decision mode** — the action accepts `decision: "true"`,
   runs `perfgate decision evaluate`, uploads decision artifacts, and can defer a
-  check policy failure to an accepted tradeoff receipt.
+  check policy failure to an accepted tradeoff receipt. Needs-review decisions
+  are explicit through `review_required: "warn" | "fail" | "pass"`.
 - **Decision ledger and debt** — the baseline server stores
   `perfgate.decision_record.v1` records, decision uploads emit audit events,
   `decision history|latest|debt` expose the ledger from the CLI, debt summaries

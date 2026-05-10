@@ -445,6 +445,17 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
                 .to_string(),
         );
     }
+    if action
+        .inputs
+        .get("review_required")
+        .and_then(|input| input.default.as_deref())
+        != Some("warn")
+    {
+        errors.push(
+            "action.yml review_required input must exist and default to warn for needs-review decisions"
+                .to_string(),
+        );
+    }
 
     let Some(binary_install_run) = action.step_run("Install perfgate (pre-built binary)") else {
         errors.push("action.yml must include the pre-built binary install step".to_string());
@@ -609,6 +620,77 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         errors.push("action.yml decision step must expose its exit code".to_string());
     }
 
+    let Some(handle_review_run) = action.step_run("Handle review-required decision") else {
+        errors
+            .push("action.yml must include the review-required decision handling step".to_string());
+        return errors;
+    };
+    if action
+        .step("Handle review-required decision")
+        .and_then(|step| step.id.as_deref())
+        != Some("handle_review_required")
+    {
+        errors.push(
+            "action.yml review-required step must use id handle_review_required for downstream outputs"
+                .to_string(),
+        );
+    }
+    let handle_review_lines = active_shell_lines(handle_review_run);
+    if !raw_action.contains(
+        "if: always() && inputs.decision == 'true' && steps.run_decision.outputs.exit_code == '0'",
+    ) {
+        errors.push(
+            "action.yml review-required step must inspect successful decision receipts".to_string(),
+        );
+    }
+    if !handle_review_lines
+        .iter()
+        .any(|line| line == "policy=\"${{ inputs.review_required }}\"")
+        || !handle_review_lines
+            .iter()
+            .any(|line| line == "pass|warn|fail) ;;")
+    {
+        errors.push(
+            "action.yml review_required input must accept pass, warn, and fail policies"
+                .to_string(),
+        );
+    }
+    if !handle_review_lines
+        .iter()
+        .any(|line| line == "out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
+        || !handle_review_lines
+            .iter()
+            .any(|line| line.contains("${out}/tradeoff.json"))
+    {
+        errors.push(
+            "action.yml review-required step must inspect the resolved tradeoff receipt"
+                .to_string(),
+        );
+    }
+    if !raw_action.contains("decision.get(\"review_required\")")
+        || !handle_review_lines.iter().any(|line| {
+            line == "echo \"review_required=${review_required}\" >> \"${GITHUB_OUTPUT}\""
+        })
+        || !handle_review_lines.iter().any(|line| {
+            line == "echo \"review_required_reason=${review_reason}\" >> \"${GITHUB_OUTPUT}\""
+        })
+    {
+        errors
+            .push("action.yml review-required step must expose decision review state".to_string());
+    }
+    if !handle_review_lines
+        .iter()
+        .any(|line| line == "echo \"exit_code=2\" >> \"${GITHUB_OUTPUT}\"")
+        || !handle_review_lines
+            .iter()
+            .any(|line| line == "echo \"exit_code=0\" >> \"${GITHUB_OUTPUT}\"")
+    {
+        errors.push(
+            "action.yml review-required step must expose a final review policy exit code"
+                .to_string(),
+        );
+    }
+
     let Some(decision_summary_run) = action.step_run("Append perfgate decision summary") else {
         errors.push("action.yml must append decision.md to GITHUB_STEP_SUMMARY".to_string());
         return errors;
@@ -639,6 +721,7 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     let failure_summary_lines = active_shell_lines(failure_summary_run);
     if !raw_action.contains("steps.run_check.outputs.policy_failure_deferred != 'true'")
         || !raw_action.contains("steps.run_decision.outputs.exit_code != '0'")
+        || !raw_action.contains("steps.handle_review_required.outputs.exit_code != '0'")
     {
         errors.push(
             "action.yml failure summary must respect decision-mode final verdicts".to_string(),
@@ -655,6 +738,9 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     if !failure_summary_lines
         .iter()
         .any(|line| line == "exit_code=\"${{ steps.run_check.outputs.exit_code }}\"")
+        || !failure_summary_lines.iter().any(|line| {
+            line == "review_exit_code=\"${{ steps.handle_review_required.outputs.exit_code }}\""
+        })
     {
         errors.push("action.yml failure summary must include the perfgate exit code".to_string());
     }
@@ -757,12 +843,15 @@ struct ActionDefinition {
 }
 
 impl ActionDefinition {
+    fn step(&self, name: &str) -> Option<&ActionStep> {
+        self.runs
+            .steps
+            .iter()
+            .find(|step| step.name.as_deref() == Some(name))
+    }
+
     fn step_run(&self, name: &str) -> Option<&str> {
-        self.runs.steps.iter().find_map(|step| {
-            (step.name.as_deref() == Some(name))
-                .then_some(step.run.as_deref())
-                .flatten()
-        })
+        self.step(name).and_then(|step| step.run.as_deref())
     }
 }
 
@@ -780,6 +869,7 @@ struct ActionRuns {
 
 #[derive(Debug, Deserialize)]
 struct ActionStep {
+    id: Option<String>,
     name: Option<String>,
     run: Option<String>,
 }
@@ -4164,6 +4254,9 @@ inputs:
   decision:
     description: "Run structured decision evaluation"
     default: "false"
+  review_required:
+    description: "How decision=true handles review-required decisions"
+    default: "warn"
 runs:
   using: "composite"
   steps:
@@ -4202,6 +4295,25 @@ runs:
           args+=(--out-dir "${{ inputs.out_dir }}")
         fi
         echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+    - id: handle_review_required
+      name: Handle review-required decision
+      if: always() && inputs.decision == 'true' && steps.run_decision.outputs.exit_code == '0'
+      run: |
+        policy="${{ inputs.review_required }}"
+        case "${policy}" in
+          pass|warn|fail) ;;
+        esac
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        tradeoff="${out}/tradeoff.json"
+        review_required="$(python - <<'PY'
+        decision.get("review_required")
+        PY
+        )"
+        review_reason="review required"
+        echo "review_required=${review_required}" >> "${GITHUB_OUTPUT}"
+        echo "review_required_reason=${review_reason}" >> "${GITHUB_OUTPUT}"
+        echo "exit_code=0" >> "${GITHUB_OUTPUT}"
+        echo "exit_code=2" >> "${GITHUB_OUTPUT}"
     - name: Append perfgate decision summary
       if: always() && inputs.decision == 'true'
       run: |
@@ -4210,10 +4322,11 @@ runs:
           cat "${out}/decision.md"
         fi
     - name: Print perfgate failure summary
-      if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0'))
+      if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0') || (inputs.decision == 'true' && steps.handle_review_required.outputs.exit_code != '' && steps.handle_review_required.outputs.exit_code != '0'))
       run: |
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         exit_code="${{ steps.run_check.outputs.exit_code }}"
+        review_exit_code="${{ steps.handle_review_required.outputs.exit_code }}"
         repro=(perfgate check --config "${{ inputs.config }}")
         decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
         decision_repro_line="$(format_command "${decision_repro[@]}")"
@@ -4272,6 +4385,23 @@ pkg-fmt = "zip"
     }
 
     #[test]
+    fn action_check_rejects_missing_review_required_input() {
+        let action = valid_action_install_surface().replace(
+            "  review_required:\n    description: \"How decision=true handles review-required decisions\"\n    default: \"warn\"\n",
+            "",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("review_required input")),
+            "errors should mention review_required input: {:?}",
+            errors
+        );
+    }
+
+    #[test]
     fn action_check_rejects_missing_decision_step() {
         let action = valid_action_install_surface().replace(
             "    - name: Run perfgate decision",
@@ -4284,6 +4414,40 @@ pkg-fmt = "zip"
                 .iter()
                 .any(|error| error.contains("decision evaluation step")),
             "errors should mention missing decision step: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_review_required_step() {
+        let action = valid_action_install_surface().replace(
+            "      name: Handle review-required decision",
+            "      name: Handle review decision",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("review-required decision handling")),
+            "errors should mention review-required handling: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_review_required_step_without_output_id() {
+        let action = valid_action_install_surface().replace(
+            "    - id: handle_review_required\n      name: Handle review-required decision",
+            "    - name: Handle review-required decision",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("id handle_review_required")),
+            "errors should mention review-required step id: {:?}",
             errors
         );
     }
