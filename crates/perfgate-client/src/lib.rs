@@ -118,9 +118,10 @@ pub use types::{
     ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
     ListDecisionsQuery, ListDecisionsResponse, ListFleetAlertsQuery, ListFleetAlertsResponse,
     ListVerdictsQuery, ListVerdictsResponse, PaginationInfo, PromoteBaselineRequest,
-    PromoteBaselineResponse, RecordDependencyEventRequest, RecordDependencyEventResponse,
-    StorageHealth, SubmitVerdictRequest, UploadBaselineRequest, UploadBaselineResponse,
-    UploadDecisionRequest, VerdictRecord,
+    PromoteBaselineResponse, PruneDecisionsRequest, PruneDecisionsResponse,
+    RecordDependencyEventRequest, RecordDependencyEventResponse, StorageHealth,
+    SubmitVerdictRequest, UploadBaselineRequest, UploadBaselineResponse, UploadDecisionRequest,
+    VerdictRecord,
 };
 
 #[cfg(test)]

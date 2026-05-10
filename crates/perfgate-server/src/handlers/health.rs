@@ -186,6 +186,15 @@ mod tests {
         ) -> Result<ListDecisionsResponse, StoreError> {
             Err(storage_failure())
         }
+
+        async fn prune_decisions(
+            &self,
+            _project: &str,
+            _older_than: chrono::DateTime<chrono::Utc>,
+            _dry_run: bool,
+        ) -> Result<perfgate_types::baseline_service::PruneDecisionsResponse, StoreError> {
+            Err(storage_failure())
+        }
     }
 
     #[async_trait]

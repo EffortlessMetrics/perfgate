@@ -11,7 +11,7 @@ use crate::models::{
     AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource, BaselineVersion,
     DecisionRecord, ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery,
     ListBaselinesResponse, ListDecisionsQuery, ListDecisionsResponse, ListVerdictsQuery,
-    ListVerdictsResponse, PaginationInfo, VerdictRecord,
+    ListVerdictsResponse, PaginationInfo, PruneDecisionsResponse, VerdictRecord,
 };
 use perfgate_types::{MetricStatus, VerdictCounts, VerdictStatus};
 
@@ -820,6 +820,53 @@ impl BaselineStore for SqliteStore {
             },
         })
     }
+
+    async fn prune_decisions(
+        &self,
+        project: &str,
+        older_than: chrono::DateTime<chrono::Utc>,
+        dry_run: bool,
+    ) -> Result<PruneDecisionsResponse, StoreError> {
+        let cutoff = older_than.to_rfc3339();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StoreError::LockError(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM decisions WHERE project = ?1 AND created_at < ?2 ORDER BY created_at ASC",
+            )
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![project, cutoff], |row| row.get::<_, String>(0))
+            .map_err(|e| StoreError::QueryError(e.to_string()))?;
+        let mut decision_ids = Vec::new();
+        for row in rows {
+            decision_ids.push(row.map_err(StoreError::from)?);
+        }
+        let matched = decision_ids.len() as u64;
+        drop(stmt);
+
+        let deleted = if dry_run {
+            0
+        } else {
+            conn.execute(
+                "DELETE FROM decisions WHERE project = ?1 AND created_at < ?2",
+                params![project, older_than.to_rfc3339()],
+            )
+            .map_err(|e| StoreError::QueryError(e.to_string()))? as u64
+        };
+
+        Ok(PruneDecisionsResponse {
+            project: project.to_string(),
+            older_than,
+            dry_run,
+            matched,
+            deleted,
+            decision_ids,
+        })
+    }
 }
 
 impl SqliteStore {
@@ -1321,6 +1368,82 @@ mod tests {
             .unwrap();
         assert_eq!(verdict.decisions.len(), 1);
         assert_eq!(verdict.decisions[0].id, "decision-2");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_decision_prune_dry_run_and_delete() {
+        let store = SqliteStore::in_memory().unwrap();
+        let old = create_test_decision(
+            "decision-old",
+            "my-project",
+            "release_workload",
+            perfgate_types::MetricStatus::Warn,
+            "2026-05-01T00:00:00Z",
+            false,
+        );
+        let recent = create_test_decision(
+            "decision-recent",
+            "my-project",
+            "release_workload",
+            perfgate_types::MetricStatus::Warn,
+            "2026-05-09T00:00:00Z",
+            false,
+        );
+        let other_project = create_test_decision(
+            "decision-other",
+            "other-project",
+            "release_workload",
+            perfgate_types::MetricStatus::Warn,
+            "2026-05-01T00:00:00Z",
+            false,
+        );
+        store.create_decision(&old).await.unwrap();
+        store.create_decision(&recent).await.unwrap();
+        store.create_decision(&other_project).await.unwrap();
+
+        let cutoff = chrono::DateTime::parse_from_rfc3339("2026-05-05T00:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let dry_run = store
+            .prune_decisions("my-project", cutoff, true)
+            .await
+            .unwrap();
+        assert!(dry_run.dry_run);
+        assert_eq!(dry_run.matched, 1);
+        assert_eq!(dry_run.deleted, 0);
+        assert_eq!(dry_run.decision_ids, vec!["decision-old".to_string()]);
+        assert_eq!(
+            store
+                .list_decisions("my-project", &ListDecisionsQuery::new())
+                .await
+                .unwrap()
+                .pagination
+                .total,
+            2
+        );
+
+        let pruned = store
+            .prune_decisions("my-project", cutoff, false)
+            .await
+            .unwrap();
+        assert!(!pruned.dry_run);
+        assert_eq!(pruned.matched, 1);
+        assert_eq!(pruned.deleted, 1);
+        assert_eq!(pruned.decision_ids, vec!["decision-old".to_string()]);
+
+        let remaining = store
+            .list_decisions("my-project", &ListDecisionsQuery::new())
+            .await
+            .unwrap();
+        assert_eq!(remaining.pagination.total, 1);
+        assert_eq!(remaining.decisions[0].id, "decision-recent");
+
+        let other = store
+            .list_decisions("other-project", &ListDecisionsQuery::new())
+            .await
+            .unwrap();
+        assert_eq!(other.pagination.total, 1);
+        assert_eq!(other.decisions[0].id, "decision-other");
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -197,6 +197,15 @@ impl FallbackClient {
         self.client.latest_decision(project).await
     }
 
+    /// Prunes performance decisions (server only, no fallback).
+    pub async fn prune_decisions(
+        &self,
+        project: &str,
+        request: &PruneDecisionsRequest,
+    ) -> Result<PruneDecisionsResponse, ClientError> {
+        self.client.prune_decisions(project, request).await
+    }
+
     /// Lists audit events (server only, no fallback).
     pub async fn list_audit_events(
         &self,

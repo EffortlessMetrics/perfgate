@@ -345,6 +345,34 @@ pub struct ListDecisionsResponse {
     pub pagination: PaginationInfo,
 }
 
+/// Request for pruning old performance decision records.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PruneDecisionsRequest {
+    /// Delete records created before this timestamp.
+    pub older_than: DateTime<Utc>,
+    /// When true, report matching records without deleting them.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// Response for a decision prune operation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PruneDecisionsResponse {
+    /// Project identifier.
+    pub project: String,
+    /// Records older than this timestamp were matched.
+    pub older_than: DateTime<Utc>,
+    /// Whether the operation was a dry run.
+    pub dry_run: bool,
+    /// Number of records matched by the retention cutoff.
+    pub matched: u64,
+    /// Number of records deleted. Always zero for dry runs.
+    pub deleted: u64,
+    /// Decision record ids matched by the retention cutoff.
+    #[serde(default)]
+    pub decision_ids: Vec<String>,
+}
+
 /// Version history metadata (without full receipt).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct BaselineVersion {

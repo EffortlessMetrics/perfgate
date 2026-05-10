@@ -4,7 +4,7 @@ use perfgate_types::{BASELINE_SCHEMA_V1, RUN_SCHEMA_V1};
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 mod common;
@@ -810,6 +810,160 @@ async fn test_decision_debt_summarizes_accepted_tradeoffs() {
         ))
         .stdout(predicate::str::contains("renderer"))
         .stdout(predicate::str::contains("memory-for-latency (1)"));
+}
+
+#[tokio::test]
+async fn test_decision_export_writes_jsonl_from_server_ledger() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let export_path = temp_dir.path().join("decisions.jsonl");
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/projects/test-project/decisions"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .and(query_param("limit", "1000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "decisions": [
+                decision_record_with(
+                    "test-project",
+                    "decision-1",
+                    "parser",
+                    &["memory_for_speed"],
+                    false,
+                    "2026-05-08T00:00:00Z",
+                    Some((0.021, 0.03))
+                )
+            ],
+            "pagination": {
+                "total": 1,
+                "offset": 0,
+                "limit": 1000,
+                "has_more": false
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("export")
+        .arg("--days")
+        .arg("0")
+        .arg("--out")
+        .arg(&export_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Exported 1 decision record"));
+
+    let exported = fs::read_to_string(&export_path).expect("read decision export");
+    let lines: Vec<_> = exported.lines().collect();
+    assert_eq!(lines.len(), 1);
+    let record: serde_json::Value =
+        serde_json::from_str(lines[0]).expect("decision export line should be JSON");
+    assert_eq!(record["id"], "decision-1");
+    assert_eq!(record["accepted_rules"][0], "memory_for_speed");
+}
+
+#[tokio::test]
+async fn test_decision_prune_dry_run_and_force_use_server_ledger() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/projects/test-project/decisions/prune"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .and(body_partial_json(serde_json::json!({"dry_run": true})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "project": "test-project",
+            "older_than": "2026-05-09T00:00:00Z",
+            "dry_run": true,
+            "matched": 1,
+            "deleted": 0,
+            "decision_ids": ["decision-1"]
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let mut dry_run = perfgate_cmd();
+    dry_run
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s")
+        .arg("--dry-run");
+
+    dry_run
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision prune dry run"))
+        .stdout(predicate::str::contains("decision_ids=decision-1"));
+
+    let mut unconfirmed = perfgate_cmd();
+    unconfirmed
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s");
+
+    unconfirmed
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Decision prune not confirmed"));
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/projects/test-project/decisions/prune"))
+        .and(header("Authorization", "Bearer decision-key"))
+        .and(body_partial_json(serde_json::json!({"dry_run": false})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "project": "test-project",
+            "older_than": "2026-05-09T00:00:00Z",
+            "dry_run": false,
+            "matched": 1,
+            "deleted": 1,
+            "decision_ids": ["decision-1"]
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let mut force = perfgate_cmd();
+    force
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("decision-key")
+        .arg("--project")
+        .arg("test-project")
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s")
+        .arg("--force");
+
+    force
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pruned 1 decision record"))
+        .stdout(predicate::str::contains("decision_ids=decision-1"));
 }
 
 #[tokio::test]

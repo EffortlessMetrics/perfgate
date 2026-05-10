@@ -331,6 +331,7 @@ server can store decisions as audit-backed ledger entries:
 perfgate decision upload --file artifacts/perfgate/tradeoff.json --index artifacts/perfgate/decision.index.json
 perfgate decision latest
 perfgate decision history --limit 20
+perfgate decision export --days 90 --out artifacts/perfgate/decision-history.jsonl
 perfgate decision debt --days 30
 ```
 
@@ -350,6 +351,11 @@ perfgate decision history --scenario large_file_parse --verdict warn
 The dashboard exposes the same drilldowns for status, verdict, review state,
 accepted-tradeoff presence, scenario, and accepted rule.
 
+Use `decision export` when ledger evidence needs to leave the server for a
+release, audit, incident review, or offline analysis. JSONL is the default so
+records can be streamed into external tools; `--format json` writes a single
+JSON object with metadata and the selected records.
+
 `decision debt` summarizes accepted tradeoff records by scenario so teams can
 spot repeated exceptions before they become invisible performance debt. When a
 tradeoff rule used local regression caps, the summary reports the highest cap
@@ -358,6 +364,17 @@ contains its configured rule and weighted deltas, the summary also reports the
 largest accepted failed-metric regression, such as `max_rss_kb +3.0%`. Budget
 headroom usage is reported as `n/a` until receipts include the original budget
 threshold denominator; perfgate does not infer that value from status alone.
+
+Decision retention is explicit. Preview old records first, then force deletion
+only after the export/audit window is safe to remove:
+
+```bash
+perfgate decision prune --older-than 365d --dry-run
+perfgate decision prune --older-than 365d --force
+```
+
+Pruning requires delete/admin credentials. Non-dry-run prune operations emit a
+decision audit event with the cutoff and affected decision ids.
 
 ## Primitive Commands
 

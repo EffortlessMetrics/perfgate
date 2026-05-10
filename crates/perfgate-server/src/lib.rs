@@ -43,6 +43,7 @@
 //! | POST | `/api/v1/projects/{project}/decisions` | Upload a performance decision receipt |
 //! | GET | `/api/v1/projects/{project}/decisions/latest` | Get latest performance decision |
 //! | GET | `/api/v1/projects/{project}/decisions` | List performance decisions |
+//! | POST | `/api/v1/projects/{project}/decisions/prune` | Prune old performance decisions |
 //! | GET | `/api/v1/audit` | List audit events (admin only) |
 //! | POST | `/api/v1/keys` | Create an API key (admin only) |
 //! | GET | `/api/v1/keys` | List API keys (admin only) |
