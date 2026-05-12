@@ -56,7 +56,7 @@ inputs:
     required: false
     default: "perfgate-artifacts"
   version:
-    description: "Optional perfgate-cli crate version from crates.io (e.g. 0.16.0); if empty, builds from this action source"
+    description: "Optional perfgate-cli crate version from crates.io (e.g. 0.17.0); if empty, builds from this action source"
     required: false
     default: ""
   comment:
@@ -172,7 +172,7 @@ runs:
       if: steps.install_binary.outputs.installed != 'true'
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: 1.93.0
+        toolchain: 1.95.0
 
     - name: Install perfgate (cargo install fallback)
       if: steps.install_binary.outputs.installed != 'true'

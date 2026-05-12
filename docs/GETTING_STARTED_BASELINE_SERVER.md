@@ -1,7 +1,7 @@
 # Getting Started with the Baseline Server
 
 This guide documents the current, shipped baseline-server workflow in
-`perfgate 0.16.0`. Every CLI example below has been validated against the
+`perfgate 0.17.0`. Every CLI example below has been validated against the
 actual binary. It intentionally focuses on commands and flags that exist today.
 
 ## Pick a Mode
@@ -244,7 +244,7 @@ inspect server logs for the full database error.
 ```json
 {
   "status": "healthy",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "storage": {
     "backend": "postgres",
     "status": "healthy"
