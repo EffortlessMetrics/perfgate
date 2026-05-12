@@ -175,6 +175,12 @@ enum Command {
         strict: bool,
     },
 
+    /// Policy governance checks.
+    Policy {
+        #[command(subcommand)]
+        action: PolicyAction,
+    },
+
     /// Enforce crate-layer dependency rules for the current architecture.
     Arch,
 
@@ -259,6 +265,24 @@ enum DogfoodAction {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum PolicyAction {
+    /// Scan Rust files for panic-family callsites using exact counted identities.
+    CheckNoPanicFamily {
+        /// Directory to scan.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+
+        /// Exact no-panic allowlist file.
+        #[arg(long, default_value = "policy/no-panic-allowlist.toml")]
+        allowlist: PathBuf,
+
+        /// Fail when a detected identity is not listed in the allowlist.
+        #[arg(long)]
+        fail_on_unlisted: bool,
+    },
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -282,6 +306,13 @@ fn main() -> anyhow::Result<()> {
             absorbed_policy,
             strict,
         } => cmd_public_surface(&public_policy, &absorbed_policy, strict),
+        Command::Policy { action } => match action {
+            PolicyAction::CheckNoPanicFamily {
+                root,
+                allowlist,
+                fail_on_unlisted,
+            } => cmd_check_no_panic_family(&root, &allowlist, fail_on_unlisted),
+        },
         Command::Arch => cmd_arch(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::SyncFixtures => cmd_sync_fixtures(),
@@ -1168,6 +1199,460 @@ fn run_cargo_args(args: Vec<String>) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct NoPanicIdentity {
+    path: String,
+    family: String,
+    selector_kind: String,
+    selector_callee: String,
+    snippet: String,
+}
+
+#[derive(Debug, Clone)]
+struct NoPanicFinding {
+    identity: NoPanicIdentity,
+    count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct NoPanicAllowlist {
+    schema_version: String,
+    #[serde(default)]
+    allow: Vec<NoPanicAllowance>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NoPanicAllowance {
+    path: String,
+    family: String,
+    selector_kind: String,
+    selector_callee: String,
+    snippet: String,
+    count: u32,
+    owner: String,
+    reason: String,
+    review_after: String,
+}
+
+impl NoPanicAllowance {
+    fn identity(&self) -> NoPanicIdentity {
+        NoPanicIdentity {
+            path: self.path.clone(),
+            family: self.family.clone(),
+            selector_kind: self.selector_kind.clone(),
+            selector_callee: self.selector_callee.clone(),
+            snippet: self.snippet.clone(),
+        }
+    }
+}
+
+fn cmd_check_no_panic_family(
+    root: &Path,
+    allowlist: &Path,
+    fail_on_unlisted: bool,
+) -> anyhow::Result<()> {
+    let findings = scan_no_panic_family(root)?;
+    let allowlist = read_no_panic_allowlist(allowlist)?;
+    let errors = collect_no_panic_policy_errors(&findings, &allowlist, fail_on_unlisted);
+
+    if !errors.is_empty() {
+        println!("Found {} no-panic policy error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} no-panic policy issue(s) found. Update policy/no-panic-allowlist.toml or the generated baseline.",
+            errors.len()
+        );
+    }
+
+    let total_callsites: u32 = findings.iter().map(|finding| finding.count).sum();
+    let allowed_callsites: u32 = allowlist
+        .allow
+        .iter()
+        .map(|allowance| allowance.count)
+        .sum();
+    let unlisted_identities = findings
+        .iter()
+        .filter(|finding| {
+            !allowlist
+                .allow
+                .iter()
+                .any(|allowance| allowance.identity() == finding.identity)
+        })
+        .count();
+
+    println!("  OK  no-panic allowlist identities are exact and current");
+    println!(
+        "      scanned {} exact panic-family identity/identities ({} callsite(s))",
+        findings.len(),
+        total_callsites
+    );
+    println!(
+        "      allowlist covers {} callsite(s); {} unlisted identity/identities await baseline policy",
+        allowed_callsites, unlisted_identities
+    );
+    Ok(())
+}
+
+fn read_no_panic_allowlist(path: &Path) -> anyhow::Result<NoPanicAllowlist> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let allowlist: NoPanicAllowlist =
+        toml::from_str(&content).with_context(|| format!("parsing {}", path.display()))?;
+    Ok(allowlist)
+}
+
+fn collect_no_panic_policy_errors(
+    findings: &[NoPanicFinding],
+    allowlist: &NoPanicAllowlist,
+    fail_on_unlisted: bool,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if allowlist.schema_version != "1.0" {
+        errors.push(format!(
+            "policy/no-panic-allowlist.toml schema_version must be 1.0, found {}",
+            allowlist.schema_version
+        ));
+    }
+
+    let mut finding_counts = BTreeMap::new();
+    for finding in findings {
+        finding_counts.insert(finding.identity.clone(), finding.count);
+    }
+
+    let mut seen = BTreeSet::new();
+    for allowance in &allowlist.allow {
+        validate_no_panic_allowance(allowance, &mut errors);
+        let identity = allowance.identity();
+        if !seen.insert(identity.clone()) {
+            errors.push(format!(
+                "duplicate no-panic allowlist identity: {}",
+                format_no_panic_identity(&identity)
+            ));
+            continue;
+        }
+
+        match finding_counts.get(&identity) {
+            Some(actual) if *actual == allowance.count => {}
+            Some(actual) => errors.push(format!(
+                "no-panic allowlist count mismatch for {}: expected {}, found {}",
+                format_no_panic_identity(&identity),
+                allowance.count,
+                actual
+            )),
+            None => errors.push(format!(
+                "no-panic allowlist identity is stale or missing from scan: {}",
+                format_no_panic_identity(&identity)
+            )),
+        }
+    }
+
+    if fail_on_unlisted {
+        for finding in findings {
+            if !seen.contains(&finding.identity) {
+                errors.push(format!(
+                    "unlisted panic-family identity: {} count={}",
+                    format_no_panic_identity(&finding.identity),
+                    finding.count
+                ));
+            }
+        }
+    }
+
+    errors
+}
+
+fn validate_no_panic_allowance(allowance: &NoPanicAllowance, errors: &mut Vec<String>) {
+    let identity = allowance.identity();
+    let formatted = format_no_panic_identity(&identity);
+    for (field, value) in [
+        ("path", allowance.path.as_str()),
+        ("family", allowance.family.as_str()),
+        ("selector_kind", allowance.selector_kind.as_str()),
+        ("selector_callee", allowance.selector_callee.as_str()),
+        ("snippet", allowance.snippet.as_str()),
+        ("owner", allowance.owner.as_str()),
+        ("reason", allowance.reason.as_str()),
+        ("review_after", allowance.review_after.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            errors.push(format!(
+                "no-panic allowlist field `{field}` must be non-empty for {formatted}"
+            ));
+        }
+    }
+    if allowance.count == 0 {
+        errors.push(format!(
+            "no-panic allowlist count must be positive for {formatted}"
+        ));
+    }
+}
+
+fn scan_no_panic_family(root: &Path) -> anyhow::Result<Vec<NoPanicFinding>> {
+    let macro_re = Regex::new(r"\b(panic|unreachable|todo|unimplemented)!\s*\(")?;
+    let method_re = Regex::new(r"\.(unwrap|expect)\s*\(")?;
+    let mut files = Vec::new();
+    collect_rust_files(root, &mut files)?;
+    files.sort();
+
+    let mut counts = BTreeMap::<NoPanicIdentity, u32>::new();
+    for file in files {
+        let content =
+            fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
+        scan_no_panic_file(root, &file, &content, &macro_re, &method_re, &mut counts);
+    }
+
+    Ok(counts
+        .into_iter()
+        .map(|(identity, count)| NoPanicFinding { identity, count })
+        .collect())
+}
+
+fn collect_rust_files(root: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    if should_skip_scan_path(root) {
+        return Ok(());
+    }
+    if root.is_file() {
+        if root.extension().is_some_and(|extension| extension == "rs") {
+            files.push(root.to_path_buf());
+        }
+        return Ok(());
+    }
+    if !root.is_dir() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(root).with_context(|| format!("reading {}", root.display()))? {
+        let path = entry?.path();
+        collect_rust_files(&path, files)?;
+    }
+    Ok(())
+}
+
+fn should_skip_scan_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, ".git" | "target"))
+}
+
+fn scan_no_panic_file(
+    root: &Path,
+    file: &Path,
+    content: &str,
+    macro_re: &Regex,
+    method_re: &Regex,
+    counts: &mut BTreeMap<NoPanicIdentity, u32>,
+) {
+    let policy_path = normalize_policy_path(root, file);
+    let mut mask_state = RustMaskState::default();
+    for line in content.lines() {
+        let masked = mask_rust_code_line(line, &mut mask_state);
+        for capture in macro_re.captures_iter(&masked) {
+            let callee = format!("{}!", &capture[1]);
+            let identity = NoPanicIdentity {
+                path: policy_path.clone(),
+                family: capture[1].to_string(),
+                selector_kind: "macro".to_string(),
+                selector_callee: callee,
+                snippet: line.trim().to_string(),
+            };
+            *counts.entry(identity).or_default() += 1;
+        }
+        for capture in method_re.captures_iter(&masked) {
+            let identity = NoPanicIdentity {
+                path: policy_path.clone(),
+                family: capture[1].to_string(),
+                selector_kind: "method".to_string(),
+                selector_callee: capture[1].to_string(),
+                snippet: line.trim().to_string(),
+            };
+            *counts.entry(identity).or_default() += 1;
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct RustMaskState {
+    block_comment_depth: usize,
+    raw_string_hashes: Option<usize>,
+}
+
+fn mask_rust_code_line(line: &str, state: &mut RustMaskState) -> String {
+    let bytes = line.as_bytes();
+    let mut out = String::with_capacity(line.len());
+    let mut index = 0;
+    let mut in_string = false;
+    let mut in_char = false;
+    let mut escaped = false;
+
+    while index < bytes.len() {
+        if let Some(hashes) = state.raw_string_hashes {
+            if bytes[index] == b'"' && raw_string_closes(bytes, index, hashes) {
+                out.push(' ');
+                for _ in 0..hashes {
+                    if index + 1 < bytes.len() {
+                        index += 1;
+                        out.push(' ');
+                    }
+                }
+                state.raw_string_hashes = None;
+                index += 1;
+            } else {
+                out.push(' ');
+                index += 1;
+            }
+            continue;
+        }
+
+        if state.block_comment_depth > 0 {
+            if starts_with(bytes, index, b"/*") {
+                state.block_comment_depth += 1;
+                out.push_str("  ");
+                index += 2;
+            } else if starts_with(bytes, index, b"*/") {
+                state.block_comment_depth -= 1;
+                out.push_str("  ");
+                index += 2;
+            } else {
+                out.push(' ');
+                index += 1;
+            }
+            continue;
+        }
+
+        if in_string {
+            let current = bytes[index];
+            out.push(' ');
+            index += 1;
+            if escaped {
+                escaped = false;
+            } else if current == b'\\' {
+                escaped = true;
+            } else if current == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if in_char {
+            let current = bytes[index];
+            out.push(' ');
+            index += 1;
+            if escaped {
+                escaped = false;
+            } else if current == b'\\' {
+                escaped = true;
+            } else if current == b'\'' {
+                in_char = false;
+            }
+            continue;
+        }
+
+        if starts_with(bytes, index, b"//") {
+            out.extend(std::iter::repeat_n(' ', bytes.len() - index));
+            break;
+        }
+        if starts_with(bytes, index, b"/*") {
+            state.block_comment_depth += 1;
+            out.push_str("  ");
+            index += 2;
+            continue;
+        }
+        if let Some((prefix_len, hashes)) = raw_string_start(bytes, index) {
+            out.extend(std::iter::repeat_n(' ', prefix_len));
+            index += prefix_len;
+            state.raw_string_hashes = Some(hashes);
+            continue;
+        }
+        if bytes[index] == b'"' {
+            in_string = true;
+            out.push(' ');
+            index += 1;
+            continue;
+        }
+        if bytes[index] == b'\'' && looks_like_char_literal(bytes, index) {
+            in_char = true;
+            out.push(' ');
+            index += 1;
+            continue;
+        }
+
+        out.push(bytes[index] as char);
+        index += 1;
+    }
+
+    out
+}
+
+fn raw_string_start(bytes: &[u8], index: usize) -> Option<(usize, usize)> {
+    let mut cursor = index;
+    if bytes.get(cursor) == Some(&b'b') {
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'r') {
+        return None;
+    }
+    cursor += 1;
+    let mut hashes = 0;
+    while bytes.get(cursor) == Some(&b'#') {
+        hashes += 1;
+        cursor += 1;
+    }
+    if bytes.get(cursor) == Some(&b'"') {
+        Some((cursor - index + 1, hashes))
+    } else {
+        None
+    }
+}
+
+fn looks_like_char_literal(bytes: &[u8], quote_index: usize) -> bool {
+    let Some(first) = bytes.get(quote_index + 1) else {
+        return false;
+    };
+    let closing = if *first == b'\\' {
+        quote_index + 3
+    } else {
+        quote_index + 2
+    };
+    bytes.get(closing) == Some(&b'\'')
+}
+
+fn raw_string_closes(bytes: &[u8], quote_index: usize, hashes: usize) -> bool {
+    (0..hashes).all(|offset| bytes.get(quote_index + 1 + offset) == Some(&b'#'))
+}
+
+fn starts_with(bytes: &[u8], index: usize, needle: &[u8]) -> bool {
+    bytes
+        .get(index..index + needle.len())
+        .is_some_and(|candidate| candidate == needle)
+}
+
+fn normalize_policy_path(root: &Path, path: &Path) -> String {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    relative
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => part.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn format_no_panic_identity(identity: &NoPanicIdentity) -> String {
+    format!(
+        "{} {} {} {} {:?}",
+        identity.path,
+        identity.family,
+        identity.selector_kind,
+        identity.selector_callee,
+        identity.snippet
+    )
 }
 
 fn cmd_public_surface(
@@ -4095,6 +4580,132 @@ mod tests {
             assert!(run("sh", ["-c", "exit 1"]).is_err());
             assert!(run("sh", ["-c", "exit 0"]).is_ok());
         }
+    }
+
+    fn no_panic_identity(
+        path: &str,
+        family: &str,
+        selector_kind: &str,
+        selector_callee: &str,
+        snippet: &str,
+    ) -> NoPanicIdentity {
+        NoPanicIdentity {
+            path: path.to_string(),
+            family: family.to_string(),
+            selector_kind: selector_kind.to_string(),
+            selector_callee: selector_callee.to_string(),
+            snippet: snippet.to_string(),
+        }
+    }
+
+    fn no_panic_allowance(identity: &NoPanicIdentity, count: u32) -> NoPanicAllowance {
+        NoPanicAllowance {
+            path: identity.path.clone(),
+            family: identity.family.clone(),
+            selector_kind: identity.selector_kind.clone(),
+            selector_callee: identity.selector_callee.clone(),
+            snippet: identity.snippet.clone(),
+            count,
+            owner: "test-owner".to_string(),
+            reason: "test reason".to_string(),
+            review_after: "0.17.0".to_string(),
+        }
+    }
+
+    #[test]
+    fn no_panic_scanner_uses_exact_counted_identities() {
+        let root = unique_temp_dir("perfgate_no_panic_scan");
+        let src = root.join("src");
+        fs::create_dir_all(&src).expect("create src dir");
+        fs::write(
+            src.join("lib.rs"),
+            r##"
+fn demo(value: Option<u8>) {
+    let _ = value.unwrap();
+    let _ = value.unwrap();
+    panic!("boom");
+    let _ = ".expect(";
+    let _ = r#".unwrap()"#;
+    // todo!();
+    /* unreachable!(); */
+    let _ = core::marker::PhantomData::<&'static str>;
+}
+"##,
+        )
+        .expect("write source");
+
+        let findings = scan_no_panic_family(&root).expect("scan no-panic family");
+        let unwrap_identity = no_panic_identity(
+            "src/lib.rs",
+            "unwrap",
+            "method",
+            "unwrap",
+            "let _ = value.unwrap();",
+        );
+        let panic_identity = no_panic_identity(
+            "src/lib.rs",
+            "panic",
+            "macro",
+            "panic!",
+            "panic!(\"boom\");",
+        );
+
+        let unwrap = findings
+            .iter()
+            .find(|finding| finding.identity == unwrap_identity)
+            .expect("unwrap identity");
+        assert_eq!(unwrap.count, 2);
+        let panic = findings
+            .iter()
+            .find(|finding| finding.identity == panic_identity)
+            .expect("panic identity");
+        assert_eq!(panic.count, 1);
+        assert_eq!(findings.len(), 2);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn no_panic_allowlist_rejects_count_drift_and_unlisted_strict_identities() {
+        let identity = no_panic_identity(
+            "crates/example/src/lib.rs",
+            "expect",
+            "method",
+            "expect",
+            "value.expect(\"present\")",
+        );
+        let findings = vec![NoPanicFinding {
+            identity: identity.clone(),
+            count: 2,
+        }];
+
+        let exact = NoPanicAllowlist {
+            schema_version: "1.0".to_string(),
+            allow: vec![no_panic_allowance(&identity, 2)],
+        };
+        assert!(collect_no_panic_policy_errors(&findings, &exact, true).is_empty());
+
+        let drifted = NoPanicAllowlist {
+            schema_version: "1.0".to_string(),
+            allow: vec![no_panic_allowance(&identity, 1)],
+        };
+        let errors = collect_no_panic_policy_errors(&findings, &drifted, false);
+        assert!(
+            errors.iter().any(|error| error.contains("count mismatch")),
+            "expected count mismatch, got {errors:?}"
+        );
+
+        let strict = NoPanicAllowlist {
+            schema_version: "1.0".to_string(),
+            allow: Vec::new(),
+        };
+        let errors = collect_no_panic_policy_errors(&findings, &strict, true);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("unlisted panic-family identity")),
+            "expected strict unlisted error, got {errors:?}"
+        );
     }
 
     fn test_package(name: &str, publish: Option<Vec<String>>) -> MetadataPackage {

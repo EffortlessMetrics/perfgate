@@ -1,15 +1,15 @@
 # No-Panic Policy
 
-perfgate currently has no enforced panic-family policy. The Rust 1.95 and
-0.17.0 governance rollout adds one as a no-new-debt gate rather than a broad
-cleanup commit.
+perfgate has an exact panic-family scanner and an intentionally empty
+allowlist. The Rust 1.95 and 0.17.0 governance rollout adds this as a
+no-new-debt gate rather than a broad cleanup commit.
 
 This policy must start with exact identities. A scanner keyed only by file and
 family can hide new callsites inside an already-allowed file.
 
 ## Governed Families
 
-The first scanner should classify panic-family callsites such as:
+The scanner classifies panic-family callsites such as:
 
 - `panic!`
 - `unreachable!`
@@ -21,9 +21,21 @@ The first scanner should classify panic-family callsites such as:
 The policy should distinguish production, test, doc-test, generated, and
 example surfaces instead of granting a blanket test carveout.
 
+Run the current policy scanner with:
+
+```bash
+cargo run -p xtask -- policy check-no-panic-family
+```
+
+Use strict mode only after the generated baseline lands:
+
+```bash
+cargo run -p xtask -- policy check-no-panic-family --fail-on-unlisted
+```
+
 ## Exact Identity
 
-Each allowed or baselined callsite must include:
+Each allowed callsite must use `policy/no-panic-allowlist.toml` and include:
 
 | Field | Purpose |
 |-------|---------|
@@ -39,8 +51,8 @@ Each allowed or baselined callsite must include:
 
 ## Baseline Rule
 
-The generated baseline may shrink when debt disappears. It must not silently
-absorb new debt.
+The generated baseline lands in the next PR. It may shrink when debt
+disappears. It must not silently absorb new debt.
 
 Allowed refresh behavior:
 

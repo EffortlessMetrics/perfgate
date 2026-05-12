@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.95 governance rollout.
 - Activated the clean Rust 1.95 Clippy ratchets and recorded noisy or
   unavailable candidates as policy debt or blocked work.
+- Added the exact no-panic family scanner and initial allowlist for the
+  governance rollout.
 
 ## [0.16.0] - 2026-05-11
 

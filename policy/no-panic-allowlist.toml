@@ -1,0 +1,6 @@
+schema_version = "1.0"
+
+# Intentional panic-family allowances live here.
+# Each entry must use the exact counted identity emitted by:
+#   cargo run -p xtask -- policy check-no-panic-family
+allow = []
