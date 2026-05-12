@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-05-12
+
 ### Added
 - Planned the Rust 1.95 and 0.17.0 governance rollout for staged Clippy,
   no-panic, non-Rust file-surface, CI evidence-lane, and release-proof policy.
 
 ### Changed
+- Bumped the workspace and internal crate versions to `0.17.0`.
 - Raised the declared Rust MSRV, local toolchain, and hosted Rust workflow pins
   to Rust 1.95.
 - Enabled the Rust 1.95 compiler lint floor while keeping `unsafe_code` at

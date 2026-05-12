@@ -1,27 +1,34 @@
 # Release Readiness
 
-Last verified: 2026-05-11 after merging PR #338 (release prep for v0.16.0) and PR #337
-(`publish-check` dry-run matrix repair).
+Last prepared: 2026-05-12 for the v0.17.0 release-candidate branch after the
+Rust 1.95 governance ladder through PR #349.
 
-## Current Main Snapshot
+Latest published release: v0.16.0. Do not call v0.17.0 published until the
+release-proof PR validates the publish matrix, creates the tag, and publishes
+the five allowed crates.
 
-Verified on 2026-05-11 after merging PRs #333 through #337 and #338.
+## Current Release Candidate Snapshot
 
-The `main` branch is published as `v0.16.0` and the 0.16 public crate surface,
-paved first-run workflow, baseline-service operations, and structured performance
-decision workflow are in their intended release shape:
+The release candidate is versioned as `v0.17.0`. It keeps the five-crate public
+surface from v0.16.0, raises the Rust floor to 1.95, and adds the governance
+rails that make the release conveyor explicit:
 
 | Gate | Status | Evidence |
 |------|--------|----------|
+| Rust 1.95 floor | Passing | `Cargo.toml`, `rust-toolchain.toml`, hosted workflow pins, and the composite action fallback toolchain use Rust 1.95 |
+| Rust and Clippy policy | Passing | `clippy.toml`, `policy/clippy-lints.toml`, and `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` |
+| No-panic governance | Passing | `cargo run -p xtask -- policy check-no-panic-family` and `policy/no-panic-baseline.toml` |
+| Non-Rust file governance | Documented | `policy/non-rust-allowlist.toml`, companion allowlists, `docs/FILE_POLICY.md`, and `docs/POLICY_ALLOWLISTS.md` |
+| CI evidence lane routing | Documented | `docs/ci/test-evidence-lanes.md`, with expensive fuzz, coverage, and self-dogfood lanes routed by label, `main`, schedule, or manual dispatch |
 | Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
 | Architecture boundary enforcement | Passing | `cargo run -p xtask -- arch` |
 | Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
 | Package file-list proof | Passing | `cargo run -p xtask -- publish-check --package-list` |
 | Adoption path docs | Covered | `README.md`, `docs/PERFORMANCE_DECISIONS.md` |
-| Publish dry-run proof | Per-package release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
-| Publish dry-run matrix | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
+| Publish dry-run proof | Release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
+| Publish dry-run matrix | Release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
-| Install smoke proof | Verified | `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force` and `cargo-binstall perfgate-cli --version 0.16.0 --force` |
+| Install smoke proof | Release gate | Before publish: `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force`; after publish: `cargo-binstall perfgate-cli --version 0.17.0 --force` |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
 | Structured decision end-to-end | Verified | `perfgate ingest probes`, `perfgate decision evaluate`, `perfgate decision bundle` on `examples/performance-decision`, plus `perfgate serve --no-open` and `decision upload/history/debt/prune --dry-run` |
@@ -31,7 +38,7 @@ decision workflow are in their intended release shape:
 | Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
-| Full repo CI | Passing | Hosted `ci`, `Coverage`, and `perfgate-self` on merge commit `2cda12c`; PR #338 also passed `fuzz` |
+| Full repo CI | Release gate | Hosted `ci` on the release PR, with coverage, fuzz, and self-dogfood evidence routed by policy before tagging |
 
 The only publishable packages allowed by policy are:
 
@@ -43,7 +50,7 @@ perfgate-client
 perfgate-server
 ```
 
-Release proof commands run for v0.16.0 (run without `--allow-dirty`):
+Required release proof commands for v0.17.0 (run without `--allow-dirty`):
 
 ```bash
 cargo run -p xtask -- public-surface --strict
@@ -70,7 +77,7 @@ For PR validation before the branch is committed or while release notes are stil
 being edited, `publish-check` also accepts `--allow-dirty`. Release operators
 should omit it.
 
-The GitHub release workflow (published as v0.16.0) builds platform archives,
+The GitHub release workflow for v0.17.0 builds platform archives,
 unpacks each generated archive, verifies the binary exists, and runs
 `perfgate --version` plus `perfgate doctor --help` on native targets before
 uploading release assets.
