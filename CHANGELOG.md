@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `warn` for a later audit.
 - Added staged Clippy lint, debt, and exception policy ledgers for the Rust
   1.95 governance rollout.
+- Activated the clean Rust 1.95 Clippy ratchets and recorded noisy or
+  unavailable candidates as policy debt or blocked work.
 
 ## [0.16.0] - 2026-05-11
 

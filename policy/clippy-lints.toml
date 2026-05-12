@@ -22,27 +22,33 @@ name = "clippy::unimplemented"
 level = "deny"
 reason = "Unimplemented execution paths are not allowed."
 
-[[planned]]
+[[active]]
 name = "clippy::same_length_and_capacity"
 level = "deny"
-activate_when_msrv = "1.95"
+reason = "Vec raw-parts conversions must not conflate length and capacity."
 
-[[planned]]
+[[active]]
 name = "clippy::manual_checked_ops"
 level = "warn"
-activate_when_msrv = "1.95"
+reason = "Manual checked arithmetic is easier to weaken than the standard checked APIs."
 
-[[planned]]
+[[active]]
 name = "clippy::manual_take"
 level = "warn"
-activate_when_msrv = "1.95"
+reason = "Use the standard take helper instead of open-coded replacement patterns."
 
-[[planned]]
-name = "clippy::manual_pop_if"
+[[active]]
+name = "clippy::unnecessary_trailing_comma"
 level = "warn"
-activate_when_msrv = "1.95"
+reason = "Avoid formatter-noise patterns from unnecessary trailing commas in expressions."
 
 [[planned]]
 name = "clippy::duration_suboptimal_units"
 level = "warn"
 activate_when_msrv = "1.95"
+status = "measured-existing-warnings"
+
+[[blocked]]
+name = "clippy::manual_pop_if"
+level = "warn"
+reason = "Not recognized by Clippy in Rust 1.95.0; re-check before activation."

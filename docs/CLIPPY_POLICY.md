@@ -31,16 +31,18 @@ The initial active ledger is small and reviewable:
 | `clippy::dbg_macro` | deny | Debug macros are not reviewable diagnostics. |
 | `clippy::todo` | deny | TODO execution paths are not allowed. |
 | `clippy::unimplemented` | deny | Unimplemented execution paths are not allowed. |
+| `clippy::same_length_and_capacity` | deny | Vec raw-parts conversions must not conflate length and capacity. |
+| `clippy::manual_checked_ops` | warn | Manual checked arithmetic is easier to weaken than standard checked APIs. |
+| `clippy::manual_take` | warn | Prefer the standard take helper over open-coded replacement patterns. |
+| `clippy::unnecessary_trailing_comma` | warn | Avoid formatter-noise patterns from unnecessary trailing commas in expressions. |
 
 Rust 1.95 ratchets must be measured before activation:
 
-| Lint | Candidate Level |
-|------|-----------------|
-| `clippy::same_length_and_capacity` | deny |
-| `clippy::manual_checked_ops` | warn |
-| `clippy::manual_take` | warn |
-| `clippy::manual_pop_if` | warn |
-| `clippy::duration_suboptimal_units` | warn |
+| Lint | Candidate Level | Status |
+|------|-----------------|--------|
+| `clippy::duration_suboptimal_units` | warn | Measured with existing warnings; tracked as debt. |
+| `clippy::needless_type_cast` | warn | Measured with existing warnings; tracked as debt. |
+| `clippy::manual_pop_if` | warn | Not recognized by Rust 1.95.0 Clippy. |
 
 Because CI uses `-D warnings`, warning-level ratchets become hard failures in
 practice. Do not add noisy warning lints unless the PR also fixes the warnings.

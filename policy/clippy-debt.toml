@@ -5,5 +5,16 @@ msrv = "1.95"
 source = "policy/clippy-lints.toml"
 refresh_rule = "Debt may shrink; new debt requires explicit review before it is recorded."
 
-# No Clippy debt is recorded at ledger introduction.
-debt = []
+[[debt]]
+name = "clippy::duration_suboptimal_units"
+level = "warn"
+measured_with = "Rust 1.95.0 Clippy"
+reason = "Existing Duration construction warnings appear in client, server, and CLI configuration/test paths."
+review_after = "0.17.0 cleanup"
+
+[[debt]]
+name = "clippy::needless_type_cast"
+level = "warn"
+measured_with = "Rust 1.95.0 Clippy"
+reason = "Existing SQL count conversion warnings appear in SQLite and Postgres storage paths."
+review_after = "0.17.0 cleanup"

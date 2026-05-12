@@ -41,6 +41,13 @@ categories = ["development-tools", "command-line-utilities"]
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+same_length_and_capacity = "deny"
+manual_checked_ops = "warn"
+manual_take = "warn"
+unnecessary_trailing_comma = "warn"
 
 [workspace.lints.rust]
 unsafe_code = "warn"
