@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unavailable candidates as policy debt or blocked work.
 - Added the exact no-panic family scanner and initial allowlist for the
   governance rollout.
+- Added the generated no-panic baseline so policy checks reject new
+  unallowlisted panic-family debt.
 
 ## [0.16.0] - 2026-05-11
 

@@ -40,7 +40,7 @@ This rollout is separate from baseline or trend refresh work such as #334.
 | `clippy.toml` | present, `msrv = "1.95"` | present, `msrv = "1.95"` |
 | Rust lints | explicit 1.95 floor | explicit 1.95 floor |
 | Clippy policy | staged ledger plus clean ratchets | staged ledger/checker |
-| No-panic policy | exact scanner and allowlist | no-new-debt baseline/allowlist |
+| No-panic policy | no-new-debt baseline/allowlist | no-new-debt baseline/allowlist |
 | Non-Rust file policy | absent | allowlist plus companion ledgers |
 | Public crate surface | five crates | keep enforced |
 | Release proof | working | keep publish matrix boring |
