@@ -1522,18 +1522,15 @@ fn write_no_panic_baseline(
 ) -> anyhow::Result<()> {
     let mut output = String::new();
     output.push_str("schema_version = \"1.0\"\n");
-    output.push_str("generated_by = \"cargo run -p xtask -- policy check-no-panic-family --write-baseline\"\n\n");
+    output.push_str(
+        "generated_by = \"cargo run -p xtask -- policy check-no-panic-family --write-baseline\"\n",
+    );
 
-    let mut first_entry = true;
     for finding in findings {
         if is_no_panic_allowed(&finding.identity, allowlist) {
             continue;
         }
-        if first_entry {
-            first_entry = false;
-        } else {
-            output.push('\n');
-        }
+        output.push('\n');
         output.push_str("[[baseline]]\n");
         output.push_str("path = ");
         output.push_str(&toml_basic_string(&finding.identity.path));
