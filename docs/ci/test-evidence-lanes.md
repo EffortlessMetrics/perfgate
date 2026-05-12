@@ -33,7 +33,7 @@ Run heavier evidence when it buys signal:
 | Lane | Routing |
 |------|---------|
 | Coverage | `main`, `workflow_dispatch`, or PR labels such as `coverage` and `full-ci`. |
-| Fuzz | Scheduled, manual, or PR labels `fuzz`, `full-ci`, or `release-proof`. |
+| Fuzz | `schedule`, `workflow_dispatch`, or PR labels `fuzz`, `full-ci`, or `release-proof`. |
 | Action smoke | `main`, `workflow_dispatch`, or PR labels `self-smoke`, `perfgate-self`, `full-ci`, or `release-proof`. |
 | Core perf dogfood | `main`, `workflow_dispatch`, or PR labels `perf`, `perfgate-self`, `full-ci`, or `release-proof`. |
 | Paired PR-vs-main | `main`, `workflow_dispatch`, or PR labels `paired`, `perfgate-self`, `full-ci`, or `release-proof`. |
