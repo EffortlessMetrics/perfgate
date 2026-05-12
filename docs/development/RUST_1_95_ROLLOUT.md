@@ -38,7 +38,7 @@ This rollout is separate from baseline or trend refresh work such as #334.
 | Toolchain | 1.95.0 | 1.95.0 |
 | Hosted Rust workflow pins | 1.95.0 | 1.95.0 |
 | `clippy.toml` | present, `msrv = "1.95"` | present, `msrv = "1.95"` |
-| Rust lints | `unsafe_code = "warn"` | explicit 1.95 floor |
+| Rust lints | explicit 1.95 floor | explicit 1.95 floor |
 | Clippy policy | light | staged ledger/checker |
 | No-panic policy | absent | no-new-debt baseline/allowlist |
 | Non-Rust file policy | absent | allowlist plus companion ledgers |

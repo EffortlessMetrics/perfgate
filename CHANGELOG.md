@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Raised the declared Rust MSRV, local toolchain, and hosted Rust workflow pins
   to Rust 1.95.
+- Enabled the Rust 1.95 compiler lint floor while keeping `unsafe_code` at
+  `warn` for a later audit.
 
 ## [0.16.0] - 2026-05-11
 
