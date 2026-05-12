@@ -44,7 +44,7 @@ This rollout is separate from baseline or trend refresh work such as #334.
 | Non-Rust file policy | allowlist plus companion ledgers | allowlist plus companion ledgers |
 | Public crate surface | five crates | keep enforced |
 | Release proof | working | keep publish matrix boring |
-| CI economics | basic routed lanes | explicit evidence lane policy |
+| CI economics | routed evidence lanes | routed evidence lanes |
 
 ## PR Ladder
 

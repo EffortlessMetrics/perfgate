@@ -2,6 +2,8 @@ name: fuzz
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    branches: [main]
   # Run weekly on Sunday at 2am UTC (after mutation testing)
   schedule:
     - cron: "0 2 * * 0"
@@ -22,6 +24,11 @@ jobs:
   fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 90 # Allow enough time for all targets
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'fuzz') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
 
     steps:
       - uses: actions/checkout@v4

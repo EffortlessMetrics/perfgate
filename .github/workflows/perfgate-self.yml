@@ -2,8 +2,11 @@ name: perfgate-self
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,6 +16,12 @@ jobs:
   smoke:
     name: Action Smoke Lane
     runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+      contains(github.event.pull_request.labels.*.name, 'self-smoke') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -35,6 +44,12 @@ jobs:
   perf:
     name: Core Perf Lane
     runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+      contains(github.event.pull_request.labels.*.name, 'perf') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -59,6 +74,12 @@ jobs:
   paired:
     name: Paired PR-vs-Main Lane
     runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+      contains(github.event.pull_request.labels.*.name, 'paired') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
     steps:
       - name: Checkout Current
         uses: actions/checkout@v6

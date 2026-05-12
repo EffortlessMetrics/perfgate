@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unallowlisted panic-family debt.
 - Added non-Rust file-surface policy allowlists for workflows, generated
   files, executable bits, dependency surfaces, and governed repository files.
+- Routed expensive fuzz and self-dogfood evidence lanes behind explicit labels,
+  `main`, schedules, or manual dispatch instead of ordinary unlabeled PRs.
 
 ## [0.16.0] - 2026-05-11
 

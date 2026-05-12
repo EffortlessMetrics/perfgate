@@ -33,10 +33,17 @@ Run heavier evidence when it buys signal:
 | Lane | Routing |
 |------|---------|
 | Coverage | `main`, `workflow_dispatch`, or PR labels such as `coverage` and `full-ci`. |
-| Fuzz | Scheduled, manual, release-proof, or high-risk parser/schema changes. |
+| Fuzz | Scheduled, manual, or PR labels `fuzz`, `full-ci`, or `release-proof`. |
+| Action smoke | `main`, `workflow_dispatch`, or PR labels `self-smoke`, `perfgate-self`, `full-ci`, or `release-proof`. |
+| Core perf dogfood | `main`, `workflow_dispatch`, or PR labels `perf`, `perfgate-self`, `full-ci`, or `release-proof`. |
+| Paired PR-vs-main | `main`, `workflow_dispatch`, or PR labels `paired`, `perfgate-self`, `full-ci`, or `release-proof`. |
 | Baseline refresh | Dedicated refresh PRs, scheduled calibration, or explicit release proof. |
 | Bench and trend refresh | Mainline/scheduled evidence lanes or labeled PRs. |
 | Mutation testing | Dedicated policy lane if added later, not default PR traffic. |
+
+Unlabeled PRs still get the default `ci` workflow and policy checks. The
+evidence workflows may be triggered by PR metadata, but their runner-consuming
+jobs must stay skipped unless one of the explicit routing labels is present.
 
 This matches the existing coverage model in [coverage.md](coverage.md), where
 coverage is execution-surface evidence and not a substitute for release,
