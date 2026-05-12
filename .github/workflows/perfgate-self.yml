@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.0
+          toolchain: 1.95.0
       - name: Build dogfood workload
         run: cargo build --release -p perfgate-selfbench
       - uses: ./
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.0
+          toolchain: 1.95.0
       - name: Build release binaries
         run: |
           cargo build --release -p perfgate-cli --bin perfgate
@@ -73,7 +73,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.0
+          toolchain: 1.95.0
 
       - name: Build current binary
         run: cd current && cargo build --release -p perfgate-cli --bin perfgate && cargo build --release -p perfgate-selfbench

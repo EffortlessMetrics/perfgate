@@ -34,10 +34,10 @@ This rollout is separate from baseline or trend refresh work such as #334.
 |-------|---------|--------|
 | Edition | 2024 | 2024 |
 | Version | 0.16.0 | 0.17.0 |
-| MSRV | 1.93 | 1.95 |
-| Toolchain | 1.93.0 | 1.95.0 |
-| CI and coverage pins | 1.93.0 | 1.95.0 |
-| `clippy.toml` | absent | present, `msrv = "1.95"` |
+| MSRV | 1.95 | 1.95 |
+| Toolchain | 1.95.0 | 1.95.0 |
+| Hosted Rust workflow pins | 1.95.0 | 1.95.0 |
+| `clippy.toml` | present, `msrv = "1.95"` | present, `msrv = "1.95"` |
 | Rust lints | `unsafe_code = "warn"` | explicit 1.95 floor |
 | Clippy policy | light | staged ledger/checker |
 | No-panic policy | absent | no-new-debt baseline/allowlist |
