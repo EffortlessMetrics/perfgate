@@ -1,0 +1,5 @@
+schema_version = "1.0"
+
+# No executable file modes are currently allowed in the repository.
+# New executable files must add an entry with the required fields before merge.
+allow = []

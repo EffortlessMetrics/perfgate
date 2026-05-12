@@ -6,7 +6,7 @@ are reviewed as contracts instead of incidental repository contents.
 
 ## Governed Surfaces
 
-The initial allowlist should cover:
+The initial allowlists cover:
 
 | Surface | Examples |
 |---------|----------|
@@ -21,7 +21,7 @@ The initial allowlist should cover:
 
 ## Required Fields
 
-Every allowlist entry should include:
+Every allowlist entry must include:
 
 | Field | Purpose |
 |-------|---------|
@@ -39,7 +39,7 @@ Every allowlist entry should include:
 
 ## Companion Ledgers
 
-The planned policy files are:
+The active policy files are:
 
 - `policy/non-rust-allowlist.toml`
 - `policy/generated-allowlist.toml`
@@ -49,6 +49,9 @@ The planned policy files are:
 
 The allowlists are contracts, not ignore files. New non-Rust files should either
 fit an existing governed glob or add a reviewed entry with ownership and proof.
+
+The first PR for this policy is ledger-only. Enforcement should be wired in a
+later automation lane once the reviewed surface is stable.
 
 See [Policy Allowlists](POLICY_ALLOWLISTS.md) and
 [Rust 1.95 and 0.17.0 Governance Rollout](development/RUST_1_95_ROLLOUT.md).

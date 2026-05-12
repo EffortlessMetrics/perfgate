@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   governance rollout.
 - Added the generated no-panic baseline so policy checks reject new
   unallowlisted panic-family debt.
+- Added non-Rust file-surface policy allowlists for workflows, generated
+  files, executable bits, dependency surfaces, and governed repository files.
 
 ## [0.16.0] - 2026-05-11
 

@@ -41,7 +41,7 @@ This rollout is separate from baseline or trend refresh work such as #334.
 | Rust lints | explicit 1.95 floor | explicit 1.95 floor |
 | Clippy policy | staged ledger plus clean ratchets | staged ledger/checker |
 | No-panic policy | no-new-debt baseline/allowlist | no-new-debt baseline/allowlist |
-| Non-Rust file policy | absent | allowlist plus companion ledgers |
+| Non-Rust file policy | allowlist plus companion ledgers | allowlist plus companion ledgers |
 | Public crate surface | five crates | keep enforced |
 | Release proof | working | keep publish matrix boring |
 | CI economics | basic routed lanes | explicit evidence lane policy |

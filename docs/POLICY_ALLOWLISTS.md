@@ -24,7 +24,7 @@ perfgate-server
 This five-crate surface must stay enforced by
 `cargo run -p xtask -- public-surface --strict`.
 
-## Planned Policy Files
+## Active Policy Files
 
 | File | Purpose |
 |------|---------|
