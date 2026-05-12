@@ -1,29 +1,27 @@
 # Release Readiness
 
-Last verified: 2026-05-10 after merging the 0.16 public-surface collapse,
-first-run onboarding hardening, server operations visibility, structured
-performance-decision workflow, decision ledger/debt, and server-ledger
-decision visibility through PR #333.
+Last verified: 2026-05-11 after merging PR #338 (release prep for v0.16.0) and PR #337
+(`publish-check` dry-run matrix repair).
 
 ## Current Main Snapshot
 
-Verified on 2026-05-10 after merging release-readiness work through PR #333.
+Verified on 2026-05-11 after merging PRs #333 through #337 and #338.
 
-The current `main` branch is not a published release, but the 0.16 public crate
-surface, paved first-run workflow, baseline-service operations, and structured
-performance-decision workflow are now in their intended release shape:
+The `main` branch is published as `v0.16.0` and the 0.16 public crate surface,
+paved first-run workflow, baseline-service operations, and structured performance
+decision workflow are in their intended release shape:
 
 | Gate | Status | Evidence |
 |------|--------|----------|
 | Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
 | Architecture boundary enforcement | Passing | `cargo run -p xtask -- arch` |
 | Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
-| Package file-list proof | Release-prep gate | `cargo run -p xtask -- publish-check --package-list` |
+| Package file-list proof | Passing | `cargo run -p xtask -- publish-check --package-list` |
 | Adoption path docs | Covered | `README.md`, `docs/PERFORMANCE_DECISIONS.md` |
 | Publish dry-run proof | Per-package release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
-| Publish dry-run matrix | Failing (expected) | `cargo run -p xtask -- publish-check --dry-run --package-list` not yet safe for all public crates: `perfgate-types` passes, remaining public crates currently fail on unresolved re-exports/API drift and dependency/version pin mismatches |
+| Publish dry-run matrix | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
-| Install smoke proof | Verified | `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force` and `cargo-binstall perfgate-cli --version 0.15.1 --force` |
+| Install smoke proof | Verified | `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force` and `cargo-binstall perfgate-cli --version 0.16.0 --force` |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
 | Structured decision end-to-end | Verified | `perfgate ingest probes`, `perfgate decision evaluate`, `perfgate decision bundle` on `examples/performance-decision`, plus `perfgate serve --no-open` and `decision upload/history/debt/prune --dry-run` |
@@ -33,7 +31,7 @@ performance-decision workflow are now in their intended release shape:
 | Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
-| Full repo CI | Passing | Hosted `ci`, `Coverage`, and `perfgate-self` on merge commit `a1ffb0e`; PR #323 also passed `fuzz` |
+| Full repo CI | Passing | Hosted `ci`, `Coverage`, and `perfgate-self` on merge commit `2cda12c`; PR #338 also passed `fuzz` |
 
 The only publishable packages allowed by policy are:
 
@@ -45,13 +43,17 @@ perfgate-client
 perfgate-server
 ```
 
-Before cutting a 0.16 release, run the package proof without `--allow-dirty`:
+Release proof commands run for v0.16.0 (run without `--allow-dirty`):
 
 ```bash
 cargo run -p xtask -- public-surface --strict
 cargo run -p xtask -- arch
 cargo run -p xtask -- publish-check --package-list
 cargo run -p xtask -- publish-check --dry-run --package perfgate-types
+cargo run -p xtask -- publish-check --dry-run --package perfgate
+cargo run -p xtask -- publish-check --dry-run --package perfgate-client
+cargo run -p xtask -- publish-check --dry-run --package perfgate-server
+cargo run -p xtask -- publish-check --dry-run --package perfgate-cli
 cargo run -p xtask -- action-check
 cargo run -p xtask -- docs-check
 cargo run -p xtask -- doc-test
@@ -61,17 +63,17 @@ cargo run -p xtask -- ci
 
 Run `publish-check --dry-run --package <name>` immediately before publishing each
 crate in dependency order. Cargo verifies packaged dependencies against
-crates.io, so downstream crates such as `perfgate` and `perfgate-cli` cannot be
-dry-run verified until their same-release workspace dependencies have already
-been published.
+crates.io, so downstream crates such as `perfgate` and `perfgate-cli` require
+same-release workspace dependencies to be on the current path first.
 
 For PR validation before the branch is committed or while release notes are still
 being edited, `publish-check` also accepts `--allow-dirty`. Release operators
 should omit it.
 
-The GitHub release workflow builds the platform archives, unpacks each generated
-archive, verifies the binary exists, and runs `perfgate --version` plus
-`perfgate doctor --help` on native targets before uploading release assets.
+The GitHub release workflow (published as v0.16.0) builds platform archives,
+unpacks each generated archive, verifies the binary exists, and runs
+`perfgate --version` plus `perfgate doctor --help` on native targets before
+uploading release assets.
 
 The GitHub Action path is also guarded: `xtask action-check` verifies action
 inputs and install wiring, and the action prints a local reproduction command
