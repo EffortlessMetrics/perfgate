@@ -4697,17 +4697,13 @@ fn build_decision_artifact_index(
     let mut compare_receipts = BTreeSet::new();
 
     for component in &scenario.components {
-        if let Some(path) = component
-            .probe_compare_ref
-            .as_ref()
-            .and_then(|reference| reference.path.as_ref())
+        if let Some(reference) = &component.probe_compare_ref
+            && let Some(path) = reference.path.as_ref()
         {
             probe_compares.insert(normalize_artifact_path(path));
         }
-        if let Some(path) = component
-            .compare_ref
-            .as_ref()
-            .and_then(|reference| reference.path.as_ref())
+        if let Some(reference) = &component.compare_ref
+            && let Some(path) = reference.path.as_ref()
         {
             compare_receipts.insert(normalize_artifact_path(path));
         }

@@ -2578,10 +2578,12 @@ fn rust_code_before_comment(line: &str) -> &str {
 }
 
 fn is_publishable(package: &MetadataPackage) -> bool {
-    match &package.publish {
-        None => true,
-        Some(registries) => !registries.is_empty(),
+    if let Some(registries) = &package.publish
+        && registries.is_empty()
+    {
+        return false;
     }
+    true
 }
 
 fn resolve_manifest_relative_path(manifest_path: &Path, relative_path: &Path) -> PathBuf {

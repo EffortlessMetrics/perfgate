@@ -76,9 +76,6 @@ impl SummaryUseCase {
 
             let benchmark = compare.bench.name.clone();
             let status = format!("{:?}", compare.verdict.status).to_lowercase();
-            if status == "fail" {
-                failed = true;
-            }
             let wall = compare.deltas.get(&Metric::WallMs);
             let (wall_ms, change_pct) = if let Some(d) = wall {
                 (
@@ -89,12 +86,15 @@ impl SummaryUseCase {
                 ("N/A".to_string(), "N/A".to_string())
             };
 
-            rows.push(SummaryRow {
+            let row = rows.push_mut(SummaryRow {
                 benchmark,
                 status,
                 wall_ms,
                 change_pct,
             });
+            if row.status == "fail" {
+                failed = true;
+            }
         }
 
         Ok(SummaryOutcome { rows, failed })

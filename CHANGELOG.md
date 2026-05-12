@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   files, executable bits, dependency surfaces, and governed repository files.
 - Routed expensive fuzz and self-dogfood evidence lanes behind explicit labels,
   `main`, schedules, or manual dispatch instead of ordinary unlabeled PRs.
+- Applied targeted Rust 1.95 API cleanup in summary row, decision artifact
+  index, and publishability builders.
 
 ## [0.16.0] - 2026-05-11
 
