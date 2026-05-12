@@ -1,7 +1,7 @@
 # Release Readiness
 
-Last prepared: 2026-05-12 for the v0.17.0 release-candidate branch after the
-Rust 1.95 governance ladder through PR #349.
+Last verified: 2026-05-12 for v0.17.0 publish readiness. See
+[v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md).
 
 Latest published release: v0.16.0. Do not call v0.17.0 published until the
 release-proof PR validates the publish matrix, creates the tag, and publishes
@@ -25,8 +25,8 @@ rails that make the release conveyor explicit:
 | Publish metadata preflight | Passing | `cargo run -p xtask -- publish-check` |
 | Package file-list proof | Passing | `cargo run -p xtask -- publish-check --package-list` |
 | Adoption path docs | Covered | `README.md`, `docs/PERFORMANCE_DECISIONS.md` |
-| Publish dry-run proof | Release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
-| Publish dry-run matrix | Release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
+| Publish dry-run proof | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
+| Publish dry-run matrix | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
 | Install smoke proof | Release gate | Before publish: `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force`; after publish: `cargo-binstall perfgate-cli --version 0.17.0 --force` |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
