@@ -1,0 +1,9 @@
+schema_version = "1.0"
+msrv = "1.95"
+
+[policy]
+source = "policy/clippy-lints.toml"
+refresh_rule = "Debt may shrink; new debt requires explicit review before it is recorded."
+
+# No Clippy debt is recorded at ledger introduction.
+debt = []

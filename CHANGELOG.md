@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to Rust 1.95.
 - Enabled the Rust 1.95 compiler lint floor while keeping `unsafe_code` at
   `warn` for a later audit.
+- Added staged Clippy lint, debt, and exception policy ledgers for the Rust
+  1.95 governance rollout.
 
 ## [0.16.0] - 2026-05-11
 

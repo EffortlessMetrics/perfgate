@@ -1,0 +1,48 @@
+schema_version = "1.0"
+msrv = "1.95"
+
+[policy]
+panic_free_tests = true
+allow_test_carveouts = false
+suppression_style = "expect-with-reason"
+blanket_categories = false
+
+[[active]]
+name = "clippy::dbg_macro"
+level = "deny"
+reason = "Debug macros are not reviewable diagnostics."
+
+[[active]]
+name = "clippy::todo"
+level = "deny"
+reason = "TODO execution paths are not allowed."
+
+[[active]]
+name = "clippy::unimplemented"
+level = "deny"
+reason = "Unimplemented execution paths are not allowed."
+
+[[planned]]
+name = "clippy::same_length_and_capacity"
+level = "deny"
+activate_when_msrv = "1.95"
+
+[[planned]]
+name = "clippy::manual_checked_ops"
+level = "warn"
+activate_when_msrv = "1.95"
+
+[[planned]]
+name = "clippy::manual_take"
+level = "warn"
+activate_when_msrv = "1.95"
+
+[[planned]]
+name = "clippy::manual_pop_if"
+level = "warn"
+activate_when_msrv = "1.95"
+
+[[planned]]
+name = "clippy::duration_suboptimal_units"
+level = "warn"
+activate_when_msrv = "1.95"

@@ -1,11 +1,9 @@
 # Clippy Policy
 
-perfgate treats Clippy as a staged policy surface. The current workspace policy
-is intentionally light: `all = "warn"` at workspace level, with CI invoking
-Clippy under `-D warnings`.
-
-The Rust 1.95 rollout moves this to an explicit ledger model without enabling
-blanket categories by accident.
+perfgate treats Clippy as a staged policy surface. The workspace still keeps
+`all = "warn"` at workspace level, with CI invoking Clippy under
+`-D warnings`, but the Rust 1.95 rollout now records active, planned, debt,
+and exception policy in explicit ledgers.
 
 ## Target Files
 
@@ -13,8 +11,8 @@ blanket categories by accident.
 |------|------|
 | `clippy.toml` | Tool-level MSRV declaration, starting with `msrv = "1.95"`. |
 | `policy/clippy-lints.toml` | Active and planned lint ledger. |
-| `policy/clippy-debt.toml` | Known debt that is not yet ratcheted. |
-| `policy/clippy-exceptions.toml` | Narrow exceptions with owners, reasons, and review dates. |
+| `policy/clippy-debt.toml` | Known debt that is not yet ratcheted; empty at introduction. |
+| `policy/clippy-exceptions.toml` | Narrow exceptions with owners, reasons, and review dates; empty at introduction. |
 
 ## Policy Defaults
 
@@ -26,7 +24,7 @@ blanket categories by accident.
 | Suppressions | `expect` or allow with a reason |
 | Blanket categories | false |
 
-Initial active lints should be small and reviewable:
+The initial active ledger is small and reviewable:
 
 | Lint | Level | Reason |
 |------|-------|--------|
@@ -49,10 +47,13 @@ practice. Do not add noisy warning lints unless the PR also fixes the warnings.
 
 ## Rollout Rules
 
-1. Add the ledger before enforcement.
+1. Keep ledger changes separate from lint activation unless the activation is
+   already measured and cheap.
 2. Measure each candidate lint against the workspace.
 3. Activate only clean or cheap lints in the ratchet PR.
 4. Keep `disallowed_fields` out until protected seams are real.
 5. Keep every exception scoped to a selector, owner, reason, and review date.
+6. Add checker enforcement in a later PR unless it is small enough to review
+   with the ledger change.
 
 See [Rust 1.95 and 0.17.0 Governance Rollout](development/RUST_1_95_ROLLOUT.md).
