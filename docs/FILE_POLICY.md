@@ -27,10 +27,10 @@ Every allowlist entry must include:
 |-------|---------|
 | `id` | Stable review identifier. |
 | `glob` | File or file-family selector. |
-| `kind` | Workflow, docs, schema, fixture, config, baseline, generated, or executable. |
+| `kind` | `workflow`, `docs`, `schema`, `fixture`, `config`, `baseline`, `policy`, `dependency`, `integration`, or `executable`. |
 | `language` | File format or language. |
-| `surface` | User, CI, release, schema, dependency, or internal surface. |
-| `classification` | Contract, generated, evidence, configuration, or documentation. |
+| `surface` | `user`, `ci`, `release`, `schema`, `dependency`, `test`, or `internal`. |
+| `classification` | `contract`, `generated`, `evidence`, `configuration`, or `documentation`. |
 | `owner` | Responsible reviewer or owner. |
 | `reason` | Why the file is allowed and governed. |
 | `covered_by` | Validation command, workflow, or review policy. |
@@ -47,8 +47,12 @@ The active policy files are:
 - `policy/workflow-allowlist.toml`
 - `policy/dependency-surface-allowlist.toml`
 
-The allowlists are contracts, not ignore files. New non-Rust files should either
-fit an existing governed glob or add a reviewed entry with ownership and proof.
+The allowlists are contracts, not ignore files. Companion ledgers are the source
+of truth for their specialized surfaces: workflows live in
+`workflow-allowlist.toml`, generated artifacts in `generated-allowlist.toml`,
+and dependency/toolchain surfaces in `dependency-surface-allowlist.toml`. New
+non-Rust files should either fit an existing governed glob or add a reviewed
+entry with ownership and proof.
 
 The first PR for this policy is ledger-only. Enforcement should be wired in a
 later automation lane once the reviewed surface is stable.
