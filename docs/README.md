@@ -46,6 +46,8 @@ Codex execution state stay reviewable.
 - Decision outcome gallery:
   [`examples/decision-outcomes.md`](examples/decision-outcomes.md)
 - Probe instrumentation: [`PROBE_QUICKSTART.md`](PROBE_QUICKSTART.md)
+- Probe design patterns:
+  [`PROBE_DESIGN_PATTERNS.md`](PROBE_DESIGN_PATTERNS.md)
 - Signal calibration: [`SIGNAL_CALIBRATION.md`](SIGNAL_CALIBRATION.md)
 - Decision ledger operations:
   [`DECISION_LEDGER_RUNBOOK.md`](DECISION_LEDGER_RUNBOOK.md)

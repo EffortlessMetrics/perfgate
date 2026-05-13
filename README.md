@@ -258,6 +258,7 @@ For specific workflows:
 
 - [Performance Decisions](docs/PERFORMANCE_DECISIONS.md)
 - [Probe Instrumentation Quickstart](docs/PROBE_QUICKSTART.md)
+- [Probe Design Patterns](docs/PROBE_DESIGN_PATTERNS.md)
 - [Signal Calibration](docs/SIGNAL_CALIBRATION.md)
 - [Step-by-Step Pipeline](docs/PIPELINE.md)
 - [Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md)

@@ -11,6 +11,10 @@ Probes are not a profiler. Start with two or three named phases that already
 matter to reviewers, such as `parser.tokenize`, `parser.ast_build`, and
 `parser.batch_loop`.
 
+For guidance on where to put those first probes, stable naming, and bad probe
+shapes to avoid, see
+[`PROBE_DESIGN_PATTERNS.md`](PROBE_DESIGN_PATTERNS.md).
+
 ## 1. Pick Stable Probe Names
 
 Use names that describe durable work, not temporary function names:
@@ -198,4 +202,3 @@ perfgate decision bundle --index artifacts/perfgate/decision.index.json --out ar
 For a deterministic fixture that exercises probe ingest, probe compare,
 scenario evaluation, tradeoff evaluation, and decision rendering, see
 [`examples/performance-decision`](../examples/performance-decision/README.md).
-

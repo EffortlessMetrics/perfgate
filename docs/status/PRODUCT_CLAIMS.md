@@ -286,7 +286,7 @@ Review after: before-0.18.0-release
 
 Tier: supported
 Surface: CLI, Rust helpers, probe receipts, decision receipts
-Linked docs: [`PROBE_QUICKSTART.md`](../PROBE_QUICKSTART.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`examples/decision-outcomes.md`](../examples/decision-outcomes.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
+Linked docs: [`PROBE_QUICKSTART.md`](../PROBE_QUICKSTART.md), [`PROBE_DESIGN_PATTERNS.md`](../PROBE_DESIGN_PATTERNS.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`examples/decision-outcomes.md`](../examples/decision-outcomes.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
 Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
 Proof commands:
 
