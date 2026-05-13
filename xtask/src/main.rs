@@ -3,10 +3,15 @@ use clap::{Parser, Subcommand, ValueEnum};
 use glob::glob;
 use regex::Regex;
 use schemars::schema_for;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+const BADGE_ENDPOINT_DIR: &str = "badges";
+const BADGE_ENDPOINT_TARGET_DIR: &str = "target/xtask/badges";
+const RIPR_PR_DIR: &str = "target/ripr/pr";
+const RIPR_REVIEW_DIR: &str = "target/ripr/review";
 
 const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
     "perfgate-types",
@@ -130,6 +135,9 @@ enum Command {
     /// Run the usual repo checks.
     Ci,
 
+    /// Run fast pull request validation checks.
+    Pr,
+
     /// Validate workspace packaging metadata for crates.io publication.
     PublishCheck {
         /// Limit package-list or dry-run checks to one or more publishable packages.
@@ -181,6 +189,9 @@ enum Command {
         action: PolicyAction,
     },
 
+    /// Validate repository non-Rust and workflow file policy ledgers.
+    CheckFilePolicy,
+
     /// Enforce crate-layer dependency rules for the current architecture.
     Arch,
 
@@ -223,10 +234,43 @@ enum Command {
     },
 
     /// Update generated docs.
-    DocsSync,
+    DocsSync {
+        /// Verify generated docs are current without rewriting them.
+        #[arg(long)]
+        check: bool,
+    },
 
     /// Fail CI if generated docs differ from committed docs.
     DocsCheck,
+
+    /// Generate public Shields endpoint badge JSON.
+    Badges {
+        /// Verify committed badge endpoint JSON is current without rewriting badges/.
+        #[arg(long)]
+        check: bool,
+    },
+
+    /// Generate PR-scoped RIPR repo exposure evidence under target/ripr/pr/.
+    RiprPr {
+        /// Verify the target/ripr/pr/ output contract instead of regenerating it.
+        #[arg(long)]
+        check: bool,
+    },
+
+    /// Generate PR-scoped RIPR review guidance under target/ripr/review/.
+    RiprReviewComments {
+        /// Verify the target/ripr/review/ output contract instead of regenerating it.
+        #[arg(long)]
+        check: bool,
+
+        /// Base revision for PR diff analysis.
+        #[arg(long, default_value = "origin/main")]
+        base: String,
+
+        /// Head revision for PR diff analysis.
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+    },
 
     /// Validate CLI examples in documentation against actual --help output.
     DocTest {
@@ -295,6 +339,7 @@ fn main() -> anyhow::Result<()> {
         Command::SchemaCheck { schemas_dir } => cmd_schema_check(&schemas_dir),
         Command::SchemaCompat { fixtures_dir } => cmd_schema_compat(&fixtures_dir),
         Command::Ci => cmd_ci(),
+        Command::Pr => cmd_pr(),
         Command::PublishCheck {
             packages,
             package_list,
@@ -318,6 +363,7 @@ fn main() -> anyhow::Result<()> {
                 write_baseline,
             } => cmd_check_no_panic_family(&root, &allowlist, &baseline, write_baseline),
         },
+        Command::CheckFilePolicy => cmd_check_file_policy(),
         Command::Arch => cmd_arch(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::SyncFixtures => cmd_sync_fixtures(),
@@ -328,10 +374,49 @@ fn main() -> anyhow::Result<()> {
         } => cmd_mutants(crate_name, summary, args),
         Command::Microcrates => cmd_microcrates(),
         Command::Dogfood { action } => cmd_dogfood(action),
-        Command::DocsSync => cmd_docs_sync(),
+        Command::DocsSync { check } => {
+            if check {
+                cmd_docs_check()
+            } else {
+                cmd_docs_sync()
+            }
+        }
         Command::DocsCheck => cmd_docs_check(),
+        Command::Badges { check } => cmd_badges(check),
+        Command::RiprPr { check } => cmd_ripr_pr(check),
+        Command::RiprReviewComments { check, base, head } => {
+            cmd_ripr_review_comments(check, &base, &head)
+        }
         Command::DocTest { files } => cmd_doc_test(files),
     }
+}
+
+fn cmd_pr() -> anyhow::Result<()> {
+    cmd_docs_check()?;
+    cmd_badges(true)?;
+    cmd_check_file_policy()?;
+    println!("  OK  pull request verification checks passed");
+    Ok(())
+}
+
+fn cmd_check_file_policy() -> anyhow::Result<()> {
+    let policy_files = [
+        "policy/non-rust-allowlist.toml",
+        "policy/workflow-allowlist.toml",
+        "policy/generated-allowlist.toml",
+        "policy/executable-allowlist.toml",
+        "policy/dependency-surface-allowlist.toml",
+    ];
+
+    for policy_file in policy_files {
+        let content = fs::read_to_string(policy_file)
+            .with_context(|| format!("reading file policy ledger {policy_file}"))?;
+        toml::from_str::<toml::Value>(&content)
+            .with_context(|| format!("parsing file policy ledger {policy_file}"))?;
+    }
+
+    println!("  OK  file policy ledgers parse as TOML");
+    Ok(())
 }
 
 fn cmd_ci() -> anyhow::Result<()> {
@@ -3952,6 +4037,286 @@ fn validate_dogfood_run_receipt(path: &Path) -> anyhow::Result<()> {
     );
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+struct ShieldsEndpointBadge {
+    #[serde(rename = "schemaVersion")]
+    schema_version: u8,
+    label: String,
+    message: String,
+    color: String,
+}
+
+fn cmd_badges(check: bool) -> anyhow::Result<()> {
+    let workspace_root = workspace_root_path();
+    let target_dir = workspace_root.join(BADGE_ENDPOINT_TARGET_DIR);
+    fs::create_dir_all(&target_dir)
+        .with_context(|| format!("creating {}", target_dir.display()))?;
+
+    ensure_ripr_test_efficiency_report(&workspace_root)?;
+
+    let ripr_plus = ripr_plus_badge(&workspace_root)?;
+    validate_shields_badge(&ripr_plus, Some("ripr+"))?;
+    write_json_pretty(&target_dir.join("ripr-plus.json"), &ripr_plus)?;
+
+    if check {
+        let committed_dir = workspace_root.join(BADGE_ENDPOINT_DIR);
+        compare_files(
+            &committed_dir.join("ripr-plus.json"),
+            &target_dir.join("ripr-plus.json"),
+        )?;
+        println!("badges: committed endpoints are current");
+        return Ok(());
+    }
+
+    let committed_dir = workspace_root.join(BADGE_ENDPOINT_DIR);
+    fs::create_dir_all(&committed_dir)
+        .with_context(|| format!("creating {}", committed_dir.display()))?;
+    fs::copy(
+        target_dir.join("ripr-plus.json"),
+        committed_dir.join("ripr-plus.json"),
+    )
+    .with_context(|| format!("copying ripr-plus.json into {}", committed_dir.display()))?;
+
+    println!("badges: refreshed public endpoint JSON under badges/");
+    Ok(())
+}
+
+fn ripr_plus_badge(workspace_root: &Path) -> anyhow::Result<ShieldsEndpointBadge> {
+    let ripr_bin = std::env::var("RIPR_BIN").unwrap_or_else(|_| "ripr".to_string());
+    let output = std::process::Command::new(&ripr_bin)
+        .arg("check")
+        .arg("--root")
+        .arg(workspace_root)
+        .arg("--format")
+        .arg("repo-badge-plus-shields")
+        .current_dir(workspace_root)
+        .output()
+        .with_context(|| format!("running {ripr_bin} for repo-scoped ripr+ badge"))?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "{ripr_bin} repo-badge-plus-shields failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    serde_json::from_slice(&output.stdout)
+        .with_context(|| format!("{ripr_bin} emitted invalid Shields endpoint JSON"))
+}
+
+fn ensure_ripr_test_efficiency_report(workspace_root: &Path) -> anyhow::Result<()> {
+    let report = workspace_root.join("target/ripr/reports/test-efficiency.json");
+    if report.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = report.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let empty_report = serde_json::json!({
+        "schema_version": "0.1",
+        "tests": [],
+        "metrics": {
+            "tests_scanned": 0,
+            "reason_counts": {}
+        }
+    });
+    write_json_pretty(&report, &empty_report).with_context(|| {
+        format!(
+            "writing minimal RIPR test-efficiency report for badge generation to {}",
+            report.display()
+        )
+    })
+}
+
+fn validate_shields_badge(
+    badge: &ShieldsEndpointBadge,
+    expected_label: Option<&str>,
+) -> anyhow::Result<()> {
+    if badge.schema_version != 1 {
+        anyhow::bail!("badge `{}` has unsupported schemaVersion", badge.label);
+    }
+
+    if let Some(expected_label) = expected_label
+        && badge.label != expected_label
+    {
+        anyhow::bail!(
+            "badge label drifted: got `{}`, expected `{expected_label}`",
+            badge.label
+        );
+    }
+
+    if badge.message.trim().is_empty() {
+        anyhow::bail!("badge `{}` has empty message", badge.label);
+    }
+
+    if badge.color.trim().is_empty() {
+        anyhow::bail!("badge `{}` has empty color", badge.label);
+    }
+
+    Ok(())
+}
+
+fn cmd_ripr_pr(check: bool) -> anyhow::Result<()> {
+    let workspace_root = workspace_root_path();
+    let out_dir = workspace_root.join(RIPR_PR_DIR);
+    let json_path = out_dir.join("repo-exposure.json");
+    let md_path = out_dir.join("repo-exposure.md");
+
+    if check {
+        validate_ripr_json_file(&json_path, "RIPR PR repo exposure JSON")?;
+        validate_nonempty_file(&md_path, "RIPR PR repo exposure Markdown")?;
+        println!("ripr-pr: output contract is intact");
+        return Ok(());
+    }
+
+    fs::create_dir_all(&out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
+    run_ripr_check_to_file(
+        &workspace_root,
+        "repo-exposure-json",
+        &json_path,
+        "RIPR PR repo exposure JSON",
+    )?;
+    run_ripr_check_to_file(
+        &workspace_root,
+        "repo-exposure-md",
+        &md_path,
+        "RIPR PR repo exposure Markdown",
+    )?;
+    validate_ripr_json_file(&json_path, "RIPR PR repo exposure JSON")?;
+    validate_nonempty_file(&md_path, "RIPR PR repo exposure Markdown")?;
+    println!(
+        "ripr-pr: wrote {} and {}",
+        json_path.display(),
+        md_path.display()
+    );
+    Ok(())
+}
+
+fn cmd_ripr_review_comments(check: bool, base: &str, head: &str) -> anyhow::Result<()> {
+    let workspace_root = workspace_root_path();
+    let out_dir = workspace_root.join(RIPR_REVIEW_DIR);
+    let json_path = out_dir.join("comments.json");
+    let md_path = out_dir.join("comments.md");
+
+    if check {
+        validate_ripr_json_file(&json_path, "RIPR review comments JSON")?;
+        validate_nonempty_file(&md_path, "RIPR review comments Markdown")?;
+        println!("ripr-review-comments: output contract is intact");
+        return Ok(());
+    }
+
+    fs::create_dir_all(&out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
+    let ripr_bin = std::env::var("RIPR_BIN").unwrap_or_else(|_| "ripr".to_string());
+    let status = std::process::Command::new(&ripr_bin)
+        .arg("review-comments")
+        .arg("--root")
+        .arg(&workspace_root)
+        .arg("--base")
+        .arg(base)
+        .arg("--head")
+        .arg(head)
+        .arg("--out")
+        .arg(&json_path)
+        .current_dir(&workspace_root)
+        .status()
+        .with_context(|| format!("running {ripr_bin} review-comments"))?;
+    if !status.success() {
+        anyhow::bail!("{ripr_bin} review-comments failed: {status}");
+    }
+
+    validate_ripr_json_file(&json_path, "RIPR review comments JSON")?;
+    validate_nonempty_file(&md_path, "RIPR review comments Markdown")?;
+    println!(
+        "ripr-review-comments: wrote {} and {}",
+        json_path.display(),
+        md_path.display()
+    );
+    Ok(())
+}
+
+fn run_ripr_check_to_file(
+    workspace_root: &Path,
+    format: &str,
+    out_path: &Path,
+    description: &str,
+) -> anyhow::Result<()> {
+    let ripr_bin = std::env::var("RIPR_BIN").unwrap_or_else(|_| "ripr".to_string());
+    let output = std::process::Command::new(&ripr_bin)
+        .arg("check")
+        .arg("--root")
+        .arg(workspace_root)
+        .arg("--mode")
+        .arg("draft")
+        .arg("--format")
+        .arg(format)
+        .current_dir(workspace_root)
+        .output()
+        .with_context(|| format!("running {ripr_bin} check --format {format}"))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "{ripr_bin} check --format {format} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    fs::write(out_path, output.stdout)
+        .with_context(|| format!("writing {description} to {}", out_path.display()))
+}
+
+fn validate_ripr_json_file(path: &Path, description: &str) -> anyhow::Result<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("missing {description}: {}", path.display()))?;
+    if content.trim().is_empty() {
+        anyhow::bail!("{description} is empty: {}", path.display());
+    }
+    let value: serde_json::Value = serde_json::from_str(&content)
+        .with_context(|| format!("invalid {description}: {}", path.display()))?;
+    if value.as_object().is_none() {
+        anyhow::bail!("{description} must be a JSON object: {}", path.display());
+    }
+    Ok(())
+}
+
+fn validate_nonempty_file(path: &Path, description: &str) -> anyhow::Result<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("missing {description}: {}", path.display()))?;
+    if content.trim().is_empty() {
+        anyhow::bail!("{description} is empty: {}", path.display());
+    }
+    Ok(())
+}
+
+fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let json = serde_json::to_vec_pretty(value)?;
+    fs::write(path, [json, b"\n".to_vec()].concat())
+        .with_context(|| format!("writing {}", path.display()))
+}
+
+fn compare_files(committed: &Path, generated: &Path) -> anyhow::Result<()> {
+    let committed_bytes = fs::read(committed)
+        .with_context(|| format!("reading committed badge endpoint {}", committed.display()))?;
+    let generated_bytes = fs::read(generated)
+        .with_context(|| format!("reading generated badge endpoint {}", generated.display()))?;
+    if committed_bytes != generated_bytes {
+        anyhow::bail!(
+            "badge endpoint drift detected: {} differs from {}; run `cargo xtask badges`",
+            committed.display(),
+            generated.display()
+        );
+    }
+    Ok(())
+}
+
+fn workspace_root_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask lives under workspace root")
+        .to_path_buf()
+}
+
 fn cmd_docs_sync() -> anyhow::Result<()> {
     let md = generate_workspace_inventory_md();
     let path = Path::new("docs/WORKSPACE.md");
@@ -6646,6 +7011,30 @@ Options:
             Some("run --name bench")
         );
         assert_eq!(strip_cargo_run_prefix("echo hello"), None);
+    }
+
+    #[test]
+    fn ripr_plus_badge_shape_is_stable() {
+        let badge = ShieldsEndpointBadge {
+            schema_version: 1,
+            label: "ripr+".to_string(),
+            message: "0".to_string(),
+            color: "brightgreen".to_string(),
+        };
+
+        validate_shields_badge(&badge, Some("ripr+")).unwrap();
+    }
+
+    #[test]
+    fn shields_badge_rejects_label_drift() {
+        let badge = ShieldsEndpointBadge {
+            schema_version: 1,
+            label: "ripr".to_string(),
+            message: "0".to_string(),
+            color: "brightgreen".to_string(),
+        };
+
+        assert!(validate_shields_badge(&badge, Some("ripr+")).is_err());
     }
 
     #[test]
