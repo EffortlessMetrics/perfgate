@@ -108,7 +108,7 @@ Review after: before-0.18.0-release
 
 Tier: stable
 Surface: crates, public API, release policy
-Linked docs: [`CRATE_SEAMS.md`](../CRATE_SEAMS.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`2026-05-13-wrapper-absorption-closeout.md`](../handoffs/2026-05-13-wrapper-absorption-closeout.md)
+Linked docs: [`CRATE_SEAMS.md`](../CRATE_SEAMS.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`2026-05-13-wrapper-absorption-closeout.md`](../handoffs/2026-05-13-wrapper-absorption-closeout.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
 Linked specs: [`PERFGATE-SPEC-0002-package-surface-boundary`](../specs/PERFGATE-SPEC-0002-package-surface-boundary.md)
 Linked policy:
 
@@ -229,7 +229,7 @@ Review after: next-release-candidate
 
 Tier: supported
 Surface: CLI, docs, artifacts
-Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md)
+Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
 Linked specs: [`PERFGATE-SPEC-0004-user-devex-paved-road`](../specs/PERFGATE-SPEC-0004-user-devex-paved-road.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
 Proof commands:
 
@@ -259,7 +259,7 @@ Review after: before-0.18.0-release
 
 Tier: supported
 Surface: docs, CLI, GitHub Action, server ledger
-Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md)
+Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
 Linked specs: [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
@@ -267,9 +267,10 @@ Proof commands:
 cargo +1.95.0 run -p xtask -- docs-check
 cargo +1.95.0 run -p xtask -- doc-test
 cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- action-check
 ```
 
-Linked gates: docs-check, doc-test, docs-source-check
+Linked gates: docs-check, doc-test, docs-source-check, action-check
 
 Artifacts:
 
@@ -285,7 +286,7 @@ Review after: before-0.18.0-release
 
 Tier: supported
 Surface: CLI, Rust helpers, probe receipts, decision receipts
-Linked docs: [`PROBE_QUICKSTART.md`](../PROBE_QUICKSTART.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`examples/decision-outcomes.md`](../examples/decision-outcomes.md)
+Linked docs: [`PROBE_QUICKSTART.md`](../PROBE_QUICKSTART.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`examples/decision-outcomes.md`](../examples/decision-outcomes.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
 Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
 Proof commands:
 
@@ -317,12 +318,13 @@ Review after: next-probe-contract-change
 
 Tier: supported
 Surface: server, CLI, dashboard, audit exports
-Linked docs: [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`BASELINE_SERVICE_DESIGN.md`](../BASELINE_SERVICE_DESIGN.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md)
+Linked docs: [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`BASELINE_SERVICE_DESIGN.md`](../BASELINE_SERVICE_DESIGN.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md)
 Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
 Proof commands:
 
 ```bash
 cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 test -p perfgate-cli --all-features server_operations_smoke_path_memory --locked
 cargo +1.95.0 run -p xtask -- docs-check
 cargo +1.95.0 run -p xtask -- doc-test
 ```

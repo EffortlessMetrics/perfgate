@@ -1,8 +1,11 @@
 # Release Readiness
 
-Last verified: 2026-05-13 for v0.17.0 publication reconciliation. See
-[v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md)
-and [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md).
+Last verified: 2026-05-13 for v0.17.0 publication reconciliation and the
+0.18.0 adoption-readiness snapshot. See
+[v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md),
+[v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
+and
+[v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md).
 
 Latest published release: v0.17.0. The five allowed crates are published on
 crates.io at `0.17.0`, the GitHub release `v0.17.0` is published with platform
@@ -14,6 +17,11 @@ the same release commit as `v0.17.0`.
 The current published release is `v0.17.0`. It keeps the five-crate public
 surface from v0.16.0, raises the Rust floor to 1.95, and adds the governance
 rails that make the release conveyor explicit.
+
+The 0.18.0 adoption-readiness snapshot is a pre-release proof record, not a
+publication record. It documents wrapper absorption, first-hour smoke proof,
+structured-decision bundle proof, checked action failure examples, and optional
+server-ledger operations smoke after the guided-adoption lane closed out.
 
 ## Current Publication State
 
@@ -52,6 +60,7 @@ rails that make the release conveyor explicit.
 | Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
+| 0.18 adoption hardening | Covered | [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md), including wrapper absorption, first-hour smoke, structured decision bundle proof, action summary examples, and server ledger operations smoke |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
 The only publishable packages allowed by policy are:
