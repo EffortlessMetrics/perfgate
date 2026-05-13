@@ -40,6 +40,7 @@ Codex execution state stay reviewable.
   [`audits/release-0.17.0-publish-readiness.md`](audits/release-0.17.0-publish-readiness.md)
 - Verification badges and PR evidence:
   [`VERIFICATION.md`](VERIFICATION.md)
+- First-hour adoption path: [`FIRST_HOUR.md`](FIRST_HOUR.md)
 - Performance decisions: [`PERFORMANCE_DECISIONS.md`](PERFORMANCE_DECISIONS.md)
 - Workspace inventory: [`WORKSPACE.md`](WORKSPACE.md)
 - GitHub Actions setup:
