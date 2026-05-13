@@ -1265,6 +1265,22 @@ fn collect_action_summary_example_errors(summary_examples: &str) -> Vec<String> 
         ("review required", "## Review Required"),
         ("artifact upload list", "## Artifact Upload List"),
         ("decision-enabled failure", "## Decision-Enabled Failure"),
+        ("missing benchmark command", "## Missing Benchmark Command"),
+        ("wrong baseline path", "## Wrong Baseline Path"),
+        ("artifact upload disabled", "## Artifact Upload Disabled"),
+        (
+            "decision missing probe evidence",
+            "## Decision Missing Probe Evidence",
+        ),
+        ("server upload failed", "## Server Upload Failed"),
+        (
+            "review required fail policy",
+            "## Review Required Fail Policy",
+        ),
+        (
+            "windows path or shell quoting",
+            "## Windows Path Or Shell Quoting",
+        ),
     ];
     for (name, heading) in required_examples {
         if !summary_examples.contains(heading) {
@@ -1296,6 +1312,19 @@ fn collect_action_summary_example_errors(summary_examples: &str) -> Vec<String> 
         ("tradeoff receipt", "tradeoff.json"),
         ("decision markdown", "decision.md"),
         ("decision index", "decision.index.json"),
+        (
+            "missing command setup failure",
+            "no perfgate receipt files found",
+        ),
+        ("wrong baseline path guidance", "wrong `baseline_dir`"),
+        (
+            "artifact upload disabled guidance",
+            "upload_artifact: \"false\"",
+        ),
+        ("missing probe evidence", "probe evidence missing"),
+        ("server upload failure", "server upload failure"),
+        ("review-required fail policy", "review_required: \"fail\""),
+        ("windows path guidance", "Windows Path Or Shell Quoting"),
     ];
     for (name, phrase) in required_copy {
         if !summary_examples.contains(phrase) {
@@ -6643,6 +6672,21 @@ pkg-fmt = "zip"
                 .iter()
                 .any(|error| error.contains("review required golden example")),
             "errors should mention missing review-required example: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_summary_examples_reject_missing_ugly_failure_shape() {
+        let examples = include_str!("../../docs/examples/action-failure-summaries.md")
+            .replace("## Missing Benchmark Command", "## Missing Command");
+        let errors = collect_action_summary_example_errors(&examples);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("missing benchmark command golden example")),
+            "errors should mention missing ugly failure example: {:?}",
             errors
         );
     }
