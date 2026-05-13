@@ -89,7 +89,6 @@ gate once transition packages stop being publishable.
 | Crate | Responsibility |
 |-------|----------------|
 | `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
-| `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate::domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, host mismatch logic, and scaling analysis |
 | `perfgate::app` | Orchestration layer for CLI commands and runtime adapters |
 | `perfgate-cli` | Command-line interface and argument parsing |
@@ -99,7 +98,6 @@ gate once transition packages stop being publishable.
 | `perfgate::presentation::render` | Markdown and terminal rendering logic |
 | `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
 | `perfgate::domain::paired` | Paired benchmarking APIs |
-| `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |
 | `perfgate::integrations::github` | GitHub annotations and pull-request integration |
 | `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |

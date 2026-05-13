@@ -6,8 +6,6 @@ default-members = [
   "crates/perfgate-server",
 ]
 members = [
-  "crates/perfgate-error",
-  "crates/perfgate-api",
   "crates/perfgate-types",
   "crates/perfgate-fake",
   "crates/perfgate-cli",
@@ -73,7 +71,6 @@ wiremock = "0.6"
 serde_json.workspace = true
 toml.workspace = true
 perfgate-types.workspace = true
-perfgate-error.workspace = true
 perfgate.workspace = true
 glob.workspace = true
 shell-words.workspace = true
@@ -125,8 +122,6 @@ wiremock = "0.6"
 libc = "0.2.182"
 
 # Internal crates
-perfgate-error = { path = "crates/perfgate-error", version = "0.17.0" }
-perfgate-api = { path = "crates/perfgate-api", version = "0.17.0" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.17.0" }
 perfgate-fake = { path = "crates/perfgate-fake", version = "0.17.0" }
 perfgate-server = { path = "crates/perfgate-server", version = "0.17.0" }

@@ -2580,7 +2580,7 @@ struct ArchRule {
 const ARCH_RULES: &[ArchRule] = &[
     ArchRule {
         name: "contract packages stay below runtime/app/entrypoints",
-        sources: &["perfgate-types", "perfgate-api"],
+        sources: &["perfgate-types"],
         forbidden: &[
             "perfgate-client",
             "perfgate-server",
@@ -3783,18 +3783,11 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("Perfgate Microcrates");
     println!("===================\n");
 
-    let microcrates = [
-        (
-            "perfgate-error",
-            "Compatibility wrapper for perfgate_types::error",
-            100,
-        ),
-        (
-            "perfgate-fake",
-            "Test utilities and fake implementations",
-            70,
-        ),
-    ];
+    let microcrates = [(
+        "perfgate-fake",
+        "Test utilities and fake implementations",
+        70,
+    )];
 
     println!("{:<25} {:<55} {:>10}", "Crate", "Description", "Kill Rate");
     println!("{:-<25} {:-<55} {:->10}", "", "", "");
@@ -3834,8 +3827,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("\nDependency Flow");
     println!("--------------\n");
     println!("  perfgate-types::error (unified errors)");
-    println!("         ↓");
-    println!("  perfgate-error (compatibility wrapper)");
     println!("         ↓");
     println!("  perfgate-types::fingerprint (deterministic hashes)");
     println!("         ↓");
@@ -4299,18 +4290,11 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("| Crate | Description | Kill Rate Target |\n");
     md.push_str("|-------|-------------|------------------|\n");
 
-    let microcrates = [
-        (
-            "perfgate-error",
-            "Compatibility wrapper for perfgate_types::error",
-            100,
-        ),
-        (
-            "perfgate-fake",
-            "Test utilities and fake implementations",
-            70,
-        ),
-    ];
+    let microcrates = [(
+        "perfgate-fake",
+        "Test utilities and fake implementations",
+        70,
+    )];
 
     for (name, desc, rate) in &microcrates {
         md.push_str(&format!("| `{}` | {} | {}% |\n", name, desc, rate));
@@ -4354,7 +4338,6 @@ fn generate_workspace_inventory_md() -> String {
 
     md.push_str("\n## Dependency Flow\n\n");
     md.push_str("```mermaid\ngraph TD\n");
-    md.push_str("  error[perfgate-error compatibility wrapper] --> types[perfgate-types]\n");
     md.push_str("  types --> fingerprint[perfgate-types::fingerprint]\n");
     md.push_str("  facade[perfgate] --> domain[perfgate::domain]\n");
     md.push_str("  domain --> stats[perfgate::domain::stats]\n");

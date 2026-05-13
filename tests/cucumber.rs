@@ -35,7 +35,7 @@ use perfgate::domain::stats::summarize_u64;
 use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate::presentation::render::render_markdown;
 use perfgate::presentation::sensor::SensorReportBuilder;
-use perfgate_error::{
+use perfgate_types::error::{
     AdapterError, ConfigValidationError, IoError, PairedError, PerfgateError, StatsError,
     ValidationError,
 };
@@ -124,7 +124,7 @@ pub struct PerfgateWorld {
     /// Microcrate test state: sensor report
     sensor_report: Option<Box<SensorReport>>,
     /// Microcrate test state: perfgate error
-    perfgate_error: Option<perfgate_error::PerfgateError>,
+    perfgate_error: Option<perfgate_types::error::PerfgateError>,
     /// Microcrate test state: budget configuration
     test_budget: Option<perfgate_types::Budget>,
     /// Microcrate test state: budget result
@@ -4726,7 +4726,9 @@ async fn when_convert_paired_error_no_samples(world: &mut PerfgateWorld) {
 #[when("I convert std::io::Error to PerfgateError")]
 async fn when_convert_std_io_error(world: &mut PerfgateWorld) {
     let std_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-    world.perfgate_error = Some(PerfgateError::Io(perfgate_error::IoError::from(std_err)));
+    world.perfgate_error = Some(PerfgateError::Io(perfgate_types::error::IoError::from(
+        std_err,
+    )));
 }
 
 #[then(expr = "the error category should be {string}")]

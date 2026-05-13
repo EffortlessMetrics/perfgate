@@ -14,11 +14,11 @@ perfgate-auth -> perfgate_types::baseline_service::auth [deleted]
 perfgate-summary -> perfgate::presentation::render::summary [deleted]
 perfgate-stats -> perfgate::domain::stats [deleted]
 perfgate-paired -> perfgate::domain::paired [deleted]
-perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
+perfgate-error -> perfgate_types::error [deleted]
 
 # Contract-adjacent.
 perfgate-config -> perfgate_types::config and perfgate_client::ResolvedServerConfig [deleted]
-perfgate-api -> perfgate_types::baseline_service; perfgate_server::CredentialSource [compatibility wrapper] [publish=false]
+perfgate-api -> perfgate_types::baseline_service; perfgate_server::CredentialSource [deleted]
 
 # Pure core and domain policy.
 perfgate-domain -> perfgate::domain [deleted]

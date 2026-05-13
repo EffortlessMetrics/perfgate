@@ -4,7 +4,7 @@ Status: accepted
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: refactor: absorb app and domain wrapper crates
+Current PR: refactor: absorb contract-adjacent wrapper crates
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked specs: docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md; docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md
@@ -52,8 +52,8 @@ The remaining non-public wrappers are transitional and listed in
 | `perfgate-app` | `perfgate::app` | deleted in app/domain batch | app/domain |
 | `perfgate-domain` | `perfgate::domain` | deleted in app/domain batch | app/domain |
 | `perfgate-paired` | `perfgate::domain::paired` | deleted in app/domain batch | app/domain |
-| `perfgate-error` | `perfgate_types::error` | delete after all workspace deps use `perfgate-types` | contract-adjacent |
-| `perfgate-api` | `perfgate_types::baseline_service`; `perfgate_server::CredentialSource` | delete after contract-adjacent imports are direct | contract-adjacent |
+| `perfgate-error` | `perfgate_types::error` | deleted in contract-adjacent batch | contract-adjacent |
+| `perfgate-api` | `perfgate_types::baseline_service`; `perfgate_server::CredentialSource` | deleted in contract-adjacent batch | contract-adjacent |
 
 Private dev/test packages are not wrapper absorption targets in this lane:
 

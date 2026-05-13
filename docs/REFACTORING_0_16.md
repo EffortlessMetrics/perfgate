@@ -33,12 +33,12 @@ These are contract-adjacent and belong with the public receipt/config model:
 
 | Current Crate | New Home | Reason |
 |---------------|----------|--------|
-| `perfgate-error` | `perfgate_types::error` | Error types are part of the contract; compatibility wrapper remains |
+| `perfgate-error` | `perfgate_types::error` | Error types are part of the contract; crate deleted |
 | `perfgate-validation` | `perfgate_types::validation` | Schema validation is contract-adjacent |
 | `perfgate-config` | `perfgate_types::config` + `perfgate_client::ResolvedServerConfig` | Config model and file helpers are contract-adjacent; client construction belongs to the client crate |
 | `perfgate-api` (shared DTOs) | `perfgate_types::baseline_service` | Wire format for baseline service |
 
-**Current state**: `perfgate-validation` and `perfgate-config` have been deleted, and `perfgate-error` now re-exports `perfgate_types::error` as a workspace-only compatibility wrapper. Config file helpers now live in `perfgate_types::config`, resolved baseline-server client construction lives in `perfgate_client`, shared baseline-service DTOs now live in `perfgate_types::baseline_service`, and server credential-source loading now lives in `perfgate_server::CredentialSource`.
+**Current state**: `perfgate-validation`, `perfgate-config`, and `perfgate-error` have been deleted. Config file helpers now live in `perfgate_types::config`, resolved baseline-server client construction lives in `perfgate_client`, shared baseline-service DTOs now live in `perfgate_types::baseline_service`, and server credential-source loading now lives in `perfgate_server::CredentialSource`.
 
 **Why first**: The types crate must be standalone and self-describing. Absorbing these dependencies first unblocks all downstream refactoring.
 
@@ -291,10 +291,10 @@ fails until only the five target public crates are publishable.
 
 ### Phase 2: Collapse Contracts (PR 2)
 Move into `perfgate-types`:
-- `perfgate-error` -> `perfgate_types::error`
+- `perfgate-error` -> `perfgate_types::error` (done; crate deleted)
 - `perfgate-validation` -> `perfgate_types::validation`
 - `perfgate-config` -> `perfgate_types::config` and `perfgate_client::ResolvedServerConfig`
-- `perfgate-api` shared DTOs -> already landed in `perfgate_types::baseline_service`; server credential-source loading moved to `perfgate_server::CredentialSource`
+- `perfgate-api` shared DTOs -> `perfgate_types::baseline_service`; server credential-source loading moved to `perfgate_server::CredentialSource` (done; crate deleted)
 
 Update all downstream crate imports. Verify `perfgate-types` remains self-contained.
 

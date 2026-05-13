@@ -43,12 +43,12 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-summary` | `perfgate::presentation::render::summary` | crate deleted |
 | `perfgate-stats` | `perfgate::domain::stats` | crate deleted |
 | `perfgate-paired` | `perfgate::domain::paired` | crate deleted |
-| `perfgate-error` | `perfgate_types::error` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-error` | `perfgate_types::error` | crate deleted |
 | `perfgate-render` | `perfgate::presentation::render` | crate deleted |
 | `perfgate-export` | `perfgate::presentation::export` | crate deleted |
 | `perfgate-sensor` | `perfgate::presentation::sensor` | crate deleted |
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
-| `perfgate-api` | `perfgate_types::baseline_service`; runtime credential source in `perfgate_server::CredentialSource` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-api` | `perfgate_types::baseline_service`; runtime credential source in `perfgate_server::CredentialSource` | crate deleted |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | crate deleted |
 | `perfgate-significance` | `perfgate::domain::significance` | crate deleted |

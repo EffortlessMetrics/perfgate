@@ -3,7 +3,7 @@
 //! These tests verify that errors propagate correctly across crate
 //! boundaries and that error conversions work as expected.
 
-use perfgate_error::{
+use perfgate_types::error::{
     AdapterError, ConfigValidationError, ErrorCategory, IoError, PairedError, PerfgateError,
     StatsError, ValidationError,
 };
@@ -279,7 +279,7 @@ fn error_chain_through_paired() {
 
 #[test]
 fn result_type_alias_works() {
-    fn might_fail() -> perfgate_error::Result<String> {
+    fn might_fail() -> perfgate_types::error::Result<String> {
         Err(PerfgateError::Validation(ValidationError::Empty))
     }
 
