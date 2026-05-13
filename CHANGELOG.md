@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   product-claim freshness checker callsites.
 - Planned remaining compatibility wrapper absorption batches while preserving
   the five-crate public surface.
+- Closed the guided adoption lane with a handoff and archived active-goal
+  manifest.
 
 ## [0.17.0] - 2026-05-12
 

@@ -1,11 +1,13 @@
 id = "perfgate-guided-adoption"
 title = "perfgate guided adoption and first-hour UX"
-status = "active"
+status = "completed"
 owner = "codex"
 created = "2026-05-13"
+completed = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "final-closeout"
-current_pr = "docs(handoff): close guided adoption lane"
+current_work_item = "none"
+current_pr = "complete"
+archive_reason = "The guided adoption lane landed first-hour docs and proof, adoption levels, decision outcome examples, probe quickstart and proof, action failure copy, server ledger runbook, product claims, claim/spec freshness enforcement, policy-ledger spec, wrapper cleanup plan, and closeout handoff."
 
 objective = """
 Make perfgate easy for cold users to install, initialize, run locally,
@@ -35,6 +37,8 @@ linked_adrs = [
 linked_status = [
   "docs/status/PRODUCT_CLAIMS.md",
 ]
+
+linked_handoff = "docs/handoffs/2026-05-13-guided-adoption-closeout.md"
 
 allowed_files = [
   "docs/**",
@@ -238,7 +242,7 @@ commands = [
 
 [[work_item]]
 id = "final-closeout"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"

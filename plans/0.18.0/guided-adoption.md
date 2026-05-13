@@ -1,19 +1,19 @@
 # perfgate 0.18.0 Guided Adoption Implementation Plan
 
-Status: active
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: docs(handoff): close guided adoption lane
+Current PR: complete
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked specs: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md; local server-ledger optionality ADR planned if the lane changes that boundary
 Linked policy: policy ledgers remain referenced by specs and status docs; no policy row changes in this plan PR
 Support/status impact: guided adoption product claims planned for docs/status/PRODUCT_CLAIMS.md
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check
-Blocks: decision outcome gallery, first-hour smoke proof, probe quickstart, action failure UX, server ledger runbook, guided adoption claim updates
+Blocks: none
 Blocked by: none
-Rollback: revert this plan and .codex/goals/active.toml; already merged proposal/spec/docs remain valid
+Rollback: revert the closeout handoff, plan status update, and archived goal manifest; already merged proposal/spec/docs remain valid
 
 ## Goal
 
@@ -588,7 +588,7 @@ Revert the plan.
 
 ## Work item: final-closeout
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md
