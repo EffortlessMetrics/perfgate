@@ -41,6 +41,7 @@ Codex execution state stay reviewable.
 - Verification badges and PR evidence:
   [`VERIFICATION.md`](VERIFICATION.md)
 - First-hour adoption path: [`FIRST_HOUR.md`](FIRST_HOUR.md)
+- Adoption levels: [`ADOPTION_LEVELS.md`](ADOPTION_LEVELS.md)
 - Performance decisions: [`PERFORMANCE_DECISIONS.md`](PERFORMANCE_DECISIONS.md)
 - Workspace inventory: [`WORKSPACE.md`](WORKSPACE.md)
 - GitHub Actions setup:

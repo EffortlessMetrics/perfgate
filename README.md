@@ -159,13 +159,16 @@ that review policy.
 Perfgate is designed to be adopted in stages:
 
 - **Basic gate** — `perfgate check` and tracked baselines.
+- **Action gate** — run the same checked-in policy in GitHub Actions.
 - **Decision mode** — add `[[scenario]]` and `[[tradeoff]]` config plus
   `perfgate decision evaluate`.
 - **Ledger mode** — connect a baseline server, upload decisions, and use
   `decision export|history|debt|prune` for auditability.
 
 Use that order to start quickly, then opt into richer tradeoff review and
-auditable governance as teams become ready.
+auditable governance as teams become ready. See
+[`docs/ADOPTION_LEVELS.md`](docs/ADOPTION_LEVELS.md) for the commands, config,
+artifacts, failure examples, and next step for each level.
 
 ## Daily Use
 

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   install smoke proof.
 - Added a first-hour adoption guide for install, init, check, baseline
   promotion, CI, artifact boundaries, and failure reproduction.
+- Added an adoption-level guide that teaches perfgate as local gate, action
+  gate, structured decision, and server-ledger workflows.
 
 ## [0.17.0] - 2026-05-12
 

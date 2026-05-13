@@ -85,6 +85,9 @@ It does not run benchmarks. It consumes the receipts already produced by
 
 Adopt these three levels in this order to minimize ramp-up:
 
+For the broader first-to-team path, including action mode and server-ledger
+handoff, see [`ADOPTION_LEVELS.md`](ADOPTION_LEVELS.md).
+
 ### 1) Basic gate
 
 Keep the local baseline path and make sure the normal gate is stable:
