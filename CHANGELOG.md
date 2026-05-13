@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   require-baseline reruns, and compare artifact creation after promotion.
 - Added a probe instrumentation quickstart covering stable probe names, JSONL
   emission, Rust helpers, ingest, comparison, and decision wiring.
+- Proved public Rust probe helper JSONL through ingest, probe compare,
+  scenario, tradeoff, and decision markdown evidence while keeping the CLI
+  decision example as the bundle proof.
 
 ## [0.17.0] - 2026-05-12
 

@@ -815,7 +815,19 @@ fn infer_unit(metric: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::render::render_tradeoff_markdown;
+    use crate::app::{
+        ProbeCompareRequest, ProbeCompareUseCase, ScenarioEvaluateInput, ScenarioEvaluateRequest,
+        ScenarioUseCase, TradeoffEvaluateRequest, TradeoffUseCase,
+    };
     use crate::integrations::ingest::{ProbeIngestRequest, ingest_probes_jsonl};
+    use perfgate_types::{
+        BenchMeta, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef, ConfigFile, DecisionPolicyConfig,
+        DefaultsConfig, Delta, Metric, MetricStatistic, MetricStatus, ScenarioConfigFile, ToolInfo,
+        TradeoffAllowance, TradeoffDowngrade, TradeoffRequirement, TradeoffRule, Verdict,
+        VerdictCounts, VerdictStatus,
+    };
+    use std::collections::BTreeMap;
 
     #[test]
     fn probe_event_jsonl_is_ingestible() {
@@ -877,6 +889,230 @@ mod tests {
         assert!(wall_ms.is_finite());
         assert!(wall_ms >= 0.0);
         assert_eq!(event.metrics["wall_ms"].unit.as_deref(), Some("ms"));
+    }
+
+    #[test]
+    fn probe_helper_jsonl_drives_tradeoff_decision_evidence() {
+        let baseline = ingest_probes_jsonl(&ProbeIngestRequest {
+            input: helper_jsonl(&[
+                ("parser.tokenize", ProbeScope::Local, 12.10, 184_320.0),
+                (
+                    "parser.batch_loop",
+                    ProbeScope::Dominant,
+                    100.00,
+                    1_048_576.0,
+                ),
+            ]),
+            bench: Some("parser".to_string()),
+            scenario: Some("large_file_parse".to_string()),
+        })
+        .expect("ingest helper baseline JSONL");
+        let current = ingest_probes_jsonl(&ProbeIngestRequest {
+            input: helper_jsonl(&[
+                ("parser.tokenize", ProbeScope::Local, 12.35, 184_960.0),
+                (
+                    "parser.batch_loop",
+                    ProbeScope::Dominant,
+                    89.60,
+                    1_000_000.0,
+                ),
+            ]),
+            bench: Some("parser".to_string()),
+            scenario: Some("large_file_parse".to_string()),
+        })
+        .expect("ingest helper current JSONL");
+
+        let probe_compare = ProbeCompareUseCase::compare(ProbeCompareRequest {
+            baseline,
+            current,
+            baseline_ref: CompareRef {
+                path: Some("artifacts/perfgate/parser/probes-baseline.json".to_string()),
+                run_id: Some("probe-baseline".to_string()),
+            },
+            current_ref: CompareRef {
+                path: Some("artifacts/perfgate/parser/probes-current.json".to_string()),
+                run_id: Some("probe-current".to_string()),
+            },
+            tool: tool(),
+        })
+        .expect("compare helper probe receipts")
+        .receipt;
+        assert_eq!(probe_compare.verdict.status, VerdictStatus::Warn);
+        assert!(
+            probe_compare.probes.iter().any(
+                |probe| probe.name == "parser.batch_loop" && probe.status == MetricStatus::Pass
+            )
+        );
+        assert!(
+            probe_compare
+                .probes
+                .iter()
+                .any(|probe| probe.name == "parser.tokenize" && probe.status == MetricStatus::Warn)
+        );
+
+        let scenario = ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+            config: ConfigFile {
+                defaults: DefaultsConfig {
+                    threshold: Some(0.20),
+                    warn_factor: Some(0.50),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            inputs: vec![ScenarioEvaluateInput {
+                config: ScenarioConfigFile {
+                    name: "large_file_parse".to_string(),
+                    weight: 1.0,
+                    bench: "parser".to_string(),
+                    description: None,
+                    compare: Some("artifacts/perfgate/parser/compare.json".to_string()),
+                    probe_compare: Some("artifacts/perfgate/parser/probe-compare.json".to_string()),
+                    probe_baseline: None,
+                    probe_current: None,
+                },
+                compare_ref: CompareRef {
+                    path: Some("artifacts/perfgate/parser/compare.json".to_string()),
+                    run_id: Some("parser-current".to_string()),
+                },
+                compare: compare_receipt(),
+                probe_compare_ref: Some(CompareRef {
+                    path: Some("artifacts/perfgate/parser/probe-compare.json".to_string()),
+                    run_id: Some(probe_compare.run.id.clone()),
+                }),
+                probe_compare: Some(probe_compare.clone()),
+                probe_compare_warning: None,
+            }],
+            workload_name: None,
+            tool: tool(),
+        })
+        .expect("evaluate scenario from probe evidence")
+        .receipt;
+        assert!(
+            scenario.components[0]
+                .probes
+                .iter()
+                .any(|probe| probe == "parser.batch_loop")
+        );
+
+        let tradeoff = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario,
+            probe_compares: vec![probe_compare],
+            rules: vec![TradeoffRule {
+                name: "memory_for_probe_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::WallMs,
+                    probe: Some("parser.batch_loop".to_string()),
+                    min_improvement_ratio: 1.10,
+                }],
+                allow: vec![TradeoffAllowance {
+                    metric: Metric::WallMs,
+                    probe: "parser.tokenize".to_string(),
+                    max_regression: 0.03,
+                }],
+                downgrade_to: TradeoffDowngrade::Warn,
+            }],
+            decision_policy: DecisionPolicyConfig::default(),
+            tool: tool(),
+        })
+        .expect("evaluate probe-backed tradeoff")
+        .receipt;
+
+        assert!(tradeoff.decision.accepted_tradeoff);
+        assert_eq!(tradeoff.decision.status, MetricStatus::Warn);
+        assert_eq!(
+            tradeoff.rules[0].requirements[0].probe.as_deref(),
+            Some("parser.batch_loop")
+        );
+        assert_eq!(tradeoff.rules[0].allowances[0].probe, "parser.tokenize");
+
+        let decision = render_tradeoff_markdown(&tradeoff);
+        assert!(decision.contains("perfgate tradeoff: warn"));
+        assert!(decision.contains("tradeoff 'memory_for_probe_speed' accepted"));
+        assert!(decision.contains("Probe Evidence"));
+        assert!(decision.contains("parser.batch_loop"));
+        assert!(decision.contains("parser.tokenize"));
+    }
+
+    fn helper_jsonl(probes: &[(&str, ProbeScope, f64, f64)]) -> String {
+        let mut writer = ProbeJsonlWriter::new(Vec::new());
+        for (name, scope, wall_ms, alloc_bytes) in probes {
+            writer
+                .record(
+                    &probe_event(*name)
+                        .scope(*scope)
+                        .items(10_000)
+                        .metric("wall_ms", *wall_ms, "ms")
+                        .metric("alloc_bytes", *alloc_bytes, "bytes"),
+                )
+                .expect("record helper probe event");
+        }
+        writer.flush().expect("flush helper probe JSONL");
+        String::from_utf8(writer.into_inner()).expect("helper JSONL should be utf8")
+    }
+
+    fn compare_receipt() -> CompareReceipt {
+        CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: tool(),
+            bench: BenchMeta {
+                name: "parser".to_string(),
+                cwd: None,
+                command: vec!["cargo".to_string(), "bench".to_string()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: Some("baselines/parser.json".to_string()),
+                run_id: Some("parser-baseline".to_string()),
+            },
+            current_ref: CompareRef {
+                path: Some("artifacts/perfgate/parser/run.json".to_string()),
+                run_id: Some("parser-current".to_string()),
+            },
+            budgets: BTreeMap::new(),
+            deltas: BTreeMap::from([
+                (Metric::WallMs, delta(100.0, 96.0, 0.0, MetricStatus::Pass)),
+                (
+                    Metric::MaxRssKb,
+                    delta(100.0, 1200.0, 11.0, MetricStatus::Fail),
+                ),
+            ]),
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 0,
+                    fail: 1,
+                    skip: 0,
+                },
+                reasons: vec!["max_rss_kb_fail".to_string()],
+            },
+        }
+    }
+
+    fn delta(baseline: f64, current: f64, regression: f64, status: MetricStatus) -> Delta {
+        Delta {
+            baseline,
+            current,
+            ratio: current / baseline,
+            pct: (current - baseline) / baseline,
+            regression,
+            cv: None,
+            noise_threshold: None,
+            statistic: MetricStatistic::Median,
+            significance: None,
+            status,
+        }
+    }
+
+    fn tool() -> ToolInfo {
+        ToolInfo {
+            name: "perfgate".to_string(),
+            version: "0.17.0".to_string(),
+        }
     }
 
     #[cfg(feature = "probe-criterion")]
