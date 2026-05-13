@@ -241,6 +241,10 @@ the contract details.
 | `binary_bytes` | Executable size |
 | `throughput_per_s` | Ops/sec with `--work` |
 
+Metric availability is platform-specific. See
+[`docs/status/PLATFORM_SUPPORT.md`](docs/status/PLATFORM_SUPPORT.md) before
+making non-wall-clock metrics required gates.
+
 perfgate supports local baselines, cloud paths, and the optional baseline
 server, but local in-repo baselines are the default first setup.
 
@@ -260,6 +264,7 @@ For specific workflows:
 - [Probe Instrumentation Quickstart](docs/PROBE_QUICKSTART.md)
 - [Probe Design Patterns](docs/PROBE_DESIGN_PATTERNS.md)
 - [Signal Calibration](docs/SIGNAL_CALIBRATION.md)
+- [Platform Metric Support](docs/status/PLATFORM_SUPPORT.md)
 - [Step-by-Step Pipeline](docs/PIPELINE.md)
 - [Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md)
 - [Paired Benchmarking](docs/PAIRED_BENCHMARKING.md)

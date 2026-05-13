@@ -51,6 +51,8 @@ Codex execution state stay reviewable.
 - Signal calibration: [`SIGNAL_CALIBRATION.md`](SIGNAL_CALIBRATION.md)
 - Decision ledger operations:
   [`DECISION_LEDGER_RUNBOOK.md`](DECISION_LEDGER_RUNBOOK.md)
+- Platform metric support:
+  [`status/PLATFORM_SUPPORT.md`](status/PLATFORM_SUPPORT.md)
 - Workspace inventory: [`WORKSPACE.md`](WORKSPACE.md)
 - GitHub Actions setup:
   [`GETTING_STARTED_GITHUB_ACTIONS.md`](GETTING_STARTED_GITHUB_ACTIONS.md)

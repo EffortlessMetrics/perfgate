@@ -22,6 +22,7 @@ Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
 | PG-CLAIM-0010 | perfgate supports staged adoption levels from local gate to team ledger. | supported | docs, CLI, action, server | before-0.18.0-release |
 | PG-CLAIM-0011 | perfgate supports probe-backed tradeoff explanation. | supported | CLI, Rust helpers, receipts | next-probe-contract-change |
 | PG-CLAIM-0012 | perfgate supports optional team decision-ledger operations. | supported | server, CLI, dashboard, docs | next-server-ledger-change |
+| PG-CLAIM-0013 | perfgate documents platform-specific metric availability. | advisory | docs, CLI receipts | next-platform-metric-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -343,3 +344,30 @@ Artifacts:
 - `/health` and `/metrics`
 
 Review after: next-server-ledger-change
+
+## PG-CLAIM-0013: Platform metric availability
+
+Tier: advisory
+Surface: docs, CLI receipts, platform runner adapters
+Linked docs: [`PLATFORM_SUPPORT.md`](PLATFORM_SUPPORT.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`HOST_MISMATCH.md`](../HOST_MISMATCH.md)
+Linked specs: [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Linked tests:
+
+- [`runtime.rs`](../../crates/perfgate/src/app/runtime.rs)
+- [`cli_cpu_time_tests.rs`](../../crates/perfgate-cli/tests/cli_cpu_time_tests.rs)
+- [`cli_host_mismatch_tests.rs`](../../crates/perfgate-cli/tests/cli_host_mismatch_tests.rs)
+
+Artifacts:
+
+- `perfgate.run.v1` optional metric fields
+- `perfgate.compare.v1` metric deltas when both sides contain a metric
+- host fingerprints
+
+Review after: next-platform-metric-change

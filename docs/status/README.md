@@ -9,6 +9,7 @@ This directory is the home for:
 ```text
 SUPPORT_TIERS.md
 PRODUCT_CLAIMS.md
+PLATFORM_SUPPORT.md
 ```
 
 Those files are intentionally introduced after this scaffold so the claim map
