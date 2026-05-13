@@ -22,14 +22,13 @@ The architecture preserves SRP seams across the remaining workspace crates and a
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate::domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
 | `perfgate::domain::budget` | Budget evaluation and verdict logic |
-| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate::app` | Orchestration layer for CLI commands |
 | `perfgate::presentation::render` | Markdown and terminal rendering logic |
 | `perfgate::presentation::export` | Multi-format data exporters |
 | `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
-| `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
+| `perfgate::integrations::github` | GitHub annotations and pull-request integration |
 | `perfgate::domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |

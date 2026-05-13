@@ -21,12 +21,10 @@ cargo test -p perfgate --all-features app
 cargo test -p perfgate-cli
 cargo test -p perfgate-server
 cargo test -p perfgate-client
-cargo test -p perfgate-adapters
 cargo test -p perfgate-paired
 cargo test -p perfgate-error
 cargo test -p perfgate-fake
 cargo test -p perfgate-types baseline_service --all-features
-cargo test -p perfgate-github
 cargo test -p perfgate-selfbench
 
 # Run a single test by name
@@ -89,14 +87,13 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-error` | Shared error types and categorization |
 | `perfgate::domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
 | `perfgate::domain::budget` | Budget evaluation and verdict logic |
-| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate::app` | Orchestration layer for CLI commands |
 | `perfgate::presentation::render` | Markdown and terminal rendering logic |
 | `perfgate::presentation::export` | Multi-format data exporters |
 | `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
-| `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
+| `perfgate::integrations::github` | GitHub annotations and pull-request integration |
 | `perfgate::domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
@@ -108,7 +105,7 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 
 **Key design principles:**
 - `perfgate::domain` is intentionally I/O-free: it does statistics and budget policy only
-- `perfgate::runtime` contains platform-specific code (Unix `wait4()` for `max_rss_kb`); `perfgate-adapters` is a workspace-only compatibility wrapper
+- `perfgate::runtime` contains platform-specific code (Unix `wait4()` for `max_rss_kb`)
 - Receipt types are versioned (`perfgate.run.v1`, `perfgate.compare.v1`, `perfgate.report.v1`) and have JSON Schema support via `schemars`
 - The `arbitrary` feature flag enables structure-aware fuzzing
 

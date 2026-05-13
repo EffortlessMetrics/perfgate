@@ -91,7 +91,7 @@ I/O and external interactions:
 
 | Current Crate | New Module | Why |
 |---------------|-----------|-----|
-| `perfgate-adapters` | `perfgate::runtime` | absorbed; wrapper remains |
+| `perfgate-adapters` | `perfgate::runtime` | absorbed; crate deleted |
 | `perfgate-profile` | `perfgate::runtime::profile` | absorbed |
 
 Keep ports/interfaces separate from stdlib implementations:
@@ -120,7 +120,7 @@ Feature-gated external integrations:
 
 | Current Crate | New Module | Status |
 |---------------|-----------|--------|
-| `perfgate-github` | `perfgate::integrations::github` | feature-gated compatibility wrapper |
+| `perfgate-github` | `perfgate::integrations::github` | absorbed; crate deleted |
 | `perfgate-ingest` | `perfgate::integrations::ingest` | absorbed |
 
 These are not core to the product and should stay isolated from core paths.
@@ -327,10 +327,10 @@ Add feature gates and verify default build is lightweight.
 
 ### Phase 6: Collapse Runtime & App (PR 6)
 Move into `perfgate`:
-- `perfgate-adapters` -> `perfgate::runtime` with facade path `perfgate::runtime` (done)
+- `perfgate-adapters` -> `perfgate::runtime` with facade path `perfgate::runtime` (done; crate deleted)
 - `perfgate-profile` -> `perfgate::runtime::profile` (done)
 - `perfgate-app` -> `perfgate::app` (done; workspace-only wrapper remains)
-- `perfgate-github` -> `perfgate::integrations::github` (feature-gated, wrapper remains)
+- `perfgate-github` -> `perfgate::integrations::github` (feature-gated; crate deleted)
 - `perfgate-ingest` -> `perfgate::integrations::ingest` (done)
 
 Simplify `perfgate-cli` dependencies to mostly: `perfgate`, `perfgate-types`, `perfgate-client`, `perfgate-server`.

@@ -17,7 +17,6 @@ on:
           - perfgate-domain
           - perfgate-types
           - perfgate-app
-          - perfgate-adapters
           - perfgate-cli
           - perfgate-server
           - perfgate-client

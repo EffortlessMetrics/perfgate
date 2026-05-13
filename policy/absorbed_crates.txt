@@ -34,10 +34,10 @@ perfgate-export -> perfgate::presentation::export [deleted]
 perfgate-sensor -> perfgate::presentation::sensor [deleted]
 
 # Runtime, app, and integrations.
-perfgate-adapters -> perfgate::runtime [compatibility wrapper] [publish=false]
+perfgate-adapters -> perfgate::runtime [deleted]
 perfgate-profile -> perfgate::runtime::profile [deleted]
 perfgate-app -> perfgate::app [compatibility wrapper] [publish=false]
-perfgate-github -> perfgate::integrations::github [compatibility wrapper] [publish=false]
+perfgate-github -> perfgate::integrations::github [deleted]
 perfgate-ingest -> perfgate::integrations::ingest [deleted]
 
 # Dev-only packages.

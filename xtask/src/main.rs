@@ -2582,7 +2582,6 @@ const ARCH_RULES: &[ArchRule] = &[
         name: "contract packages stay below runtime/app/entrypoints",
         sources: &["perfgate-types", "perfgate-api"],
         forbidden: &[
-            "perfgate-adapters",
             "perfgate-app",
             "perfgate-client",
             "perfgate-server",
@@ -2594,10 +2593,8 @@ const ARCH_RULES: &[ArchRule] = &[
         name: "core/domain packages stay below I/O, presentation, and entrypoints",
         sources: &[],
         forbidden: &[
-            "perfgate-adapters",
             "perfgate-app",
             "perfgate-client",
-            "perfgate-github",
             "perfgate-server",
             "perfgate-cli",
             "perfgate",
@@ -2607,7 +2604,6 @@ const ARCH_RULES: &[ArchRule] = &[
         name: "presentation packages stay below runtime/app/entrypoints",
         sources: &[],
         forbidden: &[
-            "perfgate-adapters",
             "perfgate-app",
             "perfgate-client",
             "perfgate-server",
@@ -3797,16 +3793,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-adapters",
-            "Workspace-only compatibility wrapper for perfgate::runtime",
-            90,
-        ),
-        (
-            "perfgate-github",
-            "Workspace-only compatibility wrapper for perfgate::integrations::github",
-            90,
-        ),
-        (
             "perfgate-domain",
             "Workspace-only compatibility wrapper for perfgate::domain",
             100,
@@ -4336,16 +4322,6 @@ fn generate_workspace_inventory_md() -> String {
             "perfgate-error",
             "Compatibility wrapper for perfgate_types::error",
             100,
-        ),
-        (
-            "perfgate-adapters",
-            "Workspace-only compatibility wrapper for perfgate::runtime",
-            90,
-        ),
-        (
-            "perfgate-github",
-            "Workspace-only compatibility wrapper for perfgate::integrations::github",
-            90,
         ),
         (
             "perfgate-domain",
@@ -7076,11 +7052,6 @@ pkg-fmt = "zip"
                 "perfgate-render",
                 None,
                 vec![workspace_dep("perfgate-types")],
-            ),
-            test_package_with_deps(
-                "perfgate-adapters",
-                None,
-                vec![workspace_dep("perfgate-app")],
             ),
             test_package_with_deps("perfgate-app", None, vec![workspace_dep("perfgate-domain")]),
             test_package_with_deps(
