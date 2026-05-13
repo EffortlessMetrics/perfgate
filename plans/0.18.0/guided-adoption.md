@@ -49,8 +49,8 @@ This plan sequences the work. Behavior is owned by
 | 378 | First-hour adoption smoke fixture | merged | CLI tests and fixtures |
 | 379 | Probe instrumentation quickstart | merged | `docs/PROBE_QUICKSTART.md`, README/docs/example links |
 | 380 | Probe-to-decision proof | merged | CLI tests or deterministic fixtures |
-| 381 | GitHub Action failure UX | current | action output, tests, docs |
-| 382 | Server ledger operations runbook | ready | server docs/runbook |
+| 381 | GitHub Action failure UX | merged | action output, tests, docs |
+| 382 | Server ledger operations runbook | current | server docs/runbook |
 | 383 | Guided adoption product claims | ready | `docs/status/PRODUCT_CLAIMS.md` |
 | 384 | Claim/spec freshness checker | ready | `xtask` checker and tests |
 | 385 | Policy ledger contract spec | ready | `docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md` |
@@ -332,7 +332,7 @@ Revert the tests/fixtures.
 
 ## Work item: action-failure-copy
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR:
@@ -374,7 +374,7 @@ Revert action output changes and fixtures.
 
 ## Work item: server-ledger-runbook
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: local server-ledger optionality ADR planned if the lane changes that boundary

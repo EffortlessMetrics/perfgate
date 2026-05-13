@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Proved public Rust probe helper JSONL through ingest, probe compare,
   scenario, tradeoff, and decision markdown evidence while keeping the CLI
   decision example as the bundle proof.
+- Improved GitHub Action failure summaries with verdict counts, review-required
+  reasons, missing-baseline promotion hints, uploaded artifact names, and local
+  reproduction commands.
 
 ## [0.17.0] - 2026-05-12
 

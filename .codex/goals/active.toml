@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "action-failure-copy"
-current_pr = "action: improve failure summary and reproduction copy"
+current_work_item = "server-ledger-runbook"
+current_pr = "docs(server): add decision ledger operations runbook"
 
 objective = """
 Make perfgate easy for cold users to install, initialize, run locally,
@@ -157,7 +157,7 @@ commands = [
 
 [[work_item]]
 id = "action-failure-copy"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"
@@ -169,7 +169,7 @@ commands = [
 
 [[work_item]]
 id = "server-ledger-runbook"
-status = "ready"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"

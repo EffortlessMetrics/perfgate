@@ -443,6 +443,14 @@ runs:
         exit_code="${{ steps.run_check.outputs.exit_code }}"
         decision_exit_code="${{ steps.run_decision.outputs.exit_code }}"
         review_exit_code="${{ steps.handle_review_required.outputs.exit_code }}"
+        verdict="${{ steps.run_check.outputs.verdict }}"
+        pass_count="${{ steps.run_check.outputs.pass_count }}"
+        warn_count="${{ steps.run_check.outputs.warn_count }}"
+        fail_count="${{ steps.run_check.outputs.fail_count }}"
+        bench_count="${{ steps.run_check.outputs.bench_count }}"
+        review_required="${{ steps.handle_review_required.outputs.review_required }}"
+        review_reason="${{ steps.handle_review_required.outputs.review_required_reason }}"
+        artifact_name="${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
         exit_source="check"
         if [[ "${{ inputs.decision }}" == "true" && -n "${decision_exit_code}" && "${decision_exit_code}" != "0" ]]; then
           exit_code="${decision_exit_code}"
@@ -527,6 +535,14 @@ runs:
           rm -f "${listing}"
         }
 
+        has_no_baseline_reason() {
+          if [[ ! -d "${out}" ]]; then
+            return 1
+          fi
+
+          grep -R -q -e "no_baseline" -e "missing baseline" -e "baseline.*missing" "${out}" 2>/dev/null
+        }
+
         repro_line="$(format_command "${repro[@]}")"
         decision_repro=()
         if [[ "${{ inputs.decision }}" == "true" ]]; then
@@ -537,6 +553,12 @@ runs:
         fi
 
         echo "perfgate ${exit_source} exited with code ${exit_code}"
+        if [[ -n "${verdict}" ]]; then
+          echo "Verdict: ${verdict} (pass=${pass_count:-0}, warn=${warn_count:-0}, fail=${fail_count:-0}, benches=${bench_count:-unknown})"
+        fi
+        if [[ "${{ inputs.decision }}" == "true" && "${review_required}" == "true" ]]; then
+          echo "Review required: ${review_reason}"
+        fi
         echo
         echo "Reproduce locally:"
         echo "  ${repro_line}"
@@ -555,12 +577,29 @@ runs:
           echo
           echo "For cockpit mode, inspect aggregate output plus versioned receipts under ${out}/extras/."
         fi
+        if has_no_baseline_reason; then
+          echo
+          echo "Baseline bootstrap: after reviewing the first trusted run, promote it locally:"
+          echo "  perfgate baseline promote --config ${{ inputs.config }} --all"
+        fi
+        if [[ "${{ inputs.upload_artifact }}" == "true" ]]; then
+          echo
+          echo "Uploaded artifact: ${artifact_name}"
+        fi
 
         if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
           {
             echo "### perfgate local reproduction"
             echo
             echo "perfgate ${exit_source} exited with code \`${exit_code}\`."
+            if [[ -n "${verdict}" ]]; then
+              echo
+              echo "Verdict: \`${verdict}\` (pass=${pass_count:-0}, warn=${warn_count:-0}, fail=${fail_count:-0}, benches=${bench_count:-unknown})."
+            fi
+            if [[ "${{ inputs.decision }}" == "true" && "${review_required}" == "true" ]]; then
+              echo
+              echo "Review required: ${review_reason}"
+            fi
             echo
             echo "```bash"
             echo "${repro_line}"
@@ -581,6 +620,18 @@ runs:
             if [[ "${{ inputs.mode }}" == "cockpit" ]]; then
               echo
               echo "For cockpit mode, inspect aggregate output plus versioned receipts under \`${out}/extras/\`."
+            fi
+            if has_no_baseline_reason; then
+              echo
+              echo "Baseline bootstrap: after reviewing the first trusted run, promote it locally:"
+              echo
+              echo "```bash"
+              echo "perfgate baseline promote --config ${{ inputs.config }} --all"
+              echo "```"
+            fi
+            if [[ "${{ inputs.upload_artifact }}" == "true" ]]; then
+              echo
+              echo "Uploaded artifact: \`${artifact_name}\`."
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
         fi
