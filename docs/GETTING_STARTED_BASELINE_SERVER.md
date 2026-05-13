@@ -16,6 +16,9 @@ Use one of these two entry points:
 Use `perfgate serve` for local exploration and `perfgate-server` for a real
 shared baseline service.
 
+For production-style decision ledger operations, see the
+[decision ledger operations runbook](DECISION_LEDGER_RUNBOOK.md).
+
 ## Local Sandbox
 
 Preflight the local SQLite database path and dashboard port:

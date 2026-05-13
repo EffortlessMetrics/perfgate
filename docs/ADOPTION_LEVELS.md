@@ -251,6 +251,7 @@ merge.
 
 ### Next Level
 
-Once a team relies on the ledger, add an operations runbook for storage,
-backups, API keys, prune policy, and dashboard expectations.
-
+Once a team relies on the ledger, use the
+[decision ledger operations runbook](DECISION_LEDGER_RUNBOOK.md) for storage,
+backups, API keys, prune policy, CI upload behavior, and dashboard
+expectations.

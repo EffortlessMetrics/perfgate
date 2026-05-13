@@ -169,6 +169,8 @@ Use that order to start quickly, then opt into richer tradeoff review and
 auditable governance as teams become ready. See
 [`docs/ADOPTION_LEVELS.md`](docs/ADOPTION_LEVELS.md) for the commands, config,
 artifacts, failure examples, and next step for each level.
+For team ledger operations, see
+[`docs/DECISION_LEDGER_RUNBOOK.md`](docs/DECISION_LEDGER_RUNBOOK.md).
 
 ## Daily Use
 

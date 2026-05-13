@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: plans(0.18): add guided adoption implementation plan
+Current PR: docs(status): add guided adoption product claims
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked specs: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md; local server-ledger optionality ADR planned if the lane changes that boundary
@@ -50,8 +50,8 @@ This plan sequences the work. Behavior is owned by
 | 379 | Probe instrumentation quickstart | merged | `docs/PROBE_QUICKSTART.md`, README/docs/example links |
 | 380 | Probe-to-decision proof | merged | CLI tests or deterministic fixtures |
 | 381 | GitHub Action failure UX | merged | action output, tests, docs |
-| 382 | Server ledger operations runbook | current | server docs/runbook |
-| 383 | Guided adoption product claims | ready | `docs/status/PRODUCT_CLAIMS.md` |
+| 382 | Server ledger operations runbook | merged | server docs/runbook |
+| 383 | Guided adoption product claims | current | `docs/status/PRODUCT_CLAIMS.md` |
 | 384 | Claim/spec freshness checker | ready | `xtask` checker and tests |
 | 385 | Policy ledger contract spec | ready | `docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md` |
 | 386 | Wrapper-crate cleanup plan | ready | crate cleanup plan docs |
@@ -374,7 +374,7 @@ Revert action output changes and fixtures.
 
 ## Work item: server-ledger-runbook
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: local server-ledger optionality ADR planned if the lane changes that boundary
@@ -418,12 +418,12 @@ Revert the runbook and links.
 
 ## Work item: guided-adoption-claims
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR:
 Blocks: claim-spec-freshness-check, final closeout
-Blocked by: first-hour-smoke-proof, probe-to-decision-proof, server-ledger-runbook
+Blocked by: first-hour-smoke-proof, probe-to-decision-proof
 
 ### Goal
 
@@ -593,7 +593,7 @@ Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md
 Blocks:
-Blocked by: guided-adoption-claims, claim-spec-freshness-check, server-ledger-runbook
+Blocked by: guided-adoption-claims, claim-spec-freshness-check
 
 ### Goal
 
