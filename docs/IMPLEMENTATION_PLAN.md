@@ -96,9 +96,9 @@ gate once transition packages stop being publishable.
 | `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
-| `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
-| `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
-| `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
+| `perfgate::presentation::export` | Multi-format data exporters |
+| `perfgate::presentation::render` | Markdown and terminal rendering logic |
+| `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |

@@ -1,6 +1,6 @@
 //! Basic example demonstrating export formats.
 //!
-//! Run with: cargo run -p perfgate-export --example export_example
+//! Run with: cargo run -p perfgate --example export_example
 
 use perfgate::presentation::export::{ExportFormat, ExportUseCase};
 use perfgate_types::{
@@ -165,36 +165,34 @@ fn create_compare_receipt() -> CompareReceipt {
     }
 }
 
-fn main() {
-    println!("=== perfgate-export Basic Example ===\n");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("=== perfgate export example ===\n");
 
     let run_receipt = create_run_receipt();
     let compare_receipt = create_compare_receipt();
 
     println!("1. Export RunReceipt to CSV:");
-    let csv = ExportUseCase::export_run(&run_receipt, ExportFormat::Csv).unwrap();
+    let csv = ExportUseCase::export_run(&run_receipt, ExportFormat::Csv)?;
     println!("{}", csv);
 
     println!("2. Export RunReceipt to JSONL:");
-    let jsonl = ExportUseCase::export_run(&run_receipt, ExportFormat::Jsonl).unwrap();
+    let jsonl = ExportUseCase::export_run(&run_receipt, ExportFormat::Jsonl)?;
     println!("{}", jsonl);
 
     println!("3. Export RunReceipt to Prometheus format:");
-    let prom = ExportUseCase::export_run(&run_receipt, ExportFormat::Prometheus).unwrap();
+    let prom = ExportUseCase::export_run(&run_receipt, ExportFormat::Prometheus)?;
     println!("{}", prom);
 
     println!("4. Export CompareReceipt to CSV:");
-    let compare_csv = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Csv).unwrap();
+    let compare_csv = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Csv)?;
     println!("{}", compare_csv);
 
     println!("5. Export CompareReceipt to JSONL:");
-    let compare_jsonl =
-        ExportUseCase::export_compare(&compare_receipt, ExportFormat::Jsonl).unwrap();
+    let compare_jsonl = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Jsonl)?;
     println!("{}", compare_jsonl);
 
     println!("6. Export CompareReceipt to Prometheus format:");
-    let compare_prom =
-        ExportUseCase::export_compare(&compare_receipt, ExportFormat::Prometheus).unwrap();
+    let compare_prom = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Prometheus)?;
     println!("{}", compare_prom);
 
     println!("7. Parsing export format from string:");
@@ -207,4 +205,5 @@ fn main() {
     }
 
     println!("\n=== Example complete ===");
+    Ok(())
 }

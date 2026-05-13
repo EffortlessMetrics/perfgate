@@ -1,6 +1,6 @@
 //! Basic example demonstrating markdown and GitHub annotation rendering.
 //!
-//! Run with: cargo run -p perfgate-render --example render_example
+//! Run with: cargo run -p perfgate --example render_example
 
 use perfgate::presentation::render::{
     format_metric_with_statistic, format_pct, format_value, github_annotations, render_markdown,
@@ -83,7 +83,7 @@ fn create_compare_receipt(status: MetricStatus) -> CompareReceipt {
 }
 
 fn main() {
-    println!("=== perfgate-render Basic Example ===\n");
+    println!("=== perfgate render example ===\n");
 
     println!("1. Rendering markdown for PASS result:");
     let pass_receipt = create_compare_receipt(MetricStatus::Pass);
