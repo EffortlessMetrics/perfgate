@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "first-hour-smoke-proof"
-current_pr = "test: add first-hour adoption smoke fixture"
+current_work_item = "probe-quickstart"
+current_pr = "docs: add probe instrumentation quickstart"
 
 objective = """
 Make perfgate easy for cold users to install, initialize, run locally,
@@ -116,7 +116,7 @@ commands = [
 
 [[work_item]]
 id = "first-hour-smoke-proof"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"
@@ -130,7 +130,7 @@ commands = [
 
 [[work_item]]
 id = "probe-quickstart"
-status = "ready"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"

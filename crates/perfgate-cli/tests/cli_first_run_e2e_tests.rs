@@ -54,6 +54,7 @@ fn tune_generated_config_for_fast_fixture(config_path: &Path) {
     let tuned = generated
         .replace("repeat = 7", "repeat = 1")
         .replace("warmup = 1", "warmup = 0")
+        .replace("threshold = 0.20", "threshold = 100.0")
         .replace(
             r#"command = ["cargo", "bench", "--bench", "parser"]"#,
             &format!(r#"command = [{}]"#, command_toml_array(&success_command())),
@@ -101,11 +102,34 @@ fn first_run_paved_road_creates_artifacts_and_baselines() {
 
     perfgate_cmd()
         .current_dir(temp_dir.path())
+        .args(["baseline", "status", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Baseline status"))
+        .stdout(predicate::str::contains("MISSING parser"))
+        .stdout(predicate::str::contains(
+            "perfgate baseline promote --config perfgate.toml --all",
+        ));
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
         .args(["baseline", "promote", "--config", "perfgate.toml", "--all"])
         .assert()
         .success()
         .stderr(predicate::str::contains("Promoted baseline for parser"))
         .stderr(predicate::str::contains("Promoted 1 baseline"));
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "check",
+            "--config",
+            "perfgate.toml",
+            "--all",
+            "--require-baseline",
+        ])
+        .assert()
+        .success();
 
     assert!(root.join("perfgate.toml").exists());
     assert!(root.join(".github/workflows/perfgate.yml").exists());
@@ -113,6 +137,7 @@ fn first_run_paved_road_creates_artifacts_and_baselines() {
     assert!(root.join("baselines/.gitkeep").exists());
     assert!(root.join("baselines/parser.json").exists());
     assert!(root.join("artifacts/perfgate/parser/run.json").exists());
+    assert!(root.join("artifacts/perfgate/parser/compare.json").exists());
     assert!(root.join("artifacts/perfgate/parser/report.json").exists());
     assert!(root.join("artifacts/perfgate/parser/comment.md").exists());
 
