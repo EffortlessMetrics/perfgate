@@ -3797,21 +3797,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-export",
-            "Workspace-only compatibility wrapper for perfgate::presentation::export",
-            90,
-        ),
-        (
-            "perfgate-render",
-            "Workspace-only compatibility wrapper for perfgate::presentation::render",
-            90,
-        ),
-        (
-            "perfgate-sensor",
-            "Workspace-only compatibility wrapper for perfgate::presentation::sensor",
-            90,
-        ),
-        (
             "perfgate-adapters",
             "Workspace-only compatibility wrapper for perfgate::runtime",
             90,
@@ -3894,9 +3879,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         "  perfgate::domain::budget, perfgate::domain::significance, perfgate::domain::scaling"
     );
     println!("         ↓");
-    println!(
-        "  perfgate::presentation::export, perfgate-render, perfgate::presentation::sensor, perfgate-paired"
-    );
+    println!("  perfgate::presentation::{{render, export, sensor}}, perfgate-paired");
     println!("         ↓");
     println!("  perfgate::domain (policy)");
     println!("         ↓");
@@ -4353,21 +4336,6 @@ fn generate_workspace_inventory_md() -> String {
             "perfgate-error",
             "Compatibility wrapper for perfgate_types::error",
             100,
-        ),
-        (
-            "perfgate-export",
-            "Workspace-only compatibility wrapper for perfgate::presentation::export",
-            90,
-        ),
-        (
-            "perfgate-render",
-            "Workspace-only compatibility wrapper for perfgate::presentation::render",
-            90,
-        ),
-        (
-            "perfgate-sensor",
-            "Workspace-only compatibility wrapper for perfgate::presentation::sensor",
-            90,
         ),
         (
             "perfgate-adapters",

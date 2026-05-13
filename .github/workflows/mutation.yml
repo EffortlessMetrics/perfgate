@@ -23,9 +23,6 @@ on:
           - perfgate-client
           - perfgate-stats
           - perfgate-significance
-          - perfgate-export
-          - perfgate-render
-          - perfgate-sensor
           - perfgate-paired
           - perfgate-validation
           - perfgate-error

@@ -21,9 +21,6 @@ cargo test -p perfgate --all-features app
 cargo test -p perfgate-cli
 cargo test -p perfgate-server
 cargo test -p perfgate-client
-cargo test -p perfgate-export
-cargo test -p perfgate-render
-cargo test -p perfgate-sensor
 cargo test -p perfgate-adapters
 cargo test -p perfgate-paired
 cargo test -p perfgate-error
@@ -96,9 +93,9 @@ This is a clean-architecture Rust workspace for performance budgets and baseline
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate::app` | Orchestration layer for CLI commands |
-| `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
-| `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
-| `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
+| `perfgate::presentation::render` | Markdown and terminal rendering logic |
+| `perfgate::presentation::export` | Multi-format data exporters |
+| `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
 | `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
 | `perfgate::domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |

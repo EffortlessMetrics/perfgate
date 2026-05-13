@@ -26,9 +26,9 @@ The architecture preserves SRP seams across the remaining workspace crates and a
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-api` | Workspace-only compatibility wrapper for `perfgate_types::baseline_service` |
 | `perfgate::app` | Orchestration layer for CLI commands |
-| `perfgate-render` | Workspace-only compatibility wrapper for `perfgate::presentation::render` |
-| `perfgate-export` | Workspace-only compatibility wrapper for `perfgate::presentation::export` |
-| `perfgate-sensor` | Workspace-only compatibility wrapper for `perfgate::presentation::sensor` |
+| `perfgate::presentation::render` | Markdown and terminal rendering logic |
+| `perfgate::presentation::export` | Multi-format data exporters |
+| `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
 | `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
 | `perfgate::domain::scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |

@@ -3730,54 +3730,6 @@ snippet = "let odd_summary = summarize_u64(&odd_count).unwrap();"
 count = 1
 
 [[baseline]]
-path = "crates/perfgate-export/examples/export_example.rs"
-family = "unwrap"
-selector_kind = "method"
-selector_callee = "unwrap"
-snippet = "ExportUseCase::export_compare(&compare_receipt, ExportFormat::Jsonl).unwrap();"
-count = 1
-
-[[baseline]]
-path = "crates/perfgate-export/examples/export_example.rs"
-family = "unwrap"
-selector_kind = "method"
-selector_callee = "unwrap"
-snippet = "ExportUseCase::export_compare(&compare_receipt, ExportFormat::Prometheus).unwrap();"
-count = 1
-
-[[baseline]]
-path = "crates/perfgate-export/examples/export_example.rs"
-family = "unwrap"
-selector_kind = "method"
-selector_callee = "unwrap"
-snippet = "let compare_csv = ExportUseCase::export_compare(&compare_receipt, ExportFormat::Csv).unwrap();"
-count = 1
-
-[[baseline]]
-path = "crates/perfgate-export/examples/export_example.rs"
-family = "unwrap"
-selector_kind = "method"
-selector_callee = "unwrap"
-snippet = "let csv = ExportUseCase::export_run(&run_receipt, ExportFormat::Csv).unwrap();"
-count = 1
-
-[[baseline]]
-path = "crates/perfgate-export/examples/export_example.rs"
-family = "unwrap"
-selector_kind = "method"
-selector_callee = "unwrap"
-snippet = "let jsonl = ExportUseCase::export_run(&run_receipt, ExportFormat::Jsonl).unwrap();"
-count = 1
-
-[[baseline]]
-path = "crates/perfgate-export/examples/export_example.rs"
-family = "unwrap"
-selector_kind = "method"
-selector_callee = "unwrap"
-snippet = "let prom = ExportUseCase::export_run(&run_receipt, ExportFormat::Prometheus).unwrap();"
-count = 1
-
-[[baseline]]
 path = "crates/perfgate-fake/examples/fake_example.rs"
 family = "unwrap"
 selector_kind = "method"
@@ -4103,14 +4055,6 @@ family = "unwrap"
 selector_kind = "method"
 selector_callee = "unwrap"
 snippet = "runner.run(&make_spec(vec![\"second\"])).unwrap();"
-count = 1
-
-[[baseline]]
-path = "crates/perfgate-sensor/examples/sensor_example.rs"
-family = "expect"
-selector_kind = "method"
-selector_callee = "expect"
-snippet = "let json = serde_json::to_string_pretty(&sensor_report).expect(\"serialize\");"
 count = 1
 
 [[baseline]]

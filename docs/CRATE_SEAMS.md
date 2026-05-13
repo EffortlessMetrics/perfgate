@@ -44,9 +44,9 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-stats` | `perfgate::domain::stats` | crate deleted |
 | `perfgate-paired` | `perfgate::domain::paired` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-error` | `perfgate_types::error` | workspace-only compatibility wrapper, `publish = false` |
-| `perfgate-render` | `perfgate::presentation::render` | workspace-only compatibility wrapper, `publish = false` |
-| `perfgate-export` | `perfgate::presentation::export` | workspace-only compatibility wrapper, `publish = false` |
-| `perfgate-sensor` | `perfgate::presentation::sensor` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-render` | `perfgate::presentation::render` | crate deleted |
+| `perfgate-export` | `perfgate::presentation::export` | crate deleted |
+| `perfgate-sensor` | `perfgate::presentation::sensor` | crate deleted |
 | `perfgate-fake` | private workspace crate | marked `publish = false` |
 | `perfgate-api` | `perfgate_types::baseline_service`; runtime credential source in `perfgate_server::CredentialSource` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-profile` | `perfgate::runtime::profile` | crate deleted |
