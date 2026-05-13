@@ -5197,13 +5197,49 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
     if !setup_readme.exists() || args.yes {
         fs::write(
             &setup_readme,
-            render_onboarding_readme(&args.output, generated_workflow_path.as_deref()),
+            render_onboarding_readme(
+                &args.output,
+                generated_workflow_path.as_deref(),
+                !benchmarks.is_empty(),
+            ),
         )
         .with_context(|| format!("write {}", setup_readme.display()))?;
         eprintln!("Wrote {}", setup_readme.display());
     }
 
     eprintln!("\nNext:");
+    if benchmarks.is_empty() {
+        eprintln!(
+            "  1. Add at least one [[bench]] entry to {}.",
+            args.output.display()
+        );
+        eprintln!("     Example:");
+        eprintln!("       [[bench]]");
+        eprintln!("       name = \"my-command\"");
+        eprintln!("       command = [\"cargo\", \"run\", \"--\", \"--help\"]");
+        eprintln!(
+            "  2. Run: perfgate check --config {} --all",
+            args.output.display()
+        );
+        eprintln!("  3. Promote a trusted first baseline:");
+        eprintln!(
+            "     perfgate baseline promote --config {} --all",
+            args.output.display()
+        );
+        if let Some(workflow_path) = &generated_workflow_path {
+            eprintln!(
+                "  4. Commit {}, {}, baselines/.gitkeep, and .perfgate/README.md",
+                args.output.display(),
+                workflow_path.display()
+            );
+        } else {
+            eprintln!(
+                "  4. Commit {}, baselines/.gitkeep, and .perfgate/README.md",
+                args.output.display()
+            );
+        }
+        return Ok(());
+    }
     eprintln!(
         "  1. Run: perfgate check --config {} --all",
         args.output.display()

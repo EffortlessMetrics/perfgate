@@ -93,3 +93,31 @@ fn init_accepts_legacy_preset_alias() {
     assert!(config.contains("repeat = 3"));
     assert!(config.contains("threshold = 0.30"));
 }
+
+#[test]
+fn init_without_discovered_benchmarks_points_to_bench_entry_first() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    let output = perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["init", "--ci", "github", "--profile", "standard"])
+        .assert()
+        .success()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8(output).expect("stderr is utf8");
+
+    assert!(stderr.contains("No benchmarks discovered"));
+    assert!(stderr.contains("Add at least one [[bench]] entry to perfgate.toml."));
+    assert!(stderr.contains("perfgate check --config perfgate.toml --all"));
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(!config.contains("[[bench]]"));
+
+    let onboarding = fs::read_to_string(temp_dir.path().join(".perfgate/README.md"))
+        .expect("read onboarding README");
+    assert!(onboarding.contains("Add at least one `[[bench]]` entry"));
+    assert!(onboarding.contains("perfgate check --config perfgate.toml --all"));
+}
