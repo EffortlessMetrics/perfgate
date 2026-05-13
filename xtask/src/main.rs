@@ -241,6 +241,13 @@ enum Command {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
+
+    /// Validate product claim proof-map structure.
+    ProductClaimsCheck {
+        /// Product claims markdown file.
+        #[arg(long, default_value = "docs/status/PRODUCT_CLAIMS.md")]
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -339,6 +346,7 @@ fn main() -> anyhow::Result<()> {
         Command::DocsCheck => cmd_docs_check(),
         Command::DocTest { files } => cmd_doc_test(files),
         Command::DocsSourceCheck { root } => cmd_docs_source_check(&root),
+        Command::ProductClaimsCheck { path } => cmd_product_claims_check(&path),
     }
 }
 
@@ -4537,6 +4545,152 @@ fn relative_display(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
+fn cmd_product_claims_check(path: &Path) -> anyhow::Result<()> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let errors = collect_product_claim_errors(&content);
+
+    if !errors.is_empty() {
+        println!("Found {} product claim proof-map error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} product claim proof-map issue(s) found. Fix {}.",
+            errors.len(),
+            path.display()
+        );
+    }
+
+    println!("  OK  product claim proof map is valid");
+    Ok(())
+}
+
+#[derive(Debug)]
+struct ProductClaimSection {
+    id: String,
+    line: usize,
+    body: String,
+}
+
+fn collect_product_claim_errors(content: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    let claims = extract_product_claim_sections(content);
+    let mut ids = BTreeSet::new();
+
+    if claims.is_empty() {
+        errors
+            .push("PRODUCT_CLAIMS.md must contain at least one `## PG-CLAIM-NNNN` section".into());
+        return errors;
+    }
+
+    for claim in claims {
+        if !ids.insert(claim.id.clone()) {
+            errors.push(format!("duplicate claim id `{}`", claim.id));
+        }
+
+        let tier = claim_field(&claim.body, "Tier");
+        match tier.as_deref() {
+            Some("stable" | "supported" | "advisory" | "experimental" | "deprecated") => {}
+            Some(value) => errors.push(format!(
+                "{} line {} uses unknown tier `{}`",
+                claim.id, claim.line, value
+            )),
+            None => errors.push(format!(
+                "{} line {} is missing `Tier:`",
+                claim.id, claim.line
+            )),
+        }
+
+        if claim_field(&claim.body, "Surface").is_none() {
+            errors.push(format!(
+                "{} line {} is missing `Surface:`",
+                claim.id, claim.line
+            ));
+        }
+
+        if claim_field(&claim.body, "Review after").is_none() {
+            errors.push(format!(
+                "{} line {} is missing `Review after:`",
+                claim.id, claim.line
+            ));
+        }
+
+        if !claim.body.contains("Proof commands:") {
+            errors.push(format!(
+                "{} line {} is missing `Proof commands:`",
+                claim.id, claim.line
+            ));
+        } else if !claim
+            .body
+            .lines()
+            .any(|line| line.trim_start().starts_with("cargo +1.95.0 "))
+        {
+            errors.push(format!(
+                "{} line {} must list at least one cargo +1.95.0 proof command",
+                claim.id, claim.line
+            ));
+        }
+
+        if !claim.body.contains("Linked tests:")
+            && !claim.body.contains("Linked policy:")
+            && !claim.body.contains("Linked gates:")
+        {
+            errors.push(format!(
+                "{} line {} must include linked tests, policy, or gates",
+                claim.id, claim.line
+            ));
+        }
+    }
+
+    errors
+}
+
+fn extract_product_claim_sections(content: &str) -> Vec<ProductClaimSection> {
+    let heading_re =
+        Regex::new(r"^## (PG-CLAIM-\d{4})\b").expect("product claim heading regex should compile");
+    let mut claims = Vec::new();
+    let mut active: Option<(String, usize, String)> = None;
+
+    for (idx, line) in content.lines().enumerate() {
+        let line_num = idx + 1;
+        if line.starts_with("## ") {
+            if let Some((id, line, body)) = active.take() {
+                claims.push(ProductClaimSection { id, line, body });
+            }
+            if let Some(captures) = heading_re.captures(line) {
+                active = Some((captures[1].to_string(), line_num, String::new()));
+            }
+            continue;
+        }
+
+        if let Some((_, _, body)) = active.as_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+
+    if let Some((id, line, body)) = active.take() {
+        claims.push(ProductClaimSection { id, line, body });
+    }
+
+    claims
+}
+
+fn claim_field(body: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    body.lines().find_map(|line| {
+        let line = line.trim();
+        let value = line.strip_prefix(&prefix)?.trim();
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // doc-test: validate CLI examples in documentation
 // ---------------------------------------------------------------------------
@@ -5418,6 +5572,93 @@ Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
         );
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn product_claims_check_accepts_claim_with_linked_tests() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Reviewable decisions
+
+Tier: supported
+Surface: CLI, receipts
+Linked tests:
+- crates/perfgate-cli/tests/decision.rs
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+```
+
+Review after: before-release
+"###;
+
+        let errors = collect_product_claim_errors(content);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    }
+
+    #[test]
+    fn product_claims_check_reports_missing_required_fields() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Broken claim
+
+Tier: invented
+Proof commands:
+
+```bash
+cargo test
+```
+
+## PG-CLAIM-0001: Duplicate claim
+
+Tier: supported
+Surface: CLI
+Linked gates: docs-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+```
+
+Review after: before-release
+"###;
+
+        let errors = collect_product_claim_errors(content);
+        assert!(
+            errors.iter().any(|error| error.contains("unknown tier")),
+            "expected tier error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("duplicate claim id")),
+            "expected duplicate ID error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("missing `Surface:`")),
+            "expected surface error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("missing `Review after:`")),
+            "expected review-after error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("must list at least one cargo +1.95.0")),
+            "expected proof command error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("linked tests, policy, or gates")),
+            "expected linked evidence error, got {errors:?}"
+        );
     }
 
     fn no_panic_identity(
