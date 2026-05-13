@@ -1,0 +1,250 @@
+id = "perfgate-guided-adoption"
+title = "perfgate guided adoption and first-hour UX"
+status = "active"
+owner = "codex"
+created = "2026-05-13"
+milestone = "0.18.0"
+current_work_item = "decision-outcome-gallery"
+current_pr = "docs: add decision outcome gallery"
+
+objective = """
+Make perfgate easy for cold users to install, initialize, run locally,
+wire into CI, understand failures, adopt structured decisions, add probes,
+and optionally operate a decision ledger.
+"""
+
+end_state = [
+  "A new user can install, initialize, run a local gate, promote a baseline, and wire CI without learning the full architecture.",
+  "CI failures explain what happened, where artifacts are, and how to reproduce locally.",
+  "Structured decisions are teachable through concrete outcome examples.",
+  "Probe instrumentation is documented as a tradeoff lens, not profiling.",
+  "Probe evidence can be proven from ingest through decision evaluate and decision bundle.",
+  "Team ledger mode has an operator runbook while remaining optional for local correctness.",
+  "Guided adoption product claims link to specs, docs, tests, proof commands, and artifacts.",
+  "The lane closes with a handoff and archived active-goal manifest.",
+]
+
+linked_proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+linked_spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+linked_plan = "plans/0.18.0/guided-adoption.md"
+
+linked_adrs = [
+  "docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md",
+]
+
+linked_status = [
+  "docs/status/PRODUCT_CLAIMS.md",
+]
+
+allowed_files = [
+  "docs/**",
+  "examples/**",
+  "crates/perfgate-cli/tests/**",
+  "crates/perfgate-cli/src/**",
+  "action.yml",
+  ".github/workflows/**",
+  "xtask/**",
+  "policy/**",
+  ".codex/goals/**",
+  "plans/0.18.0/**",
+]
+
+forbidden_files = [
+  "Cargo.toml",
+  "rust-toolchain.toml",
+]
+
+proof = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+completion_criteria = [
+  "Guided adoption proposal, spec, plan, and active goal are merged.",
+  "Decision outcome examples cover common pass, fail, warn, and review-required states.",
+  "First-hour local adoption has executable smoke proof or equivalent coverage.",
+  "Probe quickstart and probe-to-decision proof are merged.",
+  "Action failure copy surfaces local reproduction and decision artifacts.",
+  "Server ledger runbook is merged and keeps server mode optional.",
+  "Guided adoption product claims are mapped to proof.",
+  "Claim/spec freshness checker prevents stale planned spec links.",
+  "Closeout handoff archives this active goal and records remaining deferred work.",
+]
+
+[[work_item]]
+id = "first-hour-guide"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+]
+
+[[work_item]]
+id = "adoption-levels"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+]
+
+[[work_item]]
+id = "decision-outcome-gallery"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "first-hour-smoke-proof"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features first_run",
+  "cargo +1.95.0 test -p perfgate-cli --all-features baseline",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "probe-quickstart"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "probe-to-decision-proof"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features probe",
+  "cargo +1.95.0 test -p perfgate-cli --all-features decision",
+  "cargo +1.95.0 run -p xtask -- schema-compat",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "action-failure-copy"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- action-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "server-ledger-runbook"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "guided-adoption-claims"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "claim-spec-freshness-check"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 test -p xtask --all-features",
+  "cargo +1.95.0 clippy -p xtask --all-targets --all-features -- -D warnings",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "policy-ledger-contract-spec"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "wrapper-crate-cleanup-plan"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- public-surface --strict",
+  "cargo +1.95.0 run -p xtask -- arch",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "final-closeout"
+status = "blocked"
+proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
+spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
+plan = "plans/0.18.0/guided-adoption.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]

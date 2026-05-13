@@ -6,7 +6,7 @@ Created: 2026-05-13
 Target milestone: 0.18.0
 Linked specs: PERFGATE-SPEC-0007-guided-adoption-contract
 Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions, PERFGATE-ADR-0003-local-receipts-first-server-ledger-optional
-Linked plan: guided-adoption implementation plan planned
+Linked plan: plans/0.18.0/guided-adoption.md
 Support/status impact: docs/status/PRODUCT_CLAIMS.md should add guided-adoption, probe-backed decision, action reproduction, and server-ledger operations claims
 Policy impact: no new policy rows by default; policy ledgers remain source of truth for governed exceptions and public surface
 

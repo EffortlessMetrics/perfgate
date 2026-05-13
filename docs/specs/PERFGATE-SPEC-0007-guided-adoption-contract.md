@@ -12,7 +12,7 @@ Action impact: action summaries and failure copy must surface local reproduction
 Server impact: server ledger remains optional team infrastructure; local receipts remain primary
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions, PERFGATE-ADR-0003-local-receipts-first-server-ledger-optional
-Linked plan: guided-adoption implementation plan planned
+Linked plan: plans/0.18.0/guided-adoption.md
 Linked policy: policy ledgers remain source of truth for governed exceptions and public surface
 Support/status impact: guided-adoption product claims planned in docs/status/PRODUCT_CLAIMS.md
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check
@@ -307,4 +307,3 @@ is implemented when:
 - product claims cover the guided adoption surfaces with proof commands; and
 - the guided adoption closeout handoff archives the active goal and records
   remaining deferred work.
-
