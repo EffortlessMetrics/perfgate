@@ -1,19 +1,19 @@
 # perfgate 0.18.0 Spec-driven Governance Implementation Plan
 
-Status: active
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: plans(0.18): add spec-driven implementation plan
+Current PR: complete
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked specs: docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md, docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md, docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md, docs/specs/PERFGATE-SPEC-0004-user-devex-paved-road.md, docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md, docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md
 Linked policy: policy/public_crates.txt, policy/absorbed_crates.txt, policy/clippy-*.toml, policy/no-panic-*.toml, policy/*-allowlist.toml
 Support/status impact: docs/status/SUPPORT_TIERS.md, docs/status/PRODUCT_CLAIMS.md
-Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; git diff --check
-Blocks: docs-source-check, product-claims-check, final closeout
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test
+Blocks: none
 Blocked by: none
-Rollback: revert this plan and .codex/goals/active.toml; no product behavior changes
+Rollback: revert the closeout handoff, plan status update, and archived goal manifest; no product behavior changes
 
 ## Goal
 
@@ -49,10 +49,11 @@ specs and ADRs.
 | 7 | Performance decision contract spec | merged | `docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md` |
 | 8 | Receipts-first ADR | merged | `docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md` |
 | 9 | User DevEx paved-road spec | merged | `docs/specs/PERFGATE-SPEC-0004-user-devex-paved-road.md` |
-| 10 | Release-proof contract spec | in review | `docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md` |
-| 11 | Implementation plan and active goal | current | `plans/0.18.0/implementation-plan.md`, `.codex/goals/active.toml` |
-| 12 | Source-of-truth docs checker | ready | `xtask`, checker tests, docs |
-| 13 | Product claim proof checker | ready | `xtask`, checker tests, docs |
+| 10 | Release-proof contract spec | merged | `docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md` |
+| 11 | Implementation plan and active goal | merged | `plans/0.18.0/implementation-plan.md`, `.codex/goals/active.toml` |
+| 12 | Source-of-truth docs checker | merged | `xtask`, checker tests, docs |
+| 13 | Product claim proof checker | merged | `xtask`, checker tests, docs |
+| 14 | Final closeout | merged | `docs/handoffs/2026-05-13-spec-driven-governance-closeout.md`, `plans/0.18.0/implementation-plan.md`, `.codex/goals/archive/perfgate-0-18-spec-driven-governance.toml` |
 
 ## Work item: source-of-truth-scaffold
 
@@ -219,7 +220,7 @@ Revert the spec commit. Product behavior remains unchanged.
 
 ## Work item: release-proof-contract
 
-Status: in review
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md
@@ -259,7 +260,7 @@ release proof.
 
 ## Work item: implementation-plan-and-active-goal
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked spec: docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md
 Linked ADR:
@@ -292,7 +293,7 @@ remain valid.
 
 ## Work item: docs-source-check
 
-Status: ready
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked spec: docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md
 Linked ADR:
@@ -326,7 +327,7 @@ Revert the checker and its tests. The docs stack remains usable manually.
 
 ## Work item: product-claims-check
 
-Status: ready
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked spec: docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md
 Linked ADR:
@@ -362,7 +363,7 @@ Revert the checker and tests. The status map remains the human-readable source.
 
 ## Work item: final-closeout
 
-Status: planned
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked spec: docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md
 Linked ADR:

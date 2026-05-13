@@ -1,11 +1,13 @@
 id = "perfgate-0-18-spec-driven-governance"
 title = "perfgate 0.18.0 spec-driven governance"
-status = "active"
+status = "completed"
 owner = "codex"
 created = "2026-05-13"
+completed = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "implementation-plan-and-active-goal"
-current_pr = "plans(0.18): add spec-driven implementation plan"
+current_work_item = "none"
+current_pr = "complete"
+archive_reason = "The source-of-truth stack, status proof map, implementation plan, active-goal campaign, source docs checker, product claims checker, and closeout handoff all landed."
 
 objective = """
 Make perfgate's product claims, architecture decisions, policy ledgers,
@@ -19,7 +21,7 @@ end_state = [
   "Every behavior contract has a spec with proof commands.",
   "Every durable architecture decision has an ADR.",
   "Every implementation campaign has a PR-sized plan.",
-  "Codex has a machine-readable active goal manifest.",
+  "Codex has a machine-readable goal manifest archived with completion evidence.",
   "README and product claims link to support/status proof instead of free-floating prose.",
   "Policy ledgers remain the concrete source of truth for exceptions and governed surfaces.",
   "Release claims link to release-readiness and audit proof records.",
@@ -27,6 +29,7 @@ end_state = [
 
 linked_proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 linked_plan = "plans/0.18.0/implementation-plan.md"
+linked_handoff = "docs/handoffs/2026-05-13-spec-driven-governance-closeout.md"
 
 linked_specs = [
   "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md",
@@ -61,33 +64,22 @@ linked_policy = [
   "policy/dependency-surface-allowlist.toml",
 ]
 
-allowed_files = [
-  "plans/0.18.0/implementation-plan.md",
-  ".codex/goals/active.toml",
-]
-
-forbidden_changes = [
-  "Cargo.toml",
-  "rust-toolchain.toml",
-  ".github/**",
-  "crates/**",
-  "xtask/**",
-  "policy/**",
-  "schemas/**",
-]
-
 proof = [
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
   "cargo +1.95.0 run -p xtask -- docs-check",
   "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 clippy -p xtask --all-targets --all-features -- -D warnings",
+  "cargo +1.95.0 test -p xtask --all-features",
   "git diff --check",
 ]
 
 completion_criteria = [
-  "Implementation plan is committed.",
-  "Active goal manifest parses as TOML.",
-  "Plan links current proposal, specs, ADRs, status docs, and policy ledgers.",
-  "Plan identifies remaining checker and closeout work.",
-  "No product, policy, schema, workflow, Cargo, or Rust code files changed.",
+  "Proposal, specs, ADRs, status docs, implementation plan, and handoff are merged.",
+  "Source-of-truth checker validates metadata, IDs, links, and active-goal TOML when present.",
+  "Product-claims checker validates claim IDs, tiers, surfaces, proof commands, linked evidence, and review cadence.",
+  "Active campaign state is archived under .codex/goals/archive/.",
+  "No open spec-governance PR remains for this campaign.",
 ]
 
 [[work_item]]
@@ -139,7 +131,7 @@ commands = [
 
 [[work_item]]
 id = "release-proof-contract"
-status = "in_review"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 commands = [
@@ -154,7 +146,7 @@ commands = [
 
 [[work_item]]
 id = "implementation-plan-and-active-goal"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
 plan = "plans/0.18.0/implementation-plan.md"
@@ -166,7 +158,7 @@ commands = [
 
 [[work_item]]
 id = "docs-source-check"
-status = "ready"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
 commands = [
@@ -177,11 +169,25 @@ commands = [
 
 [[work_item]]
 id = "product-claims-check"
-status = "ready"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
 commands = [
   "cargo +1.95.0 run -p xtask -- product-claims-check",
   "cargo +1.95.0 run -p xtask -- docs-source-check",
   "cargo +1.95.0 run -p xtask -- docs-check",
+]
+
+[[work_item]]
+id = "final-closeout"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
+plan = "plans/0.18.0/implementation-plan.md"
+handoff = "docs/handoffs/2026-05-13-spec-driven-governance-closeout.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
 ]
