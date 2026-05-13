@@ -744,7 +744,11 @@ fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
         fs::read_to_string(action).with_context(|| format!("reading {}", action.display()))?;
     let manifest_content = fs::read_to_string(cli_manifest)
         .with_context(|| format!("reading {}", cli_manifest.display()))?;
-    let errors = collect_action_check_errors(&action_content, &manifest_content);
+    let summary_examples_path = Path::new("docs/examples/action-failure-summaries.md");
+    let summary_examples = fs::read_to_string(summary_examples_path)
+        .with_context(|| format!("reading {}", summary_examples_path.display()))?;
+    let mut errors = collect_action_check_errors(&action_content, &manifest_content);
+    errors.extend(collect_action_summary_example_errors(&summary_examples));
 
     if !errors.is_empty() {
         println!(
@@ -1244,6 +1248,61 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
             "perfgate-cli binstall metadata must unpack the perfgate binary from the archive"
                 .to_string(),
         );
+    }
+
+    errors
+}
+
+fn collect_action_summary_example_errors(summary_examples: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    let required_examples = [
+        ("missing baseline", "## Missing Baseline"),
+        ("policy failure", "## Policy Failure"),
+        (
+            "warn with accepted tradeoff",
+            "## Warn With Accepted Tradeoff",
+        ),
+        ("review required", "## Review Required"),
+        ("artifact upload list", "## Artifact Upload List"),
+        ("decision-enabled failure", "## Decision-Enabled Failure"),
+    ];
+    for (name, heading) in required_examples {
+        if !summary_examples.contains(heading) {
+            errors.push(format!(
+                "action failure summary examples must include the {name} golden example"
+            ));
+        }
+    }
+
+    let required_copy = [
+        ("verdict counts", "Verdict:"),
+        (
+            "local check reproduction",
+            "perfgate check --config perfgate.toml",
+        ),
+        (
+            "baseline promotion hint",
+            "perfgate baseline promote --config perfgate.toml --all",
+        ),
+        (
+            "decision reproduction",
+            "perfgate decision evaluate --config perfgate.toml",
+        ),
+        ("review-required reason", "Review required:"),
+        ("uploaded artifact name", "Uploaded artifact:"),
+        ("compare receipt", "compare.json"),
+        ("probe compare receipt", "probe-compare.json"),
+        ("scenario receipt", "scenario.json"),
+        ("tradeoff receipt", "tradeoff.json"),
+        ("decision markdown", "decision.md"),
+        ("decision index", "decision.index.json"),
+    ];
+    for (name, phrase) in required_copy {
+        if !summary_examples.contains(phrase) {
+            errors.push(format!(
+                "action failure summary examples must include {name}: {phrase}"
+            ));
+        }
     }
 
     errors
@@ -6562,6 +6621,30 @@ pkg-fmt = "zip"
         );
 
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn action_summary_examples_cover_expected_failure_shapes() {
+        let errors = collect_action_summary_example_errors(include_str!(
+            "../../docs/examples/action-failure-summaries.md"
+        ));
+
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn action_summary_examples_reject_missing_review_required_shape() {
+        let examples = include_str!("../../docs/examples/action-failure-summaries.md")
+            .replace("## Review Required", "## Human Review");
+        let errors = collect_action_summary_example_errors(&examples);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("review required golden example")),
+            "errors should mention missing review-required example: {:?}",
+            errors
+        );
     }
 
     #[test]
