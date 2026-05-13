@@ -12,7 +12,7 @@ Action impact: release proof must include GitHub Action install and local reprod
 Server impact: release proof must include server schema compatibility when server receipts or API fixtures are release-facing
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked ADRs: PERFGATE-ADR-0001-public-crates-are-contracts, PERFGATE-ADR-0002-receipts-first-performance-decisions
-Linked plan: plans/0.18.0/release-proof-contract.md
+Linked plan: plans/0.18.0/implementation-plan.md
 Linked policy: policy/public_crates.txt, policy/absorbed_crates.txt, policy/no-panic-*.toml, policy/clippy-*.toml, policy/*-allowlist.toml
 Support/status impact: PG-CLAIM-0005 and PG-CLAIM-0008 in docs/status/PRODUCT_CLAIMS.md
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- action-check; cargo +1.95.0 run -p xtask -- public-surface --strict; cargo +1.95.0 run -p xtask -- arch; cargo +1.95.0 run -p xtask -- schema-compat; cargo +1.95.0 run -p xtask -- publish-check --package-list

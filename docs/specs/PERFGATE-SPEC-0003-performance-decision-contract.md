@@ -12,7 +12,7 @@ Action impact: decision-enabled action path and local reproduction output
 Server impact: optional decision upload, history, export, prune, and debt ledger
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions, PERFGATE-ADR-0003-local-receipts-first-server-ledger-optional
-Linked plan: plans/0.18.0/performance-decision-contract.md
+Linked plan: plans/0.18.0/implementation-plan.md
 Linked policy: decision policy in perfgate.toml; server authorization policy; release proof gates
 Support/status impact: PG-CLAIM-0001, PG-CLAIM-0002, PG-CLAIM-0003, and PG-CLAIM-0007 in docs/status/PRODUCT_CLAIMS.md
 Proof commands: cargo +1.95.0 test -p perfgate-cli --all-features decision; cargo +1.95.0 run -p xtask -- action-check; cargo +1.95.0 run -p xtask -- schema-compat

@@ -12,7 +12,7 @@ Action impact: generated GitHub Actions workflow and local reproduction guidance
 Server impact: none for the local paved road
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked ADRs: none
-Linked plan: plans/0.18.0/user-devex-paved-road.md
+Linked plan: plans/0.18.0/implementation-plan.md
 Linked policy: release and action proof gates
 Support/status impact: user-devex product claim planned
 Proof commands: cargo +1.95.0 test -p perfgate-cli --all-features first_run; cargo +1.95.0 test -p perfgate-cli --all-features baseline; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- action-check

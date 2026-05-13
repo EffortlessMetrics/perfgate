@@ -12,7 +12,7 @@ Action impact: none
 Server impact: none
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked ADRs: PERFGATE-ADR-0001-public-crates-are-contracts
-Linked plan: plans/0.18.0/package-surface-boundary.md
+Linked plan: plans/0.18.0/implementation-plan.md
 Linked policy: policy/public_crates.txt, policy/absorbed_crates.txt
 Support/status impact: PG-CLAIM-0004 in docs/status/PRODUCT_CLAIMS.md
 Proof commands: cargo +1.95.0 run -p xtask -- public-surface --strict; cargo +1.95.0 run -p xtask -- arch

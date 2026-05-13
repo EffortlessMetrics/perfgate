@@ -234,6 +234,13 @@ enum Command {
         #[arg(long)]
         files: Vec<PathBuf>,
     },
+
+    /// Validate source-of-truth docs metadata, IDs, links, and active goal TOML.
+    DocsSourceCheck {
+        /// Repository root to validate.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -331,6 +338,7 @@ fn main() -> anyhow::Result<()> {
         Command::DocsSync => cmd_docs_sync(),
         Command::DocsCheck => cmd_docs_check(),
         Command::DocTest { files } => cmd_doc_test(files),
+        Command::DocsSourceCheck { root } => cmd_docs_source_check(&root),
     }
 }
 
@@ -4107,6 +4115,428 @@ fn cmd_docs_check() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn cmd_docs_source_check(root: &Path) -> anyhow::Result<()> {
+    let errors = collect_docs_source_errors(root)?;
+
+    if !errors.is_empty() {
+        println!(
+            "Found {} source-of-truth documentation error(s):",
+            errors.len()
+        );
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} source-of-truth documentation issue(s) found. Fix metadata, links, or .codex/goals/active.toml.",
+            errors.len()
+        );
+    }
+
+    println!("  OK  source-of-truth docs metadata, IDs, links, and active goal are valid");
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SourceDocKind {
+    Proposal,
+    Spec,
+    Adr,
+    Plan,
+}
+
+impl SourceDocKind {
+    const fn label(self) -> &'static str {
+        match self {
+            SourceDocKind::Proposal => "proposal",
+            SourceDocKind::Spec => "spec",
+            SourceDocKind::Adr => "ADR",
+            SourceDocKind::Plan => "plan",
+        }
+    }
+
+    const fn required_headers(self) -> &'static [&'static str] {
+        match self {
+            SourceDocKind::Proposal => &[
+                "Status",
+                "Owner",
+                "Created",
+                "Target milestone",
+                "Linked specs",
+                "Linked ADRs",
+                "Linked plan",
+                "Support/status impact",
+                "Policy impact",
+            ],
+            SourceDocKind::Spec => &[
+                "Status",
+                "Owner",
+                "Created",
+                "Milestone",
+                "Behavior version",
+                "Product surface",
+                "CI surface",
+                "Schema impact",
+                "Action impact",
+                "Server impact",
+                "Linked proposal",
+                "Linked ADRs",
+                "Linked plan",
+                "Linked policy",
+                "Support/status impact",
+                "Proof commands",
+            ],
+            SourceDocKind::Adr => &["Status", "Date", "Owner", "Linked proposal", "Linked specs"],
+            SourceDocKind::Plan => &[
+                "Status",
+                "Owner",
+                "Created",
+                "Milestone",
+                "Current PR",
+                "Linked proposal",
+                "Linked specs",
+                "Proof commands",
+                "Rollback",
+            ],
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SourceDoc {
+    kind: SourceDocKind,
+    path: PathBuf,
+    metadata: BTreeMap<String, String>,
+}
+
+fn collect_docs_source_errors(root: &Path) -> anyhow::Result<Vec<String>> {
+    let mut errors = Vec::new();
+    let docs = collect_source_docs(root)?;
+    let id_re = Regex::new(r"^(PERFGATE-(?:PROP|SPEC|ADR)-\d{4})")
+        .expect("source doc id regex should compile");
+    let mut ids = BTreeMap::<String, PathBuf>::new();
+
+    for doc in &docs {
+        let display = relative_display(root, &doc.path);
+        for header in doc.kind.required_headers() {
+            if !doc.metadata.contains_key(*header) {
+                errors.push(format!(
+                    "{} {} is missing required `{}` metadata",
+                    doc.kind.label(),
+                    display,
+                    header
+                ));
+            }
+        }
+
+        if matches!(doc.kind, SourceDocKind::Spec) {
+            let status = doc.metadata.get("Status").map(String::as_str).unwrap_or("");
+            if !matches!(
+                status,
+                "proposed" | "accepted" | "implemented" | "superseded"
+            ) {
+                errors.push(format!("spec {} uses unknown Status `{}`", display, status));
+            }
+        }
+
+        if matches!(
+            doc.kind,
+            SourceDocKind::Proposal | SourceDocKind::Spec | SourceDocKind::Adr
+        ) {
+            let stem = doc
+                .path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("");
+            if let Some(captures) = id_re.captures(stem) {
+                let id = captures[1].to_string();
+                if let Some(previous) = ids.insert(id.clone(), doc.path.clone()) {
+                    errors.push(format!(
+                        "duplicate source-of-truth ID {} in {} and {}",
+                        id,
+                        relative_display(root, &previous),
+                        display
+                    ));
+                }
+            } else {
+                errors.push(format!(
+                    "{} {} filename must start with a PERFGATE ID",
+                    doc.kind.label(),
+                    display
+                ));
+            }
+        }
+
+        if matches!(doc.kind, SourceDocKind::Plan) {
+            let linked_proposal = doc
+                .metadata
+                .get("Linked proposal")
+                .map(|value| !is_blank_metadata_value(value))
+                .unwrap_or(false);
+            let linked_specs = doc
+                .metadata
+                .get("Linked specs")
+                .map(|value| !is_blank_metadata_value(value))
+                .unwrap_or(false);
+            if !linked_proposal && !linked_specs {
+                errors.push(format!(
+                    "plan {} must link to at least one proposal or spec",
+                    display
+                ));
+            }
+        }
+
+        for raw_path in extract_path_references_from_metadata(&doc.metadata) {
+            validate_linked_path(root, &doc.path, &raw_path, &mut errors)?;
+        }
+    }
+
+    validate_active_goal_toml(root, &mut errors)?;
+
+    Ok(errors)
+}
+
+fn collect_source_docs(root: &Path) -> anyhow::Result<Vec<SourceDoc>> {
+    let mut docs = Vec::new();
+    for (kind, dir) in [
+        (SourceDocKind::Proposal, "docs/proposals"),
+        (SourceDocKind::Spec, "docs/specs"),
+        (SourceDocKind::Adr, "docs/adr"),
+    ] {
+        for path in markdown_files_in(root.join(dir), false)? {
+            docs.push(read_source_doc(kind, path)?);
+        }
+    }
+
+    for path in markdown_files_in(root.join("plans"), true)? {
+        docs.push(read_source_doc(SourceDocKind::Plan, path)?);
+    }
+
+    Ok(docs)
+}
+
+fn read_source_doc(kind: SourceDocKind, path: PathBuf) -> anyhow::Result<SourceDoc> {
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let metadata = parse_source_doc_metadata(&content);
+    Ok(SourceDoc {
+        kind,
+        path,
+        metadata,
+    })
+}
+
+fn markdown_files_in(dir: PathBuf, recursive: bool) -> anyhow::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    if !dir.exists() {
+        return Ok(files);
+    }
+
+    let mut pending = vec![dir];
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current)
+            .with_context(|| format!("reading directory {}", current.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if recursive {
+                    pending.push(path);
+                }
+                continue;
+            }
+            if path.file_name().and_then(|name| name.to_str()) == Some("README.md") {
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+    Ok(files)
+}
+
+fn parse_source_doc_metadata(content: &str) -> BTreeMap<String, String> {
+    let mut metadata = BTreeMap::new();
+    let mut seen_title = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("# ") {
+            seen_title = true;
+            continue;
+        }
+        if !seen_title {
+            continue;
+        }
+        if trimmed.starts_with("## ") {
+            break;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some((key, value)) = trimmed.split_once(':')
+            && key
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '/' || ch == ' ')
+        {
+            metadata.insert(key.trim().to_string(), value.trim().to_string());
+        }
+    }
+
+    metadata
+}
+
+fn extract_path_references_from_metadata(metadata: &BTreeMap<String, String>) -> Vec<String> {
+    let path_re = source_doc_path_regex();
+    let mut paths = BTreeSet::new();
+
+    for (key, value) in metadata {
+        if !key.starts_with("Linked ") && key != "Support/status impact" {
+            continue;
+        }
+        for captures in path_re.captures_iter(value) {
+            paths.insert(clean_source_doc_path(&captures[0]));
+        }
+    }
+
+    paths.into_iter().collect()
+}
+
+fn validate_active_goal_toml(root: &Path, errors: &mut Vec<String>) -> anyhow::Result<()> {
+    let path = root.join(".codex/goals/active.toml");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let raw = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let value = match toml::from_str::<toml::Value>(&raw) {
+        Ok(value) => value,
+        Err(err) => {
+            errors.push(format!(
+                "{} must parse as TOML: {err}",
+                relative_display(root, &path)
+            ));
+            return Ok(());
+        }
+    };
+
+    let mut linked_paths = BTreeSet::new();
+    collect_active_goal_link_references(&value, &mut linked_paths);
+    for raw_path in linked_paths {
+        validate_linked_path(root, &path, &raw_path, errors)?;
+    }
+
+    Ok(())
+}
+
+fn collect_active_goal_link_references(value: &toml::Value, paths: &mut BTreeSet<String>) {
+    let Some(table) = value.as_table() else {
+        return;
+    };
+
+    for key in [
+        "linked_proposal",
+        "linked_plan",
+        "linked_specs",
+        "linked_adrs",
+        "linked_status",
+        "linked_policy",
+    ] {
+        if let Some(value) = table.get(key) {
+            collect_path_references_from_toml_leaf(value, paths);
+        }
+    }
+
+    if let Some(work_items) = table.get("work_item").and_then(toml::Value::as_array) {
+        for item in work_items {
+            let Some(item) = item.as_table() else {
+                continue;
+            };
+            for key in ["proposal", "spec", "adr", "plan"] {
+                if let Some(value) = item.get(key) {
+                    collect_path_references_from_toml_leaf(value, paths);
+                }
+            }
+        }
+    }
+}
+
+fn collect_path_references_from_toml_leaf(value: &toml::Value, paths: &mut BTreeSet<String>) {
+    match value {
+        toml::Value::String(value) => {
+            for captures in source_doc_path_regex().captures_iter(value) {
+                paths.insert(clean_source_doc_path(&captures[0]));
+            }
+        }
+        toml::Value::Array(values) => {
+            for value in values {
+                collect_path_references_from_toml_leaf(value, paths);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_linked_path(
+    root: &Path,
+    source: &Path,
+    raw_path: &str,
+    errors: &mut Vec<String>,
+) -> anyhow::Result<()> {
+    if raw_path.contains('*') {
+        let pattern = root.join(raw_path).to_string_lossy().replace('\\', "/");
+        let mut matched = false;
+        for entry in glob(&pattern).with_context(|| format!("glob pattern {pattern}"))? {
+            if entry?.exists() {
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            errors.push(format!(
+                "{} links to glob `{}` but it matches no files",
+                relative_display(root, source),
+                raw_path
+            ));
+        }
+    } else if !root.join(raw_path).exists() {
+        errors.push(format!(
+            "{} links to missing file `{}`",
+            relative_display(root, source),
+            raw_path
+        ));
+    }
+
+    Ok(())
+}
+
+fn source_doc_path_regex() -> Regex {
+    Regex::new(
+        r"(?:\.codex|\.github|docs|plans|policy|schemas|fixtures|examples|crates|xtask)/[A-Za-z0-9_./*{}-]+",
+    )
+    .expect("source doc path regex should compile")
+}
+
+fn clean_source_doc_path(path: &str) -> String {
+    path.trim_end_matches(['.', ',', ';', ')', ']', '"', '\''])
+        .to_string()
+}
+
+fn is_blank_metadata_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none")
+}
+
+fn relative_display(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 // ---------------------------------------------------------------------------
 // doc-test: validate CLI examples in documentation
 // ---------------------------------------------------------------------------
@@ -4822,6 +5252,172 @@ mod tests {
             assert!(run("sh", ["-c", "exit 1"]).is_err());
             assert!(run("sh", ["-c", "exit 0"]).is_ok());
         }
+    }
+
+    fn write_test_file(root: &Path, relative: &str, content: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dir");
+        }
+        fs::write(path, content).expect("write test file");
+    }
+
+    #[test]
+    fn docs_source_check_accepts_minimal_linked_stack() {
+        let root = unique_temp_dir("perfgate_docs_source_ok");
+        write_test_file(&root, "policy/public_crates.txt", "perfgate\n");
+        write_test_file(&root, "docs/status/PRODUCT_CLAIMS.md", "# Claims\n");
+        write_test_file(
+            &root,
+            "docs/proposals/PERFGATE-PROP-0001-test.md",
+            r#"# PERFGATE-PROP-0001: Test
+
+Status: proposed
+Owner: test
+Created: 2026-05-13
+Target milestone: 0.18.0
+Linked specs: docs/specs/PERFGATE-SPEC-0001-test.md
+Linked ADRs: docs/adr/PERFGATE-ADR-0001-test.md
+Linked plan: plans/0.18.0/implementation-plan.md
+Support/status impact: docs/status/PRODUCT_CLAIMS.md
+Policy impact: policy/public_crates.txt
+
+## Problem
+"#,
+        );
+        write_test_file(
+            &root,
+            "docs/specs/PERFGATE-SPEC-0001-test.md",
+            r#"# PERFGATE-SPEC-0001: Test
+
+Status: accepted
+Owner: test
+Created: 2026-05-13
+Milestone: 0.18.0
+Behavior version: test.v1
+Product surface: docs
+CI surface: docs-source-check
+Schema impact: none
+Action impact: none
+Server impact: none
+Linked proposal: docs/proposals/PERFGATE-PROP-0001-test.md
+Linked ADRs: docs/adr/PERFGATE-ADR-0001-test.md
+Linked plan: plans/0.18.0/implementation-plan.md
+Linked policy: policy/public_crates.txt
+Support/status impact: docs/status/PRODUCT_CLAIMS.md
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
+
+## Problem
+"#,
+        );
+        write_test_file(
+            &root,
+            "docs/adr/PERFGATE-ADR-0001-test.md",
+            r#"# PERFGATE-ADR-0001: Test
+
+Status: accepted
+Date: 2026-05-13
+Owner: test
+Linked proposal: docs/proposals/PERFGATE-PROP-0001-test.md
+Linked specs: docs/specs/PERFGATE-SPEC-0001-test.md
+
+## Decision
+"#,
+        );
+        write_test_file(
+            &root,
+            "plans/0.18.0/implementation-plan.md",
+            r#"# Plan
+
+Status: active
+Owner: test
+Created: 2026-05-13
+Milestone: 0.18.0
+Current PR: test
+Linked proposal: docs/proposals/PERFGATE-PROP-0001-test.md
+Linked specs: docs/specs/PERFGATE-SPEC-0001-test.md
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
+Rollback: revert
+
+## Goal
+"#,
+        );
+        write_test_file(
+            &root,
+            ".codex/goals/active.toml",
+            r#"
+id = "test"
+linked_proposal = "docs/proposals/PERFGATE-PROP-0001-test.md"
+linked_specs = ["docs/specs/PERFGATE-SPEC-0001-test.md"]
+linked_adrs = ["docs/adr/PERFGATE-ADR-0001-test.md"]
+linked_policy = ["policy/public_crates.txt"]
+"#,
+        );
+
+        let errors = collect_docs_source_errors(&root).expect("collect source errors");
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn docs_source_check_reports_bad_status_duplicate_id_and_missing_link() {
+        let root = unique_temp_dir("perfgate_docs_source_errors");
+        let spec = |title: &str| {
+            format!(
+                r#"# {title}
+
+Status: invented
+Owner: test
+Created: 2026-05-13
+Milestone: 0.18.0
+Behavior version: test.v1
+Product surface: docs
+CI surface: docs-source-check
+Schema impact: none
+Action impact: none
+Server impact: none
+Linked proposal: docs/proposals/PERFGATE-PROP-9999-missing.md
+Linked ADRs: none
+Linked plan: none
+Linked policy: none
+Support/status impact: none
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
+
+## Problem
+"#
+            )
+        };
+        write_test_file(
+            &root,
+            "docs/specs/PERFGATE-SPEC-0001-a.md",
+            &spec("PERFGATE-SPEC-0001: A"),
+        );
+        write_test_file(
+            &root,
+            "docs/specs/PERFGATE-SPEC-0001-b.md",
+            &spec("PERFGATE-SPEC-0001: B"),
+        );
+
+        let errors = collect_docs_source_errors(&root).expect("collect source errors");
+        assert!(
+            errors.iter().any(|error| error.contains("unknown Status")),
+            "expected status error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("duplicate source-of-truth ID")),
+            "expected duplicate ID error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("links to missing file")),
+            "expected missing link error, got {errors:?}"
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     fn no_panic_identity(
