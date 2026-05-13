@@ -5,7 +5,7 @@ use perfgate::domain::budget::{
 };
 use perfgate_types::{Budget, Direction, MetricStatus};
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let budget = Budget {
         noise_threshold: None,
         noise_policy: perfgate_types::NoisePolicy::Ignore,
@@ -15,7 +15,7 @@ fn main() {
     };
 
     // Scenario 1: 5% regression → Pass
-    let result = evaluate_budget(100.0, 105.0, &budget, None).expect("evaluate");
+    let result = evaluate_budget(100.0, 105.0, &budget, None)?;
     println!(
         "5% regression:  status={:?}, regression={:.1}%",
         result.status,
@@ -24,7 +24,7 @@ fn main() {
     assert_eq!(result.status, MetricStatus::Pass);
 
     // Scenario 2: 15% regression → Warn
-    let result = evaluate_budget(100.0, 115.0, &budget, None).expect("evaluate");
+    let result = evaluate_budget(100.0, 115.0, &budget, None)?;
     println!(
         "15% regression: status={:?}, regression={:.1}%",
         result.status,
@@ -33,7 +33,7 @@ fn main() {
     assert_eq!(result.status, MetricStatus::Warn);
 
     // Scenario 3: 25% regression → Fail
-    let result = evaluate_budget(100.0, 125.0, &budget, None).expect("evaluate");
+    let result = evaluate_budget(100.0, 125.0, &budget, None)?;
     println!(
         "25% regression: status={:?}, regression={:.1}%",
         result.status,
@@ -58,4 +58,6 @@ fn main() {
         "\naggregate_verdict: {:?} (pass={}, warn={}, fail={})",
         verdict.status, verdict.counts.pass, verdict.counts.warn, verdict.counts.fail
     );
+
+    Ok(())
 }

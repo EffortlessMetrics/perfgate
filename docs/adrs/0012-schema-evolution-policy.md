@@ -112,6 +112,6 @@ The server routes by URL prefix (`/api/v1`, `/api/v2`) for write operations and 
 - **Stability guarantee**: Consumers on v1 are protected from breakage for at least 2 minor releases after v2 ships.
 - **No flag day**: CI pipelines can migrate at their own pace during the coexistence window.
 - **Tooling overhead**: The `migrate` command and dual-version server routes add implementation cost, but this is preferable to silent data loss or parse failures in production pipelines.
-- **Struct duplication**: Maintaining separate v1 and v2 Rust types means some code duplication. Shared logic should be extracted into version-agnostic helper functions in `perfgate-domain`.
+- **Struct duplication**: Maintaining separate v1 and v2 Rust types means some code duplication. Shared logic should be extracted into version-agnostic helper functions in `perfgate::domain`.
 - **Schema field as router**: The existing `schema` field (ADR 0007) is sufficient for version detection — no new wire-format changes are needed to support this policy.
 - **Archived schemas**: Removed versions remain available in `schemas/archived/` for forensic analysis of old artifacts.

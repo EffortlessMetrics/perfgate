@@ -24,10 +24,10 @@ fn make_sample(wall_ms: u64) -> Sample {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. summarize_u64: compute median/min/max from raw values
     let values = vec![120, 115, 118, 122, 117];
-    let summary = summarize_u64(&values).expect("summarize");
+    let summary = summarize_u64(&values)?;
     println!(
         "summarize_u64: median={}, min={}, max={}",
         summary.median, summary.min, summary.max
@@ -43,8 +43,8 @@ fn main() {
         .map(make_sample)
         .collect();
 
-    let baseline_stats = compute_stats(&baseline_samples, None).expect("baseline stats");
-    let current_stats = compute_stats(&current_samples, None).expect("current stats");
+    let baseline_stats = compute_stats(&baseline_samples, None)?;
+    let current_stats = compute_stats(&current_samples, None)?;
 
     println!(
         "\nBaseline wall_ms: median={}, min={}, max={}",
@@ -68,7 +68,7 @@ fn main() {
         },
     );
 
-    let comparison = compare_stats(&baseline_stats, &current_stats, &budgets).expect("compare");
+    let comparison = compare_stats(&baseline_stats, &current_stats, &budgets)?;
     println!("\nVerdict: {:?}", comparison.verdict.status);
 
     if let Some(delta) = comparison.deltas.get(&Metric::WallMs) {
@@ -80,4 +80,6 @@ fn main() {
             delta.status,
         );
     }
+
+    Ok(())
 }

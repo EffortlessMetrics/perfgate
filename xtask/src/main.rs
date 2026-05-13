@@ -92,7 +92,7 @@ impl MutantsCrate {
             MutantsCrate::Types => "perfgate-types",
             MutantsCrate::App => "perfgate",
             MutantsCrate::Cli => "perfgate-cli",
-            MutantsCrate::Paired => "perfgate-paired",
+            MutantsCrate::Paired => "perfgate",
             MutantsCrate::Fake => "perfgate-fake",
         }
     }
@@ -2582,7 +2582,6 @@ const ARCH_RULES: &[ArchRule] = &[
         name: "contract packages stay below runtime/app/entrypoints",
         sources: &["perfgate-types", "perfgate-api"],
         forbidden: &[
-            "perfgate-app",
             "perfgate-client",
             "perfgate-server",
             "perfgate-cli",
@@ -2593,7 +2592,6 @@ const ARCH_RULES: &[ArchRule] = &[
         name: "core/domain packages stay below I/O, presentation, and entrypoints",
         sources: &[],
         forbidden: &[
-            "perfgate-app",
             "perfgate-client",
             "perfgate-server",
             "perfgate-cli",
@@ -2604,7 +2602,6 @@ const ARCH_RULES: &[ArchRule] = &[
         name: "presentation packages stay below runtime/app/entrypoints",
         sources: &[],
         forbidden: &[
-            "perfgate-app",
             "perfgate-client",
             "perfgate-server",
             "perfgate-cli",
@@ -3793,21 +3790,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-domain",
-            "Workspace-only compatibility wrapper for perfgate::domain",
-            100,
-        ),
-        (
-            "perfgate-app",
-            "Workspace-only compatibility wrapper for perfgate::app",
-            90,
-        ),
-        (
-            "perfgate-paired",
-            "Workspace-only compatibility wrapper for perfgate::domain::paired",
-            100,
-        ),
-        (
             "perfgate-fake",
             "Test utilities and fake implementations",
             70,
@@ -3865,7 +3847,7 @@ fn cmd_microcrates() -> anyhow::Result<()> {
         "  perfgate::domain::budget, perfgate::domain::significance, perfgate::domain::scaling"
     );
     println!("         ↓");
-    println!("  perfgate::presentation::{{render, export, sensor}}, perfgate-paired");
+    println!("  perfgate::presentation::{{render, export, sensor}}, perfgate::domain::paired");
     println!("         ↓");
     println!("  perfgate::domain (policy)");
     println!("         ↓");
@@ -4321,21 +4303,6 @@ fn generate_workspace_inventory_md() -> String {
         (
             "perfgate-error",
             "Compatibility wrapper for perfgate_types::error",
-            100,
-        ),
-        (
-            "perfgate-domain",
-            "Workspace-only compatibility wrapper for perfgate::domain",
-            100,
-        ),
-        (
-            "perfgate-app",
-            "Workspace-only compatibility wrapper for perfgate::app",
-            90,
-        ),
-        (
-            "perfgate-paired",
-            "Workspace-only compatibility wrapper for perfgate::domain::paired",
             100,
         ),
         (

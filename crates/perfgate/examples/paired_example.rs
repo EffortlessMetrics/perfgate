@@ -1,8 +1,8 @@
 //! Basic example demonstrating paired statistics for A/B comparison.
 //!
-//! Run with: cargo run -p perfgate-paired --example basic
+//! Run with: cargo run -p perfgate --example paired_example
 
-use perfgate_paired::{PairedError, compare_paired_stats, compute_paired_stats};
+use perfgate::domain::paired::{PairedError, compare_paired_stats, compute_paired_stats};
 use perfgate_types::{PairedSample, PairedSampleHalf};
 
 fn make_half(wall_ms: u64) -> PairedSampleHalf {
@@ -28,7 +28,7 @@ fn make_sample(idx: u32, baseline_ms: u64, current_ms: u64) -> PairedSample {
 }
 
 fn main() -> Result<(), PairedError> {
-    println!("=== perfgate-paired Basic Example ===\n");
+    println!("=== perfgate paired Basic Example ===\n");
 
     println!("1. Computing paired statistics for improvement:");
     let improvement_samples = vec![

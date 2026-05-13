@@ -4,15 +4,15 @@
 Accepted
 
 ## Context
-The `perfgate-domain` crate originally handled everything from raw sample storage to statistical analysis and budget policy enforcement. This made it hard to reason about the "pure" parts of the system versus the policy-driven parts.
+The `perfgate::domain` module handles everything from raw sample storage to statistical analysis and budget policy enforcement. This made it important to keep clear boundaries between the "pure" parts of the system and the policy-driven parts.
 
 ## Decision
 We extracted the core mathematical and policy logic into specialized crates:
 - `perfgate-stats`: Provides `U64Summary` and `F64Summary` for pure statistical aggregation.
-- `perfgate-domain::budget`: Implements the logic for comparing metrics against thresholds and determining `Pass/Warn/Fail` status; this was a standalone `perfgate-budget` crate before the 0.16 public-surface collapse.
-- `perfgate-domain::significance`: Contains the statistical significance logic (Welch's t-test and p-values); this was a standalone `perfgate-significance` crate before the 0.16 public-surface collapse.
+- `perfgate::domain::budget`: Implements the logic for comparing metrics against thresholds and determining `Pass/Warn/Fail` status; this was a standalone `perfgate-budget` crate before the 0.16 public-surface collapse.
+- `perfgate::domain::significance`: Contains the statistical significance logic (Welch's t-test and p-values); this was a standalone `perfgate-significance` crate before the 0.16 public-surface collapse.
 
-`perfgate-domain` now acts as a coordinator for these domain entities, focusing on the high-level measurement models.
+`perfgate::domain` now acts as a coordinator for these domain entities, focusing on the high-level measurement models.
 
 ## Consequences
 - Statistical logic is now reusable in contexts where budget policy is not needed.

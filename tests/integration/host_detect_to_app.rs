@@ -1,7 +1,7 @@
 //! Integration tests: host-detect crate → app layer.
 //!
-//! These tests verify that perfgate-domain host detection integrates correctly
-//! with the perfgate-app layer, and that host mismatches flow through
+//! These tests verify that perfgate::domain host detection integrates correctly
+//! with the perfgate::app layer, and that host mismatches flow through
 //! to CLI output.
 
 use perfgate::app::{CompareRequest, CompareUseCase};

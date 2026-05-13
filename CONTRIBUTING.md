@@ -74,7 +74,7 @@ See [TESTING.md](TESTING.md) for the full testing guide. Quick reference:
 ```bash
 cargo test --all                                    # all tests
 cargo test --test cucumber                          # BDD tests
-cargo test -p perfgate-domain                       # single crate
+cargo test -p perfgate --all-features domain        # domain module tests
 cargo run -p xtask -- mutants --crate perfgate-domain  # mutation testing
 ```
 

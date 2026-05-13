@@ -60,7 +60,7 @@ Central to budget evaluation. Each variant has metadata:
 
 ## Design Rules
 
-- **No I/O, no logic** — This crate is pure data. Statistics, policy, and rendering belong in `perfgate-domain` or `perfgate-app`.
+- **No I/O, no logic** — This crate is pure data. Statistics, policy, and rendering belong in `perfgate::domain` or `perfgate::app`.
 - **Sensor report uses `serde_json::Value`** for opaque data fields (ABI hardening). This means `SensorReport` and related types cannot derive `JsonSchema` or `Arbitrary`.
 - **All collections use `BTreeMap`** for deterministic serialization order.
 - **Backward compatibility matters** — Adding fields must use `#[serde(default)]`. Removing or renaming fields is a breaking change. Existing tests validate backward compat for `HostInfo` and other types.

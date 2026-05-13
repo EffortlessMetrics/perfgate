@@ -44,13 +44,13 @@ perfgate employs a multi-layered testing strategy following the test pyramid:
                     └─────────────────┘
 ```
 
-### Test Types by Crate (26 Workspace Crates)
+### Test Types by Surface
 
 | Crate | Unit Tests | Property Tests | BDD Coverage | Fuzz Targets |
 |-------|------------|----------------|--------------|--------------|
 | perfgate-types | Serialization | Round-trip | N/A | `parse_run_receipt`, `parse_compare_receipt`, `parse_config` |
-| perfgate-domain | Logic, Errors | Stats & Comparison | N/A | `compare_stats` |
-| perfgate-app | Use-cases/runtime | Orchestration and output truncation | N/A | `render_markdown` |
+| perfgate::domain | Logic, Errors | Stats & Comparison | N/A | `compare_stats` |
+| perfgate::app | Use-cases/runtime | Orchestration and output truncation | N/A | `render_markdown` |
 | perfgate-cli | N/A | N/A | Full command coverage | N/A |
 | perfgate-server | API handlers | N/A | Baseline management | N/A |
 | perfgate-client | Client logic | N/A | Remote workflows | N/A |
@@ -68,9 +68,9 @@ cargo test --all
 Run tests for a specific crate:
 
 ```bash
-cargo test -p perfgate-domain
+cargo test -p perfgate --all-features domain
 cargo test -p perfgate-types
-cargo test -p perfgate-app
+cargo test -p perfgate --all-features app
 ```
 
 ### BDD Tests

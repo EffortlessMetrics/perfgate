@@ -4,7 +4,7 @@
 
 This document records the 0.16 refactoring of perfgate's public crate surface. The goal was to collapse the broad microcrate surface into a cleaner public facade while preserving the strong internal separation of concerns that makes the architecture maintainable.
 
-**Current state**: The public-surface collapse has landed across the former leaf crates and the final structural seams. Domain logic now lives in `perfgate::domain`, app orchestration and runtime adapters live under `perfgate::app` / `perfgate::runtime`, and old `perfgate-domain` / `perfgate-app` packages are workspace-only compatibility wrappers. Strict public-surface mode passes with only the five target public packages publishable.
+**Current state**: The public-surface collapse has landed across the former leaf crates and the final structural seams. Domain logic now lives in `perfgate::domain`, app orchestration and runtime adapters live under `perfgate::app` / `perfgate::runtime`, and the old `perfgate-domain` / `perfgate-app` packages have been deleted. Strict public-surface mode passes with only the five target public packages publishable.
 
 **Target state**: Five public crates with strongly organized internal modules. Users depend on `perfgate`, `perfgate-types`, `perfgate-cli`, `perfgate-client`, and `perfgate-server` only. The SRP boundaries remain enforced but move from crate level to module level.
 
@@ -310,7 +310,7 @@ Provide deprecation shims if crates are published. Update `perfgate` prelude.
 
 ### Phase 4: Collapse Domain (PR 4)
 Move into `perfgate::domain`:
-- `perfgate-domain` -> `perfgate::domain` (done; workspace-only wrapper remains)
+- `perfgate-domain` -> `perfgate::domain` (done; crate deleted)
 - `perfgate-host-detect` -> already landed in `perfgate::domain::host`; facade path is `perfgate::domain::host`
 - `perfgate-scaling` -> already landed in `perfgate::domain::scaling`; facade path is `perfgate::domain::scaling`
 
@@ -329,7 +329,7 @@ Add feature gates and verify default build is lightweight.
 Move into `perfgate`:
 - `perfgate-adapters` -> `perfgate::runtime` with facade path `perfgate::runtime` (done; crate deleted)
 - `perfgate-profile` -> `perfgate::runtime::profile` (done)
-- `perfgate-app` -> `perfgate::app` (done; workspace-only wrapper remains)
+- `perfgate-app` -> `perfgate::app` (done; crate deleted)
 - `perfgate-github` -> `perfgate::integrations::github` (feature-gated; crate deleted)
 - `perfgate-ingest` -> `perfgate::integrations::ingest` (done)
 

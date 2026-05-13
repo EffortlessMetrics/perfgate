@@ -5,7 +5,7 @@ Superseded by `docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md`
 
 ## Context
 The user-facing output logic (Markdown tables, JSON/CSV exports, and CLI
-interaction) was previously mingled in `perfgate-app` and `perfgate-cli`. This
+interaction) was previously mingled in `perfgate::app` and `perfgate-cli`. This
 made it difficult to add new output formats without touching the core
 orchestration logic.
 
@@ -24,5 +24,5 @@ We separated the presentation layer into distinct seams:
   full application.
 - Adding a new export format (e.g., OpenTelemetry) only requires changes to
   `perfgate::presentation::export`.
-- `perfgate-cli` remains a thin wrapper around `perfgate-app`, focusing on the
+- `perfgate-cli` remains a thin wrapper around `perfgate::app`, focusing on the
   user interface and exit codes.

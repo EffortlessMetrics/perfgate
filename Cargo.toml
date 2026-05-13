@@ -9,10 +9,7 @@ members = [
   "crates/perfgate-error",
   "crates/perfgate-api",
   "crates/perfgate-types",
-  "crates/perfgate-paired",
-  "crates/perfgate-domain",
   "crates/perfgate-fake",
-  "crates/perfgate-app",
   "crates/perfgate-cli",
   "crates/perfgate-server",
   "crates/perfgate-client",
@@ -77,7 +74,6 @@ serde_json.workspace = true
 toml.workspace = true
 perfgate-types.workspace = true
 perfgate-error.workspace = true
-perfgate-paired.workspace = true
 perfgate.workspace = true
 glob.workspace = true
 shell-words.workspace = true
@@ -132,10 +128,7 @@ libc = "0.2.182"
 perfgate-error = { path = "crates/perfgate-error", version = "0.17.0" }
 perfgate-api = { path = "crates/perfgate-api", version = "0.17.0" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.17.0" }
-perfgate-domain = { path = "crates/perfgate-domain", version = "0.17.0" }
-perfgate-paired = { path = "crates/perfgate-paired", version = "0.17.0" }
 perfgate-fake = { path = "crates/perfgate-fake", version = "0.17.0" }
-perfgate-app = { path = "crates/perfgate-app", version = "0.17.0" }
 perfgate-server = { path = "crates/perfgate-server", version = "0.17.0" }
 perfgate-client = { path = "crates/perfgate-client", version = "0.17.0" }
 perfgate = { path = "crates/perfgate", version = "0.17.0" }

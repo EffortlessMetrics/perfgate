@@ -1,7 +1,7 @@
 //! Integration tests: stats crate → domain crate.
 //!
 //! These tests verify that domain statistics integrate correctly
-//! with perfgate-domain, and that errors propagate correctly between them.
+//! with perfgate::domain, and that errors propagate correctly between them.
 
 use perfgate::domain::stats::{StatsError, summarize_f64, summarize_u64};
 use perfgate_types::{F64Summary, U64Summary};

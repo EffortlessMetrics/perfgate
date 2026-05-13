@@ -87,6 +87,6 @@ Golden fixtures at `tests/fixtures/golden/sensor_report_*.json`.
 
 ## Design Rules
 
-- **Thin layer** — CLI only parses args and delegates to `perfgate-app` use cases. No business logic here.
+- **Thin layer** — CLI only parses args and delegates to `perfgate::app` use cases. No business logic here.
 - **JSON pretty-printing** — Controlled by `--pretty` flag, not hardcoded.
 - **Exit code contract** — Must match the documented exit code semantics (0/1/2/3).

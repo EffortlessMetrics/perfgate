@@ -14,7 +14,7 @@ Key design choices:
 2. **Separate commands** — baseline and current are specified as separate shell commands (`--baseline-cmd`, `--current-cmd`), allowing comparison of different binaries.
 3. **Significance-based retries** — if `--max-retries` is set, paired mode will run additional pairs when the t-test doesn't reach significance, up to the retry limit.
 4. **Standard output** — produces a `perfgate.compare.v1` receipt, compatible with all downstream commands (md, report, export).
-5. **Lives in `perfgate-paired`** — separated from `perfgate-domain` because it involves I/O (process execution), while domain is intentionally I/O-free.
+5. **Lives in `perfgate::domain::paired`** — paired statistics and comparison logic live under the domain module while CLI process execution stays in the outer command layer.
 
 ## Consequences
 - Sub-5% regressions become detectable in noisy CI environments.

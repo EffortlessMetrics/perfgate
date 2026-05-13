@@ -13,7 +13,7 @@ perfgate-validation -> perfgate_types::validation [deleted]
 perfgate-auth -> perfgate_types::baseline_service::auth [deleted]
 perfgate-summary -> perfgate::presentation::render::summary [deleted]
 perfgate-stats -> perfgate::domain::stats [deleted]
-perfgate-paired -> perfgate::domain::paired [compatibility wrapper] [publish=false]
+perfgate-paired -> perfgate::domain::paired [deleted]
 perfgate-error -> perfgate_types::error [compatibility wrapper] [publish=false]
 
 # Contract-adjacent.
@@ -21,7 +21,7 @@ perfgate-config -> perfgate_types::config and perfgate_client::ResolvedServerCon
 perfgate-api -> perfgate_types::baseline_service; perfgate_server::CredentialSource [compatibility wrapper] [publish=false]
 
 # Pure core and domain policy.
-perfgate-domain -> perfgate::domain [compatibility wrapper] [publish=false]
+perfgate-domain -> perfgate::domain [deleted]
 perfgate-budget -> perfgate::domain::budget; perfgate::core::budget facade [deleted]
 perfgate-significance -> perfgate::domain::significance [deleted]
 perfgate-host-detect -> perfgate::domain::host [deleted]
@@ -36,7 +36,7 @@ perfgate-sensor -> perfgate::presentation::sensor [deleted]
 # Runtime, app, and integrations.
 perfgate-adapters -> perfgate::runtime [deleted]
 perfgate-profile -> perfgate::runtime::profile [deleted]
-perfgate-app -> perfgate::app [compatibility wrapper] [publish=false]
+perfgate-app -> perfgate::app [deleted]
 perfgate-github -> perfgate::integrations::github [deleted]
 perfgate-ingest -> perfgate::integrations::ingest [deleted]
 

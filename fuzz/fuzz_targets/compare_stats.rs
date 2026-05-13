@@ -1,4 +1,4 @@
-//! Fuzz target for the compare_stats function in perfgate-domain.
+//! Fuzz target for the compare_stats function in perfgate::domain.
 //!
 //! This target uses structure-aware fuzzing with the Arbitrary trait to generate
 //! valid Stats and Budget inputs, verifying that compare_stats never panics

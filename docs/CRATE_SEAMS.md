@@ -42,7 +42,7 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-auth` | `perfgate_types::baseline_service::auth` | crate deleted |
 | `perfgate-summary` | `perfgate::presentation::render::summary` | crate deleted |
 | `perfgate-stats` | `perfgate::domain::stats` | crate deleted |
-| `perfgate-paired` | `perfgate::domain::paired` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-paired` | `perfgate::domain::paired` | crate deleted |
 | `perfgate-error` | `perfgate_types::error` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-render` | `perfgate::presentation::render` | crate deleted |
 | `perfgate-export` | `perfgate::presentation::export` | crate deleted |
@@ -58,8 +58,8 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-scaling` | `perfgate::domain::scaling` | crate deleted |
 | `perfgate-github` | `perfgate::integrations::github` | crate deleted |
 | `perfgate-adapters` | `perfgate::runtime` | crate deleted |
-| `perfgate-domain` | `perfgate::domain` | workspace-only compatibility wrapper, `publish = false` |
-| `perfgate-app` | `perfgate::app` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-domain` | `perfgate::domain` | crate deleted |
+| `perfgate-app` | `perfgate::app` | crate deleted |
 
 Those paths are intentionally more conservative than the final facade shape.
 Future PRs may re-export or move pieces again, but they must do so with the

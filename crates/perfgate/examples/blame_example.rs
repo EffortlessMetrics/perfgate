@@ -1,6 +1,6 @@
 //! Example demonstrating Binary Delta Blame.
 //!
-//! Run with: cargo run -p perfgate-domain --example blame
+//! Run with: cargo run -p perfgate --example blame_example
 
 use perfgate::domain::compare_lockfiles;
 
@@ -51,7 +51,7 @@ version = "2.0.0"
                 (Some(old), None) => {
                     println!("  [REMOVED] {} ({})", change.name, old);
                 }
-                _ => unreachable!(),
+                (None, None) => {}
             }
         }
     }

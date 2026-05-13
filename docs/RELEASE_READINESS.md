@@ -101,7 +101,7 @@ inputs and install wiring, and the action prints a local reproduction command
 plus discovered artifact paths when `perfgate check` exits nonzero.
 
 Former implementation packages such as `perfgate-domain` and `perfgate-app`
-are workspace-only compatibility wrappers. Domain logic lives under
+have been absorbed into the facade crate. Domain logic lives under
 `perfgate::domain`; app orchestration and runtime adapters live under
 `perfgate::app` and `perfgate::runtime`.
 
