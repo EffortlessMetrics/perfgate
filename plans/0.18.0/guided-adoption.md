@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: docs(status): add guided adoption product claims
+Current PR: xtask: check product claim spec freshness
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked specs: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md; local server-ledger optionality ADR planned if the lane changes that boundary
@@ -51,8 +51,8 @@ This plan sequences the work. Behavior is owned by
 | 380 | Probe-to-decision proof | merged | CLI tests or deterministic fixtures |
 | 381 | GitHub Action failure UX | merged | action output, tests, docs |
 | 382 | Server ledger operations runbook | merged | server docs/runbook |
-| 383 | Guided adoption product claims | current | `docs/status/PRODUCT_CLAIMS.md` |
-| 384 | Claim/spec freshness checker | ready | `xtask` checker and tests |
+| 383 | Guided adoption product claims | merged | `docs/status/PRODUCT_CLAIMS.md` |
+| 384 | Claim/spec freshness checker | current | `xtask` checker and tests |
 | 385 | Policy ledger contract spec | ready | `docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md` |
 | 386 | Wrapper-crate cleanup plan | ready | crate cleanup plan docs |
 | final | Guided adoption closeout | blocked | handoff and archived active goal |
@@ -418,7 +418,7 @@ Revert the runbook and links.
 
 ## Work item: guided-adoption-claims
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR:
@@ -460,7 +460,7 @@ Revert claim-map entries and any links that rely on them.
 
 ## Work item: claim-spec-freshness-check
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR:

@@ -18,6 +18,10 @@ Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
 | PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | supported | policy, CI | before-0.18.0-release |
 | PG-CLAIM-0007 | the GitHub Action surfaces local reproduction for decision-enabled gates. | supported | action, CLI, artifacts | next-decision-contract-change |
 | PG-CLAIM-0008 | release readiness is proven by the publish-order matrix, not by version bumps alone. | supported | release, crates, CI | next-release-candidate |
+| PG-CLAIM-0009 | perfgate supports a first-hour local adoption path. | supported | CLI, docs, artifacts | before-0.18.0-release |
+| PG-CLAIM-0010 | perfgate supports staged adoption levels from local gate to team ledger. | supported | docs, CLI, action, server | before-0.18.0-release |
+| PG-CLAIM-0011 | perfgate supports probe-backed tradeoff explanation. | supported | CLI, Rust helpers, receipts | next-probe-contract-change |
+| PG-CLAIM-0012 | perfgate supports optional team decision-ledger operations. | supported | server, CLI, dashboard, docs | next-server-ledger-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -78,7 +82,7 @@ Review after: next-decision-contract-change
 
 Tier: supported
 Surface: baseline server, CLI, dashboard, receipts
-Linked docs: [`BASELINE_SERVICE_DESIGN.md`](../BASELINE_SERVICE_DESIGN.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
+Linked docs: [`BASELINE_SERVICE_DESIGN.md`](../BASELINE_SERVICE_DESIGN.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
 Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
@@ -220,3 +224,120 @@ cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-cli
 ```
 
 Review after: next-release-candidate
+
+## PG-CLAIM-0009: First-hour local adoption path
+
+Tier: supported
+Surface: CLI, docs, artifacts
+Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md)
+Linked specs: [`PERFGATE-SPEC-0004-user-devex-paved-road`](../specs/PERFGATE-SPEC-0004-user-devex-paved-road.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features first_run
+cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_first_run_e2e_tests.rs`](../../crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs)
+- [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs)
+- [`cli_check_tests.rs`](../../crates/perfgate-cli/tests/cli_check_tests.rs)
+
+Artifacts:
+
+- `perfgate.toml`
+- `.github/workflows/perfgate.yml`
+- `baselines/`
+- `.perfgate/README.md`
+- `artifacts/perfgate/compare.json`
+
+Review after: before-0.18.0-release
+
+## PG-CLAIM-0010: Staged adoption levels
+
+Tier: supported
+Surface: docs, CLI, GitHub Action, server ledger
+Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md)
+Linked specs: [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+cargo +1.95.0 run -p xtask -- docs-source-check
+```
+
+Linked gates: docs-check, doc-test, docs-source-check
+
+Artifacts:
+
+- local gate receipts
+- GitHub Action summary and uploaded artifacts
+- `decision.md`
+- `decision.index.json`
+- optional server ledger records
+
+Review after: before-0.18.0-release
+
+## PG-CLAIM-0011: Probe-backed tradeoff explanation
+
+Tier: supported
+Surface: CLI, Rust helpers, probe receipts, decision receipts
+Linked docs: [`PROBE_QUICKSTART.md`](../PROBE_QUICKSTART.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`examples/decision-outcomes.md`](../examples/decision-outcomes.md)
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate --features probe probe_helper_jsonl_drives_tradeoff_decision_evidence
+cargo +1.95.0 test -p perfgate-cli --all-features probe
+cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 run -p xtask -- schema-compat
+```
+
+Linked tests:
+
+- [`probe.rs`](../../crates/perfgate/src/probe.rs)
+- [`cli_probe_tests.rs`](../../crates/perfgate-cli/tests/cli_probe_tests.rs)
+- [`cli_structured_decision_e2e_tests.rs`](../../crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs)
+
+Artifacts:
+
+- `probes.json`
+- `probe-compare.json`
+- `scenario.json`
+- `tradeoff.json`
+- `decision.md`
+- `decision-bundle.json`
+
+Review after: next-probe-contract-change
+
+## PG-CLAIM-0012: Optional team decision-ledger operations
+
+Tier: supported
+Surface: server, CLI, dashboard, audit exports
+Linked docs: [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`BASELINE_SERVICE_DESIGN.md`](../BASELINE_SERVICE_DESIGN.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md)
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_server_tests.rs`](../../crates/perfgate-cli/tests/cli_server_tests.rs)
+- [`cli_mock_server_tests.rs`](../../crates/perfgate-cli/tests/cli_mock_server_tests.rs)
+- [`cli_help_snapshot_tests.rs`](../../crates/perfgate-cli/tests/cli_help_snapshot_tests.rs)
+
+Artifacts:
+
+- `perfgate.decision_record.v1`
+- decision history/latest/export/prune/debt output
+- audit JSONL exports
+- `/health` and `/metrics`
+
+Review after: next-server-ledger-change
