@@ -108,7 +108,7 @@ Review after: before-0.18.0-release
 
 Tier: stable
 Surface: crates, public API, release policy
-Linked docs: [`CRATE_SEAMS.md`](../CRATE_SEAMS.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
+Linked docs: [`CRATE_SEAMS.md`](../CRATE_SEAMS.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`2026-05-13-wrapper-absorption-closeout.md`](../handoffs/2026-05-13-wrapper-absorption-closeout.md)
 Linked specs: [`PERFGATE-SPEC-0002-package-surface-boundary`](../specs/PERFGATE-SPEC-0002-package-surface-boundary.md)
 Linked policy:
 

@@ -95,8 +95,8 @@ this handoff to understand the lane without chat history.
 The remaining work is intentionally follow-on, not part of the closed guided
 adoption lane:
 
-- implement wrapper absorption batches from
-  [`plans/0.18.0/wrapper-crate-cleanup.md`](../../plans/0.18.0/wrapper-crate-cleanup.md);
+- wrapper absorption is complete and closed out in
+  [`2026-05-13-wrapper-absorption-closeout.md`](2026-05-13-wrapper-absorption-closeout.md);
 - keep public crates limited to the five-crate surface unless a future ADR and
   policy update justify a change;
 - deepen external/public install smoke as release-candidate automation;

@@ -1,25 +1,24 @@
 # perfgate 0.18.0 Wrapper Crate Cleanup Plan
 
-Status: accepted
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: refactor: absorb contract-adjacent wrapper crates
+Current PR: policy: prove final package surface after wrapper absorption
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked specs: docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md; docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md
 Linked plan: plans/0.18.0/guided-adoption.md
 Linked policy: policy/public_crates.txt; policy/absorbed_crates.txt
-Support/status impact: PG-CLAIM-0004 remains the public-surface claim; no new product claim in this plan PR
+Support/status impact: PG-CLAIM-0004 remains the public-surface claim and links to the wrapper absorption closeout
 Proof commands: cargo +1.95.0 run -p xtask -- public-surface --strict; cargo +1.95.0 run -p xtask -- arch; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check
-Blocks: wrapper absorption implementation batches
+Blocks: none
 Blocked by: none
 Rollback: revert this plan and its links; no workspace manifests or crates change in this PR
 
 ## Goal
 
-Plan the remaining compatibility wrapper absorption without changing crate
-membership in the planning PR.
+Record the compatibility wrapper absorption sequence and final package surface.
 
 The governing rule remains:
 
@@ -29,7 +28,7 @@ modules are architecture boundaries
 no durable unpublished production crates
 ```
 
-## Remaining Wrappers
+## Wrapper Status
 
 The public surface remains exactly:
 
@@ -39,7 +38,7 @@ The public surface remains exactly:
 - `perfgate-client`
 - `perfgate-server`
 
-The remaining non-public wrappers are transitional and listed in
+The former non-public wrappers are listed in
 [`policy/absorbed_crates.txt`](../../policy/absorbed_crates.txt):
 
 | Wrapper | Owner path | Disposition | Batch |

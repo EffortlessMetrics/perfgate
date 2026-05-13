@@ -69,7 +69,7 @@ policy files and docs updated in the same change.
 
 `policy/absorbed_crates.txt` is the machine-readable disposition list. The
 public-surface blockers have been resolved; remaining non-public workspace
-packages are private/dev packages or compatibility wrappers:
+packages are private/dev/test/automation packages:
 
 | Package | Disposition |
 |---------|-------------|
@@ -111,9 +111,8 @@ source.
 
 `xtask public-surface` fails if a publishable workspace package is neither listed in
 `policy/public_crates.txt` nor assigned a disposition in
-`policy/absorbed_crates.txt`. Entries marked `[compatibility wrapper]` must also
-stay out of non-dev workspace dependency graphs; internal crates should import
-the owner path directly and leave the wrapper for external compatibility.
+`policy/absorbed_crates.txt`. Deleted absorbed-crate entries record historical
+owner paths; internal code should import the owner path directly.
 
 Run:
 
