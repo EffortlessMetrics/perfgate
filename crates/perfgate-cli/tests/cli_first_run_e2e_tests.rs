@@ -100,6 +100,28 @@ fn first_run_paved_road_creates_artifacts_and_baselines() {
         .success()
         .stderr(predicate::str::contains("parser"));
 
+    let require_baseline = perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "check",
+            "--config",
+            "perfgate.toml",
+            "--all",
+            "--require-baseline",
+        ])
+        .output()
+        .expect("run require-baseline check before promotion");
+    assert_eq!(
+        require_baseline.status.code(),
+        Some(1),
+        "require-baseline should fail before the first baseline is promoted"
+    );
+    let stderr = String::from_utf8_lossy(&require_baseline.stderr);
+    assert!(
+        stderr.contains("baseline") && stderr.contains("parser"),
+        "missing-baseline failure should name the missing benchmark: {stderr}"
+    );
+
     perfgate_cmd()
         .current_dir(temp_dir.path())
         .args(["baseline", "status", "--config", "perfgate.toml"])
@@ -140,6 +162,20 @@ fn first_run_paved_road_creates_artifacts_and_baselines() {
     assert!(root.join("artifacts/perfgate/parser/compare.json").exists());
     assert!(root.join("artifacts/perfgate/parser/report.json").exists());
     assert!(root.join("artifacts/perfgate/parser/comment.md").exists());
+
+    let workflow = fs::read_to_string(root.join(".github/workflows/perfgate.yml"))
+        .expect("read generated GitHub workflow");
+    assert!(workflow.contains("EffortlessMetrics/perfgate@v0"));
+    assert!(workflow.contains("config: perfgate.toml"));
+    assert!(workflow.contains("require_baseline: \"true\""));
+    assert!(workflow.contains("upload_artifact: \"true\""));
+
+    let onboarding =
+        fs::read_to_string(root.join(".perfgate/README.md")).expect("read onboarding README");
+    assert!(onboarding.contains("Commit `perfgate.toml`"));
+    assert!(onboarding.contains("perfgate.toml"));
+    assert!(onboarding.contains(".github/workflows/perfgate.yml"));
+    assert!(onboarding.contains("baselines/"));
 
     let baseline: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(root.join("baselines/parser.json")).expect("read baseline"),
