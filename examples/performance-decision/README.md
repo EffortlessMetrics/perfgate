@@ -8,6 +8,9 @@ Rust projects can generate compatible probe JSONL with the optional `perfgate`
 `probe` feature, but the fixture keeps the JSONL checked in so the example is
 reproducible in any environment.
 
+For the instrumentation path that produces JSONL from real code, see
+[`docs/PROBE_QUICKSTART.md`](../../docs/PROBE_QUICKSTART.md).
+
 Run from the repository root:
 
 ```bash

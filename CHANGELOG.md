@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   review-required, missing-evidence, and high-noise review shapes.
 - Extended first-hour adoption proof to cover baseline status,
   require-baseline reruns, and compare artifact creation after promotion.
+- Added a probe instrumentation quickstart covering stable probe names, JSONL
+  emission, Rust helpers, ingest, comparison, and decision wiring.
 
 ## [0.17.0] - 2026-05-12
 

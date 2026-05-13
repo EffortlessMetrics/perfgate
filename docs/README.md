@@ -45,6 +45,7 @@ Codex execution state stay reviewable.
 - Performance decisions: [`PERFORMANCE_DECISIONS.md`](PERFORMANCE_DECISIONS.md)
 - Decision outcome gallery:
   [`examples/decision-outcomes.md`](examples/decision-outcomes.md)
+- Probe instrumentation: [`PROBE_QUICKSTART.md`](PROBE_QUICKSTART.md)
 - Workspace inventory: [`WORKSPACE.md`](WORKSPACE.md)
 - GitHub Actions setup:
   [`GETTING_STARTED_GITHUB_ACTIONS.md`](GETTING_STARTED_GITHUB_ACTIONS.md)

@@ -70,6 +70,9 @@ cargo run -p xtask -- schema-compat
 `perfgate ingest probes` converts language-agnostic probe JSONL into a
 `perfgate.probe.v1` receipt:
 
+For a first instrumentation path, see
+[`PROBE_QUICKSTART.md`](PROBE_QUICKSTART.md).
+
 ```bash
 perfgate ingest probes --file probes.jsonl --out probe.json
 ```

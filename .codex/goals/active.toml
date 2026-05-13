@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "probe-quickstart"
-current_pr = "docs: add probe instrumentation quickstart"
+current_work_item = "probe-to-decision-proof"
+current_pr = "test: prove probe helper to decision workflow"
 
 objective = """
 Make perfgate easy for cold users to install, initialize, run locally,
@@ -130,7 +130,7 @@ commands = [
 
 [[work_item]]
 id = "probe-quickstart"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"
@@ -144,7 +144,7 @@ commands = [
 
 [[work_item]]
 id = "probe-to-decision-proof"
-status = "ready"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"

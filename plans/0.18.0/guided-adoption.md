@@ -47,8 +47,8 @@ This plan sequences the work. Behavior is owned by
 | 376 | Guided adoption plan and active goal | current | `plans/0.18.0/guided-adoption.md`, `.codex/goals/active.toml` |
 | 377 | Decision outcome gallery | merged | `docs/examples/decision-outcomes.md`, `examples/performance-decision/outcomes/` |
 | 378 | First-hour adoption smoke fixture | merged | CLI tests and fixtures |
-| 379 | Probe instrumentation quickstart | current | `docs/PROBE_QUICKSTART.md`, README/docs/example links |
-| 380 | Probe-to-decision proof | ready | CLI tests or deterministic fixtures |
+| 379 | Probe instrumentation quickstart | merged | `docs/PROBE_QUICKSTART.md`, README/docs/example links |
+| 380 | Probe-to-decision proof | current | CLI tests or deterministic fixtures |
 | 381 | GitHub Action failure UX | ready | action output, tests, docs |
 | 382 | Server ledger operations runbook | ready | server docs/runbook |
 | 383 | Guided adoption product claims | ready | `docs/status/PRODUCT_CLAIMS.md` |
@@ -203,7 +203,7 @@ Revert the examples and links.
 
 ## Work item: first-hour-smoke-proof
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR:
@@ -291,7 +291,7 @@ Revert the quickstart and links.
 
 ## Work item: probe-to-decision-proof
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md

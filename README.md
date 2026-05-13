@@ -255,6 +255,7 @@ Start with:
 For specific workflows:
 
 - [Performance Decisions](docs/PERFORMANCE_DECISIONS.md)
+- [Probe Instrumentation Quickstart](docs/PROBE_QUICKSTART.md)
 - [Step-by-Step Pipeline](docs/PIPELINE.md)
 - [Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md)
 - [Paired Benchmarking](docs/PAIRED_BENCHMARKING.md)
