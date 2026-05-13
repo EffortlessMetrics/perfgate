@@ -93,7 +93,6 @@ gate once transition packages stop being publishable.
 | `perfgate-domain` | Core business logic, statistics, budget evaluation, significance, paired analysis, host mismatch logic, and scaling analysis |
 | `perfgate-app` | Orchestration layer for CLI commands and runtime adapters |
 | `perfgate-cli` | Command-line interface and argument parsing |
-| `perfgate-adapters` | Workspace-only compatibility wrapper for `perfgate::runtime` |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate::presentation::export` | Multi-format data exporters |
@@ -102,7 +101,7 @@ gate once transition packages stop being publishable.
 | `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Compatibility wrapper for `perfgate_types::error` |
 | `perfgate-fake` | Test fixtures and mock data generators |
-| `perfgate-github` | Workspace-only compatibility wrapper for `perfgate::integrations::github` |
+| `perfgate::integrations::github` | GitHub annotations and pull-request integration |
 | `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
 | `perfgate` | Unified facade library |
 

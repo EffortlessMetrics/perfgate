@@ -4,7 +4,7 @@ Status: accepted
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: refactor: absorb presentation wrapper crates
+Current PR: refactor: absorb runtime and integration wrapper crates
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked specs: docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md; docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md
@@ -47,8 +47,8 @@ The remaining non-public wrappers are transitional and listed in
 | `perfgate-render` | `perfgate::presentation::render` | deleted in presentation batch | presentation |
 | `perfgate-export` | `perfgate::presentation::export` | deleted in presentation batch | presentation |
 | `perfgate-sensor` | `perfgate::presentation::sensor` | deleted in presentation batch | presentation |
-| `perfgate-adapters` | `perfgate::runtime` | delete after runtime imports use facade paths | runtime/integration |
-| `perfgate-github` | `perfgate::integrations::github` | delete after integration imports use facade paths | runtime/integration |
+| `perfgate-adapters` | `perfgate::runtime` | deleted in runtime/integration batch | runtime/integration |
+| `perfgate-github` | `perfgate::integrations::github` | deleted in runtime/integration batch | runtime/integration |
 | `perfgate-app` | `perfgate::app` | delete after CLI/server imports use facade paths | app/domain |
 | `perfgate-domain` | `perfgate::domain` | delete after examples/docs use facade paths | app/domain |
 | `perfgate-paired` | `perfgate::domain::paired` | delete after examples/docs use facade paths | app/domain |

@@ -56,8 +56,8 @@ PR #223 started the real collapse and is the current implementation truth:
 | `perfgate-host-detect` | `perfgate::domain::host` | crate deleted |
 | `perfgate-budget` | `perfgate::domain::budget`; facade path `perfgate::core::budget` | crate deleted |
 | `perfgate-scaling` | `perfgate::domain::scaling` | crate deleted |
-| `perfgate-github` | `perfgate::integrations::github` | workspace-only compatibility wrapper, `publish = false` |
-| `perfgate-adapters` | `perfgate::runtime` | workspace-only compatibility wrapper, `publish = false` |
+| `perfgate-github` | `perfgate::integrations::github` | crate deleted |
+| `perfgate-adapters` | `perfgate::runtime` | crate deleted |
 | `perfgate-domain` | `perfgate::domain` | workspace-only compatibility wrapper, `publish = false` |
 | `perfgate-app` | `perfgate::app` | workspace-only compatibility wrapper, `publish = false` |
 
