@@ -4685,6 +4685,22 @@ fn collect_source_docs(root: &Path) -> anyhow::Result<Vec<SourceDoc>> {
     Ok(docs)
 }
 
+fn collect_existing_spec_ids(root: &Path) -> anyhow::Result<BTreeSet<String>> {
+    let id_re =
+        Regex::new(r"^(PERFGATE-SPEC-\d{4})").expect("source doc spec id regex should compile");
+    let mut ids = BTreeSet::new();
+    for path in markdown_files_in(root.join("docs/specs"), false)? {
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("");
+        if let Some(captures) = id_re.captures(stem) {
+            ids.insert(captures[1].to_string());
+        }
+    }
+    Ok(ids)
+}
+
 fn read_source_doc(kind: SourceDocKind, path: PathBuf) -> anyhow::Result<SourceDoc> {
     let content =
         fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
@@ -4910,7 +4926,8 @@ fn relative_display(root: &Path, path: &Path) -> String {
 fn cmd_product_claims_check(path: &Path) -> anyhow::Result<()> {
     let content =
         fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let errors = collect_product_claim_errors(&content);
+    let spec_ids = collect_existing_spec_ids(&workspace_root_path())?;
+    let errors = collect_product_claim_errors(&content, &spec_ids);
 
     if !errors.is_empty() {
         println!("Found {} product claim proof-map error(s):", errors.len());
@@ -4936,10 +4953,15 @@ struct ProductClaimSection {
     body: String,
 }
 
-fn collect_product_claim_errors(content: &str) -> Vec<String> {
+fn collect_product_claim_errors(
+    content: &str,
+    concrete_spec_ids: &BTreeSet<String>,
+) -> Vec<String> {
     let mut errors = Vec::new();
     let claims = extract_product_claim_sections(content);
     let mut ids = BTreeSet::new();
+    let planned_spec_re = Regex::new(r"\b(PERFGATE-SPEC-\d{4})\b.*\bplanned\b")
+        .expect("planned spec regex should compile");
 
     if claims.is_empty() {
         errors
@@ -5003,6 +5025,21 @@ fn collect_product_claim_errors(content: &str) -> Vec<String> {
                 "{} line {} must include linked tests, policy, or gates",
                 claim.id, claim.line
             ));
+        }
+
+        for (offset, line) in claim.body.lines().enumerate() {
+            let Some(captures) = planned_spec_re.captures(line) else {
+                continue;
+            };
+            let spec_id = &captures[1];
+            if concrete_spec_ids.contains(spec_id) {
+                errors.push(format!(
+                    "{} line {} references `{}` as planned, but a concrete spec file exists",
+                    claim.id,
+                    claim.line + offset + 1,
+                    spec_id
+                ));
+            }
         }
     }
 
@@ -5991,7 +6028,7 @@ cargo +1.95.0 run -p xtask -- docs-check
 Review after: before-release
 "###;
 
-        let errors = collect_product_claim_errors(content);
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
         assert!(errors.is_empty(), "unexpected errors: {errors:?}");
     }
 
@@ -6022,7 +6059,7 @@ cargo +1.95.0 run -p xtask -- docs-check
 Review after: before-release
 "###;
 
-        let errors = collect_product_claim_errors(content);
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
         assert!(
             errors.iter().any(|error| error.contains("unknown tier")),
             "expected tier error, got {errors:?}"
@@ -6056,6 +6093,38 @@ Review after: before-release
                 .iter()
                 .any(|error| error.contains("linked tests, policy, or gates")),
             "expected linked evidence error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_reports_stale_planned_spec_links() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Guided adoption
+
+Tier: supported
+Surface: docs
+Linked specs: `PERFGATE-SPEC-0007-guided-adoption-contract` planned
+Linked gates: docs-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+```
+
+Review after: before-release
+"###;
+
+        let errors = collect_product_claim_errors(
+            content,
+            &BTreeSet::from(["PERFGATE-SPEC-0007".to_string()]),
+        );
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("references `PERFGATE-SPEC-0007` as planned")),
+            "expected stale planned spec error, got {errors:?}"
         );
     }
 
