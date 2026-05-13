@@ -134,6 +134,7 @@ Tier: stable
 Surface: toolchain, CI, release
 Linked docs: [`development/RUST_1_95_ROLLOUT.md`](../development/RUST_1_95_ROLLOUT.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/rust-1.95-compatibility.md`](../audits/rust-1.95-compatibility.md)
 Linked specs: `PERFGATE-SPEC-0005-release-proof-contract` planned
+Linked gates: docs-check, doc-test, public-surface --strict
 Proof commands:
 
 ```bash
@@ -184,6 +185,7 @@ Tier: supported
 Surface: GitHub Action, CLI, artifacts
 Linked docs: [`GETTING_STARTED_GITHUB_ACTIONS.md`](../GETTING_STARTED_GITHUB_ACTIONS.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
 Linked specs: `PERFGATE-SPEC-0003-performance-decision-contract` planned
+Linked gates: action-check, doc-test
 Proof commands:
 
 ```bash
@@ -205,6 +207,7 @@ Tier: supported
 Surface: release, crates, CI
 Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md)
 Linked specs: `PERFGATE-SPEC-0005-release-proof-contract` planned
+Linked gates: publish-check --package-list and per-package publish dry-runs
 Proof commands:
 
 ```bash
