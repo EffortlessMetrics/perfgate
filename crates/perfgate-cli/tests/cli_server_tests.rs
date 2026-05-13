@@ -156,6 +156,23 @@ fn write_decision_tradeoff_receipt(path: &std::path::Path, scenario: &str) {
     .expect("write decision tradeoff receipt");
 }
 
+fn write_decision_artifact_index(path: &std::path::Path) {
+    let index = serde_json::json!({
+        "schema": "perfgate.decision_index.v1",
+        "scenario": "artifacts/perfgate/scenario.json",
+        "tradeoff": "artifacts/perfgate/tradeoff.json",
+        "decision": "artifacts/perfgate/decision.md",
+        "probe_compares": ["artifacts/perfgate/parser/probe-compare.json"],
+        "compare_receipts": ["artifacts/perfgate/parser/compare.json"]
+    });
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&index).expect("serialize decision artifact index"),
+    )
+    .expect("write decision artifact index");
+}
+
 fn assert_root_health_is_healthy(root_url: &str) {
     let addr = root_url
         .strip_prefix("http://")
@@ -858,6 +875,163 @@ async fn server_operations_smoke_path_memory() {
         .success()
         .stdout(predicate::str::contains("Verdict history"))
         .stdout(predicate::str::contains("test-benchmark"));
+
+    let decision_path = temp_dir.path().join("operations-decision-tradeoff.json");
+    let decision_index_path = temp_dir.path().join("operations-decision-index.json");
+    let decision_export_path = temp_dir.path().join("operations-decision-history.jsonl");
+    let decision_scenario = format!("{project}-ops-decision");
+    write_decision_tradeoff_receipt(&decision_path, &decision_scenario);
+    write_decision_artifact_index(&decision_index_path);
+
+    let mut decision_upload = perfgate_cmd();
+    decision_upload
+        .arg("decision")
+        .arg("upload")
+        .arg("--file")
+        .arg(&decision_path)
+        .arg("--index")
+        .arg(&decision_index_path)
+        .arg("--git-ref")
+        .arg("refs/heads/server-ops-smoke")
+        .arg("--git-sha")
+        .arg("abc123");
+    add_server_flags(&mut decision_upload, server.url(), &project, &api_key);
+    decision_upload
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Uploaded decision"))
+        .stdout(predicate::str::contains(&decision_scenario))
+        .stdout(predicate::str::contains("accepted_rules=memory_for_speed"));
+
+    let mut decision_history = perfgate_cmd();
+    decision_history
+        .arg("decision")
+        .arg("history")
+        .arg("--scenario")
+        .arg(&decision_scenario)
+        .arg("--limit")
+        .arg("5");
+    add_server_flags(&mut decision_history, server.url(), &project, &api_key);
+    decision_history
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision history"))
+        .stdout(predicate::str::contains(&decision_scenario));
+
+    let mut decision_latest = perfgate_cmd();
+    decision_latest.arg("decision").arg("latest");
+    add_server_flags(&mut decision_latest, server.url(), &project, &api_key);
+    decision_latest
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Latest decision"))
+        .stdout(predicate::str::contains(&decision_scenario))
+        .stdout(predicate::str::contains("refs/heads/server-ops-smoke"));
+
+    let mut decision_debt = perfgate_cmd();
+    decision_debt
+        .arg("decision")
+        .arg("debt")
+        .arg("--days")
+        .arg("0");
+    add_server_flags(&mut decision_debt, server.url(), &project, &api_key);
+    decision_debt
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision debt"))
+        .stdout(predicate::str::contains("Accepted tradeoff records: 1"))
+        .stdout(predicate::str::contains("memory_for_speed"));
+
+    let mut decision_export = perfgate_cmd();
+    decision_export
+        .arg("decision")
+        .arg("export")
+        .arg("--days")
+        .arg("0")
+        .arg("--format")
+        .arg("jsonl")
+        .arg("--out")
+        .arg(&decision_export_path);
+    add_server_flags(&mut decision_export, server.url(), &project, &api_key);
+    decision_export
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Exported 1 decision record"));
+    let exported = fs::read_to_string(&decision_export_path).expect("read decision export");
+    let exported_lines = exported.lines().collect::<Vec<_>>();
+    assert_eq!(
+        exported_lines.len(),
+        1,
+        "decision export should include one JSONL record: {exported}"
+    );
+    let exported_decision: serde_json::Value =
+        serde_json::from_str(exported_lines[0]).expect("decision export line should be JSON");
+    assert_eq!(
+        exported_decision["scenario"].as_str(),
+        Some(decision_scenario.as_str())
+    );
+    assert_eq!(
+        exported_decision["artifact_index"]["schema"].as_str(),
+        Some("perfgate.decision_index.v1")
+    );
+
+    let mut decision_prune_dry_run = perfgate_cmd();
+    decision_prune_dry_run
+        .arg("decision")
+        .arg("prune")
+        .arg("--older-than")
+        .arg("0s")
+        .arg("--dry-run");
+    add_server_flags(
+        &mut decision_prune_dry_run,
+        server.url(),
+        &project,
+        &api_key,
+    );
+    decision_prune_dry_run
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision prune dry run"))
+        .stdout(predicate::str::contains("1 record"));
+
+    let mut decision_history_after_dry_run = perfgate_cmd();
+    decision_history_after_dry_run
+        .arg("decision")
+        .arg("history")
+        .arg("--scenario")
+        .arg(&decision_scenario)
+        .arg("--limit")
+        .arg("5");
+    add_server_flags(
+        &mut decision_history_after_dry_run,
+        server.url(),
+        &project,
+        &api_key,
+    );
+    decision_history_after_dry_run
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Decision history"))
+        .stdout(predicate::str::contains(&decision_scenario));
+
+    let mut decision_create_audit = perfgate_cmd();
+    decision_create_audit
+        .arg("audit")
+        .arg("list")
+        .arg("--project")
+        .arg(&project)
+        .arg("--resource-type")
+        .arg("decision")
+        .arg("--action")
+        .arg("create")
+        .arg("--limit")
+        .arg("5");
+    add_server_auth_flags(&mut decision_create_audit, server.url(), &api_key);
+    decision_create_audit
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("decision"))
+        .stdout(predicate::str::contains("create"));
 
     let mut delete = perfgate_cmd();
     delete
