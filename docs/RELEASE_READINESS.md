@@ -6,6 +6,8 @@ Last verified: 2026-05-13 for v0.17.0 publication reconciliation and the
 [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
 and
 [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md).
+The current 0.18 cutover decision is recorded in
+[v0.18.0 Cutover Decision](audits/release-0.18.0-cutover-decision.md).
 
 Latest published release: v0.17.0. The five allowed crates are published on
 crates.io at `0.17.0`, the GitHub release `v0.17.0` is published with platform
@@ -22,6 +24,8 @@ The 0.18.0 adoption-readiness snapshot is a pre-release proof record, not a
 publication record. It documents wrapper absorption, first-hour smoke proof,
 structured-decision bundle proof, checked action failure examples, and optional
 server-ledger operations smoke after the guided-adoption lane closed out.
+The 0.18.0 cutover remains deferred until an explicit release PR starts the
+version, publish, tag, release, action-alias, install-smoke, and closeout steps.
 
 ## Current Publication State
 
