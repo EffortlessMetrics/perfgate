@@ -159,7 +159,7 @@ Review after: next-msrv-change
 Tier: supported
 Surface: policy files, CI, release readiness
 Linked docs: [`POLICY_ALLOWLISTS.md`](../POLICY_ALLOWLISTS.md), [`CLIPPY_POLICY.md`](../CLIPPY_POLICY.md), [`NO_PANIC_POLICY.md`](../NO_PANIC_POLICY.md), [`FILE_POLICY.md`](../FILE_POLICY.md)
-Linked specs: `PERFGATE-SPEC-0006-policy-ledger-contracts` planned
+Linked specs: [`PERFGATE-SPEC-0006-policy-ledger-contracts`](../specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md)
 Linked policy:
 
 - [`policy/clippy-lints.toml`](../../policy/clippy-lints.toml)

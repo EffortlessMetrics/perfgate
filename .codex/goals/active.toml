@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "policy-ledger-contract-spec"
-current_pr = "docs(spec): add policy ledger contract"
+current_work_item = "wrapper-crate-cleanup-plan"
+current_pr = "docs(crates): plan remaining wrapper absorption"
 
 objective = """
 Make perfgate easy for cold users to install, initialize, run locally,
@@ -210,8 +210,9 @@ commands = [
 
 [[work_item]]
 id = "policy-ledger-contract-spec"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md"
 plan = "plans/0.18.0/guided-adoption.md"
 commands = [
   "cargo +1.95.0 run -p xtask -- docs-check",
@@ -223,7 +224,7 @@ commands = [
 
 [[work_item]]
 id = "wrapper-crate-cleanup-plan"
-status = "ready"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 spec = "docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md"
 plan = "plans/0.18.0/guided-adoption.md"

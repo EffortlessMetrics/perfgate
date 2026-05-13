@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-13
 Milestone: 0.18.0
-Current PR: docs(spec): add policy ledger contract
+Current PR: docs(crates): plan remaining wrapper absorption
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked specs: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADRs: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md; local server-ledger optionality ADR planned if the lane changes that boundary
@@ -53,8 +53,8 @@ This plan sequences the work. Behavior is owned by
 | 382 | Server ledger operations runbook | merged | server docs/runbook |
 | 383 | Guided adoption product claims | merged | `docs/status/PRODUCT_CLAIMS.md` |
 | 384 | Claim/spec freshness checker | merged | `xtask` checker and tests |
-| 385 | Policy ledger contract spec | current | `docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md` |
-| 386 | Wrapper-crate cleanup plan | ready | crate cleanup plan docs |
+| 385 | Policy ledger contract spec | merged | `docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md` |
+| 386 | Wrapper-crate cleanup plan | current | crate cleanup plan docs |
 | final | Guided adoption closeout | blocked | handoff and archived active goal |
 
 ## Work item: first-hour-guide
@@ -502,9 +502,9 @@ Revert the checker and tests.
 
 ## Work item: policy-ledger-contract-spec
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
-Linked spec: PERFGATE-SPEC-0006-policy-ledger-contracts planned
+Linked spec: docs/specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md
 Linked ADR:
 Blocks: final closeout
 Blocked by:
@@ -545,7 +545,7 @@ Revert the spec.
 
 ## Work item: wrapper-crate-cleanup-plan
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md
 Linked spec: docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md
 Linked ADR: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md
@@ -593,7 +593,7 @@ Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md
 Blocks:
-Blocked by: guided-adoption-claims, claim-spec-freshness-check
+Blocked by: wrapper-crate-cleanup-plan
 
 ### Goal
 

@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operations.
 - Tightened the product-claim proof-map checker so stale planned spec links fail
   once the concrete spec file exists.
+- Added the policy-ledger contract spec and linked the policy-ledger product
+  claim to the concrete spec.
+- Refreshed the generated no-panic baseline for the adoption probe proof and
+  product-claim freshness checker callsites.
 
 ## [0.17.0] - 2026-05-12
 

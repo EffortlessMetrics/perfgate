@@ -8710,6 +8710,30 @@ path = "crates/perfgate/src/probe.rs"
 family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
+snippet = ".expect(\"compare helper probe receipts\")"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"evaluate probe-backed tradeoff\")"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"evaluate scenario from probe evidence\")"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
 snippet = ".expect(\"flush criterion probe measurement\");"
 count = 1
 
@@ -8734,7 +8758,31 @@ path = "crates/perfgate/src/probe.rs"
 family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
+snippet = ".expect(\"ingest helper baseline JSONL\");"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"ingest helper current JSONL\");"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
 snippet = ".expect(\"ingest tracing JSONL\");"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"record helper probe event\");"
 count = 1
 
 [[baseline]]
@@ -8774,6 +8822,14 @@ path = "crates/perfgate/src/probe.rs"
 family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
+snippet = "String::from_utf8(writer.into_inner()).expect(\"helper JSONL should be utf8\")"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
 snippet = "layer.flush().expect(\"flush tracing probe layer\");"
 count = 1
 
@@ -8783,6 +8839,14 @@ family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
 snippet = "let output = String::from_utf8(writer.into_inner()).expect(\"utf8 JSONL\");"
+count = 1
+
+[[baseline]]
+path = "crates/perfgate/src/probe.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = "writer.flush().expect(\"flush helper probe JSONL\");"
 count = 1
 
 [[baseline]]
@@ -10822,7 +10886,31 @@ path = "xtask/src/main.rs"
 family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
+snippet = ".expect(\"planned spec regex should compile\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
 snippet = ".expect(\"read canonical fixture\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"source doc id regex should compile\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"source doc path regex should compile\")"
 count = 1
 
 [[baseline]]
@@ -10895,6 +10983,30 @@ family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
 snippet = ".expect(\"write source\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = ".expect(\"xtask manifest directory has a workspace parent\")"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = "Regex::new(r\"^## (PG-CLAIM-\\d{4})\\b\").expect(\"product claim heading regex should compile\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = "Regex::new(r\"^(PERFGATE-SPEC-\\d{4})\").expect(\"source doc spec id regex should compile\");"
 count = 1
 
 [[baseline]]
@@ -11030,6 +11142,14 @@ path = "xtask/src/main.rs"
 family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
+snippet = "fs::create_dir_all(parent).expect(\"create parent dir\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
 snippet = "fs::remove_file(out_dir.join(SCHEMA_FILES[0])).expect(\"remove file\");"
 count = 1
 
@@ -11134,6 +11254,14 @@ path = "xtask/src/main.rs"
 family = "expect"
 selector_kind = "method"
 selector_callee = "expect"
+snippet = "fs::write(path, content).expect(\"write test file\");"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
 snippet = "fs::write(temp_dir.join(\"third_party_report.json\"), valid).expect(\"write fixture\");"
 count = 1
 
@@ -11152,6 +11280,14 @@ selector_kind = "method"
 selector_callee = "expect"
 snippet = "let count = sync_fixtures(&golden, &contracts).expect(\"sync fixtures\");"
 count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "expect"
+selector_kind = "method"
+selector_callee = "expect"
+snippet = "let errors = collect_docs_source_errors(&root).expect(\"collect source errors\");"
+count = 2
 
 [[baseline]]
 path = "xtask/src/main.rs"
@@ -11256,6 +11392,22 @@ selector_kind = "method"
 selector_callee = "unwrap"
 snippet = "path.file_name().unwrap().to_string_lossy()"
 count = 3
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+selector_kind = "method"
+selector_callee = "unwrap"
+snippet = "validate_shields_badge(&badge, Some(\"fixtures\")).unwrap();"
+count = 1
+
+[[baseline]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+selector_kind = "method"
+selector_callee = "unwrap"
+snippet = "validate_shields_badge(&badge, Some(\"ripr+\")).unwrap();"
+count = 1
 
 [[baseline]]
 path = "xtask/tests/xtask_smoke_tests.rs"
