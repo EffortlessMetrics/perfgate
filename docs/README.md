@@ -43,6 +43,8 @@ Codex execution state stay reviewable.
 - First-hour adoption path: [`FIRST_HOUR.md`](FIRST_HOUR.md)
 - Adoption levels: [`ADOPTION_LEVELS.md`](ADOPTION_LEVELS.md)
 - Performance decisions: [`PERFORMANCE_DECISIONS.md`](PERFORMANCE_DECISIONS.md)
+- Decision outcome gallery:
+  [`examples/decision-outcomes.md`](examples/decision-outcomes.md)
 - Workspace inventory: [`WORKSPACE.md`](WORKSPACE.md)
 - GitHub Actions setup:
   [`GETTING_STARTED_GITHUB_ACTIONS.md`](GETTING_STARTED_GITHUB_ACTIONS.md)

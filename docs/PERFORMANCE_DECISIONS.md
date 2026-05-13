@@ -35,6 +35,10 @@ files, and the local reproduction command.
 `decision.index.json` is the machine-readable artifact manifest for actions,
 servers, dashboards, and agents that need to find the generated evidence set.
 
+For common pass, fail, accepted-tradeoff, review-required, missing-evidence,
+and high-noise shapes, see
+[`examples/decision-outcomes.md`](examples/decision-outcomes.md).
+
 Export a portable JSON bundle when the decision evidence needs to travel with a
 release, issue, audit, or agent handoff:
 

@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   promotion, CI, artifact boundaries, and failure reproduction.
 - Added an adoption-level guide that teaches perfgate as local gate, action
   gate, structured decision, and server-ledger workflows.
+- Added a decision outcome gallery for pass, fail, accepted-tradeoff,
+  review-required, missing-evidence, and high-noise review shapes.
 
 ## [0.17.0] - 2026-05-12
 

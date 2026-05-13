@@ -45,8 +45,8 @@ This plan sequences the work. Behavior is owned by
 | 374 | Guided adoption proposal | merged | `docs/proposals/PERFGATE-PROP-0002-guided-adoption.md` |
 | 375 | Guided adoption contract spec | merged | `docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md` |
 | 376 | Guided adoption plan and active goal | current | `plans/0.18.0/guided-adoption.md`, `.codex/goals/active.toml` |
-| 377 | Decision outcome gallery | ready | `docs/examples/decision-outcomes.md`, `examples/performance-decision/outcomes/` |
-| 378 | First-hour adoption smoke fixture | ready | CLI tests and fixtures |
+| 377 | Decision outcome gallery | merged | `docs/examples/decision-outcomes.md`, `examples/performance-decision/outcomes/` |
+| 378 | First-hour adoption smoke fixture | current | CLI tests and fixtures |
 | 379 | Probe instrumentation quickstart | ready | `docs/PROBE_QUICKSTART.md`, README/docs/example links |
 | 380 | Probe-to-decision proof | ready | CLI tests or deterministic fixtures |
 | 381 | GitHub Action failure UX | ready | action output, tests, docs |
@@ -161,7 +161,7 @@ Revert this plan and `.codex/goals/active.toml`.
 
 ## Work item: decision-outcome-gallery
 
-Status: ready
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md
@@ -203,7 +203,7 @@ Revert the examples and links.
 
 ## Work item: first-hour-smoke-proof
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0002-guided-adoption.md
 Linked spec: docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Linked ADR:

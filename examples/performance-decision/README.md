@@ -43,3 +43,5 @@ The fixture models a memory-for-speed decision:
 slightly. That evidence remains visible in the generated `probe-compare.json`;
 the tradeoff rule accepts the memory regression only because the local
 tokenizer regression stays bounded and the dominant batch-loop probe improves.
+
+For common decision shapes, see the [`outcomes`](outcomes/README.md) gallery.
