@@ -1116,6 +1116,27 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     }
     if !failure_summary_lines
         .iter()
+        .any(|line| line == "verdict=\"${{ steps.run_check.outputs.verdict }}\"")
+        || !failure_summary_lines.iter().any(|line| {
+            line == "echo \"Verdict: ${verdict} (pass=${pass_count:-0}, warn=${warn_count:-0}, fail=${fail_count:-0}, benches=${bench_count:-unknown})\""
+        })
+    {
+        errors.push(
+            "action.yml failure summary must include verdict counts when available".to_string(),
+        );
+    }
+    if !failure_summary_lines.iter().any(|line| {
+        line == "review_reason=\"${{ steps.handle_review_required.outputs.review_required_reason }}\""
+    }) || !failure_summary_lines
+        .iter()
+        .any(|line| line == "echo \"Review required: ${review_reason}\"")
+    {
+        errors.push(
+            "action.yml failure summary must include review-required reasons".to_string(),
+        );
+    }
+    if !failure_summary_lines
+        .iter()
         .any(|line| line == "repro=(perfgate check --config \"${{ inputs.config }}\")")
         || !failure_summary_lines
             .iter()
@@ -1165,6 +1186,29 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
             "action.yml failure summary must list perfgate receipt and probe evidence files"
                 .to_string(),
         );
+    }
+    if !failure_summary_lines
+        .iter()
+        .any(|line| line == "has_no_baseline_reason() {")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line.contains("no_baseline"))
+        || !failure_summary_lines.iter().any(|line| {
+            line == "echo \"  perfgate baseline promote --config ${{ inputs.config }} --all\""
+        })
+    {
+        errors.push(
+            "action.yml failure summary must include a baseline promotion hint when no baseline evidence appears"
+                .to_string(),
+        );
+    }
+    if !failure_summary_lines.iter().any(|line| {
+        line == "artifact_name=\"${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}\""
+    }) || !failure_summary_lines
+        .iter()
+        .any(|line| line == "echo \"Uploaded artifact: ${artifact_name}\"")
+    {
+        errors.push("action.yml failure summary must include the uploaded artifact name".to_string());
     }
 
     if !raw_action.contains("out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
@@ -6501,14 +6545,28 @@ runs:
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         exit_code="${{ steps.run_check.outputs.exit_code }}"
         review_exit_code="${{ steps.handle_review_required.outputs.exit_code }}"
+        verdict="${{ steps.run_check.outputs.verdict }}"
+        pass_count="${{ steps.run_check.outputs.pass_count }}"
+        warn_count="${{ steps.run_check.outputs.warn_count }}"
+        fail_count="${{ steps.run_check.outputs.fail_count }}"
+        bench_count="${{ steps.run_check.outputs.bench_count }}"
+        review_reason="${{ steps.handle_review_required.outputs.review_required_reason }}"
+        artifact_name="${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
         repro=(perfgate check --config "${{ inputs.config }}")
         decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
         decision_repro_line="$(format_command "${decision_repro[@]}")"
+        has_no_baseline_reason() {
+          grep -R -q -e "no_baseline" "${out}" 2>/dev/null
+        }
         {
+          echo "Verdict: ${verdict} (pass=${pass_count:-0}, warn=${warn_count:-0}, fail=${fail_count:-0}, benches=${bench_count:-unknown})"
+          echo "Review required: ${review_reason}"
           echo "Reproduce locally:"
           echo "  ${decision_repro_line}"
           echo "### perfgate local reproduction"
           echo "${decision_repro_line}"
+          echo "  perfgate baseline promote --config ${{ inputs.config }} --all"
+          echo "Uploaded artifact: ${artifact_name}"
           find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name decision.index.json -o -name comment.md -o -name 'perfgate.*.json' \) | sort
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Post PR comment
