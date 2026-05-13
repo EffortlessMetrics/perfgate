@@ -154,5 +154,6 @@ absorbed/internal workspace package. It now passes on `main`.
 - [REFACTORING_0_16.md](REFACTORING_0_16.md)
 - [MIGRATION_0_16.md](MIGRATION_0_16.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
+- [plans/0.18.0/wrapper-crate-cleanup.md](../plans/0.18.0/wrapper-crate-cleanup.md)
 - [policy/public_crates.txt](../policy/public_crates.txt)
 - [policy/absorbed_crates.txt](../policy/absorbed_crates.txt)

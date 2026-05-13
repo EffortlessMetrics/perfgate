@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-13"
 milestone = "0.18.0"
-current_work_item = "wrapper-crate-cleanup-plan"
-current_pr = "docs(crates): plan remaining wrapper absorption"
+current_work_item = "final-closeout"
+current_pr = "docs(handoff): close guided adoption lane"
 
 objective = """
 Make perfgate easy for cold users to install, initialize, run locally,
@@ -224,10 +224,10 @@ commands = [
 
 [[work_item]]
 id = "wrapper-crate-cleanup-plan"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
 spec = "docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md"
-plan = "plans/0.18.0/guided-adoption.md"
+plan = "plans/0.18.0/wrapper-crate-cleanup.md"
 commands = [
   "cargo +1.95.0 run -p xtask -- public-surface --strict",
   "cargo +1.95.0 run -p xtask -- arch",
@@ -238,7 +238,7 @@ commands = [
 
 [[work_item]]
 id = "final-closeout"
-status = "blocked"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0002-guided-adoption.md"
 spec = "docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md"
 plan = "plans/0.18.0/guided-adoption.md"
