@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added guided adoption product claims for the first-hour path, staged adoption
   levels, probe-backed tradeoff explanation, and optional team ledger
   operations.
+- Tightened the product-claim proof-map checker so stale planned spec links fail
+  once the concrete spec file exists.
 
 ## [0.17.0] - 2026-05-12
 
