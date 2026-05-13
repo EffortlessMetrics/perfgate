@@ -58,6 +58,10 @@ perfgate baseline promote --config perfgate.toml --all
 git add perfgate.toml .github/workflows/perfgate.yml baselines/ .perfgate/
 ```
 
+For a concrete cold-start walkthrough, including expected files, artifacts,
+pass/fail behavior, and what to commit, see
+[`docs/FIRST_HOUR.md`](docs/FIRST_HOUR.md).
+
 `perfgate init --ci github --profile standard` creates:
 
 ```text

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reconciled release-readiness docs with the published v0.17.0 state across
   crates.io packages, GitHub release assets, action alias tags, and public
   install smoke proof.
+- Added a first-hour adoption guide for install, init, check, baseline
+  promotion, CI, artifact boundaries, and failure reproduction.
 
 ## [0.17.0] - 2026-05-12
 
