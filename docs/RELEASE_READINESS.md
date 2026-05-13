@@ -61,7 +61,7 @@ version, publish, tag, release, action-alias, install-smoke, and closeout steps.
 | First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
 | Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
 | Structured decision workflow | Covered | `crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs`, `crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs`, `crates/perfgate-cli/tests/cli_release_decision_proof_tests.rs`, and GitHub Action `decision: "true"` |
-| Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, and dashboard decision-ledger tests |
+| Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, admin key create/list/rotate smoke, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
 | 0.18 adoption hardening | Covered | [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md), including wrapper absorption, first-hour smoke, structured decision bundle proof, action summary examples, and server ledger operations smoke |

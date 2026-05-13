@@ -340,6 +340,7 @@ Artifacts:
 
 - `perfgate.decision_record.v1`
 - decision history/latest/export/prune/debt output
+- API key create/list/rotate output for ledger operations
 - audit JSONL exports
 - `/health` and `/metrics`
 

@@ -770,12 +770,26 @@ async fn server_operations_smoke_path_memory() {
         .arg("--description")
         .arg("operations smoke key");
     add_server_auth_flags(&mut create_key, server.url(), &api_key);
-    create_key
+    let create_key_assert = create_key
         .assert()
         .success()
         .stdout(predicate::str::contains(&project))
         .stdout(predicate::str::contains("pg_live_"))
         .stderr(predicate::str::contains("Created API key"));
+    let create_key_stdout =
+        String::from_utf8(create_key_assert.get_output().stdout.clone()).expect("key stdout utf8");
+    let created_key_id = create_key_stdout
+        .lines()
+        .find_map(|line| {
+            let mut columns = line.split('\t');
+            let id = columns.next()?;
+            if id == "id" || id.is_empty() {
+                None
+            } else {
+                Some(id.to_string())
+            }
+        })
+        .expect("created key id should be printed");
 
     let mut list_keys = perfgate_cmd();
     list_keys
@@ -790,6 +804,38 @@ async fn server_operations_smoke_path_memory() {
         .success()
         .stdout(predicate::str::contains("operations smoke key"))
         .stdout(predicate::str::contains(&project));
+
+    let mut rotate_key = perfgate_cmd();
+    rotate_key
+        .arg("admin")
+        .arg("keys")
+        .arg("rotate")
+        .arg(&created_key_id);
+    add_server_auth_flags(&mut rotate_key, server.url(), &api_key);
+    rotate_key
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&created_key_id))
+        .stdout(predicate::str::contains("pg_live_"))
+        .stderr(predicate::str::contains(format!(
+            "Rotated API key {created_key_id}"
+        )));
+
+    let mut list_keys_after_rotate = perfgate_cmd();
+    list_keys_after_rotate
+        .arg("admin")
+        .arg("keys")
+        .arg("list")
+        .arg("--project")
+        .arg(&project)
+        .arg("--include-revoked");
+    add_server_auth_flags(&mut list_keys_after_rotate, server.url(), &api_key);
+    list_keys_after_rotate
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&created_key_id))
+        .stdout(predicate::str::contains("revoked"))
+        .stdout(predicate::str::contains("active"));
 
     let baseline_file = fixtures_dir().join("baseline.json");
     let current_file = fixtures_dir().join("current_pass.json");
