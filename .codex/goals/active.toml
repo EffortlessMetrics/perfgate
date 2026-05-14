@@ -192,7 +192,7 @@ commands = [
 
 [[work_item]]
 id = "final-prepublish-proof"
-status = "ready"
+status = "implemented"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -220,7 +220,7 @@ commands = [
 [[work_item]]
 id = "release-operator-gated-publication"
 status = "current"
-blocked_by = "final-prepublish-proof and explicit release-operator approval"
+blocked_by = "explicit release-operator approval"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -240,7 +240,7 @@ commands = [
 [[work_item]]
 id = "publish-crates"
 status = "blocked"
-blocked_by = "final-prepublish-proof and explicit release-operator approval"
+blocked_by = "explicit release-operator approval"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"

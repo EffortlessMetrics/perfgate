@@ -60,8 +60,8 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 419 | Release artifact smoke | merged | `docs/audits/release-0.18.0-artifact-smoke.md` |
 | 420 | Public documentation cutover | merged | README, first-hour/adoption docs, release readiness, product claims |
 | 421 | Premature deferral closeout | superseded | verified public state but incorrectly archived the lane |
-| next | Reopen release lane | current | `.codex/goals/active.toml`, release readiness, product claims, plan, superseded audit |
-| next | Final pre-publish proof | ready | `docs/audits/release-0.18.0-final-prepublish-proof.md` |
+| 422 | Reopen release lane | merged | `.codex/goals/active.toml`, release readiness, product claims, plan, superseded audit |
+| 423 | Final pre-publish proof | implemented | `docs/audits/release-0.18.0-final-prepublish-proof.md` |
 | gated | Publish crates | blocked | crates.io publication in dependency order |
 | gated | Tag, GitHub release, action aliases | blocked | `v0.18.0`, `v0.18`, `v0` if intended, release assets |
 | gated | Public install smoke | blocked | public install path and first-hour smoke from published artifacts |
@@ -201,11 +201,11 @@ Revert the docs PR before publication. After publication, forward-fix docs.
 
 ## Work Item: final-prepublish-proof
 
-Status: ready
+Status: implemented
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: publish-crates
-Blocked by: release lane reopen
+Blocked by:
 
 ### Goal
 
@@ -230,7 +230,7 @@ Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: publish-crates, tag-release-aliases, public-install-smoke, publication-closeout
-Blocked by: final-prepublish-proof and explicit release-operator approval
+Blocked by: explicit release-operator approval
 
 ### Goal
 

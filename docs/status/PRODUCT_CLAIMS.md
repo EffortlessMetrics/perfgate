@@ -210,7 +210,7 @@ Review after: next-decision-contract-change
 
 Tier: supported
 Surface: release, crates, CI
-Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md), [`audits/release-0.18.0-cutover-decision.md`](../audits/release-0.18.0-cutover-decision.md), [`audits/release-0.18.0-publish-readiness.md`](../audits/release-0.18.0-publish-readiness.md), [`audits/release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md)
+Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md), [`audits/release-0.18.0-cutover-decision.md`](../audits/release-0.18.0-cutover-decision.md), [`audits/release-0.18.0-publish-readiness.md`](../audits/release-0.18.0-publish-readiness.md), [`audits/release-0.18.0-final-prepublish-proof.md`](../audits/release-0.18.0-final-prepublish-proof.md), [`audits/release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../specs/PERFGATE-SPEC-0005-release-proof-contract.md)
 Linked gates: publish-check --package-list and per-package publish dry-runs
 Proof commands:

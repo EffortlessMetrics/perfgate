@@ -6,6 +6,7 @@ Last verified: 2026-05-14 for v0.17.0 publication reconciliation and the
 [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
 [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md),
 [v0.18.0 Publish Readiness Proof](audits/release-0.18.0-publish-readiness.md),
+[v0.18.0 Final Pre-Publish Proof](audits/release-0.18.0-final-prepublish-proof.md),
 and
 [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md).
 The current 0.18 cutover lane remains active. The earlier
@@ -31,8 +32,8 @@ structured-decision bundle proof, checked action failure examples, optional
 server-ledger operations smoke, external canaries, publish dry-runs for all five
 public crates, and staged Windows archive smoke. No public `0.18.0` crates,
 tags, GitHub release, action aliases, or public install smoke exist yet. The
-active release cutover lane is waiting at final pre-publish proof and
-release-operator-gated publication.
+active release cutover lane has refreshed final pre-publish proof and is now
+waiting at release-operator-gated publication.
 
 ## Current Publication State
 
@@ -73,6 +74,7 @@ release-operator-gated publication.
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
 | 0.18 adoption hardening | Covered | [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md), including wrapper absorption, first-hour smoke, structured decision bundle proof, action summary examples, and server ledger operations smoke |
 | 0.18 publish dry-run matrix | Passing | [v0.18.0 Publish Readiness Proof](audits/release-0.18.0-publish-readiness.md) packaged and verified `perfgate-types`, `perfgate`, `perfgate-client`, `perfgate-server`, and `perfgate-cli` at `0.18.0` without uploading. |
+| 0.18 final pre-publish proof | Passing | [v0.18.0 Final Pre-Publish Proof](audits/release-0.18.0-final-prepublish-proof.md) reran fmt, check, test, docs, source-doc, product-claim, public-surface, arch, action, schema, package-list, and five per-crate dry-run gates from the reopened release lane without publishing. |
 | 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
