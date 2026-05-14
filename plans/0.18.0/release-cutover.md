@@ -1,10 +1,10 @@
 # perfgate 0.18.0 Release Cutover Plan
 
-Status: implemented
+Status: active
 Owner: perfgate maintainers
 Created: 2026-05-14
 Milestone: 0.18.0
-Current PR: complete
+Current PR: release-operator-gated publication
 Linked proposal: [`PERFGATE-PROP-0004-0-18-release-cutover`](../../docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../../docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../../docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../../docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0001-public-crates-are-contracts`](../../docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md), [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -17,7 +17,7 @@ Rollback: before publication, revert the release-prep PRs; after publication, fo
 
 ## Goal
 
-Cut or explicitly defer `0.18.0` with no ambiguity. A release operator should
+Cut `0.18.0` with no ambiguity. A release operator should
 be able to answer from repo artifacts:
 
 ```text
@@ -59,10 +59,13 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 418 | Publish dry-run matrix | merged | `docs/audits/release-0.18.0-publish-readiness.md` |
 | 419 | Release artifact smoke | merged | `docs/audits/release-0.18.0-artifact-smoke.md` |
 | 420 | Public documentation cutover | merged | README, first-hour/adoption docs, release readiness, product claims |
+| 421 | Premature deferral closeout | superseded | verified public state but incorrectly archived the lane |
+| next | Reopen release lane | current | `.codex/goals/active.toml`, release readiness, product claims, plan, superseded audit |
+| next | Final pre-publish proof | ready | `docs/audits/release-0.18.0-final-prepublish-proof.md` |
 | gated | Publish crates | blocked | crates.io publication in dependency order |
 | gated | Tag, GitHub release, action aliases | blocked | `v0.18.0`, `v0.18`, `v0` if intended, release assets |
 | gated | Public install smoke | blocked | public install path and first-hour smoke from published artifacts |
-| final | Publication or deferral closeout | implemented | `docs/audits/release-0.18.0-deferral-closeout.md`, `.codex/goals/archive/perfgate-0-18-release-cutover.toml` |
+| final | Publication closeout | blocked | release closeout audit, product claims, archived goal |
 
 ## Work Item: version-prep
 
@@ -95,7 +98,7 @@ README.md or docs references only when they mention concrete versions
 - Release notes summarize actual merged changes: source-of-truth governance,
   guided adoption, wrapper absorption, external canaries, signal/probe/platform
   guidance, action failure examples, server-ledger key rotation smoke, and
-  release deferral/cutover state.
+  release cutover state.
 - Docs do not claim 0.18.0 is published.
 
 ### Proof commands
@@ -196,6 +199,59 @@ released.
 
 Revert the docs PR before publication. After publication, forward-fix docs.
 
+## Work Item: final-prepublish-proof
+
+Status: ready
+Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
+Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
+Blocks: publish-crates
+Blocked by: release lane reopen
+
+### Goal
+
+Refresh the full pre-publish proof from current `main` after the premature
+deferral closeout is superseded.
+
+### Acceptance
+
+- Full workspace fmt, check, test, docs, source-doc, product-claim,
+  public-surface, arch, action, schema, package-list, and per-crate dry-run
+  gates pass from current `main`.
+- `docs/audits/release-0.18.0-final-prepublish-proof.md` records the command
+  set and non-inferences.
+
+### Rollback
+
+Revert the audit PR. No public state changes in this work item.
+
+## Work Item: release-operator-gated-publication
+
+Status: current
+Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
+Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
+Blocks: publish-crates, tag-release-aliases, public-install-smoke, publication-closeout
+Blocked by: final-prepublish-proof and explicit release-operator approval
+
+### Goal
+
+Keep the lane active at the release-operator boundary. The next irreversible
+steps are publishing crates, creating tags/releases/assets, moving action
+aliases, and running public install smoke.
+
+### Acceptance
+
+- Prep remains recorded: 0.18.0 versions, publish dry-runs, staged artifact
+  smoke, and public docs cutover.
+- Latest public release remains `v0.17.0` until crates, tags, release assets,
+  aliases, and public install smoke actually move.
+- The lane is not archived until public install smoke and publication closeout
+  are complete.
+
+### Rollback
+
+Before publication, revert only corrective or proof PRs as needed. After
+publication, forward-fix public state and record repair notes.
+
 ## Work Item: publish-crates
 
 Status: blocked
@@ -291,11 +347,11 @@ release or docs correction, and update the publication closeout.
 
 ## Work Item: publication-closeout
 
-Status: implemented
+Status: blocked
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks:
-Blocked by:
+Blocked by: public-install-smoke
 
 ### Goal
 
@@ -303,7 +359,7 @@ Close the lane with a durable public-state audit.
 
 ### Acceptance
 
-- The closeout says what was published or deferred.
+- The closeout says what was published.
 - It records crate URLs, tags, action aliases, GitHub release assets, public
   install smoke, canary evidence, product-claim updates, and non-inferences.
 - `.codex/goals/active.toml` is archived with status `completed`.

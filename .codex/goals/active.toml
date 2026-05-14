@@ -1,30 +1,28 @@
 id = "perfgate-0-18-release-cutover"
 title = "perfgate 0.18.0 release cutover and public install proof"
-status = "completed"
+status = "active"
 owner = "codex"
 created = "2026-05-14"
-completed = "2026-05-14"
 milestone = "0.18.0"
-current_work_item = "none"
-current_pr = "complete"
-archive_reason = "The 0.18 release cutover lane landed proposal, plan, version prep, publish dry-run proof, staged archive smoke, public docs cutover, and an explicit deferral closeout. Crates, tags, GitHub release, action aliases, and public install smoke remain blocked until explicit release-operator approval."
+current_work_item = "release-operator-gated-publication"
+current_pr = "release: refresh 0.18.0 pre-publish proof"
 
 objective = """
-Cut or explicitly defer perfgate 0.18.0 with no ambiguity. The repo must
+Cut perfgate 0.18.0 with no ambiguity. The repo must
 answer from files alone what version is public, which crates were published,
 which tags and action aliases moved, what public install smoke passed, what
 external canaries proved, what remains unproven, and what should happen next.
 """
 
 end_state = [
-  "0.18.0 is either publicly released with publication proof or explicitly deferred with honest docs.",
+  "0.18.0 is publicly released with publication proof.",
   "Version prep and release notes match actual merged source-of-truth, guided-adoption, wrapper-absorption, external-trust, and proof work.",
   "Publish dry-runs pass for the five public crates in dependency order.",
   "Release artifact smoke proves the staged install path before publication.",
   "Public docs distinguish ready-to-release from released until crates, tags, and aliases actually move.",
   "If publishing happens, public install smoke proves install, doctor, init, check, promote, require-baseline, and action workflow generation from public artifacts.",
   "Product claims link release proof, canary evidence, tests, and support boundaries without overstating hosted external CI coverage.",
-  "The lane closes with a publication or deferral audit and an archived goal manifest.",
+  "The lane closes with a publication audit and an archived goal manifest.",
 ]
 
 linked_proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
@@ -47,8 +45,6 @@ linked_status = [
   "docs/status/PRODUCT_CLAIMS.md",
   "docs/RELEASE_READINESS.md",
 ]
-
-linked_closeout = "docs/audits/release-0.18.0-deferral-closeout.md"
 
 allowed_files = [
   "Cargo.toml",
@@ -98,13 +94,13 @@ proof = [
 
 completion_criteria = [
   "Release cutover proposal and plan are merged.",
-  "Version prep and release notes are merged or the release is explicitly deferred.",
+  "Version prep and release notes are merged.",
   "Publish dry-run proof is recorded for all five public crates.",
   "Release artifact smoke is recorded before publication.",
   "Public documentation reflects the actual release state.",
   "Crates, tags, GitHub release, and action aliases move only with explicit release approval.",
   "Public install smoke is recorded if publication happens.",
-  "Publication or deferral closeout records public state and non-inferences.",
+  "Publication closeout records public state and non-inferences.",
   "This active goal is archived with status completed.",
 ]
 
@@ -195,9 +191,56 @@ commands = [
 ]
 
 [[work_item]]
+id = "final-prepublish-proof"
+status = "ready"
+proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+plan = "plans/0.18.0/release-cutover.md"
+commands = [
+  "cargo +1.95.0 fmt --all -- --check",
+  "cargo +1.95.0 check --workspace --all-targets --all-features --locked",
+  "cargo +1.95.0 test --workspace --all-targets --all-features --locked",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- public-surface --strict",
+  "cargo +1.95.0 run -p xtask -- arch",
+  "cargo +1.95.0 run -p xtask -- action-check",
+  "cargo +1.95.0 run -p xtask -- schema-compat",
+  "cargo +1.95.0 run -p xtask -- publish-check --package-list",
+  "cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-types",
+  "cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate",
+  "cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-client",
+  "cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-server",
+  "cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-cli",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "release-operator-gated-publication"
+status = "current"
+blocked_by = "final-prepublish-proof and explicit release-operator approval"
+proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+plan = "plans/0.18.0/release-cutover.md"
+commands = [
+  "cargo publish -p perfgate-types",
+  "cargo publish -p perfgate",
+  "cargo publish -p perfgate-client",
+  "cargo publish -p perfgate-server",
+  "cargo publish -p perfgate-cli",
+  "git tag v0.18.0",
+  "gh release create v0.18.0",
+  "git tag -f v0.18",
+  "git tag -f v0",
+  "cargo binstall perfgate-cli --version 0.18.0",
+]
+
+[[work_item]]
 id = "publish-crates"
 status = "blocked"
-blocked_by = "explicit release-operator approval"
+blocked_by = "final-prepublish-proof and explicit release-operator approval"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -242,8 +285,8 @@ commands = [
 
 [[work_item]]
 id = "publication-closeout"
-status = "completed"
-blocked_by = "explicit deferral decision recorded"
+status = "blocked"
+blocked_by = "public-install-smoke"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"

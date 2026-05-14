@@ -1,22 +1,26 @@
-# v0.18.0 Deferral Closeout
+# v0.18.0 Deferral Closeout (Superseded)
 
 Date: 2026-05-14
 
-Status: deferred
+Status: superseded
 
-Purpose: close the 0.18 release cutover lane without ambiguity. The repository
-has release-candidate proof for 0.18.0, but this closeout deliberately stops
-before crates.io publication, tags, GitHub release assets, action alias
-movement, and public install smoke because those steps require explicit
-release-operator approval.
+Superseded by: the corrective `release: reopen 0.18.0 cutover lane` PR.
+
+Correction: this audit accurately recorded that `0.18.0` was not yet public,
+but it drew the wrong operational conclusion by closing the release cutover lane
+as deferred. The correct lane state is active: versions, dry-runs, staged
+archive smoke, and public docs prep are complete; publish, tag, release asset,
+action alias, public install smoke, and publication closeout work remain.
+
+Purpose: historical audit of the premature #421 closeout. Keep this file as a
+superseded record of the public-state verification, not as release-lane closure.
 
 Linked proposal:
 [`PERFGATE-PROP-0004`](../proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 
 Linked plan: [`release-cutover.md`](../../plans/0.18.0/release-cutover.md)
 
-Linked goal archive:
-[`perfgate-0-18-release-cutover.toml`](../../.codex/goals/archive/perfgate-0-18-release-cutover.toml)
+Linked active goal: [`active.toml`](../../.codex/goals/active.toml)
 
 ## Public State Verified
 
@@ -71,7 +75,7 @@ The staged artifact smoke also ran `perfgate --version`, `perfgate doctor
 
 ## Non-Actions
 
-This closeout did not:
+This superseded audit did not:
 
 - publish crates;
 - create `v0.18.0`;
@@ -84,12 +88,11 @@ This closeout did not:
 
 ## What To Do Next
 
-When a release operator explicitly approves publication, start a new release
-operator PR or release run from this proof trail:
+Continue the active release lane from this proof trail:
 
-1. re-run the publish dry-run matrix from
-   [`release-0.18.0-publish-readiness.md`](release-0.18.0-publish-readiness.md);
-2. publish in dependency order: `perfgate-types`, `perfgate`,
+1. re-run final pre-publish proof from current `main`;
+2. publish in dependency order after explicit release-operator approval:
+   `perfgate-types`, `perfgate`,
    `perfgate-client`, `perfgate-server`, `perfgate-cli`;
 3. create `v0.18.0` and the GitHub release with assets;
 4. move `v0.18`, and move `v0` only if 0.18.0 is intended as the default
