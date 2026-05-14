@@ -62,10 +62,14 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 421 | Premature deferral closeout | superseded | verified public state but incorrectly archived the lane |
 | 422 | Reopen release lane | merged | `.codex/goals/active.toml`, release readiness, product claims, plan, superseded audit |
 | 423 | Final pre-publish proof | implemented | `docs/audits/release-0.18.0-final-prepublish-proof.md` |
-| gated | Publish crates | blocked | crates.io publication in dependency order |
-| gated | Tag, GitHub release, action aliases | blocked | `v0.18.0`, `v0.18`, `v0` if intended, release assets |
-| gated | Public install smoke | blocked | public install path and first-hour smoke from published artifacts |
-| final | Publication closeout | blocked | release closeout audit, product claims, archived goal |
+| 424 | Publish packet | implemented | `docs/audits/release-0.18.0-publish-packet.md` |
+| 425 | Publish crates | blocked | crates.io publication in dependency order |
+| 426 | Verify crates.io publication | blocked | `cargo info` / `cargo search` registry proof |
+| 427 | Cut GitHub release | blocked | `v0.18.0`, GitHub release, release assets, checksums |
+| 428 | Move `v0.18` alias | blocked | `v0.18` action alias |
+| 429 | Decide and move `v0` default alias | blocked | `v0` action alias or explicit non-movement |
+| 430 | Public install smoke | blocked | public path and first-hour smoke from published artifacts |
+| 431 | Publication closeout | blocked | release closeout audit, product claims, archived goal |
 
 ## Work Item: version-prep
 
@@ -252,13 +256,49 @@ aliases, and running public install smoke.
 Before publication, revert only corrective or proof PRs as needed. After
 publication, forward-fix public state and record repair notes.
 
+## Work Item: publish-packet
+
+Status: implemented
+Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
+Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
+Blocks: publish-crates
+Blocked by:
+
+### Goal
+
+Give the release operator a single copy-ready command packet for publishing the
+five public crates without mutating public state in the packet PR.
+
+### Acceptance
+
+- The packet records the current proof basis, expected crate versions, publish
+  order, exact publish commands, registry verification commands, stop
+  conditions, and partial-publish handling.
+- It explicitly says it does not authorize publication, create tags, create a
+  GitHub release, move aliases, or prove public install.
+
+### Proof commands
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- product-claims-check
+git diff --check
+```
+
+### Rollback
+
+Revert the packet PR before publication. No public state changes in this work
+item.
+
 ## Work Item: publish-crates
 
 Status: blocked
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
-Blocks: tag-release-aliases
-Blocked by: explicit release-operator approval, publish-dry-run-matrix
+Blocks: verify-crates-publication
+Blocked by: explicit release-operator approval, publish-packet
 
 ### Goal
 
@@ -278,36 +318,125 @@ perfgate-cli
 
 - Each crate exists on crates.io at 0.18.0.
 - The publication audit records package URLs, timestamps, and operator notes.
+- If any crate publish fails, later crates are not published and tag/release
+  work remains blocked.
 
 ### Rollback
 
 Crates.io publication is effectively forward-fix only. Repair with a patch
 release and document the issue.
 
-## Work Item: tag-release-aliases
+## Work Item: verify-crates-publication
+
+Status: blocked
+Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
+Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
+Blocks: cut-github-release
+Blocked by: publish-crates
+
+### Goal
+
+Verify crates.io registry truth after publication and before any tag, release,
+asset, or alias movement.
+
+### Acceptance
+
+- `cargo search perfgate-cli --limit 3` shows `0.18.0`.
+- `cargo info` resolves all five crates.
+- Same-release dependency versions point to `0.18.0` where expected.
+- Release readiness still does not claim tag, asset, alias, or public install
+  state.
+
+### Proof commands
+
+```bash
+cargo +1.95.0 search perfgate-cli --limit 3
+cargo +1.95.0 info perfgate-types
+cargo +1.95.0 info perfgate
+cargo +1.95.0 info perfgate-client
+cargo +1.95.0 info perfgate-server
+cargo +1.95.0 info perfgate-cli
+```
+
+### Rollback
+
+If registry truth is incomplete, stop before tag/release/alias work and record a
+repair audit.
+
+## Work Item: cut-github-release
+
+Status: blocked
+Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
+Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
+Blocks: move-v0-18-alias
+Blocked by: explicit release-operator approval, verify-crates-publication
+
+### Goal
+
+Create the exact `v0.18.0` release tag and GitHub release with assets and
+checksums.
+
+### Acceptance
+
+- `v0.18.0` points to the intended release commit.
+- GitHub release `v0.18.0` exists.
+- Release assets exist and checksums are recorded.
+- Asset downloads work.
+- `v0.18` and `v0` remain unmoved unless explicitly handled in their own work
+  items.
+
+### Rollback
+
+Move or repair release tags/assets only under explicit operator approval and
+record repair notes.
+
+## Work Item: move-v0-18-alias
+
+Status: blocked
+Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
+Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
+Blocks: move-v0-default-alias, public-install-smoke
+Blocked by: explicit release-operator approval, cut-github-release
+
+### Goal
+
+Move the `v0.18` action alias to the `v0.18.0` release commit.
+
+### Acceptance
+
+- `v0.18.0` points to the release commit.
+- `v0.18` points to the same release commit.
+- Any alias-triggered workflows are expected, cancelled, completed, or recorded.
+
+### Rollback
+
+Move the alias again only under explicit operator approval and record repair
+notes.
+
+## Work Item: move-v0-default-alias
 
 Status: blocked
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: public-install-smoke
-Blocked by: explicit release-operator approval, publish-crates
+Blocked by: explicit release-operator approval, move-v0-18-alias
 
 ### Goal
 
-Create the GitHub release and intentional action alias state.
+Decide whether `v0` should move to the `v0.18.0` release commit. Move it only
+if 0.18.0 is approved as the default action release.
 
 ### Acceptance
 
-- `v0.18.0` points to the intended release commit.
-- `v0.18` points to the intended release commit.
-- `v0` moves only when 0.18.0 is intended as the default action release.
-- GitHub release assets exist and checksums are recorded.
-- Any alias-triggered release workflows are expected, cancelled, or recorded.
+- If moved, `v0` points to the intended release commit and generated workflow
+  examples are correct.
+- If not moved, the audit records that `v0` remains on the prior release by
+  decision and users should pin `v0.18` or `v0.18.0` for 0.18 behavior.
+- Any alias-triggered workflows are expected, cancelled, completed, or recorded.
 
 ### Rollback
 
-Move tags only with explicit operator approval and record repair notes. If `v0`
-was moved incorrectly, move it back only under explicit approval.
+Move `v0` only under explicit operator approval and record repair notes.
 
 ## Work Item: public-install-smoke
 
@@ -315,7 +444,7 @@ Status: blocked
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks: publication-closeout
-Blocked by: publish-crates, tag-release-aliases
+Blocked by: verify-crates-publication, cut-github-release, move-v0-18-alias
 
 ### Goal
 

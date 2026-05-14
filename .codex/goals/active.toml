@@ -5,7 +5,7 @@ owner = "codex"
 created = "2026-05-14"
 milestone = "0.18.0"
 current_work_item = "release-operator-gated-publication"
-current_pr = "release: refresh 0.18.0 pre-publish proof"
+current_pr = "release: publish 0.18.0 crates"
 
 objective = """
 Cut perfgate 0.18.0 with no ambiguity. The repo must
@@ -97,6 +97,7 @@ completion_criteria = [
   "Version prep and release notes are merged.",
   "Publish dry-run proof is recorded for all five public crates.",
   "Release artifact smoke is recorded before publication.",
+  "Publish packet is recorded before release-operator publication.",
   "Public documentation reflects the actual release state.",
   "Crates, tags, GitHub release, and action aliases move only with explicit release approval.",
   "Public install smoke is recorded if publication happens.",
@@ -218,6 +219,20 @@ commands = [
 ]
 
 [[work_item]]
+id = "publish-packet"
+status = "implemented"
+proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+plan = "plans/0.18.0/release-cutover.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
 id = "release-operator-gated-publication"
 status = "current"
 blocked_by = "explicit release-operator approval"
@@ -240,7 +255,7 @@ commands = [
 [[work_item]]
 id = "publish-crates"
 status = "blocked"
-blocked_by = "explicit release-operator approval"
+blocked_by = "explicit release-operator approval and publish-packet"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -253,23 +268,62 @@ commands = [
 ]
 
 [[work_item]]
-id = "tag-release-aliases"
+id = "verify-crates-publication"
 status = "blocked"
-blocked_by = "explicit release-operator approval and publish-crates"
+blocked_by = "publish-crates"
+proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+plan = "plans/0.18.0/release-cutover.md"
+commands = [
+  "cargo +1.95.0 search perfgate-cli --limit 3",
+  "cargo +1.95.0 info perfgate-types",
+  "cargo +1.95.0 info perfgate",
+  "cargo +1.95.0 info perfgate-client",
+  "cargo +1.95.0 info perfgate-server",
+  "cargo +1.95.0 info perfgate-cli",
+]
+
+[[work_item]]
+id = "cut-github-release"
+status = "blocked"
+blocked_by = "explicit release-operator approval and verify-crates-publication"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
 commands = [
   "git tag v0.18.0",
   "gh release create v0.18.0",
+  "gh release view v0.18.0",
+]
+
+[[work_item]]
+id = "move-v0-18-alias"
+status = "blocked"
+blocked_by = "explicit release-operator approval and cut-github-release"
+proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+plan = "plans/0.18.0/release-cutover.md"
+commands = [
   "git tag -f v0.18",
+  "git ls-remote --tags origin \"v0.18*\"",
+]
+
+[[work_item]]
+id = "move-v0-default-alias"
+status = "blocked"
+blocked_by = "explicit release-operator approval and move-v0-18-alias"
+proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+plan = "plans/0.18.0/release-cutover.md"
+commands = [
   "git tag -f v0",
+  "git ls-remote --tags origin \"v0*\"",
 ]
 
 [[work_item]]
 id = "public-install-smoke"
 status = "blocked"
-blocked_by = "publish-crates and tag-release-aliases"
+blocked_by = "verify-crates-publication and cut-github-release and move-v0-18-alias"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
