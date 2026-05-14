@@ -6,7 +6,7 @@ Created: 2026-05-14
 Target milestone: 0.18.0
 Linked specs: PERFGATE-SPEC-0005-release-proof-contract, PERFGATE-SPEC-0007-guided-adoption-contract, PERFGATE-SPEC-0003-performance-decision-contract
 Linked ADRs: PERFGATE-ADR-0001-public-crates-are-contracts, PERFGATE-ADR-0002-receipts-first-performance-decisions
-Linked plan:
+Linked plan: plans/0.18.0/release-cutover.md
 Support/status impact: docs/status/PRODUCT_CLAIMS.md must distinguish public release proof from pre-release readiness and external canary evidence
 Policy impact: no new policy rows by default; release must keep the five-crate public surface and existing policy ledgers authoritative
 
