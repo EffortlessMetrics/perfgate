@@ -144,7 +144,8 @@ the repository action:
 ```
 
 Use `@v0.17.0` for an exact patch pin, or `@v0.17` / `@v0` to follow the
-current compatible action tag.
+current compatible action tag until the `0.18.0` publication closeout moves
+the release aliases.
 
 ## 8. Understand Pass And Fail
 

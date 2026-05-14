@@ -1,11 +1,13 @@
 # Release Readiness
 
-Last verified: 2026-05-13 for v0.17.0 publication reconciliation and the
-0.18.0 adoption-readiness snapshot. See
+Last verified: 2026-05-14 for v0.17.0 publication reconciliation and the
+0.18.0 release-candidate cutover proof. See
 [v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md),
 [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
+[v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md),
+[v0.18.0 Publish Readiness Proof](audits/release-0.18.0-publish-readiness.md),
 and
-[v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md).
+[v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md).
 The current 0.18 cutover decision is recorded in
 [v0.18.0 Cutover Decision](audits/release-0.18.0-cutover-decision.md).
 
@@ -20,12 +22,12 @@ The current published release is `v0.17.0`. It keeps the five-crate public
 surface from v0.16.0, raises the Rust floor to 1.95, and adds the governance
 rails that make the release conveyor explicit.
 
-The 0.18.0 adoption-readiness snapshot is a pre-release proof record, not a
-publication record. It documents wrapper absorption, first-hour smoke proof,
-structured-decision bundle proof, checked action failure examples, and optional
-server-ledger operations smoke after the guided-adoption lane closed out.
-The 0.18.0 cutover remains deferred until an explicit release PR starts the
-version, publish, tag, release, action-alias, install-smoke, and closeout steps.
+The 0.18.0 release-candidate proof records are pre-release records, not
+publication records. They document wrapper absorption, first-hour smoke proof,
+structured-decision bundle proof, checked action failure examples, optional
+server-ledger operations smoke, external canaries, publish dry-runs for all five
+public crates, and staged Windows archive smoke. No public `0.18.0` crates,
+tags, GitHub release, action aliases, or public install smoke exist yet.
 
 ## Current Publication State
 
@@ -65,6 +67,8 @@ version, publish, tag, release, action-alias, install-smoke, and closeout steps.
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
 | 0.18 adoption hardening | Covered | [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md), including wrapper absorption, first-hour smoke, structured decision bundle proof, action summary examples, and server ledger operations smoke |
+| 0.18 publish dry-run matrix | Passing | [v0.18.0 Publish Readiness Proof](audits/release-0.18.0-publish-readiness.md) packaged and verified `perfgate-types`, `perfgate`, `perfgate-client`, `perfgate-server`, and `perfgate-cli` at `0.18.0` without uploading. |
+| 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
 The only publishable packages allowed by policy are:
@@ -77,7 +81,8 @@ perfgate-client
 perfgate-server
 ```
 
-Required release proof commands for v0.17.0 (run without `--allow-dirty`):
+Required release proof commands for the current 0.18.0 release candidate (run
+without `--allow-dirty`):
 
 ```bash
 cargo run -p xtask -- public-surface --strict
@@ -104,7 +109,7 @@ For PR validation before the branch is committed or while release notes are stil
 being edited, `publish-check` also accepts `--allow-dirty`. Release operators
 should omit it.
 
-The GitHub release workflow for v0.17.0 builds platform archives,
+The GitHub release workflow builds platform archives,
 unpacks each generated archive, verifies the binary exists, and runs
 `perfgate --version` plus `perfgate doctor --help` on native targets before
 uploading release assets.
