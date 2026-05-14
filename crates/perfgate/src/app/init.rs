@@ -523,6 +523,15 @@ pub fn render_onboarding_readme(
     } else {
         format!(
             r#"1. Add at least one `[[bench]]` entry to `{config}`.
+   Example:
+   ```toml
+   [[bench]]
+   name = "my-command"
+   command = ["your-benchmark-command", "--flag"]
+   ```
+   Replace the command with what measures this repo, such as
+   `["cargo", "bench", "--bench", "my-bench"]` for Rust or
+   `["node", "scripts/bench.js"]` for Node.
 2. Run `perfgate check --config {config} --all`.
 3. Promote trusted first runs with `perfgate baseline promote --config {config} --all`.
 4. Commit `{config}`, {ci_commit}`baselines/.gitkeep`, and this directory.
@@ -948,6 +957,8 @@ harness = false
         let content = render_onboarding_readme(Path::new("perfgate.toml"), None, false);
 
         assert!(content.contains("Add at least one `[[bench]]` entry"));
+        assert!(content.contains("your-benchmark-command"));
+        assert!(content.contains("[\"node\", \"scripts/bench.js\"]"));
         assert!(content.contains("perfgate check --config perfgate.toml --all"));
         assert!(content.contains("perfgate baseline promote --config perfgate.toml --all"));
     }

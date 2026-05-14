@@ -5216,7 +5216,10 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
         eprintln!("     Example:");
         eprintln!("       [[bench]]");
         eprintln!("       name = \"my-command\"");
-        eprintln!("       command = [\"cargo\", \"run\", \"--\", \"--help\"]");
+        eprintln!("       command = [\"your-benchmark-command\", \"--flag\"]");
+        eprintln!("     Replace the command with what measures this repo, for example:");
+        eprintln!("       command = [\"cargo\", \"bench\", \"--bench\", \"my-bench\"]");
+        eprintln!("       command = [\"node\", \"scripts/bench.js\"]");
         eprintln!(
             "  2. Run: perfgate check --config {} --all",
             args.output.display()

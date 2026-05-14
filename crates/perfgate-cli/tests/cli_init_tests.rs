@@ -110,6 +110,8 @@ fn init_without_discovered_benchmarks_points_to_bench_entry_first() {
 
     assert!(stderr.contains("No benchmarks discovered"));
     assert!(stderr.contains("Add at least one [[bench]] entry to perfgate.toml."));
+    assert!(stderr.contains("your-benchmark-command"));
+    assert!(stderr.contains("[\"node\", \"scripts/bench.js\"]"));
     assert!(stderr.contains("perfgate check --config perfgate.toml --all"));
 
     let config =
@@ -119,5 +121,7 @@ fn init_without_discovered_benchmarks_points_to_bench_entry_first() {
     let onboarding = fs::read_to_string(temp_dir.path().join(".perfgate/README.md"))
         .expect("read onboarding README");
     assert!(onboarding.contains("Add at least one `[[bench]]` entry"));
+    assert!(onboarding.contains("your-benchmark-command"));
+    assert!(onboarding.contains("[\"node\", \"scripts/bench.js\"]"));
     assert!(onboarding.contains("perfgate check --config perfgate.toml --all"));
 }
