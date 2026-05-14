@@ -1,12 +1,12 @@
 # PERFGATE-PROP-0003: External adoption canaries
 
-Status: proposed
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-13
 Target milestone: 0.18.0
 Linked specs: PERFGATE-SPEC-0007-guided-adoption-contract, PERFGATE-SPEC-0004-user-devex-paved-road, PERFGATE-SPEC-0003-performance-decision-contract
 Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions, PERFGATE-ADR-0003-local-receipts-first-server-ledger-optional
-Linked plan:
+Linked plan: plans/0.18.0/external-adoption-canaries.md
 Support/status impact: docs/status/PRODUCT_CLAIMS.md should link successful canary evidence to first-hour, staged-adoption, action reproduction, probe-backed decision, and optional ledger claims when those canaries exist
 Policy impact: no new policy rows by default; canaries should not change public-surface, no-panic, generated-file, workflow, or dependency policy unless a canary exposes a concrete repo-policy gap
 
