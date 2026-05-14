@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-14
 Milestone: 0.18.0
-Current PR: release cutover plan and active goal
+Current PR: release artifact smoke
 Linked proposal: [`PERFGATE-PROP-0004-0-18-release-cutover`](../../docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../../docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../../docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../../docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0001-public-crates-are-contracts`](../../docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md), [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -54,10 +54,10 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | PR | Work item | Status | Files / surface |
 | --- | --- | --- | --- |
 | 415 | Release cutover proposal | merged | `docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md` |
-| next | Release cutover plan and active goal | current | `plans/0.18.0/release-cutover.md`, `.codex/goals/active.toml` |
-| next | Version prep | ready | workspace/package versions, changelog, release notes draft, docs references if needed |
-| next | Publish dry-run matrix | ready | `docs/audits/release-0.18.0-publish-readiness.md` |
-| next | Release artifact smoke | ready | staged archive or local release-artifact smoke audit |
+| 416 | Release cutover plan and active goal | merged | `plans/0.18.0/release-cutover.md`, `.codex/goals/active.toml` |
+| 417 | Version prep | merged | workspace/package versions, changelog, release notes draft |
+| 418 | Publish dry-run matrix | merged | `docs/audits/release-0.18.0-publish-readiness.md` |
+| next | Release artifact smoke | current | staged archive or local release-artifact smoke audit |
 | next | Public documentation cutover | ready | README, first-hour/adoption docs, release readiness, product claims |
 | gated | Publish crates | blocked | crates.io publication in dependency order |
 | gated | Tag, GitHub release, action aliases | blocked | `v0.18.0`, `v0.18`, `v0` if intended, release assets |
@@ -66,7 +66,7 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 
 ## Work Item: version-prep
 
-Status: ready
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md
@@ -116,7 +116,7 @@ Revert the version-prep PR before any crates are published.
 
 ## Work Item: publish-dry-run-matrix
 
-Status: ready
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: release-artifact-smoke, publish-crates
@@ -150,7 +150,7 @@ Revert the audit PR. No public state changes in this work item.
 
 ## Work Item: release-artifact-smoke
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: public-documentation-cutover, publish-crates
