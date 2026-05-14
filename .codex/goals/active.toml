@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-14"
 milestone = "0.18.0"
-current_work_item = "release-artifact-smoke"
-current_pr = "release: prove 0.18.0 archive install smoke"
+current_work_item = "public-docs-cutover"
+current_pr = "docs: prepare 0.18 public release docs"
 
 objective = """
 Cut or explicitly defer perfgate 0.18.0 with no ambiguity. The repo must
@@ -166,7 +166,7 @@ commands = [
 
 [[work_item]]
 id = "release-artifact-smoke"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -178,7 +178,7 @@ commands = [
 
 [[work_item]]
 id = "public-docs-cutover"
-status = "ready"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"

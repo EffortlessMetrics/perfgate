@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-14
 Milestone: 0.18.0
-Current PR: release artifact smoke
+Current PR: public documentation cutover
 Linked proposal: [`PERFGATE-PROP-0004-0-18-release-cutover`](../../docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../../docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../../docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../../docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0001-public-crates-are-contracts`](../../docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md), [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -57,8 +57,8 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 416 | Release cutover plan and active goal | merged | `plans/0.18.0/release-cutover.md`, `.codex/goals/active.toml` |
 | 417 | Version prep | merged | workspace/package versions, changelog, release notes draft |
 | 418 | Publish dry-run matrix | merged | `docs/audits/release-0.18.0-publish-readiness.md` |
-| next | Release artifact smoke | current | staged archive or local release-artifact smoke audit |
-| next | Public documentation cutover | ready | README, first-hour/adoption docs, release readiness, product claims |
+| 419 | Release artifact smoke | merged | `docs/audits/release-0.18.0-artifact-smoke.md` |
+| next | Public documentation cutover | current | README, first-hour/adoption docs, release readiness, product claims |
 | gated | Publish crates | blocked | crates.io publication in dependency order |
 | gated | Tag, GitHub release, action aliases | blocked | `v0.18.0`, `v0.18`, `v0` if intended, release assets |
 | gated | Public install smoke | blocked | public install path and first-hour smoke from published artifacts |
@@ -150,7 +150,7 @@ Revert the audit PR. No public state changes in this work item.
 
 ## Work Item: release-artifact-smoke
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: public-documentation-cutover, publish-crates
@@ -173,7 +173,7 @@ Revert the audit PR. No public state changes in this work item.
 
 ## Work Item: public-documentation-cutover
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks: public-install-smoke, publication-closeout
