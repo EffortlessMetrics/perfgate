@@ -1,10 +1,10 @@
 # perfgate 0.18.0 Release Cutover Plan
 
-Status: active
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-14
 Milestone: 0.18.0
-Current PR: public documentation cutover
+Current PR: complete
 Linked proposal: [`PERFGATE-PROP-0004-0-18-release-cutover`](../../docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../../docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../../docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../../docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0001-public-crates-are-contracts`](../../docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md), [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -58,11 +58,11 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 417 | Version prep | merged | workspace/package versions, changelog, release notes draft |
 | 418 | Publish dry-run matrix | merged | `docs/audits/release-0.18.0-publish-readiness.md` |
 | 419 | Release artifact smoke | merged | `docs/audits/release-0.18.0-artifact-smoke.md` |
-| next | Public documentation cutover | current | README, first-hour/adoption docs, release readiness, product claims |
+| 420 | Public documentation cutover | merged | README, first-hour/adoption docs, release readiness, product claims |
 | gated | Publish crates | blocked | crates.io publication in dependency order |
 | gated | Tag, GitHub release, action aliases | blocked | `v0.18.0`, `v0.18`, `v0` if intended, release assets |
 | gated | Public install smoke | blocked | public install path and first-hour smoke from published artifacts |
-| final | Publication or deferral closeout | blocked | release closeout audit, product claims, archived goal |
+| final | Publication or deferral closeout | implemented | `docs/audits/release-0.18.0-deferral-closeout.md`, `.codex/goals/archive/perfgate-0-18-release-cutover.toml` |
 
 ## Work Item: version-prep
 
@@ -173,7 +173,7 @@ Revert the audit PR. No public state changes in this work item.
 
 ## Work Item: public-documentation-cutover
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks: public-install-smoke, publication-closeout
@@ -291,11 +291,11 @@ release or docs correction, and update the publication closeout.
 
 ## Work Item: publication-closeout
 
-Status: blocked
+Status: implemented
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks:
-Blocked by: public-install-smoke or explicit deferral decision
+Blocked by:
 
 ### Goal
 

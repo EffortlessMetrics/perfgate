@@ -1,11 +1,13 @@
 id = "perfgate-0-18-release-cutover"
 title = "perfgate 0.18.0 release cutover and public install proof"
-status = "active"
+status = "completed"
 owner = "codex"
 created = "2026-05-14"
+completed = "2026-05-14"
 milestone = "0.18.0"
-current_work_item = "public-docs-cutover"
-current_pr = "docs: prepare 0.18 public release docs"
+current_work_item = "none"
+current_pr = "complete"
+archive_reason = "The 0.18 release cutover lane landed proposal, plan, version prep, publish dry-run proof, staged archive smoke, public docs cutover, and an explicit deferral closeout. Crates, tags, GitHub release, action aliases, and public install smoke remain blocked until explicit release-operator approval."
 
 objective = """
 Cut or explicitly defer perfgate 0.18.0 with no ambiguity. The repo must
@@ -45,6 +47,8 @@ linked_status = [
   "docs/status/PRODUCT_CLAIMS.md",
   "docs/RELEASE_READINESS.md",
 ]
+
+linked_closeout = "docs/audits/release-0.18.0-deferral-closeout.md"
 
 allowed_files = [
   "Cargo.toml",
@@ -178,7 +182,7 @@ commands = [
 
 [[work_item]]
 id = "public-docs-cutover"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -238,8 +242,8 @@ commands = [
 
 [[work_item]]
 id = "publication-closeout"
-status = "blocked"
-blocked_by = "public-install-smoke or explicit deferral decision"
+status = "completed"
+blocked_by = "explicit deferral decision recorded"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"

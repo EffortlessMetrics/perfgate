@@ -8,8 +8,9 @@ Last verified: 2026-05-14 for v0.17.0 publication reconciliation and the
 [v0.18.0 Publish Readiness Proof](audits/release-0.18.0-publish-readiness.md),
 and
 [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md).
-The current 0.18 cutover decision is recorded in
-[v0.18.0 Cutover Decision](audits/release-0.18.0-cutover-decision.md).
+The current 0.18 cutover decision and closeout are recorded in
+[v0.18.0 Cutover Decision](audits/release-0.18.0-cutover-decision.md) and
+[v0.18.0 Deferral Closeout](audits/release-0.18.0-deferral-closeout.md).
 
 Latest published release: v0.17.0. The five allowed crates are published on
 crates.io at `0.17.0`, the GitHub release `v0.17.0` is published with platform
@@ -27,7 +28,9 @@ publication records. They document wrapper absorption, first-hour smoke proof,
 structured-decision bundle proof, checked action failure examples, optional
 server-ledger operations smoke, external canaries, publish dry-runs for all five
 public crates, and staged Windows archive smoke. No public `0.18.0` crates,
-tags, GitHub release, action aliases, or public install smoke exist yet.
+tags, GitHub release, action aliases, or public install smoke exist yet. The
+deferral closeout records that boundary until a release operator explicitly
+approves publication.
 
 ## Current Publication State
 
