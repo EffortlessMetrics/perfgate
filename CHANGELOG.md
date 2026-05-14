@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.18.0] - 2026-05-14
+
 ### Changed
 - Reconciled release-readiness docs with the published v0.17.0 state across
   crates.io packages, GitHub release assets, action alias tags, and public
@@ -39,10 +43,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   claim to the concrete spec.
 - Refreshed the generated no-panic baseline for the adoption probe proof and
   product-claim freshness checker callsites.
-- Planned remaining compatibility wrapper absorption batches while preserving
-  the five-crate public surface.
+- Absorbed remaining production compatibility wrappers while preserving the
+  five-crate public surface.
+- Added external adoption canary receipts for a small Rust CLI, a larger Rust
+  workspace, and a non-Rust command benchmark.
+- Added signal/noise calibration guidance, probe design patterns, platform
+  metric support boundaries, and action failure archaeology examples.
+- Extended server-ledger operations proof with API key create/list/rotate smoke
+  while keeping ledger mode optional.
+- Added the 0.18.0 release cutover proposal and plan so publication, tags,
+  action aliases, public install smoke, and closeout have explicit gates.
 - Closed the guided adoption lane with a handoff and archived active-goal
   manifest.
+- Closed the external trust lane with a handoff and explicit non-inferences
+  for hosted external CI, 0.18 publication, server correctness, and
+  probe-backed external canaries.
 
 ## [0.17.0] - 2026-05-12
 

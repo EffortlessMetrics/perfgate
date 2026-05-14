@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-14"
 milestone = "0.18.0"
-current_work_item = "release-cutover-plan"
-current_pr = "plans(0.18): add release cutover plan"
+current_work_item = "version-prep"
+current_pr = "release: prepare 0.18.0 versions"
 
 objective = """
 Cut or explicitly defer perfgate 0.18.0 with no ambiguity. The repo must
@@ -120,7 +120,7 @@ commands = [
 
 [[work_item]]
 id = "release-cutover-plan"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -134,7 +134,7 @@ commands = [
 
 [[work_item]]
 id = "version-prep"
-status = "ready"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"

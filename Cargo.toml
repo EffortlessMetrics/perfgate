@@ -19,7 +19,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.17.0"
+version = "0.18.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
@@ -122,8 +122,8 @@ wiremock = "0.6"
 libc = "0.2.182"
 
 # Internal crates
-perfgate-types = { path = "crates/perfgate-types", version = "0.17.0" }
-perfgate-fake = { path = "crates/perfgate-fake", version = "0.17.0" }
-perfgate-server = { path = "crates/perfgate-server", version = "0.17.0" }
-perfgate-client = { path = "crates/perfgate-client", version = "0.17.0" }
-perfgate = { path = "crates/perfgate", version = "0.17.0" }
+perfgate-types = { path = "crates/perfgate-types", version = "0.18.0" }
+perfgate-fake = { path = "crates/perfgate-fake", version = "0.18.0" }
+perfgate-server = { path = "crates/perfgate-server", version = "0.18.0" }
+perfgate-client = { path = "crates/perfgate-client", version = "0.18.0" }
+perfgate = { path = "crates/perfgate", version = "0.18.0" }
