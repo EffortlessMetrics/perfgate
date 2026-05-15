@@ -1155,13 +1155,34 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         line == "decision_repro=(perfgate decision evaluate --config \"${{ inputs.config }}\")"
     }) || !failure_summary_lines
         .iter()
-        .any(|line| line == "echo \"  ${decision_repro_line}\"")
+        .any(|line| line == "decision_repro_line=\"\"")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "echo \"  ${decision_repro_line}\"")
         || !failure_summary_lines
             .iter()
             .any(|line| line == "echo \"${decision_repro_line}\"")
     {
         errors.push(
             "action.yml failure summary must print a local perfgate decision reproduction command"
+                .to_string(),
+        );
+    }
+    if failure_summary_lines
+        .iter()
+        .any(|line| line.starts_with("echo \"```"))
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "printf '%s\\n' '```bash'")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "printf '%s\\n' '```text'")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "printf '%s\\n' '```'")
+    {
+        errors.push(
+            "action.yml failure summary must emit Markdown code fences without Bash command substitution"
                 .to_string(),
         );
     }
@@ -6605,6 +6626,7 @@ runs:
         artifact_name="${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
         repro=(perfgate check --config "${{ inputs.config }}")
         decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
+        decision_repro_line=""
         decision_repro_line="$(format_command "${decision_repro[@]}")"
         has_no_baseline_reason() {
           grep -R -q -e "no_baseline" "${out}" 2>/dev/null
@@ -6615,8 +6637,14 @@ runs:
           echo "Reproduce locally:"
           echo "  ${decision_repro_line}"
           echo "### perfgate local reproduction"
+          printf '%s\n' '```bash'
           echo "${decision_repro_line}"
+          printf '%s\n' '```'
+          printf '%s\n' '```text'
+          printf '%s\n' '```'
           echo "  perfgate baseline promote --config ${{ inputs.config }} --all"
+          printf '%s\n' '```bash'
+          printf '%s\n' '```'
           echo "Uploaded artifact: ${artifact_name}"
           find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name decision.index.json -o -name comment.md -o -name 'perfgate.*.json' \) | sort
         } >> "${GITHUB_STEP_SUMMARY}"
@@ -6888,7 +6916,7 @@ pkg-fmt = "zip"
     #[test]
     fn action_check_rejects_failure_summary_without_decision_repro() {
         let action = valid_action_install_surface().replace(
-            "        decision_repro=(perfgate decision evaluate --config \"${{ inputs.config }}\")\n        decision_repro_line=\"$(format_command \"${decision_repro[@]}\")\"\n",
+            "        decision_repro=(perfgate decision evaluate --config \"${{ inputs.config }}\")\n        decision_repro_line=\"\"\n        decision_repro_line=\"$(format_command \"${decision_repro[@]}\")\"\n",
             "",
         );
         let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
@@ -6898,6 +6926,21 @@ pkg-fmt = "zip"
                 .iter()
                 .any(|error| error.contains("decision reproduction command")),
             "errors should mention decision reproduction output: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_failure_summary_with_unsafe_markdown_fences() {
+        let action =
+            valid_action_install_surface().replace("printf '%s\\n' '```bash'", "echo \"```bash\"");
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("Markdown code fences")),
+            "errors should mention shell-safe Markdown fences: {:?}",
             errors
         );
     }

@@ -545,6 +545,7 @@ runs:
 
         repro_line="$(format_command "${repro[@]}")"
         decision_repro=()
+        decision_repro_line=""
         if [[ "${{ inputs.decision }}" == "true" ]]; then
           decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
           if [[ -n "${{ inputs.out_dir }}" ]]; then
@@ -601,18 +602,18 @@ runs:
               echo "Review required: ${review_reason}"
             fi
             echo
-            echo "```bash"
+            printf '%s\n' '```bash'
             echo "${repro_line}"
             if [[ "${{ inputs.decision }}" == "true" ]]; then
               echo "${decision_repro_line}"
             fi
-            echo "```"
+            printf '%s\n' '```'
             echo
             echo "Artifacts:"
             echo
-            echo "```text"
+            printf '%s\n' '```text'
             print_artifacts
-            echo "```"
+            printf '%s\n' '```'
             if [[ "${{ inputs.all }}" == "true" ]]; then
               echo
               echo "For \`--all\`, inspect per-benchmark artifacts under \`${out}/<bench>/\`."
@@ -625,9 +626,9 @@ runs:
               echo
               echo "Baseline bootstrap: after reviewing the first trusted run, promote it locally:"
               echo
-              echo "```bash"
+              printf '%s\n' '```bash'
               echo "perfgate baseline promote --config ${{ inputs.config }} --all"
-              echo "```"
+              printf '%s\n' '```'
             fi
             if [[ "${{ inputs.upload_artifact }}" == "true" ]]; then
               echo
