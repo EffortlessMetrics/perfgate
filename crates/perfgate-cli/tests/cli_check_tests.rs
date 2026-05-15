@@ -404,13 +404,14 @@ fn test_check_missing_baseline_warns() {
         .arg(&out_dir);
 
     let output = cmd.output().expect("failed to execute check");
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Should succeed (warning only)
     assert!(
         output.status.success(),
         "check without baseline should succeed with warning: {:?}, stderr: {}",
         output.status.code(),
-        String::from_utf8_lossy(&output.stderr)
+        stderr
     );
 
     // run.json should exist, but not compare.json
@@ -492,6 +493,27 @@ fn test_check_missing_baseline_warns() {
     assert!(
         md_content.contains("no baseline"),
         "comment.md should mention no baseline"
+    );
+
+    assert!(
+        stderr.contains("Status: missing_baseline"),
+        "stderr should classify missing baseline: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("setup is incomplete") || stderr.contains("Setup is incomplete"),
+        "stderr should explain setup vs regression: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("perfgate baseline promote --config"),
+        "stderr should include baseline promotion guidance: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("do not loosen thresholds"),
+        "stderr should include do-not guidance: {}",
+        stderr
     );
 }
 
@@ -600,6 +622,16 @@ fn test_check_require_baseline_fails() {
     assert!(
         stderr.contains("baseline required") || stderr.contains("baseline"),
         "stderr should mention baseline: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("Status: missing_baseline"),
+        "stderr should classify missing baseline: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("perfgate baseline promote --config"),
+        "stderr should include baseline promotion guidance: {}",
         stderr
     );
 }
@@ -982,6 +1014,22 @@ command = [{}]
         Some(2),
         "check should exit 2 on fail: stderr {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Status: performance_regression"),
+        "stderr should classify the regression: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("perfgate explain --compare"),
+        "stderr should point reviewers to compare explanation: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("do not promote the current run"),
+        "stderr should include do-not guidance: {}",
+        stderr
     );
 
     let content = fs::read_to_string(&github_output).expect("read GITHUB_OUTPUT");
