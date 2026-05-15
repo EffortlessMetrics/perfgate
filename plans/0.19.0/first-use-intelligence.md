@@ -1,6 +1,6 @@
 # perfgate 0.19.0 First-use Intelligence Implementation Plan
 
-Status: ready
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-15
 Milestone: 0.19.0
@@ -76,8 +76,8 @@ machine-readable active goal remains the release cutover.
 | 436 | Ledger readiness doctor | merged | `perfgate ledger doctor`, CLI/server tests |
 | 437 | Hosted external action canary | merged | audit note and hosted finding |
 | 437a | Action step-summary shell fix | merged | `action.yml`, action proof |
-| 438 | Product claim updates | current | `docs/status/PRODUCT_CLAIMS.md` |
-| 439 | First-use intelligence closeout | ready | handoff and, if active by then, archived goal |
+| 438 | Product claim updates | merged | `docs/status/PRODUCT_CLAIMS.md` |
+| 439 | First-use intelligence closeout | current | handoff; active goal remains 0.18 release cutover |
 
 ## Work item: adoption-state-doctor
 
@@ -608,7 +608,7 @@ Revert the action summary shell changes and any fixture updates.
 
 ## Work item: first-use-product-claims
 
-Status: current
+Status: implemented
 Linked proposal: docs/proposals/PERFGATE-PROP-0005-first-use-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md
 Linked ADR:
@@ -651,7 +651,7 @@ Revert claim-map entries and dependent links.
 
 ## Work item: final-closeout
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0005-first-use-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md
 Linked ADR: docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md
