@@ -1625,6 +1625,32 @@ pub enum InitCiPlatform {
     Circleci,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BenchmarkSuggestionProfile {
+    /// Infer a conservative suggestion profile from nearby repo files.
+    Auto,
+    /// Rust command-line app suggestions.
+    RustCli,
+    /// Rust workspace suggestions.
+    RustWorkspace,
+    /// Node.js benchmark command suggestions.
+    Node,
+    /// Language-neutral command benchmark suggestions.
+    GenericCommand,
+}
+
+impl BenchmarkSuggestionProfile {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::RustCli => "rust-cli",
+            Self::RustWorkspace => "rust-workspace",
+            Self::Node => "node",
+            Self::GenericCommand => "generic-command",
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct InitArgs {
     /// Directory to scan for benchmarks (default: current directory).
@@ -1642,6 +1668,10 @@ pub struct InitArgs {
     /// Also generate a CI workflow file.
     #[arg(long)]
     pub ci: Option<InitCiPlatform>,
+
+    /// Append commented benchmark templates to the generated config.
+    #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "auto")]
+    pub suggest_benches: Option<BenchmarkSuggestionProfile>,
 
     /// Accept defaults without prompting.
     #[arg(long, default_value_t = false)]
@@ -5296,6 +5326,97 @@ fn execute_cargo_bench(args: CargoBenchArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn resolve_benchmark_suggestion_profile(
+    requested: BenchmarkSuggestionProfile,
+    scan_dir: &Path,
+) -> BenchmarkSuggestionProfile {
+    if requested != BenchmarkSuggestionProfile::Auto {
+        return requested;
+    }
+
+    if scan_dir.join("package.json").exists() {
+        return BenchmarkSuggestionProfile::Node;
+    }
+
+    let cargo_toml = scan_dir.join("Cargo.toml");
+    if let Ok(content) = fs::read_to_string(cargo_toml) {
+        if content.contains("[workspace]") {
+            return BenchmarkSuggestionProfile::RustWorkspace;
+        }
+        return BenchmarkSuggestionProfile::RustCli;
+    }
+
+    BenchmarkSuggestionProfile::GenericCommand
+}
+
+fn render_benchmark_suggestions(profile: BenchmarkSuggestionProfile) -> String {
+    match profile {
+        BenchmarkSuggestionProfile::Auto => {
+            render_benchmark_suggestions(BenchmarkSuggestionProfile::GenericCommand)
+        }
+        BenchmarkSuggestionProfile::RustCli => r#"
+# Benchmark suggestions (rust-cli)
+# Review and edit before committing. These are candidates, not policy.
+#
+# Fast first-hour check: low setup cost and useful for smoke gating.
+# [[bench]]
+# name = "cli-help"
+# command = ["cargo", "run", "-q", "--", "--help"]
+#
+# Heavier check: keep advisory until calibrated.
+# [[bench]]
+# name = "cli-release-help"
+# command = ["cargo", "run", "--release", "--", "--help"]
+"#
+        .to_string(),
+        BenchmarkSuggestionProfile::RustWorkspace => r#"
+# Benchmark suggestions (rust-workspace)
+# Review and edit before committing. These are candidates, not policy.
+#
+# Fast first-hour check: choose one small package or command with low setup cost.
+# [[bench]]
+# name = "workspace-smoke"
+# command = ["cargo", "test", "-p", "your-package", "--no-fail-fast"]
+#
+# Heavier check: compile-heavy workspace tests should stay advisory until calibrated.
+# [[bench]]
+# name = "workspace-test"
+# command = ["cargo", "test", "--workspace", "--no-fail-fast"]
+"#
+        .to_string(),
+        BenchmarkSuggestionProfile::Node => r#"
+# Benchmark suggestions (node)
+# Review and edit before committing. These are candidates, not policy.
+#
+# Fast first-hour check: a dedicated benchmark script with stable input.
+# [[bench]]
+# name = "node-bench"
+# command = ["node", "scripts/bench.js"]
+#
+# Package-manager path: useful when `npm run bench` already exists.
+# [[bench]]
+# name = "npm-bench"
+# command = ["npm", "run", "bench"]
+"#
+        .to_string(),
+        BenchmarkSuggestionProfile::GenericCommand => r#"
+# Benchmark suggestions (generic-command)
+# Review and edit before committing. These are candidates, not policy.
+#
+# Fast first-hour check: a stable command that measures the workload directly.
+# [[bench]]
+# name = "command-smoke"
+# command = ["./scripts/bench.sh"]
+#
+# Language-neutral example: replace this with your real benchmark command.
+# [[bench]]
+# name = "my-command"
+# command = ["your-benchmark-command", "--flag"]
+"#
+        .to_string(),
+    }
+}
+
 /// Execute the `init` subcommand.
 fn execute_init(args: InitArgs) -> anyhow::Result<()> {
     let preset = match args.preset {
@@ -5339,11 +5460,25 @@ fn execute_init(args: InitArgs) -> anyhow::Result<()> {
     }
 
     let config = generate_config(&benchmarks, preset);
-    let toml_content = render_config_toml(&config);
+    let mut toml_content = render_config_toml(&config);
+    let suggestion_profile = args
+        .suggest_benches
+        .map(|profile| resolve_benchmark_suggestion_profile(profile, &scan_dir));
+    if let Some(profile) = suggestion_profile {
+        toml_content.push_str(&render_benchmark_suggestions(profile));
+    }
 
     fs::write(&args.output, &toml_content)
         .with_context(|| format!("write {}", args.output.display()))?;
     eprintln!("Wrote {}", args.output.display());
+    if let Some(profile) = suggestion_profile {
+        eprintln!(
+            "Appended reviewable benchmark suggestions ({}) to {}.",
+            profile.as_str(),
+            args.output.display()
+        );
+        eprintln!("Review and edit suggestions before committing baselines.");
+    }
 
     let baseline_dir = config
         .defaults

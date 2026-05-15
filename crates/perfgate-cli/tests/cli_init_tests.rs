@@ -125,3 +125,84 @@ fn init_without_discovered_benchmarks_points_to_bench_entry_first() {
     assert!(onboarding.contains("[\"node\", \"scripts/bench.js\"]"));
     assert!(onboarding.contains("perfgate check --config perfgate.toml --all"));
 }
+
+#[test]
+fn init_suggest_benches_generates_language_neutral_commented_candidates() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    let output = perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--ci",
+            "github",
+            "--profile",
+            "standard",
+            "--suggest-benches",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8(output).expect("stderr is utf8");
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(config.contains("# Benchmark suggestions (generic-command)"));
+    assert!(config.contains("# Review and edit before committing."));
+    assert!(config.contains("# [[bench]]"));
+    assert!(config.contains("# name = \"command-smoke\""));
+    assert!(config.contains("# command = [\"./scripts/bench.sh\"]"));
+    assert!(config.contains("# command = [\"your-benchmark-command\", \"--flag\"]"));
+    assert!(
+        !config.contains("\n[[bench]]"),
+        "suggestions must stay commented until reviewed"
+    );
+
+    assert!(stderr.contains("Appended reviewable benchmark suggestions (generic-command)"));
+    assert!(stderr.contains("Review and edit suggestions before committing baselines."));
+}
+
+#[test]
+fn init_suggest_benches_accepts_explicit_rust_cli_profile() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["init", "--suggest-benches", "rust-cli"])
+        .assert()
+        .success();
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(config.contains("# Benchmark suggestions (rust-cli)"));
+    assert!(config.contains("# name = \"cli-help\""));
+    assert!(config.contains("# command = [\"cargo\", \"run\", \"-q\", \"--\", \"--help\"]"));
+    assert!(
+        !config.contains("\n[[bench]]"),
+        "explicit suggestions must stay commented until reviewed"
+    );
+}
+
+#[test]
+fn init_suggest_benches_auto_detects_node_repo() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    fs::write(
+        temp_dir.path().join("package.json"),
+        r#"{"scripts":{"bench":"node scripts/bench.js"}}"#,
+    )
+    .expect("write package.json");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["init", "--suggest-benches"])
+        .assert()
+        .success();
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(config.contains("# Benchmark suggestions (node)"));
+    assert!(config.contains("# command = [\"node\", \"scripts/bench.js\"]"));
+    assert!(config.contains("# command = [\"npm\", \"run\", \"bench\"]"));
+}
