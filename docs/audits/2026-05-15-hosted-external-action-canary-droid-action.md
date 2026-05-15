@@ -11,8 +11,8 @@ Linked specs: [`PERFGATE-SPEC-0008`](../specs/PERFGATE-SPEC-0008-first-use-ux-co
 Linked plan: [`first-use-intelligence.md`](../../plans/0.19.0/first-use-intelligence.md)
 
 Support/status impact: this canary supports the hosted external action proof
-path, but product-claim promotion waits for the action step-summary shell fix
-recorded below.
+path. Product claims use it as scoped hosted canary evidence, not broad hosted
+CI coverage.
 
 Purpose: record a hosted external GitHub Action canary against a non-perfgate
 repository. Earlier external canaries proved local adoption in external repos;
@@ -166,6 +166,28 @@ Required follow-up:
 action: fix failure summary step-summary guard
 ```
 
+The follow-up fix landed in perfgate `main` as commit
+`978f1c211b2910c53918b522c01bdc8078381c33`.
+
+The failed canary job was rerun as run `25941883937`, attempt `2`, job
+`76268311506`. That rerun downloaded `EffortlessMetrics/perfgate@main` at
+`978f1c211b2910c53918b522c01bdc8078381c33`, failed intentionally with the same
+policy failure, printed the local reproduction command, and uploaded
+`perfgate-artifacts-25941883937-2`.
+
+The rerun log no longer contained:
+
+```text
+decision_repro_line: unbound variable
+command not found
+```
+
+The rerun uploaded artifact ID `7027590462` with digest:
+
+```text
+fd637dd5c738437bce4e78ed458739f3f24d23ed6f8d61ea02ba6317c10d3e52
+```
+
 ## What This Canary Proves
 
 - A hosted external PR can run the perfgate GitHub Action from a non-perfgate
@@ -176,6 +198,9 @@ action: fix failure summary step-summary guard
 - The forced failure path prints a copyable local reproduction command.
 - The forced failure path creates `repair_context.json` with local next
   commands.
+- The hosted step-summary shell fix prevents Markdown fences from being treated
+  as Bash command substitution and keeps decision-mode reproduction optional
+  when `decision: false`.
 
 ## What This Canary Does Not Prove
 

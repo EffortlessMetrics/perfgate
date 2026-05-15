@@ -74,9 +74,9 @@ machine-readable active goal remains the release cutover.
 | 434 | Decision readiness suggestions | merged | `perfgate decision suggest`, CLI tests |
 | 435 | Probe starter templates | merged | `perfgate probes init`, examples, CLI tests |
 | 436 | Ledger readiness doctor | merged | `perfgate ledger doctor`, CLI/server tests |
-| 437 | Hosted external action canary | current | audit note and hosted finding |
-| 437a | Action step-summary shell fix | ready | `action.yml`, action proof |
-| 438 | Product claim updates | ready | `docs/status/PRODUCT_CLAIMS.md` |
+| 437 | Hosted external action canary | merged | audit note and hosted finding |
+| 437a | Action step-summary shell fix | merged | `action.yml`, action proof |
+| 438 | Product claim updates | current | `docs/status/PRODUCT_CLAIMS.md` |
 | 439 | First-use intelligence closeout | ready | handoff and, if active by then, archived goal |
 
 ## Work item: adoption-state-doctor
@@ -516,7 +516,7 @@ Revert command wiring, docs, and tests.
 
 ## Work item: hosted-action-canary
 
-Status: current
+Status: implemented
 Linked proposal: docs/proposals/PERFGATE-PROP-0005-first-use-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md
 Linked ADR:
@@ -562,7 +562,7 @@ Revert the canary audit and any canary-only docs links.
 
 ## Work item: action-step-summary-shell-fix
 
-Status: ready
+Status: implemented
 Linked proposal: docs/proposals/PERFGATE-PROP-0005-first-use-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md
 Linked ADR:
@@ -608,7 +608,7 @@ Revert the action summary shell changes and any fixture updates.
 
 ## Work item: first-use-product-claims
 
-Status: ready
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0005-first-use-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md
 Linked ADR:

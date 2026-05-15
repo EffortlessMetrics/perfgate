@@ -23,6 +23,12 @@ Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
 | PG-CLAIM-0011 | perfgate supports probe-backed tradeoff explanation. | supported | CLI, Rust helpers, receipts | next-probe-contract-change |
 | PG-CLAIM-0012 | perfgate supports optional team decision-ledger operations. | supported | server, CLI, dashboard, docs | next-server-ledger-change |
 | PG-CLAIM-0013 | perfgate documents platform-specific metric availability. | advisory | docs, CLI receipts | next-platform-metric-change |
+| PG-CLAIM-0014 | perfgate reports first-use adoption state and benchmark suggestions. | supported | CLI, config, docs | next-onboarding-change |
+| PG-CLAIM-0015 | perfgate explains first-use artifacts and repair classes. | supported | CLI, action, artifacts | next-repair-copy-change |
+| PG-CLAIM-0016 | perfgate provides advisory calibration and decision-readiness suggestions. | advisory | CLI, receipts | next-signal-or-decision-change |
+| PG-CLAIM-0017 | perfgate provides starter probe templates without requiring probes. | supported | CLI, docs, examples | next-probe-template-change |
+| PG-CLAIM-0018 | perfgate reports optional ledger readiness without making the server required. | supported | CLI, server config | next-server-ledger-change |
+| PG-CLAIM-0019 | perfgate has hosted external Action canary evidence for first-use failure UX. | advisory | GitHub Action, external canary | next-hosted-action-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -230,7 +236,7 @@ Review after: next-release-candidate
 
 Tier: supported
 Surface: CLI, docs, artifacts
-Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-diffguard-small-rust-cli.md`](../audits/2026-05-13-external-canary-diffguard-small-rust-cli.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md)
+Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-diffguard-small-rust-cli.md`](../audits/2026-05-13-external-canary-diffguard-small-rust-cli.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
 Linked specs: [`PERFGATE-SPEC-0004-user-devex-paved-road`](../specs/PERFGATE-SPEC-0004-user-devex-paved-road.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
 Proof commands:
 
@@ -260,7 +266,7 @@ Review after: before-0.18.0-release
 
 Tier: supported
 Surface: docs, CLI, GitHub Action, server ledger
-Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md)
+Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
 Linked specs: [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
@@ -372,3 +378,171 @@ Artifacts:
 - host fingerprints
 
 Review after: next-platform-metric-change
+
+## PG-CLAIM-0014: Adoption state and benchmark suggestions
+
+Tier: supported
+Surface: CLI, config, generated docs
+Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
+Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features doctor
+cargo +1.95.0 test -p perfgate-cli --all-features init
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_doctor_tests.rs`](../../crates/perfgate-cli/tests/cli_doctor_tests.rs)
+- [`cli_init_tests.rs`](../../crates/perfgate-cli/tests/cli_init_tests.rs)
+- [`cli_first_run_e2e_tests.rs`](../../crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs)
+
+Artifacts:
+
+- adoption-state doctor output
+- `perfgate.toml` with reviewable suggested benches
+- `.perfgate/README.md`
+
+Review after: next-onboarding-change
+
+## PG-CLAIM-0015: Artifact explanation and repair classes
+
+Tier: supported
+Surface: CLI, GitHub Action, artifacts
+Linked docs: [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
+Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features explain
+cargo +1.95.0 test -p perfgate-cli --all-features check
+cargo +1.95.0 run -p xtask -- action-check
+```
+
+Linked tests:
+
+- [`cli_explain_tests.rs`](../../crates/perfgate-cli/tests/cli_explain_tests.rs)
+- [`cli_check_tests.rs`](../../crates/perfgate-cli/tests/cli_check_tests.rs)
+- [`xtask/src/main.rs`](../../xtask/src/main.rs)
+
+Artifacts:
+
+- `run.json`
+- `compare.json`
+- `report.json`
+- `comment.md`
+- `repair_context.json`
+- GitHub Action failure summary
+
+Review after: next-repair-copy-change
+
+## PG-CLAIM-0016: Calibration and decision-readiness suggestions
+
+Tier: advisory
+Surface: CLI, receipts, decision guidance
+Linked docs: [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md)
+Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features calibrate
+cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 run -p xtask -- schema-compat
+```
+
+Linked tests:
+
+- [`cli_calibrate_tests.rs`](../../crates/perfgate-cli/tests/cli_calibrate_tests.rs)
+- [`cli_decision_suggest_tests.rs`](../../crates/perfgate-cli/tests/cli_decision_suggest_tests.rs)
+- [`cli_structured_decision_e2e_tests.rs`](../../crates/perfgate-cli/tests/cli_structured_decision_e2e_tests.rs)
+
+Artifacts:
+
+- run receipts used for calibration suggestions
+- advisory threshold/noise-policy output
+- decision-readiness output
+- decision receipt and bundle paths when evidence is ready
+
+Review after: next-signal-or-decision-change
+
+## PG-CLAIM-0017: Probe starter templates
+
+Tier: supported
+Surface: CLI, docs, examples
+Linked docs: [`PROBE_QUICKSTART.md`](../PROBE_QUICKSTART.md), [`PROBE_DESIGN_PATTERNS.md`](../PROBE_DESIGN_PATTERNS.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md)
+Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features probe
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_probe_tests.rs`](../../crates/perfgate-cli/tests/cli_probe_tests.rs)
+- [`cli_help_snapshot_tests.rs`](../../crates/perfgate-cli/tests/cli_help_snapshot_tests.rs)
+
+Artifacts:
+
+- probe JSONL starter events
+- scenario/tradeoff starter snippets
+- `probes.json`
+- `probe-compare.json`
+
+Review after: next-probe-template-change
+
+## PG-CLAIM-0018: Optional ledger readiness doctor
+
+Tier: supported
+Surface: CLI, server config, optional ledger
+Linked docs: [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md)
+Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features ledger
+cargo +1.95.0 test -p perfgate-cli --all-features server
+cargo +1.95.0 run -p xtask -- schema-compat
+```
+
+Linked tests:
+
+- [`cli_server_tests.rs`](../../crates/perfgate-cli/tests/cli_server_tests.rs)
+- [`cli_mock_server_tests.rs`](../../crates/perfgate-cli/tests/cli_mock_server_tests.rs)
+- [`cli_help_snapshot_tests.rs`](../../crates/perfgate-cli/tests/cli_help_snapshot_tests.rs)
+
+Artifacts:
+
+- `perfgate ledger doctor` readiness output
+- local receipt readiness status
+- optional server URL/API key/project readiness status
+- history/export/prune readiness checks
+
+Review after: next-server-ledger-change
+
+## PG-CLAIM-0019: Hosted external Action canary evidence
+
+Tier: advisory
+Surface: GitHub Action, external canary, artifacts
+Linked docs: [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md)
+Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- action-check
+cargo +1.95.0 test -p xtask action_check
+```
+
+Linked gates: action-check, hosted external canary rerun
+
+Artifacts:
+
+- external PR `EffortlessSteven/droid-action#7`
+- hosted run `25941883937`, attempt 2
+- uploaded artifact `perfgate-artifacts-25941883937-2`
+- local reproduction line from the action summary
+
+Review after: next-hosted-action-change
