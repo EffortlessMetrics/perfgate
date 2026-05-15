@@ -10,6 +10,81 @@ use std::path::Path;
 use tempfile::tempdir;
 
 #[test]
+fn test_probe_init_writes_starter_template_files() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("probe-starter");
+
+    perfgate_cmd()
+        .arg("probe")
+        .arg("init")
+        .arg("--template")
+        .arg("parser")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "Probe starter template 'parser' written",
+        ))
+        .stderr(predicate::str::contains("Review the generated snippets"));
+
+    let readme = fs::read_to_string(out_dir.join("README.md")).expect("read template readme");
+    let baseline =
+        fs::read_to_string(out_dir.join("probes-baseline.jsonl")).expect("read baseline jsonl");
+    let current =
+        fs::read_to_string(out_dir.join("probes-current.jsonl")).expect("read current jsonl");
+    let scenario = fs::read_to_string(out_dir.join("scenario.toml")).expect("read scenario toml");
+    let tradeoff = fs::read_to_string(out_dir.join("tradeoff.toml")).expect("read tradeoff toml");
+
+    assert!(readme.contains("perfgate ingest probes"));
+    assert!(baseline.contains("\"probe\":\"parser.tokenize\""));
+    assert!(current.contains("\"probe\":\"parser.batch_loop\""));
+    assert!(scenario.contains("name = \"large_file_parse\""));
+    assert!(scenario.contains("probe_compare = \"artifacts/perfgate/probe-compare.json\""));
+    assert!(tradeoff.contains("probe = \"parser.batch_loop\""));
+    assert!(tradeoff.contains("max_regression = 0.03"));
+}
+
+#[test]
+fn test_probe_init_refuses_to_overwrite_without_force() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("probe-starter");
+
+    perfgate_cmd()
+        .arg("probe")
+        .arg("init")
+        .arg("--template")
+        .arg("batch")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .assert()
+        .success();
+
+    perfgate_cmd()
+        .arg("probe")
+        .arg("init")
+        .arg("--template")
+        .arg("batch")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"))
+        .stderr(predicate::str::contains("--force"));
+
+    perfgate_cmd()
+        .arg("probe")
+        .arg("init")
+        .arg("--template")
+        .arg("batch")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--force")
+        .assert()
+        .success();
+}
+
+#[test]
 fn test_probe_compare_writes_probe_compare_receipt() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let baseline_path = temp_dir.path().join("baseline-probes.json");

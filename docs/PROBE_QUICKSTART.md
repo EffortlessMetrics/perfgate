@@ -15,6 +15,15 @@ For guidance on where to put those first probes, stable naming, and bad probe
 shapes to avoid, see
 [`PROBE_DESIGN_PATTERNS.md`](PROBE_DESIGN_PATTERNS.md).
 
+If you want starter files instead of a blank page, generate a reviewed template:
+
+```bash
+perfgate probe init --template parser --out-dir perfgate-probes
+```
+
+Templates are examples, not policy. Review the generated probe names, JSONL,
+scenario snippet, and tradeoff snippet before committing them.
+
 ## 1. Pick Stable Probe Names
 
 Use names that describe durable work, not temporary function names:

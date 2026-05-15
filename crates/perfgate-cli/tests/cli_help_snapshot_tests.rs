@@ -391,7 +391,22 @@ fn cli_help_probe() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Compare named probe receipts"))
+        .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("compare"));
+}
+
+#[test]
+fn cli_help_probe_init() {
+    perfgate_cmd()
+        .args(["probe", "init", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Generate reviewable probe JSONL and policy starter templates",
+        ))
+        .stdout(predicate::str::contains("--template"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--force"));
 }
 
 #[test]
@@ -583,6 +598,11 @@ fn snapshot_help_decision_bundle() {
 #[test]
 fn snapshot_help_probe() {
     insta::assert_snapshot!("help_probe", help_output(&["probe", "--help"]));
+}
+
+#[test]
+fn snapshot_help_probe_init() {
+    insta::assert_snapshot!("help_probe_init", help_output(&["probe", "init", "--help"]));
 }
 
 #[test]

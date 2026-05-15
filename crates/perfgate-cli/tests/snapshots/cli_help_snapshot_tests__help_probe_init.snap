@@ -1,18 +1,16 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 600
-expression: "help_output(&[\"probe\", \"--help\"])"
+assertion_line: 605
+expression: "help_output(&[\"probe\", \"init\", \"--help\"])"
 ---
-Compare named probe receipts and emit probe-level deltas
+Generate reviewable probe JSONL and policy starter templates
 
-Usage: perfgate probe [OPTIONS] <COMMAND>
-
-Commands:
-  init Generate reviewable probe JSONL and policy starter templates
-  compare Compare two perfgate.probe.v1 receipts into a perfgate.probe_compare.v1 receipt
-  help Print this message or the help of the given subcommand(s)
+Usage: perfgate probe init [OPTIONS] --template <TEMPLATE>
 
 Options:
+      --template <TEMPLATE> Starter template to generate [possible values: parser, batch, cli, server]
+      --out-dir <OUT_DIR> Directory for generated probe starter files [default: perfgate-probes]
+      --force Overwrite existing generated files
   -h, --help Print help
 
 Global Options:
