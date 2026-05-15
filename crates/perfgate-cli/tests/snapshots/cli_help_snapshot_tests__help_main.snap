@@ -16,6 +16,7 @@ Commands:
   ratchet Preview or apply conservative budget ratcheting from compare evidence
   report Generate a cockpit-compatible report from a compare receipt
   check Config-driven one-command workflow
+  calibrate Suggest advisory thresholds and noise policy from existing receipts
   doctor Diagnose local setup, config, baselines, artifacts, CI, and server reachability
   paired Run paired benchmark: interleave baseline and current commands for reduced noise
   baseline Inspect local baselines and manage baselines on the baseline server
@@ -31,7 +32,7 @@ Commands:
   cargo-bench Wrap `cargo bench` and produce perfgate run receipts
   blame Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions
   fleet Fleet-wide dependency regression analysis across projects
-  explain Provide AI-ready prompts and automated playbooks for diagnosing performance regressions
+  explain Provide AI-ready prompts, artifact explanations, and automated playbooks
   ingest Import benchmark results from external frameworks into perfgate format
   badge Generate an embeddable SVG status badge from a report or compare receipt
   discover Auto-detect benchmarks in a repository without manual configuration

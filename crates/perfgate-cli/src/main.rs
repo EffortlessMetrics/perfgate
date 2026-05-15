@@ -52,10 +52,11 @@ use perfgate_types::{
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, DECISION_BUNDLE_SCHEMA_V1,
     DECISION_INDEX_SCHEMA_V1, DecisionArtifactIndex, DecisionBundleArtifact,
     DecisionBundleArtifactContent, DecisionBundleArtifactKind, DecisionBundleMetadata,
-    DecisionBundleReceipt, FailIfNOfM, HostMismatchPolicy, MetricStatus, OtelSpanIdentifiers,
-    PerfgateReport, ProbeCompareReceipt, ProbeReceipt, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
-    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
-    ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt, VerdictStatus,
+    DecisionBundleReceipt, FailIfNOfM, HostMismatchPolicy, Metric, MetricStatus,
+    OtelSpanIdentifiers, PerfgateReport, ProbeCompareReceipt, ProbeReceipt,
+    REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
+    RepairMetricBreach, RunReceipt, ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus,
+    ToolInfo, TradeoffReceipt, VerdictStatus,
 };
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -259,6 +260,9 @@ enum Command {
     /// - 2: fail (budget violated)
     /// - 3: warn treated as failure (with --fail-on-warn)
     Check(Box<CheckArgs>),
+
+    /// Suggest advisory thresholds and noise policy from existing receipts.
+    Calibrate(Box<CalibrateArgs>),
 
     /// Diagnose local setup, config, baselines, artifacts, CI, and server reachability.
     Doctor(Box<DoctorArgs>),
@@ -1139,6 +1143,29 @@ pub struct CheckArgs {
     /// Warning and failing checks already emit it automatically.
     #[arg(long, default_value_t = false)]
     pub emit_repair_context: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CalibrateArgs {
+    /// Path to the config file (TOML or JSON)
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Name of the benchmark to calibrate (must match a [[bench]] in config)
+    #[arg(long)]
+    pub bench: String,
+
+    /// Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
+
+    /// Explicit recent run receipt. Defaults to <out-dir>/<bench>/run.json, then <out-dir>/run.json.
+    #[arg(long)]
+    pub run: Option<PathBuf>,
+
+    /// Explicit baseline receipt. Defaults to the configured baseline path.
+    #[arg(long)]
+    pub baseline: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -2477,6 +2504,214 @@ fn local_baselines_ready(config: &ConfigFile, server_flags: &ServerFlags) -> boo
     (local == 0 && remote > 0) || (local > 0 && found == local)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CalibrationSuggestion {
+    fail_threshold: f64,
+    warn_factor: f64,
+    noise_threshold: f64,
+    noise_policy: perfgate_types::NoisePolicy,
+    recommended_repeat: usize,
+    suggest_paired: bool,
+}
+
+fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
+    let config = load_config_file(&args.config)?;
+    config
+        .validate()
+        .map_err(ConfigValidationError::ConfigFile)?;
+    let bench = config
+        .benches
+        .iter()
+        .find(|bench| bench.name == args.bench)
+        .ok_or_else(|| {
+            ConfigValidationError::BenchName(format!("bench '{}' not found in config", args.bench))
+        })?;
+
+    let out_dir = resolve_configured_out_dir(args.out_dir.as_ref(), Some(&config));
+    let run_path = args
+        .run
+        .clone()
+        .or_else(|| find_calibration_run_path(&out_dir, &args.bench));
+    let run_receipt = run_path
+        .as_ref()
+        .filter(|path| path.exists())
+        .map(|path| read_json::<RunReceipt>(path))
+        .transpose()?;
+
+    let baseline_path = resolve_baseline_path(&args.baseline, &args.bench, &config);
+    let baseline_receipt = load_optional_baseline_receipt(&baseline_path)?;
+    let evidence_receipt = run_receipt.as_ref().or(baseline_receipt.as_ref());
+    let cv = run_receipt
+        .as_ref()
+        .and_then(|receipt| receipt.stats.wall_ms.cv())
+        .or_else(|| {
+            baseline_receipt
+                .as_ref()
+                .and_then(|receipt| receipt.stats.wall_ms.cv())
+        });
+    let sample_count = evidence_receipt
+        .map(measured_sample_count)
+        .unwrap_or_default();
+    let configured_threshold = configured_wall_threshold(&config, bench);
+    let suggestion = suggest_calibration(cv, sample_count, configured_threshold);
+
+    println!("perfgate calibrate");
+    println!();
+    println!("Bench: {}", args.bench);
+    if sample_count == 0 {
+        println!("Samples: unavailable");
+    } else {
+        println!(
+            "Samples: {sample_count} measured sample{}",
+            plural(sample_count)
+        );
+    }
+    println!(
+        "CV: {}",
+        cv.map(format_percent)
+            .unwrap_or_else(|| "unavailable".to_string())
+    );
+    println!(
+        "Host class: {}",
+        evidence_receipt
+            .map(host_class)
+            .unwrap_or_else(|| "unknown".to_string())
+    );
+    println!();
+    println!("Evidence:");
+    if let Some(path) = run_path.as_ref().filter(|path| path.exists()) {
+        println!("  run: {}", path.display());
+    } else if let Some(path) = run_path.as_ref() {
+        println!("  run: missing ({})", path.display());
+    } else {
+        println!(
+            "  run: missing (expected {})",
+            out_dir.join(RUN_RECEIPT_FILE).display()
+        );
+    }
+    if baseline_receipt.is_some() {
+        println!("  baseline: {}", baseline_path.display());
+    } else {
+        println!("  baseline: missing ({})", baseline_path.display());
+    }
+    println!();
+    println!(
+        "Suggested fail threshold: {}",
+        format_percent(suggestion.fail_threshold)
+    );
+    println!(
+        "Suggested warn threshold: {}",
+        format_percent(suggestion.fail_threshold * suggestion.warn_factor)
+    );
+    println!(
+        "Suggested noise threshold: {}",
+        format_percent(suggestion.noise_threshold)
+    );
+    println!(
+        "Suggested noise policy: {}",
+        suggestion.noise_policy.as_str()
+    );
+    println!(
+        "Repeat guidance: collect at least {} measured samples before tightening.",
+        suggestion.recommended_repeat
+    );
+    if suggestion.suggest_paired {
+        println!("Paired mode: recommended before making this gate blocking.");
+    } else {
+        println!("Paired mode: not required yet; use it if reviewers see inconsistent results.");
+    }
+    println!();
+    println!("Suggested config patch:");
+    println!("  threshold = {:.2}", suggestion.fail_threshold);
+    println!("  warn_factor = {:.2}", suggestion.warn_factor);
+    println!("  noise_threshold = {:.2}", suggestion.noise_threshold);
+    println!("  noise_policy = \"{}\"", suggestion.noise_policy.as_str());
+    println!();
+    println!("Next:");
+    if run_receipt.is_none() {
+        println!(
+            "  {}",
+            check_command(&args.config, Some(&args.bench), false)
+        );
+    }
+    println!("  {}", check_command(&args.config, Some(&args.bench), true));
+    if suggestion.suggest_paired {
+        println!("  {}", paired_command(Some(&args.bench)));
+    }
+    println!("Do not:");
+    println!("  do not auto-edit thresholds from this advisory output; review the benchmark first");
+    println!();
+    println!("Advisory only: no config was written.");
+
+    Ok(())
+}
+
+fn find_calibration_run_path(out_dir: &Path, bench_name: &str) -> Option<PathBuf> {
+    [
+        out_dir.join(bench_name).join(RUN_RECEIPT_FILE),
+        out_dir.join(RUN_RECEIPT_FILE),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
+}
+
+fn configured_wall_threshold(config: &ConfigFile, bench: &perfgate_types::BenchConfigFile) -> f64 {
+    bench
+        .budgets
+        .as_ref()
+        .and_then(|budgets| budgets.get(&Metric::WallMs))
+        .and_then(|budget| budget.threshold)
+        .or(config.defaults.threshold)
+        .unwrap_or(0.20)
+}
+
+fn suggest_calibration(
+    cv: Option<f64>,
+    sample_count: usize,
+    configured_threshold: f64,
+) -> CalibrationSuggestion {
+    let fail_threshold = cv
+        .map(|cv| {
+            if cv <= 0.02 {
+                0.05
+            } else if cv <= 0.05 {
+                0.10
+            } else if cv <= 0.10 {
+                0.15
+            } else if cv <= 0.20 {
+                0.20
+            } else {
+                configured_threshold.max(0.30)
+            }
+        })
+        .unwrap_or(configured_threshold.max(0.20));
+    let noise_threshold = cv.map(|cv| (cv * 2.0).clamp(0.05, 0.30)).unwrap_or(0.08);
+    CalibrationSuggestion {
+        fail_threshold,
+        warn_factor: 0.50,
+        noise_threshold,
+        noise_policy: perfgate_types::NoisePolicy::Warn,
+        recommended_repeat: sample_count.max(10),
+        suggest_paired: cv.is_some_and(|cv| cv > 0.10),
+    }
+}
+
+fn measured_sample_count(receipt: &RunReceipt) -> usize {
+    receipt
+        .samples
+        .iter()
+        .filter(|sample| !sample.warmup)
+        .count()
+}
+
+fn host_class(receipt: &RunReceipt) -> String {
+    format!("{}-{}", receipt.run.host.os, receipt.run.host.arch)
+}
+
+fn format_percent(value: f64) -> String {
+    format!("{:.1}%", value * 100.0)
+}
+
 fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result<()> {
     let mut checks = Vec::new();
     checks.push(DoctorCheck::ok(
@@ -3402,6 +3637,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 OutputMode::Cockpit => run_check_cockpit(req),
             }
         }
+
+        Command::Calibrate(args) => execute_calibrate(*args),
 
         Command::Doctor(args) => execute_doctor(*args, server_flags),
 
