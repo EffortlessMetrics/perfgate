@@ -52,7 +52,7 @@ use perfgate_types::{
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, DECISION_BUNDLE_SCHEMA_V1,
     DECISION_INDEX_SCHEMA_V1, DecisionArtifactIndex, DecisionBundleArtifact,
     DecisionBundleArtifactContent, DecisionBundleArtifactKind, DecisionBundleMetadata,
-    DecisionBundleReceipt, FailIfNOfM, HostMismatchPolicy, Metric, MetricStatus,
+    DecisionBundleReceipt, Direction, FailIfNOfM, HostMismatchPolicy, Metric, MetricStatus,
     OtelSpanIdentifiers, PerfgateReport, ProbeCompareReceipt, ProbeReceipt,
     REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
     RepairMetricBreach, RunReceipt, ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus,
@@ -4751,7 +4751,14 @@ fn collect_decision_readiness_evidence(
             format!("read compare receipt for {bench_name}: {}", path.display())
         })?;
         has_regression |= is_regression(compare.verdict.status);
-        has_improvement |= compare.deltas.values().any(|delta| delta.pct < 0.0);
+        has_improvement |=
+            compare
+                .deltas
+                .iter()
+                .any(|(metric, delta)| match metric.default_direction() {
+                    Direction::Lower => delta.pct < 0.0,
+                    Direction::Higher => delta.pct > 0.0,
+                });
         high_noise |= compare
             .deltas
             .values()
