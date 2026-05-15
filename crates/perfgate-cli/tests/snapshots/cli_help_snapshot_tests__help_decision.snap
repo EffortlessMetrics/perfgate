@@ -8,6 +8,7 @@ Evaluate scenario and tradeoff evidence into a review-ready decision summary
 Usage: perfgate decision [OPTIONS] <COMMAND>
 
 Commands:
+  suggest Suggest whether structured decisions are useful for the current evidence
   evaluate Evaluate configured scenarios and tradeoffs, then render decision markdown
   bundle Export indexed decision evidence as one portable JSON bundle
   upload Upload a perfgate.tradeoff.v1 receipt to the baseline server decision ledger
