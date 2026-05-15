@@ -2244,6 +2244,193 @@ impl DoctorCheck {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdoptionState {
+    NoConfig,
+    ConfiguredNoBenches,
+    BenchesNoBaselines,
+    ReadyLocal,
+    ReadyCi,
+    DecisionCandidate,
+    LedgerConfigured,
+}
+
+impl AdoptionState {
+    fn status(self) -> &'static str {
+        match self {
+            Self::NoConfig => "no_config",
+            Self::ConfiguredNoBenches => "configured_no_benches",
+            Self::BenchesNoBaselines => "benches_no_baselines",
+            Self::ReadyLocal => "ready_local",
+            Self::ReadyCi => "ready_ci",
+            Self::DecisionCandidate => "decision_candidate",
+            Self::LedgerConfigured => "ledger_configured",
+        }
+    }
+
+    fn meaning(self) -> &'static str {
+        match self {
+            Self::NoConfig => "No perfgate config was found for this repo.",
+            Self::ConfiguredNoBenches => {
+                "Config exists, but no runnable benchmarks are configured yet."
+            }
+            Self::BenchesNoBaselines => {
+                "Benchmarks are configured, but setup is incomplete because baselines are missing."
+            }
+            Self::ReadyLocal => {
+                "Local config and baselines are ready for a required-baseline check."
+            }
+            Self::ReadyCi => {
+                "Local baselines and the generated GitHub Action workflow are present."
+            }
+            Self::DecisionCandidate => {
+                "Structured decision config is present; use it when reviewers need tradeoff evidence."
+            }
+            Self::LedgerConfigured => {
+                "Server ledger settings are configured; local receipts remain the correctness contract."
+            }
+        }
+    }
+
+    fn next(self, config_path: &Path) -> Vec<String> {
+        let config = config_path.display();
+        match self {
+            Self::NoConfig => vec!["perfgate init --ci github --profile standard".to_string()],
+            Self::ConfiguredNoBenches => vec![
+                format!("edit {config} and add a reviewed [[bench]] command"),
+                format!("perfgate doctor --config {config}"),
+            ],
+            Self::BenchesNoBaselines => vec![
+                format!("perfgate check --config {config} --all"),
+                format!("perfgate baseline promote --config {config} --all"),
+            ],
+            Self::ReadyLocal => vec![format!(
+                "perfgate check --config {config} --all --require-baseline"
+            )],
+            Self::ReadyCi => vec![format!(
+                "perfgate check --config {config} --all --require-baseline"
+            )],
+            Self::DecisionCandidate => vec![
+                format!("perfgate decision evaluate --config {config}"),
+                "perfgate decision bundle --index artifacts/perfgate/decision.index.json"
+                    .to_string(),
+            ],
+            Self::LedgerConfigured => vec![
+                "perfgate decision history".to_string(),
+                format!("perfgate check --config {config} --all --require-baseline"),
+            ],
+        }
+    }
+
+    fn do_not(self) -> &'static str {
+        match self {
+            Self::NoConfig => "do not copy another repo's baselines before initializing this repo",
+            Self::ConfiguredNoBenches => {
+                "do not promote a baseline until the benchmark command measures the workload you care about"
+            }
+            Self::BenchesNoBaselines => "do not loosen thresholds to fix missing baseline setup",
+            Self::ReadyLocal => "do not enable required CI before committing reviewed baselines",
+            Self::ReadyCi => "do not debug CI before trying the local reproduction command",
+            Self::DecisionCandidate => {
+                "do not make structured decisions mandatory for simple local gates"
+            }
+            Self::LedgerConfigured => {
+                "do not treat server ledger upload as local correctness unless policy makes it blocking"
+            }
+        }
+    }
+}
+
+fn print_adoption_state(state: AdoptionState, config_path: &Path) {
+    println!();
+    println!("State: {}", state.status());
+    println!("Meaning: {}", state.meaning());
+    println!("Next:");
+    for command in state.next(config_path) {
+        println!("  {command}");
+    }
+    println!("Do not:");
+    println!("  {}", state.do_not());
+}
+
+fn classify_adoption_state(
+    config: Option<&ConfigFile>,
+    config_path: &Path,
+    server_flags: &ServerFlags,
+) -> AdoptionState {
+    let Some(config) = config else {
+        return AdoptionState::NoConfig;
+    };
+
+    if config.benches.is_empty() {
+        return AdoptionState::ConfiguredNoBenches;
+    }
+
+    if !local_baselines_ready(config, server_flags) {
+        return AdoptionState::BenchesNoBaselines;
+    }
+
+    if server_flags
+        .resolve(&config.baseline_server)
+        .is_configured()
+    {
+        return AdoptionState::LedgerConfigured;
+    }
+
+    if !config.scenarios.is_empty() || !config.tradeoffs.is_empty() {
+        return AdoptionState::DecisionCandidate;
+    }
+
+    let project_root = doctor_project_root(config_path);
+    if project_root
+        .join(ci_workflow_path(CiPlatform::GitHub))
+        .exists()
+    {
+        return AdoptionState::ReadyCi;
+    }
+
+    AdoptionState::ReadyLocal
+}
+
+fn doctor_project_root(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn local_baselines_ready(config: &ConfigFile, server_flags: &ServerFlags) -> bool {
+    if config.benches.is_empty() {
+        return false;
+    }
+
+    if server_flags
+        .resolve(&config.baseline_server)
+        .is_configured()
+    {
+        return true;
+    }
+
+    let mut local = 0usize;
+    let mut found = 0usize;
+    let mut remote = 0usize;
+    for bench in &config.benches {
+        let path = resolve_baseline_path(&None, &bench.name, config);
+        let path_text = path.to_string_lossy();
+        if is_remote_storage_uri(&path_text) {
+            remote += 1;
+            continue;
+        }
+        local += 1;
+        if path.exists() {
+            found += 1;
+        }
+    }
+
+    (local == 0 && remote > 0) || (local > 0 && found == local)
+}
+
 fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result<()> {
     let mut checks = Vec::new();
     checks.push(DoctorCheck::ok(
@@ -2315,6 +2502,7 @@ fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result
 
     let artifact_dir = resolve_configured_out_dir(args.out_dir.as_ref(), config.as_ref());
     checks.push(doctor_artifact_dir(&artifact_dir));
+    let adoption_state = classify_adoption_state(config.as_ref(), &args.config, &server_flags);
 
     println!("perfgate doctor");
     println!();
@@ -2326,6 +2514,7 @@ fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result
             check.detail
         );
     }
+    print_adoption_state(adoption_state, &args.config);
 
     let failed = checks
         .iter()
