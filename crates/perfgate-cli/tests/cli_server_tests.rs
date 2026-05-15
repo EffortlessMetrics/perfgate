@@ -197,6 +197,55 @@ fn assert_root_health_is_healthy(root_url: &str) {
     );
 }
 
+#[test]
+fn test_ledger_doctor_says_server_mode_is_optional_without_config() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path()).arg("ledger").arg("doctor");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("perfgate ledger doctor"))
+        .stdout(predicate::str::contains("Local receipts: ready"))
+        .stdout(predicate::str::contains("Server URL: missing"))
+        .stdout(predicate::str::contains("You do not need server mode yet."))
+        .stdout(predicate::str::contains(
+            "make the server ledger part of local correctness",
+        ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ledger_doctor_reports_configured_server_readiness() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let project = unique_project("ledger-doctor");
+    let api_key = admin_key();
+    let config = ServerConfig::new()
+        .storage_backend(StorageBackend::Memory)
+        .scoped_api_key(&api_key, Role::Admin, &project, None);
+    let server = RunningTestServer::spawn(config).await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("--baseline-server")
+        .arg(server.url())
+        .arg("--api-key")
+        .arg(&api_key)
+        .arg("--project")
+        .arg(&project)
+        .arg("ledger")
+        .arg("doctor");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Server URL: configured"))
+        .stdout(predicate::str::contains("API key: present"))
+        .stdout(predicate::str::contains(format!("Project: {project}")))
+        .stdout(predicate::str::contains("Health: reachable"))
+        .stdout(predicate::str::contains("History: reachable"))
+        .stdout(predicate::str::contains("Export: available"))
+        .stdout(predicate::str::contains("Prune dry-run: available"))
+        .stdout(predicate::str::contains("local receipts remain primary"));
+}
+
 /// Test that `--upload` fails without `--baseline-server` configured.
 #[test]
 fn test_upload_requires_baseline_server() {

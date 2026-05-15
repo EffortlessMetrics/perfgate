@@ -22,6 +22,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("compare"))
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("ledger"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("probe"))
@@ -385,6 +386,32 @@ fn cli_help_decision_bundle() {
 }
 
 #[test]
+fn cli_help_ledger() {
+    perfgate_cmd()
+        .args(["ledger", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Inspect optional decision-ledger readiness",
+        ))
+        .stdout(predicate::str::contains("doctor"));
+}
+
+#[test]
+fn cli_help_ledger_doctor() {
+    perfgate_cmd()
+        .args(["ledger", "doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Report optional server-ledger readiness",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--offline"));
+}
+
+#[test]
 fn cli_help_probe() {
     perfgate_cmd()
         .args(["probe", "--help"])
@@ -592,6 +619,19 @@ fn snapshot_help_decision_bundle() {
     insta::assert_snapshot!(
         "help_decision_bundle",
         help_output(&["decision", "bundle", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_ledger() {
+    insta::assert_snapshot!("help_ledger", help_output(&["ledger", "--help"]));
+}
+
+#[test]
+fn snapshot_help_ledger_doctor() {
+    insta::assert_snapshot!(
+        "help_ledger_doctor",
+        help_output(&["ledger", "doctor", "--help"])
     );
 }
 

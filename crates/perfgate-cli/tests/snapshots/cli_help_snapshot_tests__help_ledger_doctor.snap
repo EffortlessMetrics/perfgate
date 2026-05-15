@@ -1,0 +1,19 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 632
+expression: "help_output(&[\"ledger\", \"doctor\", \"--help\"])"
+---
+Report optional server-ledger readiness and next actions
+
+Usage: perfgate ledger doctor [OPTIONS]
+
+Options:
+      --config <CONFIG> Path to perfgate.toml [default: perfgate.toml]
+      --out-dir <OUT_DIR> Artifact directory used to verify local receipt readiness [default: artifacts/perfgate]
+      --offline Report configured state without contacting the server
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

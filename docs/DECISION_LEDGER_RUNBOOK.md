@@ -24,6 +24,16 @@ perfgate serve --no-open
 SQLite backend is a single-node service mode; do not mount the same database
 file behind multiple active server processes.
 
+Check whether the current repo is ready to use the optional decision ledger:
+
+```bash
+perfgate ledger doctor
+```
+
+For most first-hour users, `ledger doctor` should say that server mode is not
+needed yet. Local receipts and decision bundles remain the correctness
+contract; the ledger is team history.
+
 Back up local mode by copying the SQLite database while the service is stopped,
 or by exporting ledger data before maintenance:
 
@@ -181,4 +191,3 @@ cargo +1.95.0 run -p xtask -- doc-test
 cargo +1.95.0 run -p xtask -- docs-source-check
 cargo +1.95.0 run -p xtask -- product-claims-check
 ```
-
