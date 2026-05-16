@@ -1,14 +1,24 @@
 //! perfgate CLI - entry point for all workflows.
 
-mod artifact_io;
+mod baseline;
+mod check_guidance;
+mod cli_parsing;
 mod repair_context;
+mod storage;
 
-use anyhow::Context;
-use artifact_io::{
+use storage::{
     atomic_write, load_optional_baseline_receipt, location_exists, read_json,
     read_json_from_location, with_tokio_runtime, write_json, write_json_to_location,
 };
+
+use anyhow::Context;
+use baseline::{BaselineSelector, parse_baseline_selector};
+use check_guidance::{
+    FailureClass, check_command, classify_check_error, emit_check_outcome_guidance, paired_command,
+    print_check_failure_guidance, shell_path,
+};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use cli_parsing::*;
 use glob::glob;
 use perfgate::app as perfgate_app;
 use perfgate::domain as perfgate_domain;
@@ -50,15 +60,15 @@ use perfgate_domain::{DependencyChangeType, SignificancePolicy};
 use perfgate_types::config::{
     apply_ratchet_toml_changes, load_config_file, preview_ratchet_toml_changes,
 };
-use perfgate_types::error::{AdapterError, ConfigValidationError, IoError, PerfgateError};
+use perfgate_types::error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::fingerprint::sha256_hex;
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
     CompareReceipt, CompareRef, ConfigFile, DECISION_BUNDLE_SCHEMA_V1, DECISION_INDEX_SCHEMA_V1,
     DecisionArtifactIndex, DecisionBundleArtifact, DecisionBundleArtifactContent,
-    DecisionBundleArtifactKind, DecisionBundleMetadata, DecisionBundleReceipt, FailIfNOfM,
-    HostMismatchPolicy, Metric, MetricStatus, PerfgateReport, ProbeCompareReceipt, ProbeReceipt,
-    RatchetConfig, RunReceipt, ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus, ToolInfo,
+    DecisionBundleArtifactKind, DecisionBundleMetadata, DecisionBundleReceipt, HostMismatchPolicy,
+    Metric, MetricStatus, PerfgateReport, ProbeCompareReceipt, ProbeReceipt, RatchetConfig,
+    RunReceipt, ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus, ToolInfo,
     TradeoffReceipt, VerdictStatus,
 };
 use regex::Regex;
@@ -120,47 +130,6 @@ impl ServerFlags {
             config,
         )
     }
-}
-
-enum BaselineSelector {
-    Local(PathBuf),
-    Server { benchmark: String, explicit: bool },
-}
-
-fn parse_baseline_selector(
-    baseline: &str,
-    server_config: &ResolvedServerConfig,
-) -> anyhow::Result<BaselineSelector> {
-    if let Some(server_ref) = baseline.strip_prefix("@server:") {
-        if server_ref.is_empty() {
-            anyhow::bail!("--baseline requires a benchmark name after @server:");
-        }
-
-        if !server_config.is_configured() {
-            return Err(anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED));
-        }
-
-        return Ok(BaselineSelector::Server {
-            benchmark: server_ref.to_string(),
-            explicit: true,
-        });
-    }
-
-    let path = Path::new(baseline);
-    if !server_config.is_configured()
-        || path.exists()
-        || baseline.contains(std::path::MAIN_SEPARATOR)
-        || baseline.contains('/')
-        || baseline.contains('\\')
-        || baseline.ends_with(".json")
-    {
-        return Ok(BaselineSelector::Local(path.to_path_buf()));
-    }
-
-    Ok(BaselineSelector::Server {
-        benchmark: baseline.to_string(),
-        explicit: false,
-    })
 }
 
 #[derive(Debug, Parser)]
@@ -3296,7 +3265,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             let (server_config, config_file) =
                 resolve_server_config_from_path(&server_flags, None)?;
-            let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
+            let baseline_selector =
+                parse_baseline_selector(&baseline, &server_config, BASELINE_SERVER_NOT_CONFIGURED)?;
             let (baseline_receipt, baseline_ref) = match baseline_selector {
                 BaselineSelector::Server {
                     benchmark,
@@ -8624,373 +8594,6 @@ fn is_regression(status: VerdictStatus) -> bool {
     matches!(status, VerdictStatus::Warn | VerdictStatus::Fail)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FailureClass {
-    SetupMissingConfig,
-    SetupMissingBench,
-    SetupCommandFailed,
-    MissingBaseline,
-    PerformanceRegression,
-    HighNoise,
-    UnsupportedMetric,
-    HostMismatch,
-    ReviewRequired,
-    ServerUploadFailed,
-}
-
-impl FailureClass {
-    fn status(self) -> &'static str {
-        match self {
-            Self::SetupMissingConfig => "setup_missing_config",
-            Self::SetupMissingBench => "setup_missing_bench",
-            Self::SetupCommandFailed => "setup_command_failed",
-            Self::MissingBaseline => "missing_baseline",
-            Self::PerformanceRegression => "performance_regression",
-            Self::HighNoise => "high_noise",
-            Self::UnsupportedMetric => "unsupported_metric",
-            Self::HostMismatch => "host_mismatch",
-            Self::ReviewRequired => "review_required",
-            Self::ServerUploadFailed => "server_upload_failed",
-        }
-    }
-
-    fn meaning(self) -> &'static str {
-        match self {
-            Self::SetupMissingConfig => {
-                "perfgate could not read the config, so no performance decision was made."
-            }
-            Self::SetupMissingBench => {
-                "The requested benchmark is missing or no runnable benchmarks are configured yet."
-            }
-            Self::SetupCommandFailed => {
-                "The benchmark command failed before perfgate could make a performance decision."
-            }
-            Self::MissingBaseline => "Setup is incomplete; this is not a performance regression.",
-            Self::PerformanceRegression => {
-                "A configured benchmark exceeded its performance budget or warning threshold."
-            }
-            Self::HighNoise => {
-                "The run is noisy enough that the result may need paired mode or calibration."
-            }
-            Self::UnsupportedMetric => "A requested metric is not available on this platform.",
-            Self::HostMismatch => {
-                "The baseline and current run were captured on different host fingerprints."
-            }
-            Self::ReviewRequired => {
-                "The evidence needs human review before this result should be accepted."
-            }
-            Self::ServerUploadFailed => {
-                "The optional server ledger upload failed; local receipts still record the result."
-            }
-        }
-    }
-
-    fn do_not(self) -> &'static str {
-        match self {
-            Self::SetupMissingConfig => "do not copy another repo's baselines to bypass setup",
-            Self::SetupMissingBench => {
-                "do not promote a baseline until the benchmark command is reviewed"
-            }
-            Self::SetupCommandFailed => {
-                "do not loosen thresholds to fix a command that does not run"
-            }
-            Self::MissingBaseline => "do not loosen thresholds to fix a missing baseline",
-            Self::PerformanceRegression => {
-                "do not promote the current run as a baseline until the regression is understood"
-            }
-            Self::HighNoise => "do not treat noisy single-run evidence as release proof",
-            Self::UnsupportedMetric => {
-                "do not assume a missing platform metric invalidates every gate"
-            }
-            Self::HostMismatch => {
-                "do not accept host-mismatched evidence without checking whether the hosts are comparable"
-            }
-            Self::ReviewRequired => "do not bypass required review by changing local thresholds",
-            Self::ServerUploadFailed => {
-                "do not rerun the benchmark just to repair an optional ledger upload"
-            }
-        }
-    }
-
-    fn artifacts(self, out_dir: Option<&Path>, compare_path: Option<&Path>) -> Vec<String> {
-        let Some(out_dir) = out_dir else {
-            return vec![
-                "artifacts unavailable because setup failed before receipts were written"
-                    .to_string(),
-            ];
-        };
-
-        let mut artifacts = match self {
-            Self::MissingBaseline => vec![
-                out_dir.join(RUN_RECEIPT_FILE).display().to_string(),
-                out_dir.join(REPORT_RECEIPT_FILE).display().to_string(),
-                out_dir.join(COMMENT_MARKDOWN_FILE).display().to_string(),
-                out_dir.join("repair_context.json").display().to_string(),
-            ],
-            Self::PerformanceRegression
-            | Self::HighNoise
-            | Self::HostMismatch
-            | Self::ReviewRequired => vec![
-                out_dir.join(RUN_RECEIPT_FILE).display().to_string(),
-                compare_path
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|| out_dir.join(COMPARE_RECEIPT_FILE).display().to_string()),
-                out_dir.join(REPORT_RECEIPT_FILE).display().to_string(),
-                out_dir.join(COMMENT_MARKDOWN_FILE).display().to_string(),
-                out_dir.join("repair_context.json").display().to_string(),
-            ],
-            Self::ServerUploadFailed => vec![
-                out_dir.join(RUN_RECEIPT_FILE).display().to_string(),
-                out_dir.join(REPORT_RECEIPT_FILE).display().to_string(),
-            ],
-            Self::SetupMissingConfig
-            | Self::SetupMissingBench
-            | Self::SetupCommandFailed
-            | Self::UnsupportedMetric => {
-                vec!["artifacts unavailable or incomplete because setup failed".to_string()]
-            }
-        };
-        artifacts.sort();
-        artifacts.dedup();
-        artifacts
-    }
-
-    fn next_commands(
-        self,
-        config_path: &Path,
-        bench_name: Option<&str>,
-        compare_path: Option<&Path>,
-    ) -> Vec<String> {
-        let config = shell_path(config_path);
-        let check = check_command(config_path, bench_name, false);
-        let check_required = check_command(config_path, bench_name, true);
-        match self {
-            Self::SetupMissingConfig => vec![
-                "perfgate init --ci github --profile standard --suggest-benches".to_string(),
-                format!("perfgate doctor --config {config}"),
-            ],
-            Self::SetupMissingBench => vec![
-                format!("edit {config} and add a reviewed [[bench]] command"),
-                format!("perfgate doctor --config {config}"),
-            ],
-            Self::SetupCommandFailed => vec![check],
-            Self::MissingBaseline => vec![check, baseline_promote_command(config_path, bench_name)],
-            Self::PerformanceRegression => {
-                let mut commands = vec![check_required];
-                if let Some(compare_path) = compare_path {
-                    commands.push(format!(
-                        "perfgate explain --compare {}",
-                        shell_path(compare_path)
-                    ));
-                }
-                commands
-            }
-            Self::HighNoise => vec![
-                paired_command(bench_name),
-                format!("review noise guidance before tightening {config}"),
-            ],
-            Self::UnsupportedMetric => vec![
-                format!("review platform metric support before changing {config}"),
-                check,
-            ],
-            Self::HostMismatch => vec![
-                check_required,
-                "rerun on the same runner class as the baseline".to_string(),
-            ],
-            Self::ReviewRequired => vec![
-                "review artifacts/perfgate/decision.md or the Action summary".to_string(),
-                "perfgate decision bundle --index artifacts/perfgate/decision.index.json"
-                    .to_string(),
-            ],
-            Self::ServerUploadFailed => vec![
-                "inspect server URL/API key/project settings".to_string(),
-                "perfgate decision history".to_string(),
-            ],
-        }
-    }
-}
-
-const REPORT_RECEIPT_FILE: &str = "report.json";
-const COMMENT_MARKDOWN_FILE: &str = "comment.md";
-
-fn shell_path(path: &Path) -> String {
-    let value = path.display().to_string();
-    if value.contains(' ') {
-        format!("\"{}\"", value.replace('"', "\\\""))
-    } else {
-        value
-    }
-}
-
-fn check_command(config_path: &Path, bench_name: Option<&str>, require_baseline: bool) -> String {
-    let mut command = if let Some(bench_name) = bench_name {
-        format!(
-            "perfgate check --config {} --bench {}",
-            shell_path(config_path),
-            bench_name
-        )
-    } else {
-        format!("perfgate check --config {} --all", shell_path(config_path))
-    };
-    if require_baseline {
-        command.push_str(" --require-baseline");
-    }
-    command
-}
-
-fn baseline_promote_command(config_path: &Path, bench_name: Option<&str>) -> String {
-    if let Some(bench_name) = bench_name {
-        format!(
-            "perfgate baseline promote --config {} --bench {}",
-            shell_path(config_path),
-            bench_name
-        )
-    } else {
-        format!(
-            "perfgate baseline promote --config {} --all",
-            shell_path(config_path)
-        )
-    }
-}
-
-fn paired_command(bench_name: Option<&str>) -> String {
-    let name = bench_name.unwrap_or("<bench>");
-    format!(
-        "perfgate paired --name {name} --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat 10 --out artifacts/perfgate/{name}/paired.json"
-    )
-}
-
-fn print_check_failure_guidance(
-    class: FailureClass,
-    config_path: &Path,
-    bench_name: Option<&str>,
-    out_dir: Option<&Path>,
-    compare_path: Option<&Path>,
-) {
-    eprintln!();
-    eprintln!("Status: {}", class.status());
-    eprintln!("Meaning: {}", class.meaning());
-    eprintln!("Artifacts:");
-    for artifact in class.artifacts(out_dir, compare_path) {
-        eprintln!("  {artifact}");
-    }
-    eprintln!("Next:");
-    for command in class.next_commands(config_path, bench_name, compare_path) {
-        eprintln!("  {command}");
-    }
-    eprintln!("Do not:");
-    eprintln!("  {}", class.do_not());
-}
-
-fn classify_check_error(error: &anyhow::Error) -> FailureClass {
-    if let Some(err) = error.downcast_ref::<PerfgateError>() {
-        return match err {
-            PerfgateError::Config(ConfigValidationError::BenchName(_)) => {
-                FailureClass::SetupMissingBench
-            }
-            PerfgateError::Io(IoError::BaselineNotFound { .. }) => FailureClass::MissingBaseline,
-            PerfgateError::Io(IoError::RunCommand { .. })
-            | PerfgateError::Adapter(AdapterError::RunCommand { .. })
-            | PerfgateError::Adapter(AdapterError::EmptyArgv)
-            | PerfgateError::Adapter(AdapterError::Timeout) => FailureClass::SetupCommandFailed,
-            PerfgateError::Adapter(AdapterError::TimeoutUnsupported) => {
-                FailureClass::UnsupportedMetric
-            }
-            _ => FailureClass::SetupCommandFailed,
-        };
-    }
-
-    let message = error.to_string().to_ascii_lowercase();
-    if message.contains("no benchmarks")
-        || message.contains("not found in config")
-        || message.contains("either --bench or --all")
-    {
-        FailureClass::SetupMissingBench
-    } else if message.contains("baseline") {
-        FailureClass::MissingBaseline
-    } else if message.contains("host mismatch") {
-        FailureClass::HostMismatch
-    } else if message.contains("not found") || message.contains("read ") {
-        FailureClass::SetupMissingConfig
-    } else {
-        FailureClass::SetupCommandFailed
-    }
-}
-
-fn emit_check_outcome_guidance(
-    req: &CheckConfig,
-    bench_name: &str,
-    bench_out_dir: &Path,
-    outcome: &CheckOutcome,
-) {
-    if outcome.compare_receipt.is_none() {
-        print_check_failure_guidance(
-            FailureClass::MissingBaseline,
-            &req.config_path,
-            Some(bench_name),
-            Some(bench_out_dir),
-            None,
-        );
-    }
-
-    if let Some(compare) = &outcome.compare_receipt
-        && is_regression(compare.verdict.status)
-    {
-        print_check_failure_guidance(
-            FailureClass::PerformanceRegression,
-            &req.config_path,
-            Some(bench_name),
-            Some(bench_out_dir),
-            outcome.compare_path.as_deref(),
-        );
-    }
-
-    if outcome.suggest_paired
-        || outcome
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("high noise"))
-    {
-        print_check_failure_guidance(
-            FailureClass::HighNoise,
-            &req.config_path,
-            Some(bench_name),
-            Some(bench_out_dir),
-            outcome.compare_path.as_deref(),
-        );
-    }
-
-    if outcome
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("host mismatch"))
-    {
-        print_check_failure_guidance(
-            FailureClass::HostMismatch,
-            &req.config_path,
-            Some(bench_name),
-            Some(bench_out_dir),
-            outcome.compare_path.as_deref(),
-        );
-    }
-
-    if outcome
-        .report
-        .verdict
-        .reasons
-        .iter()
-        .any(|reason| reason.contains("review_required") || reason.contains("review required"))
-    {
-        print_check_failure_guidance(
-            FailureClass::ReviewRequired,
-            &req.config_path,
-            Some(bench_name),
-            Some(bench_out_dir),
-            outcome.compare_path.as_deref(),
-        );
-    }
-}
-
 /// Attempt to capture a flamegraph for a regressing benchmark.
 ///
 /// This is a best-effort operation: failures are reported to stderr
@@ -10077,217 +9680,6 @@ fn tool_info() -> ToolInfo {
 
 fn map_domain_err(err: anyhow::Error) -> anyhow::Error {
     err
-}
-
-fn parse_duration(s: &str) -> anyhow::Result<Duration> {
-    let d = humantime::parse_duration(s).with_context(|| format!("invalid duration: {s}"))?;
-    Ok(d)
-}
-
-fn parse_key_val_string(s: &str) -> Result<(String, String), String> {
-    let (k, v) = s
-        .split_once('=')
-        .ok_or_else(|| "expected KEY=VALUE".to_string())?;
-    Ok((k.to_string(), v.to_string()))
-}
-
-fn parse_key_val_f64(s: &str) -> Result<(String, f64), String> {
-    let (k, v) = s
-        .split_once('=')
-        .ok_or_else(|| "expected KEY=VALUE".to_string())?;
-    let f: f64 = v.parse().map_err(|_| format!("invalid float value: {v}"))?;
-    Ok((k.to_string(), f))
-}
-
-fn parse_noise_policy(s: &str) -> Result<perfgate_types::NoisePolicy, String> {
-    match s.to_lowercase().as_str() {
-        "warn" => Ok(perfgate_types::NoisePolicy::Warn),
-        "skip" => Ok(perfgate_types::NoisePolicy::Skip),
-        "ignore" => Ok(perfgate_types::NoisePolicy::Ignore),
-        _ => Err(format!(
-            "invalid noise policy: {s} (expected warn|skip|ignore)"
-        )),
-    }
-}
-
-fn parse_flakiness_score(s: &str) -> Result<f64, String> {
-    let score: f64 = s
-        .parse()
-        .map_err(|_| "flakiness score must be a number".to_string())?;
-    if !score.is_finite() || !(0.0..=1.0).contains(&score) {
-        return Err("flakiness score must be between 0.0 and 1.0".to_string());
-    }
-    Ok(score)
-}
-
-fn parse_verdict_status(s: &str) -> Result<VerdictStatus, String> {
-    match s.to_lowercase().as_str() {
-        "pass" => Ok(VerdictStatus::Pass),
-        "warn" => Ok(VerdictStatus::Warn),
-        "fail" => Ok(VerdictStatus::Fail),
-        "skip" => Ok(VerdictStatus::Skip),
-        _ => Err(format!(
-            "invalid verdict status: {s} (expected pass|warn|fail|skip)"
-        )),
-    }
-}
-
-fn parse_metric_status(s: &str) -> Result<MetricStatus, String> {
-    match s.to_lowercase().as_str() {
-        "pass" => Ok(MetricStatus::Pass),
-        "warn" => Ok(MetricStatus::Warn),
-        "fail" => Ok(MetricStatus::Fail),
-        "skip" => Ok(MetricStatus::Skip),
-        _ => Err(format!(
-            "invalid metric status: {s} (expected pass|warn|fail|skip)"
-        )),
-    }
-}
-
-fn parse_host_mismatch_policy(s: &str) -> Result<HostMismatchPolicy, String> {
-    match s {
-        "warn" => Ok(HostMismatchPolicy::Warn),
-        "error" | "fail" => Ok(HostMismatchPolicy::Error),
-        "ignore" => Ok(HostMismatchPolicy::Ignore),
-        _ => Err(format!(
-            "invalid host mismatch policy: {} (expected warn, error, or ignore)",
-            s
-        )),
-    }
-}
-
-fn parse_aggregation_policy(s: &str) -> Result<AggregationPolicy, String> {
-    match s {
-        "all" => Ok(AggregationPolicy::All),
-        "majority" => Ok(AggregationPolicy::Majority),
-        "weighted" => Ok(AggregationPolicy::Weighted),
-        "quorum" => Ok(AggregationPolicy::Quorum),
-        "fail_if_n_of_m" => Ok(AggregationPolicy::FailIfNOfM),
-        _ => Err(format!(
-            "invalid aggregation policy: {s} (expected all|majority|weighted|quorum|fail_if_n_of_m)"
-        )),
-    }
-}
-
-fn parse_aggregate_weight_mode(s: &str) -> Result<AggregateWeightMode, String> {
-    match s {
-        "configured" => Ok(AggregateWeightMode::Configured),
-        "inverse_variance" => Ok(AggregateWeightMode::InverseVariance),
-        _ => Err(format!(
-            "invalid aggregate weight mode: {s} (expected configured|inverse_variance)"
-        )),
-    }
-}
-
-fn parse_weight_map(weights: &[String]) -> anyhow::Result<BTreeMap<String, f64>> {
-    let mut map = BTreeMap::new();
-    for raw in weights {
-        let (label, weight_raw) = raw
-            .split_once('=')
-            .ok_or_else(|| anyhow::anyhow!("invalid --weight '{raw}', expected label=value"))?;
-        if label.trim().is_empty() {
-            anyhow::bail!("invalid --weight '{raw}': label cannot be empty");
-        }
-        let weight: f64 = weight_raw
-            .parse()
-            .map_err(|_| anyhow::anyhow!("invalid --weight '{raw}': weight must be a number"))?;
-        if !weight.is_finite() || weight < 0.0 {
-            anyhow::bail!("invalid --weight '{raw}': weight must be a non-negative finite number");
-        }
-        map.insert(label.trim().to_string(), weight);
-    }
-    Ok(map)
-}
-
-fn validate_aggregate_options(
-    policy: AggregationPolicy,
-    weight_mode: AggregateWeightMode,
-    quorum: Option<f64>,
-    fail_n: Option<u32>,
-    fail_m: Option<u32>,
-    variance_floor: Option<f64>,
-) -> anyhow::Result<(Option<f64>, Option<FailIfNOfM>, Option<f64>)> {
-    if let Some(quorum) = quorum {
-        if !quorum.is_finite() || !(0.0..=1.0).contains(&quorum) {
-            anyhow::bail!("--quorum must be between 0.0 and 1.0, got {quorum}");
-        }
-        if !matches!(
-            policy,
-            AggregationPolicy::Weighted | AggregationPolicy::Quorum
-        ) {
-            anyhow::bail!("--quorum requires --policy weighted or quorum");
-        }
-    }
-
-    if matches!(weight_mode, AggregateWeightMode::InverseVariance)
-        && !matches!(policy, AggregationPolicy::Weighted)
-    {
-        anyhow::bail!("--weight-mode inverse_variance requires --policy weighted");
-    }
-
-    if let Some(variance_floor) = variance_floor {
-        if !variance_floor.is_finite() || variance_floor <= 0.0 {
-            anyhow::bail!(
-                "--variance-floor must be a positive finite number, got {variance_floor}"
-            );
-        }
-        if !matches!(weight_mode, AggregateWeightMode::InverseVariance) {
-            anyhow::bail!("--variance-floor requires --weight-mode inverse_variance");
-        }
-    }
-
-    match policy {
-        AggregationPolicy::FailIfNOfM => {
-            let n = fail_n
-                .ok_or_else(|| anyhow::anyhow!("--policy fail_if_n_of_m requires --fail-n"))?;
-            if n == 0 {
-                anyhow::bail!("--fail-n must be at least 1");
-            }
-            if let Some(m) = fail_m {
-                if m == 0 {
-                    anyhow::bail!("--fail-m must be at least 1");
-                }
-                if m < n {
-                    anyhow::bail!("--fail-m must be greater than or equal to --fail-n");
-                }
-            }
-            Ok((quorum, Some(FailIfNOfM { n, m: fail_m }), variance_floor))
-        }
-        _ => {
-            if fail_n.is_some() || fail_m.is_some() {
-                anyhow::bail!("--fail-n and --fail-m require --policy fail_if_n_of_m");
-            }
-            Ok((quorum, None, variance_floor))
-        }
-    }
-}
-
-fn parse_significance_alpha(s: &str) -> Result<f64, String> {
-    let alpha: f64 = s.parse().map_err(|_| format!("invalid float value: {s}"))?;
-    if !(0.0..=1.0).contains(&alpha) {
-        return Err(format!(
-            "significance alpha must be between 0.0 and 1.0, got {alpha}"
-        ));
-    }
-    Ok(alpha)
-}
-
-fn normalize_paired_cli_command(args: Vec<String>, flag_name: &str) -> anyhow::Result<Vec<String>> {
-    if args.is_empty() {
-        anyhow::bail!("{} requires at least one argument", flag_name);
-    }
-
-    if args.len() == 1 && args[0].chars().any(char::is_whitespace) {
-        let raw = &args[0];
-        let parsed = shell_words::split(raw)
-            .with_context(|| format!("failed to parse {} shell string: {}", flag_name, raw))?;
-        if parsed.is_empty() {
-            anyhow::bail!("{} parsed to an empty command", flag_name);
-        }
-        return Ok(parsed);
-    }
-
-    Ok(args)
 }
 
 #[cfg(test)]

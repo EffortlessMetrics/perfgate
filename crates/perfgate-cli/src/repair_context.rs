@@ -1,6 +1,6 @@
 //! Repair-context artifact construction for failed or warned check runs.
 
-use crate::artifact_io::write_json;
+use crate::storage::write_json;
 use anyhow::Result;
 use perfgate::app::{CheckOutcome, redact_command_for_diagnostics};
 use perfgate_types::{

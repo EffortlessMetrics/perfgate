@@ -1,6 +1,10 @@
-//! Artifact I/O helpers for local paths and object-store backed locations.
+//! File and object-store storage helpers for the CLI.
+//!
+//! The CLI accepts both local filesystem paths and object-store URIs for a few
+//! artifact flows. Keeping those details in this module lets command handlers
+//! focus on orchestration instead of storage dispatch and atomic write details.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use object_store::{ObjectStore, path::Path as ObjectPath};
 use perfgate::app::baseline_resolve::is_remote_storage_uri;
 use perfgate_types::RunReceipt;
@@ -14,7 +18,7 @@ struct RemoteLocation {
     object_path: ObjectPath,
 }
 
-fn parse_remote_location(path: &Path) -> Result<Option<RemoteLocation>> {
+fn parse_remote_location(path: &Path) -> anyhow::Result<Option<RemoteLocation>> {
     let uri = path.to_string_lossy().to_string();
     if !is_remote_storage_uri(&uri) {
         return Ok(None);
@@ -30,7 +34,7 @@ fn parse_remote_location(path: &Path) -> Result<Option<RemoteLocation>> {
     }))
 }
 
-pub(crate) fn with_tokio_runtime<T, F>(f: F) -> Result<T>
+pub(crate) fn with_tokio_runtime<T, F>(f: F) -> anyhow::Result<T>
 where
     F: std::future::Future<Output = anyhow::Result<T>>,
 {
@@ -46,7 +50,7 @@ fn is_object_not_found(err: &object_store::Error) -> bool {
         || err.to_string().to_ascii_lowercase().contains("not found")
 }
 
-pub(crate) fn location_exists(path: &Path) -> Result<bool> {
+pub(crate) fn location_exists(path: &Path) -> anyhow::Result<bool> {
     if let Some(remote) = parse_remote_location(path)? {
         let head = with_tokio_runtime(async move {
             remote
@@ -72,7 +76,9 @@ pub(crate) fn location_exists(path: &Path) -> Result<bool> {
     Ok(path.exists())
 }
 
-pub(crate) fn read_json_from_location<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn read_json_from_location<T: serde::de::DeserializeOwned>(
+    path: &Path,
+) -> anyhow::Result<T> {
     if let Some(remote) = parse_remote_location(path)? {
         let bytes = with_tokio_runtime(async move {
             let result = remote
@@ -95,7 +101,7 @@ pub(crate) fn write_json_to_location<T: serde::Serialize>(
     path: &Path,
     value: &T,
     pretty: bool,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     if let Some(remote) = parse_remote_location(path)? {
         let bytes = if pretty {
             serde_json::to_vec_pretty(value)?
@@ -118,7 +124,7 @@ pub(crate) fn write_json_to_location<T: serde::Serialize>(
     write_json(path, value, pretty)
 }
 
-pub(crate) fn load_optional_baseline_receipt(path: &Path) -> Result<Option<RunReceipt>> {
+pub(crate) fn load_optional_baseline_receipt(path: &Path) -> anyhow::Result<Option<RunReceipt>> {
     if location_exists(path)? {
         Ok(Some(read_json_from_location(path)?))
     } else {
@@ -126,11 +132,15 @@ pub(crate) fn load_optional_baseline_receipt(path: &Path) -> Result<Option<RunRe
     }
 }
 
-pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
     Ok(perfgate_types::read_json_file(path)?)
 }
 
-pub(crate) fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bool) -> Result<()> {
+pub(crate) fn write_json<T: serde::Serialize>(
+    path: &Path,
+    value: &T,
+    pretty: bool,
+) -> anyhow::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
     if !parent.as_os_str().is_empty() {
         fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
@@ -145,7 +155,7 @@ pub(crate) fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bo
     atomic_write(path, &bytes)
 }
 
-pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     use std::io::Write;
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
