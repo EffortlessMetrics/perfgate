@@ -29,6 +29,7 @@ Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
 | PG-CLAIM-0017 | perfgate provides starter probe templates without requiring probes. | supported | CLI, docs, examples | next-probe-template-change |
 | PG-CLAIM-0018 | perfgate reports optional ledger readiness without making the server required. | supported | CLI, server config | next-server-ledger-change |
 | PG-CLAIM-0019 | perfgate has hosted external Action canary evidence for first-use failure UX. | advisory | GitHub Action, external canary | next-hosted-action-change |
+| PG-CLAIM-0020 | perfgate interprets core metric improvement and regression using metric direction. | supported | domain, CLI, receipts, docs | next-decision-contract-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -546,3 +547,41 @@ Artifacts:
 - local reproduction line from the action summary
 
 Review after: next-hosted-action-change
+
+## PG-CLAIM-0020: Direction-aware metric movement
+
+Tier: supported
+Surface: domain, CLI, compare/probe/tradeoff receipts, decision guidance
+Linked docs: [`DESIGN.md`](../DESIGN.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`metric-direction-semantics.md`](../audits/metric-direction-semantics.md)
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate --all-features domain::movement
+cargo +1.95.0 test -p perfgate --all-features app::tradeoff
+cargo +1.95.0 test -p perfgate-cli --test cli_decision_suggest_tests
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Linked tests:
+
+- [`movement.rs`](../../crates/perfgate/src/domain/movement.rs)
+- [`comparison.rs`](../../crates/perfgate/src/domain/comparison.rs)
+- [`probe.rs`](../../crates/perfgate/src/app/probe.rs)
+- [`tradeoff.rs`](../../crates/perfgate/src/app/tradeoff.rs)
+- [`cli_decision_suggest_tests.rs`](../../crates/perfgate-cli/tests/cli_decision_suggest_tests.rs)
+- [`cli_tradeoff_tests.rs`](../../crates/perfgate-cli/tests/cli_tradeoff_tests.rs)
+
+Artifacts:
+
+- `perfgate.compare.v1` deltas with signed `pct`, normalized `regression`, and status
+- `perfgate.probe_compare.v1` probe deltas using metric direction or probe metric heuristics
+- `perfgate.tradeoff.v1` requirements and allowances evaluated through direction-aware improvement/regression semantics
+- decision readiness output for lower-is-better and higher-is-better movement
+
+Known limits:
+
+- Raw signed `pct` remains a display field; callers must not treat its sign as judgment without metric direction.
+- Export column naming and some trend-arrow language remain tracked by the metric-direction audit follow-ups.
+
+Review after: next-decision-contract-change
