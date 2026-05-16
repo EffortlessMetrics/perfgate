@@ -41,8 +41,8 @@ direction-aware semantics or already-normalized receipt fields such as
 | --- | --- | --- | --- |
 | Compare receipt verdict | `crates/perfgate/src/domain/budget.rs`, `crates/perfgate/src/domain/comparison.rs` | Direction-aware through `calculate_regression` and budget direction. | Centralize movement vocabulary so callers do not need to know regression math. |
 | Report derivation | `crates/perfgate/src/app/report.rs` | Uses `Delta::regression` and `MetricStatus`; no raw sign judgment found in report construction. | Add higher-is-better report fixture in the fixture matrix PR. |
-| Decision readiness | `crates/perfgate-cli/src/decision_suggest.rs` | Direction-aware after the higher-is-better fix. | Replace local match with shared movement helper once it exists. |
-| Tradeoff requirements | `crates/perfgate/src/domain/comparison.rs`, `crates/perfgate/src/app/tradeoff.rs` | Direction-aware `improvement_ratio` helpers translate lower-is-better and higher-is-better metrics into comparable improvement ratios. | Deduplicate the two helper implementations through the shared domain helper. |
+| Decision readiness | `crates/perfgate-cli/src/decision_suggest.rs` | Direction-aware through the shared domain movement helper. | Cover this through higher/lower fixture matrix tests. |
+| Tradeoff requirements | `crates/perfgate/src/domain/comparison.rs`, `crates/perfgate/src/app/tradeoff.rs` | Direction-aware `improvement_ratio` translates lower-is-better and higher-is-better metrics into comparable improvement ratios. | Cover scenario and probe requirements through higher/lower fixture matrix tests. |
 | Tradeoff allowances | `crates/perfgate/src/app/tradeoff.rs` | Uses `Delta::regression`, which is already positive normalized regression. | Add probe-backed higher-is-better allowance fixtures. |
 | Probe compare | `crates/perfgate/src/app/probe.rs` | Direction-aware through parsed metric defaults and probe metric heuristics for throughput/rate/count names. | Add fixture coverage for custom higher-is-better probe metrics. |
 | Repair context | `crates/perfgate-cli/src/repair_context.rs` | Uses non-pass `MetricStatus` and `Delta::regression`; no raw sign judgment found. | Add higher-is-better repair context fixture in the fixture matrix PR. |
@@ -64,11 +64,10 @@ helper:
 
 ## Follow-up PRs
 
-1. Add a shared movement model such as `MetricMovement::{Improved, Regressed, Unchanged, Unknown}` in the domain layer.
-2. Replace local raw-sign improvement checks with the shared helper.
-3. Add fixture coverage for lower-is-better and higher-is-better metrics across compare, report, decision suggest, tradeoff, probe compare, repair context, comments, and bundles.
-4. Harden tradeoff and probe requirement tests for higher-is-better dominant improvements and lower-is-better accepted local regressions.
-5. Update product claims only after the fixture matrix covers the core user-facing surfaces.
+1. Route remaining judgment call sites through the shared domain movement model.
+2. Add fixture coverage for lower-is-better and higher-is-better metrics across compare, report, decision suggest, tradeoff, probe compare, repair context, comments, and bundles.
+3. Harden tradeoff and probe requirement tests for higher-is-better dominant improvements and lower-is-better accepted local regressions.
+4. Update product claims only after the fixture matrix covers the core user-facing surfaces.
 
 ## Proof Commands
 

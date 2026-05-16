@@ -11,6 +11,7 @@ pub mod budget;
 mod comparison;
 pub mod host;
 mod metrics;
+pub mod movement;
 pub mod paired;
 mod report;
 pub mod scaling;
@@ -33,6 +34,10 @@ pub use host::detect_host_mismatch;
 pub use metrics::metric_value;
 pub(crate) use metrics::{
     metric_cv, metric_series_from_run, metric_to_string, metric_value_from_run,
+};
+pub use movement::{
+    MetricMovement, improvement_ratio, is_improvement, is_regression, movement_for_delta,
+    movement_for_pct,
 };
 pub use report::{Finding, FindingData, Report, derive_report};
 pub use stats_compute::compute_stats;

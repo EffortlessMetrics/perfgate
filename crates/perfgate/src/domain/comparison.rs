@@ -7,8 +7,8 @@ use perfgate_types::{
 };
 
 use super::{
-    DomainError, compute_significance, evaluate_budget, metric_cv, metric_series_from_run,
-    metric_value, metric_value_from_run, reason_token,
+    DomainError, compute_significance, evaluate_budget, improvement_ratio, metric_cv,
+    metric_series_from_run, metric_value, metric_value_from_run, reason_token,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -348,17 +348,6 @@ fn remove_reason(reasons: &mut Vec<String>, token: &str) {
     reasons.retain(|reason| reason != token);
 }
 
-fn improvement_ratio(delta: &Delta, metric: Metric) -> Option<f64> {
-    match metric.default_direction() {
-        perfgate_types::Direction::Higher => Some(delta.ratio),
-        perfgate_types::Direction::Lower => Some(if delta.current <= 0.0 {
-            f64::INFINITY
-        } else {
-            delta.baseline / delta.current
-        }),
-    }
-}
-
 fn apply_tradeoffs(
     deltas: &mut BTreeMap<Metric, Delta>,
     counts: &mut VerdictCounts,
@@ -395,7 +384,7 @@ fn apply_tradeoffs(
                     break;
                 };
 
-                let Some(ratio) = improvement_ratio(required_delta, requirement.metric) else {
+                let Some(ratio) = improvement_ratio(requirement.metric, required_delta) else {
                     satisfied = false;
                     break;
                 };
@@ -482,21 +471,21 @@ mod tests {
 
     #[test]
     fn improvement_ratio_treats_lower_is_better_decrease_as_improvement() {
-        let observed = improvement_ratio(&delta(100.0, 80.0), Metric::WallMs);
+        let observed = improvement_ratio(Metric::WallMs, &delta(100.0, 80.0));
 
         assert_eq!(observed, Some(1.25));
     }
 
     #[test]
     fn improvement_ratio_treats_higher_is_better_increase_as_improvement() {
-        let observed = improvement_ratio(&delta(100.0, 125.0), Metric::ThroughputPerS);
+        let observed = improvement_ratio(Metric::ThroughputPerS, &delta(100.0, 125.0));
 
         assert_eq!(observed, Some(1.25));
     }
 
     #[test]
     fn improvement_ratio_treats_higher_is_better_decrease_as_not_enough() {
-        let observed = improvement_ratio(&delta(100.0, 80.0), Metric::ThroughputPerS);
+        let observed = improvement_ratio(Metric::ThroughputPerS, &delta(100.0, 80.0));
 
         assert_eq!(observed, Some(0.8));
     }

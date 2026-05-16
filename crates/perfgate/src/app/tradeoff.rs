@@ -1,4 +1,5 @@
 use crate::domain::budget::{aggregate_verdict, reason_token};
+use crate::domain::improvement_ratio;
 use perfgate_types::{
     DecisionPolicyConfig, Delta, HostInfo, Metric, MetricStatus, MissingNoisePolicy,
     PROBE_COMPARE_SCHEMA_V1, ProbeCompareObservation, ProbeCompareReceipt, RunMeta,
@@ -364,7 +365,7 @@ fn evaluate_requirements(
                 };
             };
 
-            let observed_ratio = improvement_ratio(delta, requirement.metric);
+            let observed_ratio = improvement_ratio(requirement.metric, delta);
             let satisfied = observed_ratio
                 .map(|ratio| ratio >= requirement.min_improvement_ratio)
                 .unwrap_or(false);
@@ -490,7 +491,7 @@ fn evaluate_probe_requirement(
         };
     };
 
-    let observed_ratio = improvement_ratio(delta, requirement.metric);
+    let observed_ratio = improvement_ratio(requirement.metric, delta);
     let satisfied = observed_ratio
         .map(|ratio| ratio >= requirement.min_improvement_ratio)
         .unwrap_or(false);
@@ -557,17 +558,6 @@ fn required_change(requirement: &TradeoffRequirement) -> f64 {
     match requirement.metric.default_direction() {
         perfgate_types::Direction::Higher => requirement.min_improvement_ratio - 1.0,
         perfgate_types::Direction::Lower => (1.0 / requirement.min_improvement_ratio) - 1.0,
-    }
-}
-
-fn improvement_ratio(delta: &Delta, metric: Metric) -> Option<f64> {
-    match metric.default_direction() {
-        perfgate_types::Direction::Higher => Some(delta.ratio),
-        perfgate_types::Direction::Lower => Some(if delta.current <= 0.0 {
-            f64::INFINITY
-        } else {
-            delta.baseline / delta.current
-        }),
     }
 }
 
