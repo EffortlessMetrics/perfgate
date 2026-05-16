@@ -10,7 +10,7 @@ use crate::{
     COMPARE_RECEIPT_FILE, DecisionSuggestArgs, is_regression, load_validated_config,
     resolve_configured_out_dir,
 };
-use perfgate_types::{CompareReceipt, ConfigFile};
+use perfgate_types::{CompareReceipt, ConfigFile, Direction};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DecisionReadiness {
@@ -154,7 +154,14 @@ fn collect_decision_readiness_evidence(
             format!("read compare receipt for {bench_name}: {}", path.display())
         })?;
         has_regression |= is_regression(compare.verdict.status);
-        has_improvement |= compare.deltas.values().any(|delta| delta.pct < 0.0);
+        has_improvement |=
+            compare
+                .deltas
+                .iter()
+                .any(|(metric, delta)| match metric.default_direction() {
+                    Direction::Lower => delta.pct < 0.0,
+                    Direction::Higher => delta.pct > 0.0,
+                });
         high_noise |= compare
             .deltas
             .values()

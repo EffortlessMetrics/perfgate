@@ -65,17 +65,28 @@ max_regression = 0.03
 }
 
 fn write_compare_receipt(path: &Path, status: &str, baseline: f64, current: f64) {
+    let regression = if current > baseline {
+        (current - baseline) / baseline
+    } else {
+        0.0
+    };
+    write_compare_receipt_for_metric(path, "wall_ms", status, baseline, current, regression);
+}
+
+fn write_compare_receipt_for_metric(
+    path: &Path,
+    metric: &str,
+    status: &str,
+    baseline: f64,
+    current: f64,
+    regression: f64,
+) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("create compare parent");
     }
     let fail = u32::from(status == "fail");
     let warn = u32::from(status == "warn");
     let pass = u32::from(status == "pass");
-    let regression = if current > baseline {
-        (current - baseline) / baseline
-    } else {
-        0.0
-    };
     let receipt = serde_json::json!({
         "schema": "perfgate.compare.v1",
         "tool": {"name": "perfgate", "version": "0.18.0"},
@@ -89,7 +100,7 @@ fn write_compare_receipt(path: &Path, status: &str, baseline: f64, current: f64)
         "current_ref": {"path": "artifacts/perfgate/parser/run.json", "run_id": "current"},
         "budgets": {},
         "deltas": {
-            "wall_ms": {
+            metric: {
                 "baseline": baseline,
                 "current": current,
                 "ratio": current / baseline,
@@ -137,6 +148,74 @@ fn decision_suggest_tells_user_to_run_local_gate_first_without_compares() {
     assert!(
         stdout.contains("perfgate check --config"),
         "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn decision_suggest_detects_throughput_improvement_as_structured_candidate() {
+    let temp_dir = tempdir().expect("temp dir");
+    let config_path = write_basic_config(temp_dir.path());
+    let out_dir = temp_dir.path().join("artifacts").join("perfgate");
+    write_compare_receipt_for_metric(
+        &out_dir.join("parser").join("compare.json"),
+        "throughput_per_s",
+        "pass",
+        100.0,
+        120.0,
+        0.0,
+    );
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("decision")
+        .arg("suggest")
+        .arg("--config")
+        .arg(&config_path);
+
+    let output = cmd.output().expect("run decision suggest");
+    assert!(
+        output.status.success(),
+        "decision suggest should succeed: stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Status: structured_decision_candidate"),
+        "expected throughput improvement to flag structured_decision_candidate, stdout: {stdout}"
+    );
+}
+
+#[test]
+fn decision_suggest_detects_throughput_regression_as_structured_candidate() {
+    let temp_dir = tempdir().expect("temp dir");
+    let config_path = write_basic_config(temp_dir.path());
+    let out_dir = temp_dir.path().join("artifacts").join("perfgate");
+    write_compare_receipt_for_metric(
+        &out_dir.join("parser").join("compare.json"),
+        "throughput_per_s",
+        "fail",
+        100.0,
+        80.0,
+        0.20,
+    );
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("decision")
+        .arg("suggest")
+        .arg("--config")
+        .arg(&config_path);
+
+    let output = cmd.output().expect("run decision suggest");
+    assert!(
+        output.status.success(),
+        "decision suggest should succeed: stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Status: structured_decision_candidate"),
+        "expected throughput regression to flag structured_decision_candidate, stdout: {stdout}"
     );
 }
 
