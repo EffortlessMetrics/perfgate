@@ -1,4 +1,4 @@
-//! File and object-store I/O helpers for the CLI.
+//! File and object-store storage helpers for the CLI.
 //!
 //! The CLI accepts both local filesystem paths and object-store URIs for a few
 //! artifact flows. Keeping those details in this module lets command handlers

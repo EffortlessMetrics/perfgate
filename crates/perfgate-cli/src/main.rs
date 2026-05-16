@@ -1,9 +1,9 @@
 //! perfgate CLI - entry point for all workflows.
 
 mod baseline;
-mod io;
+mod storage;
 
-use io::{
+use storage::{
     atomic_write, load_optional_baseline_receipt, location_exists, read_json,
     read_json_from_location, with_tokio_runtime, write_json, write_json_to_location,
 };
