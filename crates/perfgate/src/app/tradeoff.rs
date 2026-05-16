@@ -774,6 +774,69 @@ mod tests {
         }
     }
 
+    fn tradeoff_rule_for_requirement(
+        if_failed: Metric,
+        required_metric: Metric,
+        downgrade_to: TradeoffDowngrade,
+    ) -> TradeoffRule {
+        TradeoffRule {
+            name: "directional_tradeoff".to_string(),
+            if_failed,
+            require: vec![TradeoffRequirement {
+                metric: required_metric,
+                probe: None,
+                min_improvement_ratio: 1.10,
+            }],
+            allow: Vec::new(),
+            downgrade_to,
+        }
+    }
+
+    fn tradeoff_rule_for_probe_requirement(
+        if_failed: Metric,
+        required_metric: Metric,
+        probe: &str,
+        downgrade_to: TradeoffDowngrade,
+    ) -> TradeoffRule {
+        TradeoffRule {
+            name: "probe_directional_tradeoff".to_string(),
+            if_failed,
+            require: vec![TradeoffRequirement {
+                metric: required_metric,
+                probe: Some(probe.to_string()),
+                min_improvement_ratio: 1.10,
+            }],
+            allow: Vec::new(),
+            downgrade_to,
+        }
+    }
+
+    fn tradeoff_rule_for_probe_requirement_with_allow(
+        if_failed: Metric,
+        required_metric: Metric,
+        required_probe: &str,
+        allowed_metric: Metric,
+        allowed_probe: &str,
+        max_regression: f64,
+        downgrade_to: TradeoffDowngrade,
+    ) -> TradeoffRule {
+        TradeoffRule {
+            name: "probe_directional_tradeoff_with_allow".to_string(),
+            if_failed,
+            require: vec![TradeoffRequirement {
+                metric: required_metric,
+                probe: Some(required_probe.to_string()),
+                min_improvement_ratio: 1.10,
+            }],
+            allow: vec![TradeoffAllowance {
+                metric: allowed_metric,
+                probe: allowed_probe.to_string(),
+                max_regression,
+            }],
+            downgrade_to,
+        }
+    }
+
     fn probe_compare_receipt(probe_name: &str, wall_current: f64) -> ProbeCompareReceipt {
         probe_compare_receipt_many_with_cv(&[(
             probe_name,
@@ -827,6 +890,136 @@ mod tests {
                 status: VerdictStatus::Pass,
                 counts: VerdictCounts {
                     pass: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: Vec::new(),
+            },
+            warnings: Vec::new(),
+        }
+    }
+
+    fn scenario_receipt_with_metric_deltas(
+        deltas: Vec<(Metric, Delta)>,
+        failed_metric: Metric,
+    ) -> ScenarioReceipt {
+        let weighted_deltas: BTreeMap<String, Delta> = deltas
+            .into_iter()
+            .map(|(metric, delta)| (metric.as_str().to_string(), delta))
+            .collect();
+        let fail_count = weighted_deltas
+            .values()
+            .filter(|delta| delta.status == MetricStatus::Fail)
+            .count() as u32;
+        let warn_count = weighted_deltas
+            .values()
+            .filter(|delta| delta.status == MetricStatus::Warn)
+            .count() as u32;
+        let pass_count = weighted_deltas
+            .values()
+            .filter(|delta| delta.status == MetricStatus::Pass)
+            .count() as u32;
+
+        ScenarioReceipt {
+            schema: SCENARIO_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+            run: make_run_meta(),
+            scenario: ScenarioMeta {
+                name: "release_workload".to_string(),
+                weight: 1.0,
+                description: None,
+                command: None,
+            },
+            baseline_ref: None,
+            current_ref: None,
+            components: Vec::new(),
+            weighted_deltas,
+            verdict: Verdict {
+                status: if fail_count > 0 {
+                    VerdictStatus::Fail
+                } else if warn_count > 0 {
+                    VerdictStatus::Warn
+                } else {
+                    VerdictStatus::Pass
+                },
+                counts: VerdictCounts {
+                    pass: pass_count,
+                    warn: warn_count,
+                    fail: fail_count,
+                    skip: 0,
+                },
+                reasons: vec![format!("{}_fail", failed_metric.as_str())],
+            },
+            warnings: Vec::new(),
+        }
+    }
+
+    fn metric_delta(metric: Metric, baseline: f64, current: f64, status: MetricStatus) -> Delta {
+        Delta {
+            baseline,
+            current,
+            ratio: current / baseline,
+            pct: (current - baseline) / baseline,
+            regression: crate::domain::budget::calculate_regression(
+                baseline,
+                current,
+                metric.default_direction(),
+            ),
+            cv: None,
+            noise_threshold: None,
+            statistic: perfgate_types::MetricStatistic::Median,
+            significance: None,
+            status,
+        }
+    }
+
+    fn probe_compare_receipt_with_metric(
+        probe_name: &str,
+        metric: Metric,
+        current: f64,
+        scope: ProbeScope,
+    ) -> ProbeCompareReceipt {
+        probe_compare_receipt_with_metric_many(&[(probe_name, metric, current, scope)])
+    }
+
+    fn probe_compare_receipt_with_metric_many(
+        probes: &[(&str, Metric, f64, ProbeScope)],
+    ) -> ProbeCompareReceipt {
+        ProbeCompareReceipt {
+            schema: PROBE_COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+            run: make_run_meta(),
+            bench: None,
+            scenario: Some("release_workload".to_string()),
+            baseline_ref: None,
+            current_ref: None,
+            probes: probes
+                .iter()
+                .map(|(probe_name, metric, current, scope)| {
+                    let delta = metric_delta(*metric, 100.0, *current, MetricStatus::Pass);
+                    ProbeCompareObservation {
+                        name: (*probe_name).to_string(),
+                        parent: None,
+                        scope: Some(*scope),
+                        baseline_count: 1,
+                        current_count: 1,
+                        deltas: BTreeMap::from([(metric.as_str().to_string(), delta)]),
+                        status: MetricStatus::Pass,
+                        reasons: Vec::new(),
+                    }
+                })
+                .collect(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: probes.len() as u32,
                     warn: 0,
                     fail: 0,
                     skip: 0,
@@ -1188,5 +1381,175 @@ mod tests {
         assert!(!receipt.decision.review_required);
         assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
         assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
+    }
+
+    #[test]
+    fn tradeoff_accepts_latency_improvement_while_throughput_regresses() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt_with_metric_deltas(
+                vec![
+                    (
+                        Metric::ThroughputPerS,
+                        metric_delta(Metric::ThroughputPerS, 100.0, 80.0, MetricStatus::Fail),
+                    ),
+                    (
+                        Metric::WallMs,
+                        metric_delta(Metric::WallMs, 100.0, 80.0, MetricStatus::Pass),
+                    ),
+                ],
+                Metric::ThroughputPerS,
+            ),
+            probe_compares: Vec::new(),
+            rules: vec![tradeoff_rule_for_requirement(
+                Metric::ThroughputPerS,
+                Metric::WallMs,
+                TradeoffDowngrade::Warn,
+            )],
+            decision_policy: DecisionPolicyConfig::default(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(
+            receipt.rules[0].requirements[0].observed_change,
+            Some(-0.20)
+        );
+        assert_eq!(
+            receipt.weighted_deltas["throughput_per_s"].status,
+            MetricStatus::Warn
+        );
+    }
+
+    #[test]
+    fn tradeoff_accepts_throughput_improvement_while_latency_regresses() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt_with_metric_deltas(
+                vec![
+                    (
+                        Metric::WallMs,
+                        metric_delta(Metric::WallMs, 100.0, 120.0, MetricStatus::Fail),
+                    ),
+                    (
+                        Metric::ThroughputPerS,
+                        metric_delta(Metric::ThroughputPerS, 100.0, 125.0, MetricStatus::Pass),
+                    ),
+                ],
+                Metric::WallMs,
+            ),
+            probe_compares: Vec::new(),
+            rules: vec![tradeoff_rule_for_requirement(
+                Metric::WallMs,
+                Metric::ThroughputPerS,
+                TradeoffDowngrade::Warn,
+            )],
+            decision_policy: DecisionPolicyConfig::default(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(receipt.rules[0].requirements[0].observed_change, Some(0.25));
+        assert_eq!(
+            receipt.weighted_deltas["wall_ms"].status,
+            MetricStatus::Warn
+        );
+    }
+
+    #[test]
+    fn tradeoff_accepts_higher_is_better_dominant_probe_improvement() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt_with_metric_deltas(
+                vec![(
+                    Metric::WallMs,
+                    metric_delta(Metric::WallMs, 100.0, 120.0, MetricStatus::Fail),
+                )],
+                Metric::WallMs,
+            ),
+            probe_compares: vec![probe_compare_receipt_with_metric(
+                "parser.batch_loop",
+                Metric::ThroughputPerS,
+                125.0,
+                ProbeScope::Dominant,
+            )],
+            rules: vec![tradeoff_rule_for_probe_requirement(
+                Metric::WallMs,
+                Metric::ThroughputPerS,
+                "parser.batch_loop",
+                TradeoffDowngrade::Warn,
+            )],
+            decision_policy: DecisionPolicyConfig::default(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(receipt.rules[0].requirements[0].observed_change, Some(0.25));
+        assert_eq!(
+            receipt.rules[0].requirements[0].probe.as_deref(),
+            Some("parser.batch_loop")
+        );
+    }
+
+    #[test]
+    fn tradeoff_accepts_local_probe_regression_when_dominant_throughput_improves() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt_with_metric_deltas(
+                vec![(
+                    Metric::WallMs,
+                    metric_delta(Metric::WallMs, 100.0, 120.0, MetricStatus::Fail),
+                )],
+                Metric::WallMs,
+            ),
+            probe_compares: vec![probe_compare_receipt_with_metric_many(&[
+                (
+                    "parser.batch_loop",
+                    Metric::ThroughputPerS,
+                    125.0,
+                    ProbeScope::Dominant,
+                ),
+                ("parser.tokenize", Metric::WallMs, 102.0, ProbeScope::Local),
+            ])],
+            rules: vec![tradeoff_rule_for_probe_requirement_with_allow(
+                Metric::WallMs,
+                Metric::ThroughputPerS,
+                "parser.batch_loop",
+                Metric::WallMs,
+                "parser.tokenize",
+                0.03,
+                TradeoffDowngrade::Warn,
+            )],
+            decision_policy: DecisionPolicyConfig::default(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(receipt.rules[0].requirements[0].observed_change, Some(0.25));
+        assert_eq!(
+            receipt.rules[0].allowances[0].observed_regression,
+            Some(0.02)
+        );
+        assert!(receipt.rules[0].allowances[0].satisfied);
     }
 }
