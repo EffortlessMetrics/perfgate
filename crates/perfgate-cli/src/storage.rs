@@ -1,4 +1,8 @@
-//! JSON persistence helpers for local files and object-store locations.
+//! File and object-store storage helpers for the CLI.
+//!
+//! The CLI accepts both local filesystem paths and object-store URIs for a few
+//! artifact flows. Keeping those details in this module lets command handlers
+//! focus on orchestration instead of storage dispatch and atomic write details.
 
 use anyhow::Context;
 use object_store::{ObjectStore, path::Path as ObjectPath};
@@ -30,7 +34,7 @@ fn parse_remote_location(path: &Path) -> anyhow::Result<Option<RemoteLocation>> 
     }))
 }
 
-pub fn with_tokio_runtime<T, F>(f: F) -> anyhow::Result<T>
+pub(crate) fn with_tokio_runtime<T, F>(f: F) -> anyhow::Result<T>
 where
     F: std::future::Future<Output = anyhow::Result<T>>,
 {
@@ -46,7 +50,7 @@ fn is_object_not_found(err: &object_store::Error) -> bool {
         || err.to_string().to_ascii_lowercase().contains("not found")
 }
 
-pub fn location_exists(path: &Path) -> anyhow::Result<bool> {
+pub(crate) fn location_exists(path: &Path) -> anyhow::Result<bool> {
     if let Some(remote) = parse_remote_location(path)? {
         let head = with_tokio_runtime(async move {
             remote
@@ -72,7 +76,9 @@ pub fn location_exists(path: &Path) -> anyhow::Result<bool> {
     Ok(path.exists())
 }
 
-pub fn read_json_from_location<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
+pub(crate) fn read_json_from_location<T: serde::de::DeserializeOwned>(
+    path: &Path,
+) -> anyhow::Result<T> {
     if let Some(remote) = parse_remote_location(path)? {
         let bytes = with_tokio_runtime(async move {
             let result = remote
@@ -91,7 +97,7 @@ pub fn read_json_from_location<T: serde::de::DeserializeOwned>(path: &Path) -> a
     read_json(path)
 }
 
-pub fn write_json_to_location<T: serde::Serialize>(
+pub(crate) fn write_json_to_location<T: serde::Serialize>(
     path: &Path,
     value: &T,
     pretty: bool,
@@ -118,7 +124,7 @@ pub fn write_json_to_location<T: serde::Serialize>(
     write_json(path, value, pretty)
 }
 
-pub fn load_optional_baseline_receipt(path: &Path) -> anyhow::Result<Option<RunReceipt>> {
+pub(crate) fn load_optional_baseline_receipt(path: &Path) -> anyhow::Result<Option<RunReceipt>> {
     if location_exists(path)? {
         Ok(Some(read_json_from_location(path)?))
     } else {
@@ -126,11 +132,15 @@ pub fn load_optional_baseline_receipt(path: &Path) -> anyhow::Result<Option<RunR
     }
 }
 
-pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
     Ok(perfgate_types::read_json_file(path)?)
 }
 
-pub fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bool) -> anyhow::Result<()> {
+pub(crate) fn write_json<T: serde::Serialize>(
+    path: &Path,
+    value: &T,
+    pretty: bool,
+) -> anyhow::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
     if !parent.as_os_str().is_empty() {
         fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
@@ -145,7 +155,7 @@ pub fn write_json<T: serde::Serialize>(path: &Path, value: &T, pretty: bool) -> 
     atomic_write(path, &bytes)
 }
 
-pub fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     use std::io::Write;
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));

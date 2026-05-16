@@ -1,13 +1,19 @@
 //! perfgate CLI - entry point for all workflows.
 
+mod baseline;
 mod cli_parsing;
-mod json_location;
+mod storage;
+
+use storage::{
+    atomic_write, load_optional_baseline_receipt, location_exists, read_json,
+    read_json_from_location, with_tokio_runtime, write_json, write_json_to_location,
+};
 
 use anyhow::Context;
+use baseline::{BaselineSelector, parse_baseline_selector};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use cli_parsing::*;
 use glob::glob;
-use json_location::*;
 use perfgate::app as perfgate_app;
 use perfgate::domain as perfgate_domain;
 use perfgate::integrations::github::{self, CommentOptions, GitHubClient};
@@ -117,47 +123,6 @@ impl ServerFlags {
             config,
         )
     }
-}
-
-enum BaselineSelector {
-    Local(PathBuf),
-    Server { benchmark: String, explicit: bool },
-}
-
-fn parse_baseline_selector(
-    baseline: &str,
-    server_config: &ResolvedServerConfig,
-) -> anyhow::Result<BaselineSelector> {
-    if let Some(server_ref) = baseline.strip_prefix("@server:") {
-        if server_ref.is_empty() {
-            anyhow::bail!("--baseline requires a benchmark name after @server:");
-        }
-
-        if !server_config.is_configured() {
-            return Err(anyhow::anyhow!(BASELINE_SERVER_NOT_CONFIGURED));
-        }
-
-        return Ok(BaselineSelector::Server {
-            benchmark: server_ref.to_string(),
-            explicit: true,
-        });
-    }
-
-    let path = Path::new(baseline);
-    if !server_config.is_configured()
-        || path.exists()
-        || baseline.contains(std::path::MAIN_SEPARATOR)
-        || baseline.contains('/')
-        || baseline.contains('\\')
-        || baseline.ends_with(".json")
-    {
-        return Ok(BaselineSelector::Local(path.to_path_buf()));
-    }
-
-    Ok(BaselineSelector::Server {
-        benchmark: baseline.to_string(),
-        explicit: false,
-    })
 }
 
 #[derive(Debug, Parser)]
@@ -3293,7 +3258,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             let (server_config, config_file) =
                 resolve_server_config_from_path(&server_flags, None)?;
-            let baseline_selector = parse_baseline_selector(&baseline, &server_config)?;
+            let baseline_selector =
+                parse_baseline_selector(&baseline, &server_config, BASELINE_SERVER_NOT_CONFIGURED)?;
             let (baseline_receipt, baseline_ref) = match baseline_selector {
                 BaselineSelector::Server {
                     benchmark,
