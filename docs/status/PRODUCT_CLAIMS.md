@@ -559,6 +559,10 @@ Proof commands:
 ```bash
 cargo +1.95.0 test -p perfgate --all-features domain::movement
 cargo +1.95.0 test -p perfgate --all-features app::tradeoff
+cargo +1.95.0 test -p perfgate --all-features trend_indicator
+cargo +1.95.0 test -p perfgate --all-features trend_direction
+cargo +1.95.0 test -p perfgate --all-features compare_regression_pct
+cargo +1.95.0 test -p perfgate --all-features build_report_normalizes_higher_is_better_regression
 cargo +1.95.0 test -p perfgate-cli --test cli_decision_suggest_tests
 cargo +1.95.0 run -p xtask -- product-claims-check
 ```
@@ -569,6 +573,10 @@ Linked tests:
 - [`comparison.rs`](../../crates/perfgate/src/domain/comparison.rs)
 - [`probe.rs`](../../crates/perfgate/src/app/probe.rs)
 - [`tradeoff.rs`](../../crates/perfgate/src/app/tradeoff.rs)
+- [`check.rs`](../../crates/perfgate/src/app/check.rs)
+- [`export.rs`](../../crates/perfgate/src/app/export.rs)
+- [`watch.rs`](../../crates/perfgate/src/app/watch.rs)
+- [`comment.rs`](../../crates/perfgate/src/integrations/github/comment.rs)
 - [`cli_decision_suggest_tests.rs`](../../crates/perfgate-cli/tests/cli_decision_suggest_tests.rs)
 - [`cli_tradeoff_tests.rs`](../../crates/perfgate-cli/tests/cli_tradeoff_tests.rs)
 

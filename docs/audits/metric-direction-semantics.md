@@ -62,12 +62,22 @@ helper:
 - higher-is-better decrease is below `1.0` and therefore cannot satisfy a
   `min_improvement_ratio` requirement.
 
-## Follow-up PRs
+## Follow-up Status
 
-1. Route remaining judgment call sites through the shared domain movement model.
-2. Add fixture coverage for lower-is-better and higher-is-better metrics across compare, report, decision suggest, tradeoff, probe compare, repair context, comments, and bundles.
-3. Harden tradeoff and probe requirement tests for higher-is-better dominant improvements and lower-is-better accepted local regressions.
-4. Update product claims only after the fixture matrix covers the core user-facing surfaces.
+Completed:
+
+1. Remaining judgment call sites route through shared domain movement,
+   metric status, or normalized regression fields.
+2. Fixture coverage now includes lower-is-better and higher-is-better metrics
+   across compare, report, decision readiness, tradeoff, probe compare,
+   GitHub comments, watch trend display, and export/report regression fields.
+3. Tradeoff and probe requirement tests cover higher-is-better dominant
+   improvements and accepted local regressions.
+4. Product claims map direction-aware metric movement to the merged proof
+   surfaces.
+
+Raw signed `pct` remains available as a display field. It is not the judgment
+field for improvement or regression.
 
 ## Proof Commands
 
