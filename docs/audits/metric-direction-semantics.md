@@ -40,7 +40,7 @@ direction-aware semantics or already-normalized receipt fields such as
 | Surface | Current source | Current state | Follow-up |
 | --- | --- | --- | --- |
 | Compare receipt verdict | `crates/perfgate/src/domain/budget.rs`, `crates/perfgate/src/domain/comparison.rs` | Direction-aware through `calculate_regression`, budget direction, and shared movement helpers. | Covered by movement and comparison fixture tests. |
-| Report derivation | `crates/perfgate/src/app/report.rs` | Uses `Delta::regression` and `MetricStatus`; higher-is-better report fixtures preserve throughput direction. | Covered by fixture matrix tests. |
+| Report derivation | `crates/perfgate/src/app/report.rs`, `crates/perfgate/src/app/check.rs` | Uses `Delta::regression` and `MetricStatus`; higher-is-better report fixtures preserve throughput direction. | Covered by fixture matrix tests. |
 | Decision readiness | `crates/perfgate-cli/src/decision_suggest.rs` | Direction-aware through the shared domain movement helper. | Covered by higher/lower decision readiness tests. |
 | Tradeoff requirements | `crates/perfgate/src/domain/comparison.rs`, `crates/perfgate/src/app/tradeoff.rs` | Direction-aware `improvement_ratio` translates lower-is-better and higher-is-better metrics into comparable improvement ratios. | Covered by scenario and probe tradeoff tests. |
 | Tradeoff allowances | `crates/perfgate/src/app/tradeoff.rs` | Uses `Delta::regression`, which is already positive normalized regression. | Covered by probe-backed higher-is-better allowance fixtures. |
@@ -48,8 +48,8 @@ direction-aware semantics or already-normalized receipt fields such as
 | Repair context | `crates/perfgate-cli/src/repair_context.rs` | Uses non-pass `MetricStatus` and `Delta::regression`; no raw sign judgment found. | Covered indirectly by status/normalized-regression fixtures; add a direct repair-context fixture when that surface changes next. |
 | Badge/status surfaces | `crates/perfgate/src/app/badge.rs` | Verdict and metric status are status-driven; raw `pct` is display-only. | Keep display labels as change, not judgment. |
 | Markdown rendering and annotations | `crates/perfgate/src/app/render.rs`, `crates/perfgate/src/integrations/github/comment.rs` | Status-driven warnings/failures are correct, and GitHub comment trend indicators label improvement/regression through shared movement semantics. | Keep raw percentage display separate from judgment labels. |
-| Watch/trend display | `crates/perfgate/src/app/watch.rs`, `crates/perfgate/src/app/trend.rs` | `app/trend.rs` is direction-aware; `watch.rs` stores raw `pct` history and classifies positive average as worsening. | Make watch trends metric-aware or restrict wording to lower-is-better deltas. |
-| Export rows | `crates/perfgate/src/app/export/rows.rs` | `regression_pct` currently exports raw signed `delta.pct * 100.0`, despite the column name implying normalized regression. | Decide whether to rename the column or export normalized `Delta::regression`. |
+| Watch/trend display | `crates/perfgate/src/app/watch.rs`, `crates/perfgate/src/app/trend.rs` | `app/trend.rs` is direction-aware; `watch.rs` classifies trend history through shared movement semantics. | Keep trend wording tied to metric direction. |
+| Export rows | `crates/perfgate/src/app/export/rows.rs` | `regression_pct` exports normalized `Delta::regression`, not raw signed `pct`. | Covered by higher-is-better export fixture coverage. |
 | Decision bundles | `crates/perfgate-cli/src/main.rs` | Bundles preserve receipts and do not reinterpret metric movement. | No immediate semantic change; bundle coverage follows receipt-level direction fixtures. |
 
 ## Focused Test Added

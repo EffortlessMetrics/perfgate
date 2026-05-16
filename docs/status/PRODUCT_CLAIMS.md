@@ -578,10 +578,10 @@ Artifacts:
 - `perfgate.probe_compare.v1` probe deltas using metric direction or probe metric heuristics
 - `perfgate.tradeoff.v1` requirements and allowances evaluated through direction-aware improvement/regression semantics
 - decision readiness output for lower-is-better and higher-is-better movement
+- watch trends, GitHub comment movement labels, and export `regression_pct` using direction-aware judgment fields
 
 Known limits:
 
 - Raw signed `pct` remains a display field; callers must not treat its sign as judgment without metric direction.
-- Export column naming and watch trend language remain tracked by the metric-direction audit follow-ups.
 
 Review after: next-decision-contract-change

@@ -1304,6 +1304,43 @@ mod tests {
                 }
             }
         }
+
+        #[test]
+        fn compare_regression_pct_uses_normalized_metric_direction() {
+            let mut receipt = create_test_compare_receipt();
+            receipt.budgets.insert(
+                Metric::ThroughputPerS,
+                Budget::new(0.20, 0.10, Direction::Higher),
+            );
+            receipt.deltas.insert(
+                Metric::ThroughputPerS,
+                Delta {
+                    baseline: 100.0,
+                    current: 125.0,
+                    ratio: 1.25,
+                    pct: 0.25,
+                    regression: 0.0,
+                    cv: None,
+                    noise_threshold: None,
+                    statistic: MetricStatistic::Median,
+                    significance: None,
+                    status: MetricStatus::Pass,
+                },
+            );
+
+            let jsonl = ExportUseCase::export_compare(&receipt, ExportFormat::Jsonl).unwrap();
+
+            for line in jsonl.trim().lines() {
+                let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+                if parsed["metric"].as_str().unwrap() == "throughput_per_s" {
+                    let regression_pct = parsed["regression_pct"].as_f64().unwrap();
+                    assert!((regression_pct - 0.0).abs() < 0.01);
+                    return;
+                }
+            }
+
+            panic!("missing throughput_per_s export row");
+        }
     }
 }
 

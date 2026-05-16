@@ -123,7 +123,7 @@ pub(super) fn compare_to_rows(receipt: &CompareReceipt) -> Vec<CompareExportRow>
                 metric: metric_to_string(*metric),
                 baseline_value: delta.baseline,
                 current_value: delta.current,
-                regression_pct: delta.pct * 100.0,
+                regression_pct: delta.regression * 100.0,
                 status: status_to_string(delta.status),
                 threshold: threshold * 100.0,
                 warn_threshold: warn_threshold.map(|t| t * 100.0),

@@ -9,6 +9,7 @@
 
 use crate::app::runtime::{HostProbe, ProcessRunner};
 use crate::app::{CheckRequest, CheckUseCase, Clock, format_metric, format_value};
+use crate::domain::{MetricMovement, movement_for_pct};
 use perfgate_types::{
     ConfigFile, HostMismatchPolicy, Metric, MetricStatus, RunReceipt, ToolInfo, VerdictStatus,
 };
@@ -63,9 +64,9 @@ pub struct WatchRunResult {
 /// Trend direction for a metric across watch iterations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrendDirection {
-    /// Performance is improving (getting faster/smaller).
+    /// Performance is improving according to the metric's better direction.
     Improving,
-    /// Performance is degrading (getting slower/larger).
+    /// Performance is degrading according to the metric's better direction.
     Degrading,
     /// Performance is stable (within noise).
     Stable,
@@ -137,7 +138,7 @@ impl WatchState {
                 if trend.history.len() > MAX_TREND_HISTORY {
                     trend.history.remove(0);
                 }
-                trend.direction = compute_trend_direction(&trend.history);
+                trend.direction = compute_trend_direction(*metric, &trend.history);
             }
         } else {
             // No baseline means pass
@@ -162,8 +163,9 @@ const STABLE_THRESHOLD: f64 = 0.01;
 
 /// Compute trend direction from a history of delta percentages.
 ///
-/// Uses a simple moving average of the last 3 entries to determine direction.
-pub fn compute_trend_direction(history: &[f64]) -> TrendDirection {
+/// Uses a simple moving average of the last 3 entries and the metric's better
+/// direction to determine whether the trend is improving or degrading.
+pub fn compute_trend_direction(metric: Metric, history: &[f64]) -> TrendDirection {
     if history.len() < 2 {
         return TrendDirection::Stable;
     }
@@ -177,14 +179,13 @@ pub fn compute_trend_direction(history: &[f64]) -> TrendDirection {
     let avg: f64 = window.iter().sum::<f64>() / window.len() as f64;
 
     if avg.abs() < STABLE_THRESHOLD {
-        TrendDirection::Stable
-    } else if avg > 0.0 {
-        // Positive pct means current > baseline, which is a regression for "lower is better"
-        // metrics. But since pct is already direction-aware from the comparison logic,
-        // positive = worse, negative = better.
-        TrendDirection::Degrading
-    } else {
-        TrendDirection::Improving
+        return TrendDirection::Stable;
+    }
+
+    match movement_for_pct(metric, avg) {
+        MetricMovement::Improved => TrendDirection::Improving,
+        MetricMovement::Regressed => TrendDirection::Degrading,
+        MetricMovement::Unchanged | MetricMovement::Unknown => TrendDirection::Stable,
     }
 }
 
@@ -504,34 +505,56 @@ mod tests {
 
     #[test]
     fn trend_direction_stable_for_empty() {
-        assert_eq!(compute_trend_direction(&[]), TrendDirection::Stable);
+        assert_eq!(
+            compute_trend_direction(Metric::WallMs, &[]),
+            TrendDirection::Stable
+        );
     }
 
     #[test]
     fn trend_direction_stable_for_single() {
-        assert_eq!(compute_trend_direction(&[0.05]), TrendDirection::Stable);
+        assert_eq!(
+            compute_trend_direction(Metric::WallMs, &[0.05]),
+            TrendDirection::Stable
+        );
     }
 
     #[test]
-    fn trend_direction_degrading_for_positive() {
+    fn trend_direction_lower_is_better_degrading_for_positive() {
         assert_eq!(
-            compute_trend_direction(&[0.05, 0.06, 0.07]),
+            compute_trend_direction(Metric::WallMs, &[0.05, 0.06, 0.07]),
             TrendDirection::Degrading
         );
     }
 
     #[test]
-    fn trend_direction_improving_for_negative() {
+    fn trend_direction_lower_is_better_improving_for_negative() {
         assert_eq!(
-            compute_trend_direction(&[-0.05, -0.06, -0.07]),
+            compute_trend_direction(Metric::WallMs, &[-0.05, -0.06, -0.07]),
             TrendDirection::Improving
+        );
+    }
+
+    #[test]
+    fn trend_direction_higher_is_better_improving_for_positive() {
+        assert_eq!(
+            compute_trend_direction(Metric::ThroughputPerS, &[0.05, 0.06, 0.07]),
+            TrendDirection::Improving
+        );
+    }
+
+    #[test]
+    fn trend_direction_higher_is_better_degrading_for_negative() {
+        assert_eq!(
+            compute_trend_direction(Metric::ThroughputPerS, &[-0.05, -0.06, -0.07]),
+            TrendDirection::Degrading
         );
     }
 
     #[test]
     fn trend_direction_stable_for_small_values() {
         assert_eq!(
-            compute_trend_direction(&[0.001, -0.002, 0.003]),
+            compute_trend_direction(Metric::WallMs, &[0.001, -0.002, 0.003]),
             TrendDirection::Stable
         );
     }
@@ -540,7 +563,10 @@ mod tests {
     fn trend_uses_last_three_entries() {
         // History has old degrading values but recent improving values
         let history = vec![0.10, 0.15, 0.20, -0.05, -0.06, -0.07];
-        assert_eq!(compute_trend_direction(&history), TrendDirection::Improving);
+        assert_eq!(
+            compute_trend_direction(Metric::WallMs, &history),
+            TrendDirection::Improving
+        );
     }
 
     #[test]

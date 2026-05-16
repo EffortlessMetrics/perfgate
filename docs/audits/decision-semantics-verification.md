@@ -78,9 +78,8 @@ This audit does not publish 0.18.0, create tags, move action aliases, or close
 the active release cutover goal.
 
 This audit does not claim every display surface has been converted away from
-raw signed `pct`. The metric-direction audit still tracks follow-ups where raw
-display is intentional or where naming/language should be tightened, including
-watch trend language and export column naming.
+raw signed `pct`. Raw signed `pct` remains a change-display field, while
+judgment surfaces use metric direction, status, or normalized regression.
 
 This audit does not make the server ledger part of correctness. Local receipts
 remain the primary correctness contract; the server ledger remains optional

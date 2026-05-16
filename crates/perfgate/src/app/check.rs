@@ -710,9 +710,11 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
         };
 
         let metric_name = format_metric(*metric).to_string();
+        let regression_pct = delta.regression * 100.0;
         let message = format!(
-            "{} regression: {} (threshold: {:.1}%)",
+            "{} regression: {:.2}% (change: {}, threshold: {:.1}%)",
             metric_name,
+            regression_pct,
             format_pct(delta.pct),
             threshold * 100.0
         );
@@ -726,7 +728,7 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
                 metric_name,
                 baseline: delta.baseline,
                 current: delta.current,
-                regression_pct: delta.pct * 100.0,
+                regression_pct,
                 threshold,
                 direction,
             }),
@@ -1165,6 +1167,83 @@ mod tests {
         assert_eq!(report.findings[0].check_id, "perf.budget");
         assert_eq!(report.summary.fail_count, 1);
         assert_eq!(report.summary.total_count, 1);
+    }
+
+    #[test]
+    fn build_report_normalizes_higher_is_better_regression() {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget::new(0.10, 0.05, Direction::Higher),
+        );
+
+        let mut deltas = BTreeMap::new();
+        deltas.insert(
+            Metric::ThroughputPerS,
+            Delta {
+                baseline: 100.0,
+                current: 80.0,
+                ratio: 0.80,
+                pct: -0.20,
+                regression: 0.20,
+                cv: None,
+                noise_threshold: None,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Fail,
+            },
+        );
+
+        let compare = CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            bench: BenchMeta {
+                name: "throughput-bench".to_string(),
+                cwd: None,
+                command: vec!["echo".to_string()],
+                repeat: 5,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: Some("baseline.json".to_string()),
+                run_id: Some("baseline-id".to_string()),
+            },
+            current_ref: CompareRef {
+                path: Some("current.json".to_string()),
+                run_id: Some("current-id".to_string()),
+            },
+            budgets,
+            deltas,
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 1,
+                    skip: 0,
+                },
+                reasons: vec!["throughput_per_s_fail".to_string()],
+            },
+        };
+
+        let report = build_report(&compare);
+
+        assert_eq!(report.findings.len(), 1);
+        let finding = &report.findings[0];
+        assert!(
+            finding
+                .message
+                .contains("throughput_per_s regression: 20.00%")
+        );
+        assert!(finding.message.contains("change: -20.00%"));
+        let data = finding.data.as_ref().unwrap();
+        assert_eq!(data.regression_pct, 20.0);
+        assert_eq!(data.direction, Direction::Higher);
     }
 
     #[test]
