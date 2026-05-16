@@ -293,3 +293,321 @@ fn decision_readiness_next_commands(
         )],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use perfgate_types::{
+        BenchConfigFile, BenchMeta, Budget, COMPARE_SCHEMA_V1, CompareReceipt, CompareRef,
+        ConfigFile, Delta, Metric, MetricStatistic, MetricStatus, ScenarioConfigFile, ToolInfo,
+        TradeoffDowngrade, TradeoffRule, Verdict, VerdictCounts, VerdictStatus,
+    };
+    use std::collections::BTreeMap;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn config_with_benches(bench_names: &[&str]) -> ConfigFile {
+        let mut config = ConfigFile::default();
+        config.benches = bench_names
+            .iter()
+            .map(|name| BenchConfigFile {
+                name: (*name).to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["true".into()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+                scaling: None,
+            })
+            .collect();
+        config
+    }
+
+    #[test]
+    fn decision_compare_paths_uses_single_receipt_for_single_bench() {
+        let config = config_with_benches(&["parser"]);
+        let temp = tempdir().expect("temp dir");
+        let out_dir = temp.path().join("artifacts");
+        fs::create_dir_all(&out_dir).expect("create out dir");
+
+        let expected = out_dir.join(COMPARE_RECEIPT_FILE);
+        fs::write(&expected, "{}").expect("write root compare");
+
+        let paths = decision_compare_paths(&config, &out_dir);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].1, expected);
+    }
+
+    #[test]
+    fn decision_compare_paths_uses_per_bench_path_when_more_than_one_bench() {
+        let config = config_with_benches(&["alpha", "beta"]);
+        let temp = tempdir().expect("temp dir");
+        let out_dir = temp.path().join("artifacts");
+        fs::create_dir_all(&out_dir).expect("create out dir");
+
+        fs::write(out_dir.join("compare.json"), "{}").expect("write shared compare");
+
+        let paths = decision_compare_paths(&config, &out_dir);
+        assert_eq!(
+            paths,
+            vec![
+                (
+                    "alpha".to_string(),
+                    out_dir.join("alpha").join(COMPARE_RECEIPT_FILE)
+                ),
+                (
+                    "beta".to_string(),
+                    out_dir.join("beta").join(COMPARE_RECEIPT_FILE)
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn configured_decision_probe_paths_collects_all_scenarios() {
+        let mut config = ConfigFile::default();
+        config.scenarios = vec![
+            ScenarioConfigFile {
+                name: "release".to_string(),
+                weight: 1.0,
+                bench: "alpha".to_string(),
+                description: None,
+                compare: None,
+                probe_compare: Some("scenario/compare.json".to_string()),
+                probe_baseline: Some("scenario/baseline.json".to_string()),
+                probe_current: Some("scenario/current.json".to_string()),
+            },
+            ScenarioConfigFile {
+                name: "startup".to_string(),
+                weight: 2.0,
+                bench: "beta".to_string(),
+                description: None,
+                compare: None,
+                probe_compare: Some("startup/compare.json".to_string()),
+                probe_baseline: Some("startup/baseline.json".to_string()),
+                probe_current: None,
+            },
+        ];
+
+        let probe_paths = configured_decision_probe_paths(&config);
+        let expected: Vec<_> = vec![
+            "scenario/baseline.json",
+            "scenario/current.json",
+            "scenario/compare.json",
+            "startup/baseline.json",
+            "startup/compare.json",
+        ]
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .collect();
+
+        assert_eq!(probe_paths, expected);
+    }
+
+    #[test]
+    fn collect_decision_readiness_evidence_sees_regression_improvement_and_noise() {
+        let config = config_with_benches(&["parser"]);
+        let temp = tempdir().expect("temp dir");
+        let out_dir = temp.path().join("artifacts");
+        fs::create_dir_all(&out_dir).expect("create out dir");
+        let compare_path = out_dir.join(COMPARE_RECEIPT_FILE);
+
+        let mut deltas = BTreeMap::new();
+        deltas.insert(
+            Metric::WallMs,
+            Delta {
+                baseline: 100.0,
+                current: 140.0,
+                ratio: 1.4,
+                pct: 0.4,
+                regression: 0.4,
+                cv: Some(0.11),
+                noise_threshold: None,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Fail,
+            },
+        );
+        deltas.insert(
+            Metric::ThroughputPerS,
+            Delta {
+                baseline: 200.0,
+                current: 220.0,
+                ratio: 1.1,
+                pct: 0.1,
+                regression: 0.0,
+                cv: None,
+                noise_threshold: None,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Pass,
+            },
+        );
+
+        let receipt = CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".into(),
+                version: "0.19.0".into(),
+            },
+            bench: BenchMeta {
+                name: "parser".into(),
+                cwd: None,
+                command: vec!["echo".into()],
+                repeat: 1,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: Some("baseline.json".into()),
+                run_id: Some("base".into()),
+            },
+            current_ref: CompareRef {
+                path: Some("current.json".into()),
+                run_id: Some("cur".into()),
+            },
+            budgets: BTreeMap::<Metric, Budget>::new(),
+            deltas,
+            verdict: Verdict {
+                status: VerdictStatus::Warn,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 1,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: Vec::new(),
+            },
+        };
+        fs::write(
+            &compare_path,
+            serde_json::to_string_pretty(&receipt).expect("serialize receipt"),
+        )
+        .expect("write compare");
+
+        let evidence =
+            collect_decision_readiness_evidence(&config, &out_dir).expect("collect evidence");
+
+        assert_eq!(evidence.compare_found, 1);
+        assert_eq!(evidence.compare_missing, 0);
+        assert!(evidence.has_regression);
+        assert!(evidence.has_improvement);
+        assert!(evidence.high_noise);
+        assert!(!evidence.has_probe_config);
+        assert_eq!(evidence.probe_receipts_found, 0);
+    }
+
+    #[test]
+    fn decision_readiness_gaps_reported_in_expected_order() {
+        let mut config = ConfigFile::default();
+        let evidence = DecisionReadinessEvidence {
+            compare_found: 0,
+            compare_missing: 1,
+            has_regression: false,
+            has_improvement: false,
+            high_noise: false,
+            has_probe_config: false,
+            probe_receipts_found: 0,
+            decision_index_exists: false,
+        };
+        assert_eq!(
+            decision_readiness_gaps(&config, &evidence),
+            vec![
+                "no compare receipts found; run `perfgate check` first",
+                "no scenario weights configured",
+                "no tradeoff rules configured",
+                "no probe evidence configured",
+            ]
+        );
+
+        config.scenarios.push(ScenarioConfigFile {
+            name: "release".into(),
+            weight: 1.0,
+            bench: "bench".into(),
+            description: None,
+            compare: None,
+            probe_compare: None,
+            probe_baseline: None,
+            probe_current: None,
+        });
+        config.tradeoffs.push(TradeoffRule {
+            name: "balance".into(),
+            if_failed: Metric::WallMs,
+            require: vec![],
+            allow: vec![],
+            downgrade_to: TradeoffDowngrade::Warn,
+        });
+
+        let configured_only = DecisionReadinessEvidence {
+            compare_found: 1,
+            compare_missing: 0,
+            has_regression: false,
+            has_improvement: false,
+            high_noise: false,
+            has_probe_config: true,
+            probe_receipts_found: 0,
+            decision_index_exists: false,
+        };
+        assert_eq!(
+            decision_readiness_gaps(&config, &configured_only),
+            vec!["configured probe evidence was not found on disk"]
+        );
+    }
+
+    #[test]
+    fn classify_decision_readiness_prioritizes_overall_ordering() {
+        let mut config = config_with_benches(&["parser"]);
+        let evidence = DecisionReadinessEvidence {
+            compare_found: 1,
+            compare_missing: 0,
+            has_regression: true,
+            has_improvement: true,
+            high_noise: true,
+            has_probe_config: false,
+            probe_receipts_found: 0,
+            decision_index_exists: false,
+        };
+        config.scenarios.push(ScenarioConfigFile {
+            name: "release".into(),
+            weight: 1.0,
+            bench: "parser".into(),
+            description: None,
+            compare: None,
+            probe_compare: None,
+            probe_baseline: None,
+            probe_current: None,
+        });
+        config.tradeoffs.push(TradeoffRule {
+            name: "balance".into(),
+            if_failed: Metric::WallMs,
+            require: vec![],
+            allow: vec![],
+            downgrade_to: TradeoffDowngrade::Warn,
+        });
+
+        assert_eq!(
+            classify_decision_readiness(&config, &evidence),
+            DecisionReadiness::PairedModeRecommended
+        );
+
+        let mut bundled = evidence;
+        bundled.decision_index_exists = true;
+        assert_eq!(
+            classify_decision_readiness(&config, &bundled),
+            DecisionReadiness::ReadyToBundle
+        );
+        bundled.decision_index_exists = false;
+        let mut still_no_index = bundled;
+        still_no_index.has_regression = false;
+        still_no_index.has_improvement = false;
+        still_no_index.high_noise = false;
+        assert_eq!(
+            classify_decision_readiness(&config, &still_no_index),
+            DecisionReadiness::StructuredDecisionReady
+        );
+    }
+}
