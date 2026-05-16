@@ -52,6 +52,44 @@ fn test_tradeoff_evaluate_writes_tradeoff_receipt() {
 }
 
 #[test]
+fn test_tradeoff_evaluate_accepts_higher_is_better_requirement() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let scenario_path = temp_dir.path().join("scenario.json");
+    let output_path = temp_dir.path().join("tradeoff.json");
+
+    write_throughput_tradeoff_config(&config_path, 1.10, "warn");
+    write_throughput_scenario_receipt(&scenario_path, 125.0, "fail");
+
+    perfgate_cmd()
+        .arg("tradeoff")
+        .arg("evaluate")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--out")
+        .arg(&output_path)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Tradeoff receipt written"));
+
+    let typed: perfgate_types::TradeoffReceipt = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read tradeoff receipt"),
+    )
+    .expect("tradeoff receipt should deserialize");
+
+    assert!(typed.decision.accepted_tradeoff);
+    assert_eq!(typed.verdict.status, perfgate_types::VerdictStatus::Warn);
+    assert_eq!(typed.rules[0].requirements[0].metric, "throughput_per_s");
+    assert!(typed.rules[0].requirements[0].satisfied);
+    assert_eq!(
+        typed.weighted_deltas["throughput_per_s"].pct, 0.25,
+        "positive throughput pct should satisfy the higher-is-better requirement"
+    );
+}
+
+#[test]
 fn test_tradeoff_evaluate_fails_when_rule_not_satisfied() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("perfgate.toml");
@@ -351,6 +389,24 @@ min_improvement_ratio = {min_improvement_ratio}
     .expect("failed to write config");
 }
 
+fn write_throughput_tradeoff_config(path: &Path, min_improvement_ratio: f64, downgrade_to: &str) {
+    fs::write(
+        path,
+        format!(
+            r#"[[tradeoff]]
+name = "memory_for_throughput"
+if_failed = "max_rss_kb"
+downgrade_to = "{downgrade_to}"
+
+[[tradeoff.require]]
+metric = "throughput_per_s"
+min_improvement_ratio = {min_improvement_ratio}
+"#
+        ),
+    )
+    .expect("failed to write config");
+}
+
 fn write_probe_tradeoff_config(path: &Path, min_improvement_ratio: f64, downgrade_to: &str) {
     fs::write(
         path,
@@ -473,6 +529,69 @@ fn write_scenario_receipt_inner(
                 "current": wall_current,
                 "ratio": wall_current / 100.0,
                 "pct": (wall_current - 100.0) / 100.0,
+                "regression": 0.0,
+                "status": "pass"
+            },
+            "max_rss_kb": {
+                "baseline": 100.0,
+                "current": 120.0,
+                "ratio": 1.20,
+                "pct": 0.20,
+                "regression": 0.20,
+                "status": memory_status
+            }
+        },
+        "verdict": {
+            "status": memory_status,
+            "counts": {
+                "pass": 1 + memory_pass,
+                "warn": memory_warn,
+                "fail": memory_fail,
+                "skip": 0
+            },
+            "reasons": reasons
+        }
+    });
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize scenario fixture"),
+    )
+    .expect("failed to write scenario fixture");
+}
+
+fn write_throughput_scenario_receipt(path: &Path, throughput_current: f64, memory_status: &str) {
+    let memory_fail = u32::from(memory_status == "fail");
+    let memory_warn = u32::from(memory_status == "warn");
+    let memory_pass = u32::from(memory_status == "pass");
+    let reasons: Vec<&str> = if memory_status == "fail" {
+        vec!["max_rss_kb_fail"]
+    } else if memory_status == "warn" {
+        vec!["max_rss_kb_warn"]
+    } else {
+        Vec::new()
+    };
+    let throughput_pct = (throughput_current - 100.0) / 100.0;
+    let receipt = json!({
+        "schema": "perfgate.scenario.v1",
+        "tool": {"name": "perfgate", "version": "0.16.0"},
+        "run": {
+            "id": "scenario-run",
+            "started_at": "2026-05-08T00:00:00Z",
+            "ended_at": "2026-05-08T00:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "scenario": {
+            "name": "release_workload",
+            "weight": 1.0
+        },
+        "components": [],
+        "weighted_deltas": {
+            "throughput_per_s": {
+                "baseline": 100.0,
+                "current": throughput_current,
+                "ratio": throughput_current / 100.0,
+                "pct": throughput_pct,
                 "regression": 0.0,
                 "status": "pass"
             },

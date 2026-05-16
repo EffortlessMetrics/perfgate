@@ -309,6 +309,68 @@ mod tests {
         }
     }
 
+    fn create_throughput_fail_compare_receipt() -> CompareReceipt {
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget::new(0.2, 0.18, Direction::Higher),
+        );
+
+        let mut deltas = BTreeMap::new();
+        deltas.insert(
+            Metric::ThroughputPerS,
+            Delta {
+                baseline: 100.0,
+                current: 70.0,
+                ratio: 0.7,
+                pct: -0.3,
+                regression: 0.3,
+                cv: None,
+                noise_threshold: None,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Fail,
+            },
+        );
+
+        CompareReceipt {
+            schema: COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            bench: BenchMeta {
+                name: "throughput-bench".to_string(),
+                cwd: None,
+                command: vec!["bench".to_string()],
+                repeat: 5,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            },
+            baseline_ref: CompareRef {
+                path: Some("baseline.json".to_string()),
+                run_id: Some("baseline-001".to_string()),
+            },
+            current_ref: CompareRef {
+                path: Some("current.json".to_string()),
+                run_id: Some("current-001".to_string()),
+            },
+            budgets,
+            deltas,
+            verdict: Verdict {
+                status: VerdictStatus::Fail,
+                counts: VerdictCounts {
+                    pass: 0,
+                    warn: 0,
+                    fail: 1,
+                    skip: 0,
+                },
+                reasons: vec!["throughput_per_s_fail".to_string()],
+            },
+        }
+    }
+
     #[test]
     fn test_report_from_pass_compare() {
         let compare = create_pass_compare_receipt();
@@ -347,6 +409,22 @@ mod tests {
         assert_eq!(result.report.findings[0].code, "metric_fail");
         assert_eq!(result.report.findings[0].severity, Severity::Fail);
         assert_eq!(result.report.summary.fail_count, 1);
+    }
+
+    #[test]
+    fn test_report_preserves_higher_is_better_direction_for_throughput_failure() {
+        let compare = create_throughput_fail_compare_receipt();
+        let result = ReportUseCase::execute(ReportRequest { compare });
+
+        assert_eq!(result.report.verdict.status, VerdictStatus::Fail);
+        assert_eq!(result.report.findings.len(), 1);
+        let data = result.report.findings[0]
+            .data
+            .as_ref()
+            .expect("finding data");
+        assert_eq!(data.metric_name, "throughput_per_s");
+        assert_eq!(data.direction, Direction::Higher);
+        assert_eq!(data.regression_pct, 0.3);
     }
 
     #[test]

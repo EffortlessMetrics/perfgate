@@ -514,6 +514,35 @@ mod tests {
     }
 
     #[test]
+    fn probe_compare_treats_per_second_metrics_as_higher_is_better() {
+        let outcome = ProbeCompareUseCase::compare(ProbeCompareRequest {
+            baseline: probe_receipt(vec![probe("parser.batch_loop", "items_per_s", 100.0)]),
+            current: probe_receipt(vec![probe("parser.batch_loop", "items_per_s", 125.0)]),
+            baseline_ref: CompareRef {
+                path: Some("baselines/probes.json".to_string()),
+                run_id: Some("base".to_string()),
+            },
+            current_ref: CompareRef {
+                path: Some("artifacts/probes.json".to_string()),
+                run_id: Some("current".to_string()),
+            },
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        })
+        .expect("compare probes");
+
+        let receipt = outcome.receipt;
+        let delta = &receipt.probes[0].deltas["items_per_s"];
+        assert!(delta.pct > 0.0);
+        assert_eq!(delta.regression, 0.0);
+        assert_eq!(delta.status, MetricStatus::Pass);
+        assert_eq!(receipt.probes[0].status, MetricStatus::Pass);
+        assert_eq!(receipt.verdict.status, VerdictStatus::Pass);
+    }
+
+    #[test]
     fn probe_compare_warns_on_missing_probe() {
         let outcome = ProbeCompareUseCase::compare(ProbeCompareRequest {
             baseline: probe_receipt(vec![probe("parser.tokenize", "wall_ms", 10.0)]),

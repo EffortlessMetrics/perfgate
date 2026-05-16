@@ -3409,6 +3409,47 @@ mod tests {
         assert_eq!(d.status, MetricStatus::Pass);
     }
 
+    #[test]
+    fn compare_higher_is_better_improvement_is_positive_pct() {
+        let baseline = Stats {
+            wall_ms: U64Summary::new(1000, 1000, 1000),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: Some(F64Summary::new(100.0, 100.0, 100.0)),
+        };
+        let current = Stats {
+            wall_ms: U64Summary::new(1000, 1000, 1000),
+            cpu_ms: None,
+            page_faults: None,
+            ctx_switches: None,
+            max_rss_kb: None,
+            io_read_bytes: None,
+            io_write_bytes: None,
+            network_packets: None,
+            energy_uj: None,
+            binary_bytes: None,
+            throughput_per_s: Some(F64Summary::new(120.0, 120.0, 120.0)),
+        };
+        let mut budgets = BTreeMap::new();
+        budgets.insert(
+            Metric::ThroughputPerS,
+            Budget::new(0.15, 0.135, Direction::Higher),
+        );
+
+        let c = compare_stats(&baseline, &current, &budgets).unwrap();
+        let d = c.deltas.get(&Metric::ThroughputPerS).unwrap();
+        assert!(d.pct > 0.0);
+        assert_eq!(d.regression, 0.0);
+        assert_eq!(d.status, MetricStatus::Pass);
+    }
+
     // =========================================================================
     // Unit Tests for Domain Error Conditions
     // **Validates: Requirements 11.1, 11.2**
