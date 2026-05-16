@@ -80,7 +80,7 @@ the active release cutover goal.
 This audit does not claim every display surface has been converted away from
 raw signed `pct`. The metric-direction audit still tracks follow-ups where raw
 display is intentional or where naming/language should be tightened, including
-trend arrows and export column naming.
+watch trend language and export column naming.
 
 This audit does not make the server ledger part of correctness. Local receipts
 remain the primary correctness contract; the server ledger remains optional

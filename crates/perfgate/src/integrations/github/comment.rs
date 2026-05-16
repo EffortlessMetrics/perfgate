@@ -8,6 +8,7 @@ use crate::app::render::{
     direction_str, format_metric_with_statistic, format_pct, format_value, metric_status_icon,
     render_reason_line, render_tradeoff_markdown,
 };
+use crate::domain::{MetricMovement, movement_for_delta};
 use perfgate_types::{CompareReceipt, PerfgateReport, TradeoffReceipt, VerdictStatus};
 
 /// Options for customizing the rendered comment.
@@ -56,7 +57,7 @@ pub fn render_comment(compare: &CompareReceipt, options: &CommentOptions) -> Str
             (String::new(), "")
         };
 
-        let trend = trend_indicator(delta.pct);
+        let trend = trend_indicator(*metric, delta);
         let status_icon = metric_status_icon(delta.status);
 
         out.push_str(&format!(
@@ -184,23 +185,27 @@ fn verdict_header(status: VerdictStatus) -> String {
     }
 }
 
-/// Generate a trend indicator with arrow and percentage.
-///
-/// - Positive changes (regression for lower-is-better): red up arrow
-/// - Negative changes (improvement for lower-is-better): green down arrow
-/// - Near zero: dash
-fn trend_indicator(pct: f64) -> String {
-    let abs_pct = (pct * 100.0).abs();
+/// Generate a direction-aware movement indicator with numeric arrow and label.
+fn trend_indicator(metric: perfgate_types::Metric, delta: &perfgate_types::Delta) -> String {
+    let abs_pct = (delta.pct * 100.0).abs();
     if abs_pct < 0.5 {
         // Essentially flat
         return "\u{2014}".to_string(); // em dash
     }
 
-    if pct > 0.0 {
-        format!("\u{25B2} {:.1}%", abs_pct) // black up-pointing triangle
+    let arrow = if delta.pct > 0.0 {
+        "\u{25B2}" // black up-pointing triangle
     } else {
-        format!("\u{25BC} {:.1}%", abs_pct) // black down-pointing triangle
-    }
+        "\u{25BC}" // black down-pointing triangle
+    };
+    let label = match movement_for_delta(metric, delta) {
+        MetricMovement::Improved => "improved",
+        MetricMovement::Regressed => "regressed",
+        MetricMovement::Unchanged => "unchanged",
+        MetricMovement::Unknown => "unknown",
+    };
+
+    format!("{arrow} {abs_pct:.1}% {label}")
 }
 
 /// Parse the `GITHUB_REPOSITORY` env var into `(owner, repo)`.
@@ -290,6 +295,21 @@ mod tests {
         }
     }
 
+    fn trend_delta(pct: f64) -> Delta {
+        Delta {
+            baseline: 100.0,
+            current: 100.0 * (1.0 + pct),
+            ratio: 1.0 + pct,
+            pct,
+            regression: if pct > 0.0 { pct } else { 0.0 },
+            statistic: MetricStatistic::Median,
+            significance: None,
+            cv: None,
+            noise_threshold: None,
+            status: MetricStatus::Pass,
+        }
+    }
+
     #[test]
     fn comment_contains_marker() {
         let receipt = make_compare_receipt();
@@ -373,22 +393,40 @@ mod tests {
 
     #[test]
     fn trend_indicator_flat() {
-        let trend = trend_indicator(0.001); // 0.1%, below 0.5% threshold
+        let trend = trend_indicator(Metric::WallMs, &trend_delta(0.001)); // 0.1%, below 0.5% threshold
         assert_eq!(trend, "\u{2014}");
     }
 
     #[test]
-    fn trend_indicator_regression() {
-        let trend = trend_indicator(0.15); // +15%
+    fn trend_indicator_lower_is_better_regression() {
+        let trend = trend_indicator(Metric::WallMs, &trend_delta(0.15)); // +15%
         assert!(trend.contains("\u{25B2}"));
         assert!(trend.contains("15.0%"));
+        assert!(trend.contains("regressed"));
     }
 
     #[test]
-    fn trend_indicator_improvement() {
-        let trend = trend_indicator(-0.10); // -10%
+    fn trend_indicator_lower_is_better_improvement() {
+        let trend = trend_indicator(Metric::WallMs, &trend_delta(-0.10)); // -10%
         assert!(trend.contains("\u{25BC}"));
         assert!(trend.contains("10.0%"));
+        assert!(trend.contains("improved"));
+    }
+
+    #[test]
+    fn trend_indicator_higher_is_better_improvement() {
+        let trend = trend_indicator(Metric::ThroughputPerS, &trend_delta(0.25)); // +25%
+        assert!(trend.contains("\u{25B2}"));
+        assert!(trend.contains("25.0%"));
+        assert!(trend.contains("improved"));
+    }
+
+    #[test]
+    fn trend_indicator_higher_is_better_regression() {
+        let trend = trend_indicator(Metric::ThroughputPerS, &trend_delta(-0.20)); // -20%
+        assert!(trend.contains("\u{25BC}"));
+        assert!(trend.contains("20.0%"));
+        assert!(trend.contains("regressed"));
     }
 
     #[test]

@@ -582,6 +582,6 @@ Artifacts:
 Known limits:
 
 - Raw signed `pct` remains a display field; callers must not treat its sign as judgment without metric direction.
-- Export column naming and some trend-arrow language remain tracked by the metric-direction audit follow-ups.
+- Export column naming and watch trend language remain tracked by the metric-direction audit follow-ups.
 
 Review after: next-decision-contract-change
