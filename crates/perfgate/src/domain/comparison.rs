@@ -460,3 +460,44 @@ fn apply_tradeoffs(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn delta(baseline: f64, current: f64) -> Delta {
+        Delta {
+            baseline,
+            current,
+            ratio: current / baseline,
+            pct: (current - baseline) / baseline,
+            regression: 0.0,
+            cv: None,
+            noise_threshold: None,
+            statistic: MetricStatistic::Median,
+            significance: None,
+            status: MetricStatus::Pass,
+        }
+    }
+
+    #[test]
+    fn improvement_ratio_treats_lower_is_better_decrease_as_improvement() {
+        let observed = improvement_ratio(&delta(100.0, 80.0), Metric::WallMs);
+
+        assert_eq!(observed, Some(1.25));
+    }
+
+    #[test]
+    fn improvement_ratio_treats_higher_is_better_increase_as_improvement() {
+        let observed = improvement_ratio(&delta(100.0, 125.0), Metric::ThroughputPerS);
+
+        assert_eq!(observed, Some(1.25));
+    }
+
+    #[test]
+    fn improvement_ratio_treats_higher_is_better_decrease_as_not_enough() {
+        let observed = improvement_ratio(&delta(100.0, 80.0), Metric::ThroughputPerS);
+
+        assert_eq!(observed, Some(0.8));
+    }
+}
