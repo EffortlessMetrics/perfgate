@@ -286,6 +286,31 @@ probe_compare = "artifacts/perfgate/large-file-probe-compare.json"
 
 Probe evidence is advisory until a tradeoff rule explicitly requires it.
 
+## Metric Direction
+
+perfgate treats movement through the metric's direction. A signed percentage is
+not enough to decide whether performance improved:
+
+| Metric | Better direction | `+10%` means | `-10%` means |
+|--------|------------------|--------------|--------------|
+| `wall_ms` | lower | regression | improvement |
+| `max_rss_kb` | lower | regression | improvement |
+| `page_faults` | lower | regression | improvement |
+| `throughput_per_s` | higher | improvement | regression |
+
+Use the receipt fields this way:
+
+| Field | Meaning |
+|-------|---------|
+| `pct` | signed numeric movement, useful for display |
+| `regression` | positive normalized regression after applying direction |
+| `status` | budget result after thresholds and warning policy |
+
+Decision suggestions and tradeoff rules use direction-aware movement. For
+example, `throughput_per_s +12%` can satisfy a compensating improvement rule,
+while `wall_ms +12%` is a latency regression. The same rule applies to named
+probe metrics when a tradeoff uses `probe = "..."`.
+
 ## Config Shape
 
 Scenarios model workload importance:
@@ -332,6 +357,12 @@ keeps the local regression bounded; if `parser.tokenize` regresses by more than
 3%, the tradeoff is rejected even if `parser.batch_loop` improves enough.
 `[decision_policy]` can require the accepted evidence to stay below a CV cap
 before perfgate automatically accepts the tradeoff.
+
+`min_improvement_ratio` also follows direction. For `wall_ms`, `1.10` means
+the current value must be at least 10% lower than the baseline. For
+`throughput_per_s`, `1.10` means the current value must be at least 10% higher.
+`max_regression` is already normalized, so it caps worsening movement after
+direction has been applied.
 
 ## GitHub Actions
 

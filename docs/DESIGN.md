@@ -74,7 +74,9 @@ let pct = (current - baseline) / baseline;  // e.g., 0.10 for 10% increase
 
 ### Direction Semantics
 
-Each metric has a **direction** that determines what constitutes a regression:
+Each metric has a **direction** that determines what constitutes improvement
+or regression. perfgate MUST NOT infer movement from the raw sign of `pct`
+alone.
 
 | Direction | Meaning | Regression When |
 |-----------|---------|-----------------|
@@ -85,6 +87,26 @@ Each metric has a **direction** that determines what constitutes a regression:
 - `wall_ms`: Lower (faster is better)
 - `max_rss_kb`: Lower (less memory is better)
 - `throughput_per_s`: Higher (more work per second is better)
+
+Movement semantics are direction-aware:
+
+| Metric shape | Improved | Regressed |
+|--------------|----------|-----------|
+| Lower is better, such as `wall_ms` | `pct < 0` | `pct > 0` |
+| Higher is better, such as `throughput_per_s` | `pct > 0` | `pct < 0` |
+
+The raw `pct` field is a signed measurement change:
+
+```text
++10% throughput is an improvement.
++10% latency is a regression.
+-10% throughput is a regression.
+-10% latency is an improvement.
+```
+
+User-facing judgment should use movement/regression semantics, not sign-only
+language. Raw signed percentages are still useful for display when the output
+also carries metric direction, status, or normalized regression.
 
 ### Regression Calculation
 
@@ -173,11 +195,18 @@ pub struct Delta {
     pub baseline: f64,    // Baseline median value
     pub current: f64,     // Current median value
     pub ratio: f64,       // current / baseline
-    pub pct: f64,         // (current - baseline) / baseline
+    pub pct: f64,         // Signed change: (current - baseline) / baseline
     pub regression: f64,  // Positive regression amount (0 if improvement)
     pub status: MetricStatus,  // Pass, Warn, or Fail
 }
 ```
+
+`pct` and `regression` intentionally answer different questions. `pct` says how
+the number moved. `regression` says how much worse it got after applying metric
+direction. Downstream receipts, reports, decision suggestions, tradeoff policy,
+repair context, Action summaries, and decision bundles should use
+`regression`, `MetricStatus`, or the shared movement helpers when deciding
+whether a change is better or worse.
 
 ## Report Synthesis
 
