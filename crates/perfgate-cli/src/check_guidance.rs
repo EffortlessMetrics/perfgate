@@ -387,6 +387,13 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    fn slash_paths(values: &[String]) -> Vec<String> {
+        values
+            .iter()
+            .map(|value| value.replace('\\', "/"))
+            .collect()
+    }
+
     #[test]
     fn shell_path_returns_plain_value_for_simple_paths() {
         let p = Path::new("perfgate.toml");
@@ -524,6 +531,7 @@ mod tests {
     fn failure_class_artifacts_missing_baseline_lists_expected_files() {
         let out_dir = PathBuf::from("artifacts/perfgate");
         let arts = FailureClass::MissingBaseline.artifacts(Some(&out_dir), None);
+        let arts = slash_paths(&arts);
         let joined = arts.join(",");
         assert!(
             joined.contains("artifacts/perfgate/run.json"),
@@ -548,6 +556,7 @@ mod tests {
         let out_dir = PathBuf::from("artifacts/perfgate");
         let compare = PathBuf::from("artifacts/perfgate/other/compare.json");
         let arts = FailureClass::PerformanceRegression.artifacts(Some(&out_dir), Some(&compare));
+        let arts = slash_paths(&arts);
         assert!(
             arts.iter()
                 .any(|a| a == "artifacts/perfgate/other/compare.json"),
@@ -566,6 +575,7 @@ mod tests {
     fn failure_class_artifacts_regression_falls_back_to_default_compare() {
         let out_dir = PathBuf::from("artifacts/perfgate");
         let arts = FailureClass::PerformanceRegression.artifacts(Some(&out_dir), None);
+        let arts = slash_paths(&arts);
         assert!(
             arts.iter().any(|a| a == "artifacts/perfgate/compare.json"),
             "got: {:?}",
@@ -577,6 +587,7 @@ mod tests {
     fn failure_class_artifacts_server_upload_failed_excludes_compare() {
         let out_dir = PathBuf::from("artifacts/perfgate");
         let arts = FailureClass::ServerUploadFailed.artifacts(Some(&out_dir), None);
+        let arts = slash_paths(&arts);
         assert!(
             !arts.iter().any(|a| a.contains("compare.json")),
             "got: {:?}",
