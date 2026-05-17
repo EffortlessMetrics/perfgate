@@ -2,7 +2,7 @@
 
 Last verified: 2026-05-17 for v0.17.0 publication reconciliation and the
 0.18.0 release-candidate cutover proof after restored post-SRP coverage
-hardening. See
+hardening and generated queue resolution. See
 [v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md),
 [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
 [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md),
@@ -10,6 +10,7 @@ hardening. See
 [v0.18.0 Final Pre-Publish Proof](audits/release-0.18.0-final-prepublish-proof.md),
 [v0.18.0 Final Proof After Coverage Hardening](audits/release-0.18.0-final-proof-after-coverage-hardening.md),
 [v0.18.0 Restored Coverage Proof](audits/release-0.18.0-restored-coverage-proof.md),
+[v0.18.0 Final Proof After Restored Coverage](audits/release-0.18.0-final-proof-after-restored-coverage.md),
 [v0.18.0 Publish Packet](audits/release-0.18.0-publish-packet.md),
 and
 [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md).
@@ -82,6 +83,7 @@ but it does not authorize publication by itself.
 | 0.18 final pre-publish proof | Passing | [v0.18.0 Final Pre-Publish Proof](audits/release-0.18.0-final-prepublish-proof.md) reran fmt, check, test, docs, source-doc, product-claim, public-surface, arch, action, schema, package-list, and five per-crate dry-run gates from the reopened release lane without publishing. |
 | 0.18 final proof after coverage hardening | Superseded | [v0.18.0 Final Proof After Coverage Hardening](audits/release-0.18.0-final-proof-after-coverage-hardening.md) was superseded after a completion audit found #473-#475 were cited but absent from the checked `main` tree. |
 | 0.18 restored coverage proof | Passing | [v0.18.0 Restored Coverage Proof](audits/release-0.18.0-restored-coverage-proof.md) restores #473-#475 coverage hardening onto current `main` and reruns fmt, check, Clippy, test, public-surface, arch, schema, action, source-doc, product-claim, docs, doc-test, and diff checks. |
+| 0.18 final proof after restored coverage | Passing | [v0.18.0 Final Proof After Restored Coverage](audits/release-0.18.0-final-proof-after-restored-coverage.md) reran fmt, check, Clippy, test, public-surface, arch, schema, action, source-doc, product-claim, docs, doc-test, and diff checks after #480, #481, and #477 landed. |
 | 0.18 publish packet | Prepared | [v0.18.0 Publish Packet](audits/release-0.18.0-publish-packet.md) records the release-operator command packet, publish order, stop conditions, partial-publish handling, and verification fields without publishing. |
 | 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
