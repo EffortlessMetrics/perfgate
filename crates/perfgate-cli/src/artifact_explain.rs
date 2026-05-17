@@ -157,3 +157,243 @@ fn artifact_next_commands(known: &[(PathBuf, &'static str)]) -> Vec<String> {
     }
     commands
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn known_artifact_role_recognizes_every_well_known_filename() {
+        let expectations = &[
+            (RUN_RECEIPT_FILE, "raw measurement receipt"),
+            (COMPARE_RECEIPT_FILE, "baseline/current comparison receipt"),
+            ("report.json", "machine-readable verdict summary"),
+            ("comment.md", "PR-ready human summary"),
+            ("repair_context.json", "local reproduction and repair hints"),
+            ("decision.md", "human-readable performance decision"),
+            (
+                "decision.index.json",
+                "index of decision evidence artifacts",
+            ),
+            ("decision-bundle.json", "portable decision evidence bundle"),
+            (
+                "probe-compare.json",
+                "named probe baseline/current comparison",
+            ),
+            ("scenario.json", "weighted workload scenario receipt"),
+            ("tradeoff.json", "tradeoff policy evaluation receipt"),
+        ];
+        for (name, role) in expectations {
+            assert_eq!(
+                known_artifact_role(name),
+                Some(*role),
+                "missing role for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn known_artifact_role_returns_none_for_unknown_filename() {
+        assert!(known_artifact_role("random.txt").is_none());
+        assert!(known_artifact_role("perfgate.toml").is_none());
+        assert!(known_artifact_role("").is_none());
+    }
+
+    #[test]
+    fn artifact_next_commands_falls_back_to_check_command_when_no_known_files() {
+        let cmds = artifact_next_commands(&[]);
+        assert_eq!(
+            cmds,
+            vec!["perfgate check --config perfgate.toml --all".to_string()]
+        );
+    }
+
+    #[test]
+    fn artifact_next_commands_recommends_comment_inspection_when_comment_present() {
+        let known = vec![(PathBuf::from("comment.md"), "PR-ready human summary")];
+        let cmds = artifact_next_commands(&known);
+        assert_eq!(cmds.len(), 1);
+        assert!(cmds[0].contains("inspect artifacts/perfgate/comment.md"));
+    }
+
+    #[test]
+    fn artifact_next_commands_recommends_repair_context_inspection() {
+        let known = vec![(
+            PathBuf::from("repair_context.json"),
+            "local reproduction and repair hints",
+        )];
+        let cmds = artifact_next_commands(&known);
+        assert!(
+            cmds.iter()
+                .any(|c| c.contains("inspect repair_context.json"))
+        );
+    }
+
+    #[test]
+    fn artifact_next_commands_recommends_decision_bundle_when_index_present() {
+        let known = vec![(
+            PathBuf::from("decision.index.json"),
+            "index of decision evidence artifacts",
+        )];
+        let cmds = artifact_next_commands(&known);
+        assert!(cmds.iter().any(|c| c.contains("perfgate decision bundle")));
+    }
+
+    #[test]
+    fn artifact_next_commands_recommends_require_baseline_when_compare_present() {
+        let known = vec![(
+            PathBuf::from(COMPARE_RECEIPT_FILE),
+            "baseline/current comparison receipt",
+        )];
+        let cmds = artifact_next_commands(&known);
+        assert!(cmds.iter().any(|c| c.contains("--require-baseline")));
+    }
+
+    #[test]
+    fn artifact_next_commands_includes_multiple_recommendations_when_artifacts_overlap() {
+        let known = vec![
+            (PathBuf::from("comment.md"), "PR-ready human summary"),
+            (
+                PathBuf::from(COMPARE_RECEIPT_FILE),
+                "baseline/current comparison receipt",
+            ),
+        ];
+        let cmds = artifact_next_commands(&known);
+        assert!(
+            cmds.iter()
+                .any(|c| c.contains("inspect artifacts/perfgate/comment.md"))
+        );
+        assert!(cmds.iter().any(|c| c.contains("--require-baseline")));
+        assert!(
+            !cmds
+                .iter()
+                .any(|c| c == "perfgate check --config perfgate.toml --all")
+        );
+    }
+
+    #[test]
+    fn artifact_next_commands_compares_by_filename_only() {
+        // Even if the path has a subdirectory prefix, file_name() should match.
+        let known = vec![(
+            PathBuf::from("bench-a/comment.md"),
+            "PR-ready human summary",
+        )];
+        let cmds = artifact_next_commands(&known);
+        assert!(
+            cmds.iter()
+                .any(|c| c.contains("inspect artifacts/perfgate/comment.md"))
+        );
+    }
+
+    #[test]
+    fn collect_artifact_files_returns_empty_when_directory_missing() {
+        let tmp = tempdir().unwrap();
+        let nonexistent = tmp.path().join("nope");
+        let mut known = Vec::new();
+        let mut unknown = Vec::new();
+        collect_artifact_files(&nonexistent, &nonexistent, &mut known, &mut unknown).unwrap();
+        assert!(known.is_empty());
+        assert!(unknown.is_empty());
+    }
+
+    #[test]
+    fn collect_artifact_files_classifies_known_and_unknown_files() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("run.json"), "{}").unwrap();
+        fs::write(root.join("report.json"), "{}").unwrap();
+        fs::write(root.join("README.txt"), "info").unwrap();
+
+        let mut known = Vec::new();
+        let mut unknown = Vec::new();
+        collect_artifact_files(root, root, &mut known, &mut unknown).unwrap();
+        let known_names: Vec<String> = known
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(known_names.contains(&"run.json".to_string()));
+        assert!(known_names.contains(&"report.json".to_string()));
+        let unknown_names: Vec<String> = unknown
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(unknown_names, vec!["README.txt"]);
+    }
+
+    #[test]
+    fn collect_artifact_files_recurses_into_subdirectories() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let nested = root.join("bench-a");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("compare.json"), "{}").unwrap();
+
+        let mut known = Vec::new();
+        let mut unknown = Vec::new();
+        collect_artifact_files(root, root, &mut known, &mut unknown).unwrap();
+        assert_eq!(known.len(), 1);
+        let (path, role) = &known[0];
+        assert_eq!(path, &PathBuf::from("bench-a/compare.json"));
+        assert_eq!(*role, "baseline/current comparison receipt");
+    }
+
+    #[test]
+    fn collect_artifact_files_sorts_known_and_unknown_lists() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        // Write in an order that's not sorted.
+        fs::write(root.join("report.json"), "{}").unwrap();
+        fs::write(root.join("compare.json"), "{}").unwrap();
+        fs::write(root.join("zzz-unknown.txt"), "x").unwrap();
+        fs::write(root.join("aaa-unknown.txt"), "x").unwrap();
+
+        let mut known = Vec::new();
+        let mut unknown = Vec::new();
+        collect_artifact_files(root, root, &mut known, &mut unknown).unwrap();
+
+        let known_paths: Vec<PathBuf> = known.iter().map(|(p, _)| p.clone()).collect();
+        let mut sorted = known_paths.clone();
+        sorted.sort();
+        assert_eq!(known_paths, sorted);
+        let mut sorted_unknown = unknown.clone();
+        sorted_unknown.sort();
+        assert_eq!(unknown, sorted_unknown);
+    }
+
+    #[test]
+    fn execute_explain_artifacts_succeeds_when_out_dir_missing() {
+        let tmp = tempdir().unwrap();
+        let missing = tmp.path().join("perfgate-nope");
+        let result = execute_explain_artifacts(ExplainArtifactsArgs { out_dir: missing });
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn execute_explain_artifacts_succeeds_for_empty_dir() {
+        let tmp = tempdir().unwrap();
+        let out_dir = tmp.path().to_path_buf();
+        let result = execute_explain_artifacts(ExplainArtifactsArgs { out_dir });
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn execute_explain_artifacts_succeeds_with_known_artifacts() {
+        let tmp = tempdir().unwrap();
+        let out_dir = tmp.path().to_path_buf();
+        fs::write(out_dir.join("run.json"), "{}").unwrap();
+        fs::write(out_dir.join("comment.md"), "ok").unwrap();
+        let result = execute_explain_artifacts(ExplainArtifactsArgs { out_dir });
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn execute_explain_action_dispatches_artifacts_variant() {
+        let tmp = tempdir().unwrap();
+        let out_dir = tmp.path().to_path_buf();
+        let result =
+            execute_explain_action(ExplainAction::Artifacts(ExplainArtifactsArgs { out_dir }));
+        assert!(result.is_ok());
+    }
+}
