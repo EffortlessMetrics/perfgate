@@ -11,6 +11,13 @@ coverage hardening tranche landed. This proof does not publish crates, create
 tags, create a GitHub release, move action aliases, prove public install, or
 close the active release cutover lane.
 
+Superseded by:
+[`v0.18.0 Restored Coverage Proof`](release-0.18.0-restored-coverage-proof.md).
+A completion audit after this proof merged found that the #473, #474, and #475
+merge commits referenced below were not contained in the current `main` history.
+The restored proof ports those test-only commits onto current `main` and reruns
+the release-candidate proof from that corrected tree.
+
 Linked proposal:
 [`PERFGATE-PROP-0004`](../proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 
