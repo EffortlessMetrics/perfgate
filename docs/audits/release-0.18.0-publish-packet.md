@@ -1,10 +1,10 @@
 # v0.18.0 Publish Packet
 
-Date: 2026-05-14
+Date: 2026-05-17
 
-Branch: `release/0-18-publish-packet`
+Branch: `release/0-18-pre-release-readiness-handoff`
 
-Prepared against main commit: `b2c69db61fe0035b16bfa391be6fa8057404a6ad`
+Prepared against main commit: `df78199b2c1ba8388b9588cb06c90a873cd1abda`
 
 Purpose: give the release operator a single copy-ready packet for the first
 irreversible 0.18.0 release step: publishing the five public crates. This packet
@@ -21,6 +21,8 @@ Linked proof:
 - [`v0.18.0 Publish Readiness Proof`](release-0.18.0-publish-readiness.md)
 - [`v0.18.0 Staged Release Artifact Smoke`](release-0.18.0-artifact-smoke.md)
 - [`v0.18.0 Final Pre-Publish Proof`](release-0.18.0-final-prepublish-proof.md)
+- [`v0.18.0 Restored Coverage Proof`](release-0.18.0-restored-coverage-proof.md)
+- [`v0.18.0 Final Proof After Restored Coverage`](release-0.18.0-final-proof-after-restored-coverage.md)
 
 ## Release Boundary
 

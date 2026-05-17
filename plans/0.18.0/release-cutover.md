@@ -63,6 +63,10 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 422 | Reopen release lane | merged | `.codex/goals/active.toml`, release readiness, product claims, plan, superseded audit |
 | 423 | Final pre-publish proof | implemented | `docs/audits/release-0.18.0-final-prepublish-proof.md` |
 | 424 | Publish packet | implemented | `docs/audits/release-0.18.0-publish-packet.md` |
+| 480 | Restored post-SRP coverage proof | merged | `docs/audits/release-0.18.0-restored-coverage-proof.md` |
+| 481 | Badge refresh | merged | generated public badge endpoint data; no release-state change |
+| 477 | Nightly baseline/trend refresh | merged | generated baseline/trend data; no release-state change |
+| 482 | Final proof after restored coverage | merged | `docs/audits/release-0.18.0-final-proof-after-restored-coverage.md` |
 | 425 | Publish crates | blocked | crates.io publication in dependency order |
 | 426 | Verify crates.io publication | blocked | `cargo info` / `cargo search` registry proof |
 | 427 | Cut GitHub release | blocked | `v0.18.0`, GitHub release, release assets, checksums |
