@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes.
+No unreleased changes beyond the prepared 0.18.0 release-candidate notes below.
 
-## [0.18.0] - 2026-05-14
+## [0.18.0] - Unreleased
+
+0.18.0 is prepared in source and release-candidate proof, but it is not yet
+published, tagged, or available through public install paths. The latest public
+release remains `v0.17.0` until the 0.18 publication closeout records crates.io,
+GitHub release, action alias, asset, and public install smoke proof.
 
 ### Changed
 - Reconciled release-readiness docs with the published v0.17.0 state across
