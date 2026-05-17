@@ -307,23 +307,24 @@ mod tests {
     use tempfile::tempdir;
 
     fn config_with_benches(bench_names: &[&str]) -> ConfigFile {
-        let mut config = ConfigFile::default();
-        config.benches = bench_names
-            .iter()
-            .map(|name| BenchConfigFile {
-                name: (*name).to_string(),
-                cwd: None,
-                work: None,
-                timeout: None,
-                command: vec!["true".into()],
-                repeat: None,
-                warmup: None,
-                metrics: None,
-                budgets: None,
-                scaling: None,
-            })
-            .collect();
-        config
+        ConfigFile {
+            benches: bench_names
+                .iter()
+                .map(|name| BenchConfigFile {
+                    name: (*name).to_string(),
+                    cwd: None,
+                    work: None,
+                    timeout: None,
+                    command: vec!["true".into()],
+                    repeat: None,
+                    warmup: None,
+                    metrics: None,
+                    budgets: None,
+                    scaling: None,
+                })
+                .collect(),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -368,29 +369,31 @@ mod tests {
 
     #[test]
     fn configured_decision_probe_paths_collects_all_scenarios() {
-        let mut config = ConfigFile::default();
-        config.scenarios = vec![
-            ScenarioConfigFile {
-                name: "release".to_string(),
-                weight: 1.0,
-                bench: "alpha".to_string(),
-                description: None,
-                compare: None,
-                probe_compare: Some("scenario/compare.json".to_string()),
-                probe_baseline: Some("scenario/baseline.json".to_string()),
-                probe_current: Some("scenario/current.json".to_string()),
-            },
-            ScenarioConfigFile {
-                name: "startup".to_string(),
-                weight: 2.0,
-                bench: "beta".to_string(),
-                description: None,
-                compare: None,
-                probe_compare: Some("startup/compare.json".to_string()),
-                probe_baseline: Some("startup/baseline.json".to_string()),
-                probe_current: None,
-            },
-        ];
+        let config = ConfigFile {
+            scenarios: vec![
+                ScenarioConfigFile {
+                    name: "release".to_string(),
+                    weight: 1.0,
+                    bench: "alpha".to_string(),
+                    description: None,
+                    compare: None,
+                    probe_compare: Some("scenario/compare.json".to_string()),
+                    probe_baseline: Some("scenario/baseline.json".to_string()),
+                    probe_current: Some("scenario/current.json".to_string()),
+                },
+                ScenarioConfigFile {
+                    name: "startup".to_string(),
+                    weight: 2.0,
+                    bench: "beta".to_string(),
+                    description: None,
+                    compare: None,
+                    probe_compare: Some("startup/compare.json".to_string()),
+                    probe_baseline: Some("startup/baseline.json".to_string()),
+                    probe_current: None,
+                },
+            ],
+            ..Default::default()
+        };
 
         let probe_paths = configured_decision_probe_paths(&config);
         let expected: Vec<_> = vec![
