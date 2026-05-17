@@ -210,3 +210,80 @@ pub(crate) fn run_git_capture_bytes(args: &[&str]) -> Option<Vec<u8>> {
     }
     Some(output.stdout)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_changed_files_summary_handles_empty_input() {
+        let summary = parse_changed_files_summary(b"");
+        assert_eq!(summary.file_count, 0);
+        assert!(summary.files.is_empty());
+        assert!(summary.file_count_by_top_level.is_empty());
+    }
+
+    #[test]
+    fn parse_changed_files_summary_groups_by_top_level_directory() {
+        // Each entry has 2-byte status code, single space, then path, terminated by NUL.
+        // Use modified entries (no rename).
+        let input = b" M src/lib.rs\0 M src/util.rs\0 M tests/case.rs\0?? README.md\0";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 4);
+        assert_eq!(summary.files.len(), 4);
+        assert_eq!(summary.file_count_by_top_level["src"], 2);
+        assert_eq!(summary.file_count_by_top_level["tests"], 1);
+        // top-level file gets "README.md" bucket
+        assert_eq!(summary.file_count_by_top_level["README.md"], 1);
+    }
+
+    #[test]
+    fn parse_changed_files_summary_handles_rename_two_path_entries() {
+        // Rename status uses two NUL-separated paths: "<old>\0<new>".
+        // The current path is the second entry (the new name).
+        let input = b"R  src/old.rs\0src/new.rs\0 M src/touched.rs\0";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 2);
+        assert_eq!(summary.files, vec!["src/new.rs", "src/touched.rs"]);
+        assert_eq!(summary.file_count_by_top_level["src"], 2);
+    }
+
+    #[test]
+    fn parse_changed_files_summary_skips_short_entries() {
+        // Entries with status header only (no path) must be ignored without panicking.
+        let input = b"M \0 M src/ok.rs\0";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 1);
+        assert_eq!(summary.files, vec!["src/ok.rs"]);
+    }
+
+    #[test]
+    fn parse_changed_files_summary_falls_back_to_dot_for_paths_starting_with_separator() {
+        // A path whose first component splits to empty (e.g., "/abs") should bucket under ".".
+        let input = b" M /abs/path.rs\0";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 1);
+        assert_eq!(summary.file_count_by_top_level["."], 1);
+    }
+
+    #[test]
+    fn parse_changed_files_summary_handles_windows_style_separators() {
+        let input = b" M crates\\perfgate\\src\\main.rs\0";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 1);
+        assert_eq!(summary.file_count_by_top_level["crates"], 1);
+    }
+
+    #[test]
+    fn run_git_capture_returns_none_for_unknown_git_subcommand() {
+        // A bogus git subcommand should exit non-zero, so we expect None.
+        let result = run_git_capture(&["this-is-not-a-real-git-subcommand"]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn run_git_capture_bytes_returns_none_for_unknown_git_subcommand() {
+        let result = run_git_capture_bytes(&["this-is-not-a-real-git-subcommand"]);
+        assert!(result.is_none());
+    }
+}
