@@ -4,9 +4,9 @@ Status: proposed
 Owner: perfgate maintainers
 Created: 2026-05-18
 Target milestone: 0.20.0
-Linked specs: PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract (planned), PERFGATE-SPEC-0012-agent-policy-change-guardrails (planned)
+Linked specs: PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract, PERFGATE-SPEC-0012-agent-policy-change-guardrails (planned)
 Linked ADRs: none
-Linked plan: policy ergonomics and team rollout implementation plan (planned)
+Linked plan: plans/0.20.0/policy-ergonomics-team-rollout.md
 Support/status impact: docs/status/PRODUCT_CLAIMS.md and docs/status/PROOF_FRESHNESS.md should be updated only after policy ergonomics behavior and proof land
 Policy impact: no policy rows by default; this lane defines reviewable rollout guidance before promoting maturity output into blocking policy
 
@@ -235,11 +235,10 @@ emit patches and reasons, not silently mutate config.
 
 ## Architecture decisions needed
 
-No ADR is required at lane start. Existing ADRs already cover the durable
-boundaries:
+No ADR is required at lane start. Existing source-of-truth docs already cover
+the durable boundaries:
 
 - receipts-first performance decisions;
-- public crates as contracts and modules as architecture boundaries; and
 - local receipts first with server ledger optional.
 
 Create an ADR only if implementation changes those boundaries, such as making
@@ -330,4 +329,3 @@ This proposal is complete when:
 - at least one external canary proves the rollout path; and
 - a closeout records what teams can now govern, what remains advisory, what
   agents cannot change, and what remains unproven.
-

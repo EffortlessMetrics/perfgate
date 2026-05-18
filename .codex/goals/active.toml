@@ -1,0 +1,157 @@
+id = "perfgate-policy-ergonomics-team-rollout"
+title = "perfgate 0.20 policy ergonomics and team rollout"
+status = "active"
+owner = "codex"
+created = "2026-05-18"
+milestone = "0.20.0"
+current_work_item = "implementation-plan"
+current_pr = "policy-rollout-plan"
+
+objective = """
+Make perfgate safe for teams to promote mature performance evidence into
+policy. A team should be able to start advisory, prove baseline and signal
+maturity, review a promotion recommendation, emit a non-mutating policy patch,
+surface advisory versus blocking posture in review and CI, keep agents from
+weakening gates, and cite only fresh enough proof.
+"""
+
+end_state = [
+  "Policy profile metadata exists for common repo shapes without behavior-changing magic.",
+  "Promotion readiness can be reported without mutating config.",
+  "Policy patch output is reviewable and non-mutating.",
+  "Review packets gather verdict, posture, maturity, signal, calibration, decision, proof freshness, next command, and do-not guidance.",
+  "GitHub Action summaries distinguish advisory signals, blocking gates, maturity warnings, promotion candidates, and policy review requirements.",
+  "Agent policy guardrails define allowed, review-required, and forbidden policy changes.",
+  "Agent policy fixtures cover missing baseline, noisy signal, mature promotion candidate, regression, tradeoff candidate, and stale proof.",
+  "Product claims use proof freshness before policy claim promotion.",
+  "At least one external canary records the policy rollout path.",
+  "The lane closes with a durable handoff and archived active goal.",
+]
+
+linked_proposal = "docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md"
+linked_spec = "docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md"
+linked_plan = "plans/0.20.0/policy-ergonomics-team-rollout.md"
+
+linked_specs = [
+  "docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md",
+  "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md",
+  "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md",
+]
+
+linked_adrs = [
+  "docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md",
+]
+
+linked_status = [
+  "docs/status/PRODUCT_CLAIMS.md",
+  "docs/status/PROOF_FRESHNESS.md",
+  "docs/status/CANARY_MATRIX.md",
+]
+
+allowed_files = [
+  "docs/proposals/**",
+  "docs/specs/**",
+  "docs/status/**",
+  "docs/handoffs/**",
+  "docs/**",
+  "plans/0.20.0/**",
+  ".codex/goals/**",
+  "crates/perfgate-cli/**",
+  "xtask/**",
+  "action.yml",
+  ".github/workflows/**",
+]
+
+forbidden_without_accepted_spec = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "crates/**/Cargo.toml",
+  "schemas/**",
+  "policy/**",
+  "release tags",
+  "GitHub release aliases",
+]
+
+proof = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+completion_criteria = [
+  "0.20 implementation plan is merged.",
+  "Policy profile metadata exists and is tested.",
+  "Rollout profile guidance explains advisory-to-blocking promotion.",
+  "Promotion doctor reports readiness without mutating config.",
+  "Policy patch output is non-mutating and reviewable.",
+  "Review packet summarizes policy posture and maturity evidence.",
+  "Action summaries surface advisory/blocking/promotion posture without changing configured behavior.",
+  "Agent policy guardrail spec exists.",
+  "Agent policy fixtures prove review-required boundaries.",
+  "Proof freshness constrains policy claim promotion.",
+  "External policy rollout canary is recorded.",
+  "Closeout handoff records proof, non-inferences, and remaining work.",
+  "This active goal is archived with status completed.",
+]
+
+[[work_item]]
+id = "proposal"
+status = "merged"
+
+[[work_item]]
+id = "promotion-contract"
+status = "merged"
+
+[[work_item]]
+id = "implementation-plan"
+status = "current"
+
+[[work_item]]
+id = "policy-profile-catalog"
+status = "pending"
+
+[[work_item]]
+id = "rollout-profile-guidance"
+status = "pending"
+
+[[work_item]]
+id = "promotion-readiness-doctor"
+status = "pending"
+
+[[work_item]]
+id = "policy-patch-output"
+status = "pending"
+
+[[work_item]]
+id = "review-packet"
+status = "pending"
+
+[[work_item]]
+id = "action-posture-summary"
+status = "pending"
+
+[[work_item]]
+id = "agent-policy-guardrails"
+status = "pending"
+
+[[work_item]]
+id = "agent-policy-fixtures"
+status = "pending"
+
+[[work_item]]
+id = "policy-claims-freshness"
+status = "pending"
+
+[[work_item]]
+id = "rollout-canary-plan"
+status = "pending"
+
+[[work_item]]
+id = "policy-rollout-canary"
+status = "pending"
+
+[[work_item]]
+id = "final-closeout"
+status = "pending"

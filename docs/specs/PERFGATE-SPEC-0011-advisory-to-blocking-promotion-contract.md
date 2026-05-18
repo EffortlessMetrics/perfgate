@@ -11,8 +11,8 @@ Schema impact: no receipt schema change by default; policy ergonomics reads exis
 Action impact: no action input, alias, or workflow behavior change by default; action summaries may surface policy posture from existing receipts and config
 Server impact: server ledger remains optional team history and must not be required for policy promotion or local correctness
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
-Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions, PERFGATE-ADR-0003-local-receipts-first-server-ledger-optional
-Linked plan: policy ergonomics and team rollout implementation plan (planned)
+Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions
+Linked plan: plans/0.20.0/policy-ergonomics-team-rollout.md
 Linked policy: policy ledgers remain source of truth for governed exceptions, public surface, workflow policy, generated files, and release proof
 Support/status impact: product claims should add or promote policy ergonomics claims only after behavior, tests, and canary proof land
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check
