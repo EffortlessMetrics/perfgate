@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: server retention and migration policy
+Current PR: repair-context scenario fixtures
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -76,10 +76,10 @@ surface change requires an accepted spec and explicit proof.
 | 512 | Decision suggestion reasons | merged | `perfgate decision suggest`, CLI tests |
 | 514 | Canary freshness matrix | merged | `docs/status/CANARY_MATRIX.md` |
 | 518 | Server backup/restore smoke | merged | server/CLI tests |
-| 520 | Server retention and migration policy | current | server docs/status |
-| 521 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 522 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 523 | Evidence maturity closeout | pending | handoff and goal archive |
+| 520 | Server retention and migration policy | merged | server docs/status |
+| 523 | Agent repair-context fixtures | current | repair-context tests/fixtures |
+| 524 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 525 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -667,7 +667,7 @@ git diff --check
 
 ## Work item: server-retention-migration-policy
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: product-claims
@@ -693,7 +693,7 @@ git diff --check
 
 ## Work item: agent-repair-context-fixtures
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked specs: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md; docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md
 Blocks: product-claims
