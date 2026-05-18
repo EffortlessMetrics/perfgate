@@ -77,9 +77,9 @@ surface change requires an accepted spec and explicit proof.
 | 514 | Canary freshness matrix | merged | `docs/status/CANARY_MATRIX.md` |
 | 518 | Server backup/restore smoke | merged | server/CLI tests |
 | 520 | Server retention and migration policy | merged | server docs/status |
-| 523 | Agent repair-context fixtures | current | repair-context tests/fixtures |
-| 524 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 525 | Evidence maturity closeout | pending | handoff and goal archive |
+| 524 | Agent repair-context fixtures | current | repair-context tests/fixtures |
+| 525 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 526 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
