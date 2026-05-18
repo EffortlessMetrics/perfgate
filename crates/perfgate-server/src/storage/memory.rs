@@ -1463,4 +1463,207 @@ mod tests {
         assert_eq!(page.events[0].resource_id, "v4");
         assert_eq!(page.events[1].resource_id, "v3");
     }
+
+    #[tokio::test]
+    async fn backup_restore_smoke_preserves_latest_history_audit_and_dry_run() {
+        let source = InMemoryStore::new();
+        source
+            .create(&record_at("p", "bench", "v1", day(1)))
+            .await
+            .unwrap();
+        source
+            .create(&record_at("p", "bench", "v2", day(3)))
+            .await
+            .unwrap();
+        source
+            .create(&record_at("other", "bench", "v1", day(9)))
+            .await
+            .unwrap();
+        source
+            .create_verdict(&verdict_at("p", "bench", VerdictStatus::Pass, day(2)))
+            .await
+            .unwrap();
+        source
+            .create_verdict(&verdict_at("p", "bench", VerdictStatus::Warn, day(4)))
+            .await
+            .unwrap();
+        source
+            .create_decision(&decision_at(
+                "p",
+                Some("memory-for-runtime"),
+                MetricStatus::Pass,
+                VerdictStatus::Pass,
+                vec!["runtime_for_memory"],
+                false,
+                day(1),
+            ))
+            .await
+            .unwrap();
+        source
+            .create_decision(&decision_at(
+                "p",
+                Some("memory-for-runtime"),
+                MetricStatus::Warn,
+                VerdictStatus::Warn,
+                vec!["memory_for_runtime"],
+                true,
+                day(5),
+            ))
+            .await
+            .unwrap();
+        source
+            .log_event(&audit_at(
+                "p",
+                "operator",
+                AuditAction::Create,
+                AuditResourceType::Decision,
+                "decision-old",
+                day(1),
+            ))
+            .await
+            .unwrap();
+        source
+            .log_event(&audit_at(
+                "p",
+                "operator",
+                AuditAction::Delete,
+                AuditResourceType::Decision,
+                "decision-dry-run",
+                day(6),
+            ))
+            .await
+            .unwrap();
+
+        let baseline_summaries = source
+            .list("p", &ListBaselinesQuery::default())
+            .await
+            .unwrap()
+            .baselines;
+        let mut backup_baselines = Vec::new();
+        for summary in baseline_summaries {
+            backup_baselines.push(
+                source
+                    .get("p", &summary.benchmark, &summary.version)
+                    .await
+                    .unwrap()
+                    .expect("listed baseline should resolve to full record"),
+            );
+        }
+        let backup_verdicts = source
+            .list_verdicts("p", &ListVerdictsQuery::default())
+            .await
+            .unwrap()
+            .verdicts;
+        let backup_decisions = source
+            .list_decisions("p", &ListDecisionsQuery::default())
+            .await
+            .unwrap()
+            .decisions;
+        let backup_audit = source
+            .list_events(&ListAuditEventsQuery {
+                project: Some("p".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .events;
+
+        let restored = InMemoryStore::new();
+        for baseline in &backup_baselines {
+            restored.create(baseline).await.unwrap();
+        }
+        for verdict in &backup_verdicts {
+            restored.create_verdict(verdict).await.unwrap();
+        }
+        for decision in &backup_decisions {
+            restored.create_decision(decision).await.unwrap();
+        }
+        for event in &backup_audit {
+            restored.log_event(event).await.unwrap();
+        }
+
+        let source_latest_baseline = source.get_latest("p", "bench").await.unwrap().unwrap();
+        let restored_latest_baseline = restored.get_latest("p", "bench").await.unwrap().unwrap();
+        assert_eq!(
+            restored_latest_baseline.version,
+            source_latest_baseline.version
+        );
+        assert_eq!(
+            restored_latest_baseline.content_hash,
+            source_latest_baseline.content_hash
+        );
+        assert!(
+            restored
+                .get_latest("other", "bench")
+                .await
+                .unwrap()
+                .is_none(),
+            "backup scoped to project p should not restore other projects"
+        );
+
+        let source_verdict_ids: Vec<_> = source
+            .list_verdicts("p", &ListVerdictsQuery::default())
+            .await
+            .unwrap()
+            .verdicts
+            .into_iter()
+            .map(|record| record.id)
+            .collect();
+        let restored_verdict_ids: Vec<_> = restored
+            .list_verdicts("p", &ListVerdictsQuery::default())
+            .await
+            .unwrap()
+            .verdicts
+            .into_iter()
+            .map(|record| record.id)
+            .collect();
+        assert_eq!(restored_verdict_ids, source_verdict_ids);
+
+        let source_latest_decision = source.latest_decision("p").await.unwrap().unwrap();
+        let restored_latest_decision = restored.latest_decision("p").await.unwrap().unwrap();
+        assert_eq!(restored_latest_decision.id, source_latest_decision.id);
+        assert_eq!(
+            restored_latest_decision.accepted_rules,
+            source_latest_decision.accepted_rules
+        );
+
+        let source_audit_ids: Vec<_> = source
+            .list_events(&ListAuditEventsQuery {
+                project: Some("p".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .events
+            .into_iter()
+            .map(|event| event.id)
+            .collect();
+        let restored_audit_ids: Vec<_> = restored
+            .list_events(&ListAuditEventsQuery {
+                project: Some("p".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .events
+            .into_iter()
+            .map(|event| event.id)
+            .collect();
+        assert_eq!(restored_audit_ids, source_audit_ids);
+
+        let prune = restored.prune_decisions("p", day(3), true).await.unwrap();
+        assert_eq!(prune.matched, 1);
+        assert_eq!(prune.deleted, 0);
+        assert!(prune.dry_run);
+        assert_eq!(
+            restored
+                .list_decisions("p", &ListDecisionsQuery::default())
+                .await
+                .unwrap()
+                .pagination
+                .total,
+            2,
+            "dry-run prune must not delete restored decision history"
+        );
+    }
 }
