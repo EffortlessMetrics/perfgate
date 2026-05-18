@@ -79,7 +79,7 @@ surface change requires an accepted spec and explicit proof.
 | 520 | Server retention and migration policy | merged | server docs/status |
 | 524 | Agent repair-context fixtures | merged | repair-context tests/fixtures |
 | 528 | Proof freshness tiers and claims | merged | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 529 | Evidence maturity closeout | current | handoff and goal archive |
+| 530 | Evidence maturity closeout | current | handoff and goal archive |
 
 ## Work item: implementation-plan
 
