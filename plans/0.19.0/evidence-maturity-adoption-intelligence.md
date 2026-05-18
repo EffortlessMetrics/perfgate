@@ -80,7 +80,7 @@ surface change requires an accepted spec and explicit proof.
 | 520 | Server retention and migration policy | merged | server docs/status |
 | 524 | Agent repair-context fixtures | merged | repair-context tests/fixtures |
 | 528 | Proof freshness tiers and claims | merged | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 530 | Evidence maturity closeout | current | handoff and goal archive |
+| 530 | Evidence maturity closeout | merged | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -764,7 +764,7 @@ git diff --check
 
 ## Work item: final-closeout
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked specs: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md; docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md
 Blocks:
