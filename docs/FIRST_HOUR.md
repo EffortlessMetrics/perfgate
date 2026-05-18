@@ -50,7 +50,9 @@ baselines/.gitkeep
 Open `perfgate.toml` and replace the generated benchmark command with a real
 command for your project. `--suggest-benches` appends commented candidates for
 common repo shapes; they are suggestions, not policy. Keep the first benchmark
-simple and deterministic.
+simple and deterministic. Use
+[`BENCHMARK_RECIPES.md`](BENCHMARK_RECIPES.md) when deciding whether the
+candidate should be smoke-only, advisory, gate-ready, or paired.
 
 Good first-hour benchmarks are usually fast, stable, and close to the workload
 you want to protect. Avoid making a compile-heavy command the first required

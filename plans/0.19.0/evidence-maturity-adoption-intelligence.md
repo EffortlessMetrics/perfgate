@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: benchmark recipe catalog
+Current PR: benchmark recipe guidance
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -67,8 +67,8 @@ surface change requires an accepted spec and explicit proof.
 | 499 | Evidence maturity contract spec | merged | `docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md` |
 | 500 | Evidence maturity implementation plan | merged | `plans/0.19.0/evidence-maturity-adoption-intelligence.md`, `.codex/goals/active.toml` |
 | 502 | Agent repair-context contract spec | merged | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
-| 503 | Benchmark recipe catalog | current | `perfgate init`, recipe metadata, CLI tests |
-| 504 | Benchmark recipe guidance | pending | docs for recipes and anti-patterns |
+| 503 | Benchmark recipe catalog | merged | `perfgate init`, recipe metadata, CLI tests |
+| 504 | Benchmark recipe guidance | current | docs for recipes and anti-patterns |
 | 505 | Baseline maturity doctor | pending | `perfgate baseline doctor`, CLI tests |
 | 506 | Signal maturity doctor | pending | `perfgate doctor signal`, CLI tests |
 | 507 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
@@ -180,7 +180,7 @@ Revert the spec PR. Evidence maturity spec remains valid without agent details.
 
 ## Work item: benchmark-recipe-catalog
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: benchmark-recipe-guidance, product-claims
@@ -240,7 +240,7 @@ Revert recipe metadata wiring and tests.
 
 ## Work item: benchmark-recipe-guidance
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks:

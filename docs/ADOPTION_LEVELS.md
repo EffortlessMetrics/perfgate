@@ -37,7 +37,10 @@ perfgate check --config perfgate.toml --all --require-baseline
 Keep the first config boring: one benchmark, local baselines, and a budget wide
 enough to avoid making noise look like policy. `--suggest-benches` adds
 commented candidates; review and edit one into a real `[[bench]]` entry before
-promoting a baseline.
+promoting a baseline. Use the
+[benchmark recipe guide](BENCHMARK_RECIPES.md) when deciding whether a workload
+should be smoke-only, advisory, gate-ready, paired, or structured-decision
+input.
 
 ```toml
 [defaults]
