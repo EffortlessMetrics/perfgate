@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.19.0"
-current_work_item = "decision-suggestion-reasons"
-current_pr = "decision: explain suggestion reasons"
+current_work_item = "canary-freshness-matrix"
+current_pr = "docs(status): add canary freshness matrix"
 
 objective = """
 Make perfgate useful after week one. A team should be able to tell which
@@ -49,6 +49,7 @@ linked_adrs = [
 
 linked_status = [
   "docs/status/PRODUCT_CLAIMS.md",
+  "docs/status/CANARY_MATRIX.md",
 ]
 
 allowed_files = [
@@ -187,14 +188,14 @@ plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]
 id = "decision-suggestion-reasons"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]
 id = "canary-freshness-matrix"
-status = "pending"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
