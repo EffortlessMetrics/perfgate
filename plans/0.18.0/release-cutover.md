@@ -74,6 +74,8 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 491 | Publish packet/current-main sync | implemented | `docs/audits/release-0.18.0-publish-packet.md` |
 | 492 | Install/action example audit | implemented | `docs/audits/release-0.18.0-install-action-example-audit.md` |
 | 493 | Product claims readiness sync | implemented | `docs/status/PRODUCT_CLAIMS.md` |
+| 494 | Generated baseline/trend refresh | closed | closed to preserve the current RC proof boundary; scheduled job can regenerate |
+| 495 | Release-candidate readiness closeout | implemented | `docs/handoffs/2026-05-18-0-18-release-candidate-readiness-closeout.md` |
 | 425 | Publish crates | blocked | crates.io publication in dependency order |
 | 426 | Verify crates.io publication | blocked | `cargo info` / `cargo search` registry proof |
 | 427 | Cut GitHub release | blocked | `v0.18.0`, GitHub release, release assets, checksums |

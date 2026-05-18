@@ -14,6 +14,7 @@ hardening, generated queue resolution, and the #484 init extraction. See
 [v0.18.0 Final Proof After Init Extraction](audits/release-0.18.0-final-proof-after-init-extraction.md),
 [v0.18.0 Publish Packet](audits/release-0.18.0-publish-packet.md),
 [v0.18.0 Install And Action Example Audit](audits/release-0.18.0-install-action-example-audit.md),
+[v0.18.0 Release-Candidate Readiness Closeout](handoffs/2026-05-18-0-18-release-candidate-readiness-closeout.md),
 and
 [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md).
 The current 0.18 cutover lane remains active. The earlier
@@ -90,6 +91,7 @@ publication by itself.
 | 0.18 final proof after init extraction | Passing | [v0.18.0 Final Proof After Init Extraction](audits/release-0.18.0-final-proof-after-init-extraction.md) reran fmt, check, Clippy, test, public-surface, arch, schema, action, source-doc, product-claim, docs, doc-test, and diff checks after #484 extracted `perfgate init` into `crates/perfgate-cli/src/init.rs`. |
 | 0.18 publish packet | Prepared | [v0.18.0 Publish Packet](audits/release-0.18.0-publish-packet.md) records the release-operator command packet, publish order, stop conditions, partial-publish handling, and verification fields against the current pre-publication candidate without publishing. |
 | 0.18 install/action examples | Covered | [v0.18.0 Install And Action Example Audit](audits/release-0.18.0-install-action-example-audit.md) verifies public install and action examples do not imply unpublished `0.18.0` crates, tags, release assets, aliases, or public install smoke. |
+| 0.18 release-candidate readiness closeout | Ready | [v0.18.0 Release-Candidate Readiness Closeout](handoffs/2026-05-18-0-18-release-candidate-readiness-closeout.md) records that the unreleased release candidate is ready while publication remains operator-gated. |
 | 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
