@@ -1,18 +1,18 @@
 # perfgate 0.18.0 Release Cutover Plan
 
-Status: active
+Status: completed
 Owner: perfgate maintainers
 Created: 2026-05-14
 Milestone: 0.18.0
-Current PR: release-operator-gated publication
+Current PR: complete
 Linked proposal: [`PERFGATE-PROP-0004-0-18-release-cutover`](../../docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../../docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../../docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../../docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0001-public-crates-are-contracts`](../../docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md), [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
 Linked policy: [`public_crates.txt`](../../policy/public_crates.txt), [`absorbed_crates.txt`](../../policy/absorbed_crates.txt)
 Support/status impact: [`PRODUCT_CLAIMS.md`](../../docs/status/PRODUCT_CLAIMS.md) and [`RELEASE_READINESS.md`](../../docs/RELEASE_READINESS.md) must match the public release state
 Proof commands: docs-check; doc-test; docs-source-check; product-claims-check; public-surface --strict; arch; action-check; schema-compat; publish-check dry-runs; public install smoke after publication
-Blocks: 0.18 publication closeout
-Blocked by: explicit release-operator approval for crates.io publish, tags, GitHub release, and action alias movement
+Blocks:
+Blocked by:
 Rollback: before publication, revert the release-prep PRs; after publication, forward-fix crates/docs/tags and record repair notes because crates.io versions cannot be unpublished as a normal rollback
 
 ## Goal
@@ -30,8 +30,10 @@ what remains unproven
 what should happen next
 ```
 
-This plan sequences the release work. It does not authorize publishing crates,
-moving tags, creating a GitHub release, or moving action aliases by itself.
+This plan sequenced the release work. Planning artifacts did not authorize
+publishing crates, moving tags, creating a GitHub release, or moving action
+aliases by themselves; those steps were completed under release-operator
+control and recorded in the publication closeout.
 
 ## Operating Rules
 
@@ -77,13 +79,13 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 494 | Generated baseline/trend refresh | closed | closed to preserve the current RC proof boundary; scheduled job can regenerate |
 | 495 | Release-candidate readiness closeout | implemented | `docs/handoffs/2026-05-18-0-18-release-candidate-readiness-closeout.md` |
 | 496 | Release-candidate pointer sync | implemented | release readiness and publish packet point at #495/current RC state |
-| 425 | Publish crates | blocked | crates.io publication in dependency order |
-| 426 | Verify crates.io publication | blocked | `cargo info` / `cargo search` registry proof |
-| 427 | Cut GitHub release | blocked | `v0.18.0`, GitHub release, release assets, checksums |
-| 428 | Move `v0.18` alias | blocked | `v0.18` action alias |
-| 429 | Decide and move `v0` default alias | blocked | `v0` action alias or explicit non-movement |
-| 430 | Public install smoke | blocked | public path and first-hour smoke from published artifacts |
-| 431 | Publication closeout | blocked | release closeout audit, product claims, archived goal |
+| 425 | Publish crates | completed | crates.io publication in dependency order |
+| 426 | Verify crates.io publication | completed | `cargo info` / `cargo search` registry proof |
+| 427 | Cut GitHub release | completed | `v0.18.0`, GitHub release, release assets, checksums |
+| 428 | Move `v0.18` alias | completed | `v0.18` action alias |
+| 429 | Decide and move `v0` default alias | completed | `v0` action alias moved to `v0.18.0` release commit |
+| 430 | Public install smoke | completed | public path and first-hour smoke from published artifacts |
+| 431 | Publication closeout | completed | release closeout audit, product claims, archived goal |
 
 ## Work Item: version-prep
 
@@ -244,7 +246,7 @@ Revert the audit PR. No public state changes in this work item.
 
 ## Work Item: release-operator-gated-publication
 
-Status: current
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: publish-crates, tag-release-aliases, public-install-smoke, publication-closeout
@@ -252,18 +254,15 @@ Blocked by: explicit release-operator approval
 
 ### Goal
 
-Keep the lane active at the release-operator boundary. The next irreversible
-steps are publishing crates, creating tags/releases/assets, moving action
-aliases, and running public install smoke.
+Record that the release-operator boundary was crossed and completed.
 
 ### Acceptance
 
 - Prep remains recorded: 0.18.0 versions, publish dry-runs, staged artifact
   smoke, and public docs cutover.
-- Latest public release remains `v0.17.0` until crates, tags, release assets,
-  aliases, and public install smoke actually move.
-- The lane is not archived until public install smoke and publication closeout
-  are complete.
+- Latest public release is `v0.18.0` after crates, tag, release assets,
+  aliases, and public install smoke moved.
+- The lane is archived by the publication closeout.
 
 ### Rollback
 
@@ -308,7 +307,7 @@ item.
 
 ## Work Item: publish-crates
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: verify-crates-publication
@@ -342,7 +341,7 @@ release and document the issue.
 
 ## Work Item: verify-crates-publication
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: cut-github-release
@@ -379,7 +378,7 @@ repair audit.
 
 ## Work Item: cut-github-release
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: move-v0-18-alias
@@ -406,7 +405,7 @@ record repair notes.
 
 ## Work Item: move-v0-18-alias
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: move-v0-default-alias, public-install-smoke
@@ -429,7 +428,7 @@ notes.
 
 ## Work Item: move-v0-default-alias
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked spec: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md
 Blocks: public-install-smoke
@@ -454,7 +453,7 @@ Move `v0` only under explicit operator approval and record repair notes.
 
 ## Work Item: public-install-smoke
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks: publication-closeout
@@ -490,7 +489,7 @@ release or docs correction, and update the publication closeout.
 
 ## Work Item: publication-closeout
 
-Status: blocked
+Status: completed
 Linked proposal: docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md
 Linked specs: docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md; docs/specs/PERFGATE-SPEC-0007-guided-adoption-contract.md
 Blocks:

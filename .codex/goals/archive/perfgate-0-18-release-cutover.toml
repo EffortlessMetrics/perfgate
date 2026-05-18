@@ -1,11 +1,13 @@
 id = "perfgate-0-18-release-cutover"
 title = "perfgate 0.18.0 release cutover and public install proof"
-status = "active"
+status = "completed"
 owner = "codex"
 created = "2026-05-14"
+completed = "2026-05-18"
 milestone = "0.18.0"
-current_work_item = "release-operator-gated-publication"
-current_pr = "release: publish 0.18.0 crates"
+current_work_item = "none"
+current_pr = "complete"
+archive_reason = "perfgate 0.18.0 was published to crates.io, tagged, released with assets and checksums, mapped to v0.18 and v0 action aliases, smoke-tested from public artifacts, and closed with publication proof."
 
 objective = """
 Cut perfgate 0.18.0 with no ambiguity. The repo must
@@ -234,8 +236,8 @@ commands = [
 
 [[work_item]]
 id = "release-operator-gated-publication"
-status = "current"
-blocked_by = "explicit release-operator approval"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -254,8 +256,8 @@ commands = [
 
 [[work_item]]
 id = "publish-crates"
-status = "blocked"
-blocked_by = "explicit release-operator approval and publish-packet"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -269,8 +271,8 @@ commands = [
 
 [[work_item]]
 id = "verify-crates-publication"
-status = "blocked"
-blocked_by = "publish-crates"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -285,8 +287,8 @@ commands = [
 
 [[work_item]]
 id = "cut-github-release"
-status = "blocked"
-blocked_by = "explicit release-operator approval and verify-crates-publication"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -298,8 +300,8 @@ commands = [
 
 [[work_item]]
 id = "move-v0-18-alias"
-status = "blocked"
-blocked_by = "explicit release-operator approval and cut-github-release"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -310,8 +312,8 @@ commands = [
 
 [[work_item]]
 id = "move-v0-default-alias"
-status = "blocked"
-blocked_by = "explicit release-operator approval and move-v0-18-alias"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -322,8 +324,8 @@ commands = [
 
 [[work_item]]
 id = "public-install-smoke"
-status = "blocked"
-blocked_by = "verify-crates-publication and cut-github-release and move-v0-18-alias"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"
@@ -339,8 +341,8 @@ commands = [
 
 [[work_item]]
 id = "publication-closeout"
-status = "blocked"
-blocked_by = "public-install-smoke"
+status = "completed"
+blocked_by = ""
 proposal = "docs/proposals/PERFGATE-PROP-0004-0-18-release-cutover.md"
 spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
 plan = "plans/0.18.0/release-cutover.md"

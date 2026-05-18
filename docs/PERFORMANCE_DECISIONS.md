@@ -379,10 +379,8 @@ Enable decision mode in the repository action:
     review_required: "warn"
 ```
 
-`@v0` tracks the current public compatible action release. During the 0.18
-pre-publication state, do not pin `@v0.18` or `@v0.18.0` until the publication
-closeout records the exact tag, release assets, alias movement, and public
-install smoke.
+`@v0` tracks the current public compatible action release. Use `@v0.18.0` for
+an exact 0.18 patch pin or `@v0.18` for the current 0.18 release line.
 
 Decision mode runs `perfgate decision evaluate --config perfgate.toml` after
 `check`, uploads the decision artifacts, and appends `decision.md` to the job

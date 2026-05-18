@@ -46,9 +46,8 @@ perfgate --version
 perfgate doctor --help
 ```
 
-Current public release: `v0.17.0`. The `0.18.0` source tree has release-candidate
-proof in progress, but it is not public until crates, tags, release assets,
-action aliases, and public install smoke are recorded in the release closeout.
+Current public release: `v0.18.0`. The five public crates, GitHub release
+assets, `v0.18`, and `v0` action aliases are published for 0.18.0.
 
 ## Start Here
 
@@ -110,9 +109,8 @@ The generated GitHub workflow uses the repository action:
     upload_artifact: "true"
 ```
 
-Use `@v0.17.0` for an exact patch pin, or `@v0.17` / `@v0` to follow the
-current compatible action tag until the `0.18.0` publication closeout moves
-the release aliases.
+Use `@v0.18.0` for an exact patch pin, `@v0.18` for the current 0.18 line, or
+`@v0` to follow the current compatible action tag.
 
 ## Performance Decisions
 
