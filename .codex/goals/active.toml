@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.19.0"
-current_work_item = "implementation-plan"
-current_pr = "docs(plan): add evidence maturity implementation plan"
+current_work_item = "agent-repair-context-contract"
+current_pr = "docs(spec): define agent repair-context contract"
 
 objective = """
 Make perfgate useful after week one. A team should be able to tell which
@@ -35,12 +35,12 @@ linked_plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 linked_specs = [
   "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md",
+  "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md",
   "docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md",
   "docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md",
 ]
 
 planned_specs = [
-  "PERFGATE-SPEC-0010-agent-repair-context-contract",
 ]
 
 linked_adrs = [
@@ -124,7 +124,7 @@ commands = [
 
 [[work_item]]
 id = "implementation-plan"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
@@ -138,9 +138,9 @@ commands = [
 
 [[work_item]]
 id = "agent-repair-context-contract"
-status = "pending"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
-planned_spec = "PERFGATE-SPEC-0010-agent-repair-context-contract"
+spec = "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]
@@ -217,7 +217,7 @@ plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 id = "agent-repair-context-fixtures"
 status = "pending"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
-planned_spec = "PERFGATE-SPEC-0010-agent-repair-context-contract"
+spec = "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]

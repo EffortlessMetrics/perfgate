@@ -4,9 +4,9 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: evidence maturity implementation plan
+Current PR: agent repair-context contract spec
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
-Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), PERFGATE-SPEC-0010-agent-repair-context-contract (planned)
+Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
 Linked policy: policy ledgers remain referenced by specs and status docs; no policy row changes in this plan PR
 Support/status impact: product claims should be added or promoted after behavior and proof land, with proof freshness tiers where appropriate
@@ -65,8 +65,8 @@ surface change requires an accepted spec and explicit proof.
 |----|-----------|--------|-----------------|
 | 498 | Evidence maturity proposal | merged | `docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md` |
 | 499 | Evidence maturity contract spec | merged | `docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md` |
-| 500 | Evidence maturity implementation plan | current | `plans/0.19.0/evidence-maturity-adoption-intelligence.md`, `.codex/goals/active.toml` |
-| 501 | Agent repair-context contract spec | pending | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
+| 500 | Evidence maturity implementation plan | merged | `plans/0.19.0/evidence-maturity-adoption-intelligence.md`, `.codex/goals/active.toml` |
+| 501 | Agent repair-context contract spec | current | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
 | 502 | Benchmark recipe catalog | pending | `perfgate init`, recipe metadata, CLI tests |
 | 503 | Benchmark recipe guidance | pending | docs for recipes and anti-patterns |
 | 504 | Baseline maturity doctor | pending | `perfgate baseline doctor`, CLI tests |
@@ -83,7 +83,7 @@ surface change requires an accepted spec and explicit proof.
 
 ## Work item: implementation-plan
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: agent-repair-context-contract, benchmark-recipe-catalog
@@ -117,7 +117,7 @@ Revert this plan and active goal manifest. Proposal and spec remain valid.
 
 ## Work item: agent-repair-context-contract
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked specs: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md; docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md
 Blocks: agent-repair-context-fixtures
