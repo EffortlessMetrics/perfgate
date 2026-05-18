@@ -24,16 +24,20 @@ needs a local performance budget before CI or server setup.
 ### Commands
 
 ```bash
-perfgate init --ci github --profile standard
+perfgate doctor
+perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 ### Config
 
 Keep the first config boring: one benchmark, local baselines, and a budget wide
-enough to avoid making noise look like policy.
+enough to avoid making noise look like policy. `--suggest-benches` adds
+commented candidates; review and edit one into a real `[[bench]]` entry before
+promoting a baseline.
 
 ```toml
 [defaults]

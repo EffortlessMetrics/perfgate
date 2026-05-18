@@ -153,9 +153,11 @@ For the current first-run path, see the `Start Here` section in
 ```bash
 cargo binstall perfgate-cli
 perfgate doctor
-perfgate init --ci github --profile standard
+perfgate init --ci github --profile standard --suggest-benches
+perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 For the structured-decision release proof, start from that generated setup and
@@ -166,7 +168,7 @@ change under review and writes compare receipts for `decision evaluate`:
 ```bash
 cargo binstall perfgate-cli
 perfgate doctor
-perfgate init --ci github --profile standard
+perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all
@@ -310,7 +312,8 @@ The **core local gating pipeline** is production-quality:
 
 - **Paved first-run setup** — `perfgate init --ci github --profile standard`
   writes `perfgate.toml`, `.github/workflows/perfgate.yml`,
-  `baselines/.gitkeep`, and `.perfgate/README.md`; `--preset` remains a
+  `baselines/.gitkeep`, and `.perfgate/README.md`; `--suggest-benches` appends
+  reviewable commented benchmark candidates, and `--preset` remains a
   compatibility alias.
 - **Baseline bootstrap UX** — `perfgate baseline status` and
   `perfgate baseline promote --all` cover the local-baseline path without

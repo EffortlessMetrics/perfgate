@@ -97,7 +97,7 @@ handoff, see [`ADOPTION_LEVELS.md`](ADOPTION_LEVELS.md).
 Keep the local baseline path and make sure the normal gate is stable:
 
 ```bash
-perfgate init --ci github --profile standard
+perfgate init --ci github --profile standard --suggest-benches
 perfgate check --config perfgate.toml --all
 ```
 
@@ -105,6 +105,7 @@ Add baseline promotion after you trust the first run:
 
 ```bash
 perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 ### 2) Decision mode

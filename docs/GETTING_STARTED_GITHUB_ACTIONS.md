@@ -11,7 +11,7 @@ This guide shows a minimal GitHub Actions setup for `perfgate` with:
 Run this from the repository root:
 
 ```bash
-perfgate init --ci github --profile standard
+perfgate init --ci github --profile standard --suggest-benches
 ```
 
 This creates:
@@ -21,13 +21,18 @@ This creates:
 - `baselines/.gitkeep`
 - `.perfgate/README.md`
 
+`--suggest-benches` appends commented benchmark candidates. Review them, edit
+one into a real `[[bench]]`, and keep the first required gate simple until the
+signal is calibrated.
+
 The generated setup uses local in-repo baselines first. After a trusted local
-run, promote each first baseline and commit it:
+run, promote each first baseline and prove the CI-equivalent gate locally:
 
 ```bash
 perfgate check --config perfgate.toml --all
 perfgate baseline status --config perfgate.toml
 perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 ## 2) Repository layout

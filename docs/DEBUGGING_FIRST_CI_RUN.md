@@ -1,6 +1,7 @@
 # Debugging the First CI Run
 
-This guide covers the first run after `perfgate init --ci github --profile standard`.
+This guide covers the first run after
+`perfgate init --ci github --profile standard --suggest-benches`.
 
 ## Start Locally
 
@@ -17,6 +18,12 @@ If the check created a trusted first run, promote it into local baselines:
 perfgate baseline promote --config perfgate.toml --all
 ```
 
+Then prove the same baseline-required path locally:
+
+```bash
+perfgate check --config perfgate.toml --all --require-baseline
+```
+
 Commit the generated baselines before expecting the generated GitHub workflow to
 pass with `require_baseline: "true"`.
 
@@ -30,6 +37,7 @@ If CI reports a missing baseline:
 ```bash
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 Then commit `baselines/` and rerun CI.

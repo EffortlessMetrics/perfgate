@@ -1,8 +1,10 @@
 # First Hour With perfgate
 
 This guide is for a cold user adding perfgate to an existing repository. It
-keeps the path small: install, initialize, run one local check, promote the
-first baseline, commit the durable files, and let CI reproduce the same gate.
+keeps the path small: install, check the environment, initialize with
+reviewable benchmark suggestions, run one local check, promote the first
+baseline, prove the CI-equivalent gate locally, commit the durable files, and
+let CI reproduce the same gate.
 
 You do not need the server, probes, scenarios, or structured decisions for this
 first hour.
@@ -33,7 +35,7 @@ perfgate doctor --help
 Run this from the repository root:
 
 ```bash
-perfgate init --ci github --profile standard
+perfgate init --ci github --profile standard --suggest-benches
 ```
 
 Expected new files:
@@ -46,7 +48,13 @@ baselines/.gitkeep
 ```
 
 Open `perfgate.toml` and replace the generated benchmark command with a real
-command for your project. Keep the first benchmark simple and deterministic.
+command for your project. `--suggest-benches` appends commented candidates for
+common repo shapes; they are suggestions, not policy. Keep the first benchmark
+simple and deterministic.
+
+Good first-hour benchmarks are usually fast, stable, and close to the workload
+you want to protect. Avoid making a compile-heavy command the first required
+gate until you have calibrated its noise.
 
 ## 3. Check The Setup
 
@@ -105,7 +113,19 @@ baselines/
 
 These files are the comparison point for future local and CI checks.
 
-## 6. Commit The Right Files
+## 6. Prove The CI-Equivalent Gate
+
+After promotion, run the same baseline-required check that the generated
+workflow will run:
+
+```bash
+perfgate check --config perfgate.toml --all --require-baseline
+```
+
+This is the point where a missing baseline becomes setup drift instead of a
+normal first-run condition. Fix setup drift before pushing the branch.
+
+## 7. Commit The Right Files
 
 Commit the durable setup and baseline:
 
@@ -129,7 +149,7 @@ Usually do not commit:
 - one-off decision bundles unless they are attached to a release, audit, issue,
   or review record on purpose
 
-## 7. Run CI
+## 8. Run CI
 
 Push the branch and let the generated GitHub workflow run. The workflow uses
 the repository action:
@@ -147,7 +167,7 @@ Use `@v0.17.0` for an exact patch pin, or `@v0.17` / `@v0` to follow the
 current compatible action tag until the `0.18.0` publication closeout moves
 the release aliases.
 
-## 8. Understand Pass And Fail
+## 9. Understand Pass And Fail
 
 A passing check means the current benchmark receipts are within configured
 budget policy relative to the committed baseline.
@@ -175,7 +195,7 @@ If the failure is a real intended performance change, rerun the benchmark
 enough times to trust the new result, then promote the new baseline in a
 separate, reviewable commit.
 
-## 9. Grow Later
+## 10. Grow Later
 
 After the basic gate is stable:
 

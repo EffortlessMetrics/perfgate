@@ -52,21 +52,25 @@ action aliases, and public install smoke are recorded in the release closeout.
 
 ## Start Here
 
-From a repository with benchmark commands:
+From a repository root, use the smallest useful path first:
 
 ```bash
-perfgate init --ci github --profile standard
+perfgate doctor
+perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
 git add perfgate.toml .github/workflows/perfgate.yml baselines/ .perfgate/
 ```
 
 For a concrete cold-start walkthrough, including expected files, artifacts,
 pass/fail behavior, and what to commit, see
-[`docs/FIRST_HOUR.md`](docs/FIRST_HOUR.md).
+[`docs/FIRST_HOUR.md`](docs/FIRST_HOUR.md). `--suggest-benches` appends
+commented benchmark candidates so benchmark choice stays reviewable; edit or
+replace them before promoting a baseline.
 
-`perfgate init --ci github --profile standard` creates:
+`perfgate init --ci github --profile standard --suggest-benches` creates:
 
 ```text
 perfgate.toml
@@ -76,7 +80,8 @@ baselines/.gitkeep
 ```
 
 The generated config defaults to local checked-in baselines and predictable
-artifacts:
+artifacts. Suggested benches are comments until you intentionally edit them
+into the config:
 
 ```toml
 [defaults]
