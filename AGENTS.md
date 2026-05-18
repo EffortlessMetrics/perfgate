@@ -1,5 +1,32 @@
 # Agent Context: perfgate
 
+## Repo source-of-truth stack
+
+This repo uses a linked source-of-truth stack:
+
+Roadmap → Proposal → Spec → ADR → Plan → Active goal → PR → Proof
+
+Before changing files, read:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.codex/goals/active.toml`
+3. The linked plan
+4. The linked spec
+5. Linked ADRs
+
+### Scope rule
+
+Implement one work item per PR unless the user explicitly asks to create or revise the source-of-truth rails. Docs-only artifacts stay separated by role: proposals explain why, specs define behavior, ADRs record durable decisions, plans define sequencing, and active goals define current execution. Runtime/code PRs must link to the spec and plan item they implement.
+
+### Proof rule
+
+Run the proof commands listed in the selected plan item. If a proof command cannot run, record the command, why it is unavailable, any substitute evidence, and whether that blocks merge. Always run `git diff --check` after edits.
+
+### Generated status and policy rule
+
+Do not hand-edit generated status. Run the generator/checker named in the plan. If you add a policy exception, update the relevant `policy/*` ledger with the owner, reason, coverage, creation date, review date, and expiry when the ledger supports those fields.
+
+
 This file provides guidance to autonomous agents when working with code in this repository.
 
 ## Build and Test Commands

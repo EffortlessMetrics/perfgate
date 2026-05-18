@@ -1,5 +1,20 @@
 # CLAUDE.md
 
+## Repo source-of-truth stack
+
+Before changing files, read:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.codex/goals/active.toml`
+3. The linked implementation plan or lane plan
+4. The linked spec for the selected work item
+5. Any linked ADRs
+
+Work on exactly one work item at a time unless the user explicitly asks to create or revise the source-of-truth rails. Do not create a new lane, mix proposal/spec/ADR/plan/runtime changes, broaden support claims, or hand-edit generated status unless the selected work item says to. A PR is ready only when the intended artifact or code change exists, linked docs are updated, proof commands have run or are explicitly marked unavailable, claim boundaries are respected, and `git diff --check` passes.
+
+Stop and report instead of guessing when the active goal is missing or stale, linked specs are missing, proof commands cannot run, generated status differs from committed status, requested work conflicts with an ADR, or the branch contains unrelated staged changes.
+
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build and Test Commands
