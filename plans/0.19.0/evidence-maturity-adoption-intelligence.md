@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: decision example pack
+Current PR: decision suggestion reasons
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -72,8 +72,8 @@ surface change requires an accepted spec and explicit proof.
 | 506 | Baseline maturity doctor | merged | `perfgate baseline doctor`, CLI tests |
 | 508 | Signal maturity doctor | merged | `perfgate doctor signal`, CLI tests |
 | 510 | Calibration patch output | merged | `perfgate calibrate --emit-patch`, CLI tests |
-| 511 | Decision example pack | current | examples/fixtures and optional `decision examples` |
-| 512 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
+| 511 | Decision example pack | merged | examples/fixtures and optional `decision examples` |
+| 512 | Decision suggestion reasons | current | `perfgate decision suggest`, CLI tests |
 | 513 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
 | 514 | Server backup/restore smoke | pending | server/CLI tests |
 | 515 | Server retention and migration policy | pending | server docs/status |
@@ -476,7 +476,7 @@ base advisory `calibrate` command remains usable.
 
 ## Work item: decision-example-pack
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: decision-suggestion-reasons
@@ -536,7 +536,7 @@ commands and fixtures remain unchanged.
 
 ## Work item: decision-suggestion-reasons
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: product-claims
@@ -553,13 +553,38 @@ Reason output should name metric movement, direction, threshold result, noise
 result, artifacts, probe/scenario/tradeoff evidence when present, missing
 evidence, and next command.
 
+### Non-goals
+
+- Do not change decision receipt schemas.
+- Do not make structured decisions mandatory.
+- Do not make ledger upload part of correctness.
+
+### Acceptance
+
+- `decision suggest` prints a `Why` section for every recommendation.
+- Metric reason lines include movement, metric direction, and threshold status.
+- Noisy evidence explains paired-mode recommendation.
+- Structured-decision-ready output names scenario/tradeoff evidence and keeps
+  ledger history optional.
+- Artifact output lists compare, probe, and decision index paths with missing
+  markers where applicable.
+
 ### Proof commands
 
 ```bash
-cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 fmt --all -- --check
+cargo +1.95.0 test -p perfgate-cli --test cli_decision_suggest_tests --all-features
+cargo +1.95.0 test -p perfgate-cli --all-features decision_suggest
+cargo +1.95.0 clippy -p perfgate-cli --all-targets --all-features -- -D warnings
+cargo +1.95.0 run -p xtask -- docs-source-check
 cargo +1.95.0 run -p xtask -- schema-compat
 git diff --check
 ```
+
+### Rollback
+
+Revert the additional `Why` and `Artifacts` output plus focused tests. Existing
+`decision suggest` status classification remains the fallback behavior.
 
 ## Work item: canary-freshness-matrix
 

@@ -10,8 +10,10 @@ use crate::{
     COMPARE_RECEIPT_FILE, DecisionSuggestArgs, is_regression, load_validated_config,
     resolve_configured_out_dir,
 };
-use perfgate::domain::is_improvement;
-use perfgate_types::{CompareReceipt, ConfigFile};
+use perfgate::domain::{MetricMovement, is_improvement, movement_for_delta};
+use perfgate_types::{CompareReceipt, ConfigFile, Delta, Direction, Metric, MetricStatus};
+
+const DECISION_HIGH_NOISE_CV: f64 = 0.10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DecisionReadiness {
@@ -63,12 +65,40 @@ impl DecisionReadiness {
 struct DecisionReadinessEvidence {
     compare_found: usize,
     compare_missing: usize,
+    compare_artifacts: Vec<CompareEvidence>,
+    missing_compare_artifacts: Vec<(String, PathBuf)>,
     has_regression: bool,
     has_improvement: bool,
     high_noise: bool,
     has_probe_config: bool,
     probe_receipts_found: usize,
+    probe_artifacts: Vec<ProbeEvidence>,
     decision_index_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+struct CompareEvidence {
+    bench: String,
+    path: PathBuf,
+    verdict: &'static str,
+    metrics: Vec<MetricEvidence>,
+}
+
+#[derive(Debug, Clone)]
+struct MetricEvidence {
+    metric: Metric,
+    movement: MetricMovement,
+    direction: Direction,
+    pct: f64,
+    status: MetricStatus,
+    cv: Option<f64>,
+    noise_threshold: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct ProbeEvidence {
+    path: PathBuf,
+    found: bool,
 }
 
 pub(crate) fn execute_decision_suggest(args: DecisionSuggestArgs) -> anyhow::Result<()> {
@@ -113,6 +143,14 @@ pub(crate) fn execute_decision_suggest(args: DecisionSuggestArgs) -> anyhow::Res
         }
     );
     println!();
+    println!("Why:");
+    for reason in decision_readiness_reasons(readiness, &config, &evidence, &out_dir) {
+        println!("  - {reason}");
+    }
+    println!();
+    println!("Artifacts:");
+    print_decision_artifacts(&evidence, &out_dir);
+    println!();
     println!("Structured decisions may help if:");
     println!("  - one benchmark regressed while another improved");
     println!("  - reviewers need to accept a bounded tradeoff");
@@ -141,6 +179,8 @@ fn collect_decision_readiness_evidence(
 ) -> anyhow::Result<DecisionReadinessEvidence> {
     let mut compare_found = 0usize;
     let mut compare_missing = 0usize;
+    let mut compare_artifacts = Vec::new();
+    let mut missing_compare_artifacts = Vec::new();
     let mut has_regression = false;
     let mut has_improvement = false;
     let mut high_noise = false;
@@ -148,6 +188,7 @@ fn collect_decision_readiness_evidence(
     for (bench_name, path) in decision_compare_paths(config, out_dir) {
         if !path.exists() {
             compare_missing += 1;
+            missing_compare_artifacts.push((bench_name, path));
             continue;
         }
         compare_found += 1;
@@ -162,23 +203,59 @@ fn collect_decision_readiness_evidence(
         high_noise |= compare
             .deltas
             .values()
-            .any(|delta| delta.cv.is_some_and(|cv| cv > 0.10));
+            .any(|delta| delta.cv.is_some_and(|cv| cv > DECISION_HIGH_NOISE_CV));
+        compare_artifacts.push(compare_evidence(bench_name, path, &compare));
     }
 
     let probe_paths = configured_decision_probe_paths(config);
     let has_probe_config = !probe_paths.is_empty();
     let probe_receipts_found = probe_paths.iter().filter(|path| path.exists()).count();
+    let probe_artifacts = probe_paths
+        .iter()
+        .map(|path| ProbeEvidence {
+            path: path.clone(),
+            found: path.exists(),
+        })
+        .collect();
 
     Ok(DecisionReadinessEvidence {
         compare_found,
         compare_missing,
+        compare_artifacts,
+        missing_compare_artifacts,
         has_regression,
         has_improvement,
         high_noise,
         has_probe_config,
         probe_receipts_found,
+        probe_artifacts,
         decision_index_exists: out_dir.join("decision.index.json").exists(),
     })
+}
+
+fn compare_evidence(bench: String, path: PathBuf, compare: &CompareReceipt) -> CompareEvidence {
+    CompareEvidence {
+        bench,
+        path,
+        verdict: compare.verdict.status.as_str(),
+        metrics: compare
+            .deltas
+            .iter()
+            .map(|(metric, delta)| metric_evidence(*metric, delta))
+            .collect(),
+    }
+}
+
+fn metric_evidence(metric: Metric, delta: &Delta) -> MetricEvidence {
+    MetricEvidence {
+        metric,
+        movement: movement_for_delta(metric, delta),
+        direction: metric.default_direction(),
+        pct: delta.pct,
+        status: delta.status,
+        cv: delta.cv,
+        noise_threshold: delta.noise_threshold,
+    }
 }
 
 fn decision_compare_paths(config: &ConfigFile, out_dir: &Path) -> Vec<(String, PathBuf)> {
@@ -292,6 +369,173 @@ fn decision_readiness_next_commands(
             out_dir.join("decision.index.json").display()
         )],
     }
+}
+
+fn decision_readiness_reasons(
+    readiness: DecisionReadiness,
+    config: &ConfigFile,
+    evidence: &DecisionReadinessEvidence,
+    out_dir: &Path,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    match readiness {
+        DecisionReadiness::RunLocalGateFirst => {
+            reasons.push(
+                "no compare receipts were found; local gate evidence must exist first".to_string(),
+            );
+        }
+        DecisionReadiness::SimpleGateEnough => {
+            reasons.push(
+                "compare receipts exist and no noisy or tradeoff-shaped movement was found"
+                    .to_string(),
+            );
+        }
+        DecisionReadiness::PairedModeRecommended => {
+            reasons.push(format!(
+                "at least one metric has CV above {:.1}%; paired mode is safer than policy",
+                DECISION_HIGH_NOISE_CV * 100.0
+            ));
+        }
+        DecisionReadiness::StructuredDecisionCandidate => {
+            reasons.push(
+                "metric movement exists, but scenario/tradeoff/probe evidence is incomplete"
+                    .to_string(),
+            );
+        }
+        DecisionReadiness::StructuredDecisionReady => {
+            reasons.push(format!(
+                "{} scenario{} and {} tradeoff rule{} are configured",
+                config.scenarios.len(),
+                plural(config.scenarios.len()),
+                config.tradeoffs.len(),
+                plural(config.tradeoffs.len())
+            ));
+        }
+        DecisionReadiness::ReadyToBundle => {
+            reasons.push(format!(
+                "decision index already exists at {}",
+                out_dir.join("decision.index.json").display()
+            ));
+        }
+    }
+
+    for compare in &evidence.compare_artifacts {
+        reasons.push(format!(
+            "{} compare verdict is {} ({})",
+            compare.bench,
+            compare.verdict,
+            compare.path.display()
+        ));
+        for metric in &compare.metrics {
+            reasons.push(metric_reason(metric));
+            if let Some(noise) = metric_noise_reason(metric) {
+                reasons.push(noise);
+            }
+        }
+    }
+
+    if evidence.has_probe_config {
+        reasons.push(format!(
+            "probe evidence configured with {} receipt{} found",
+            evidence.probe_receipts_found,
+            plural(evidence.probe_receipts_found)
+        ));
+    }
+    if !evidence.missing_compare_artifacts.is_empty() {
+        for (bench, path) in &evidence.missing_compare_artifacts {
+            reasons.push(format!(
+                "{bench} compare receipt is missing at {}",
+                path.display()
+            ));
+        }
+    }
+    if matches!(
+        readiness,
+        DecisionReadiness::StructuredDecisionReady | DecisionReadiness::ReadyToBundle
+    ) {
+        reasons.push(
+            "optional ledger history can record the decision after local receipts are reviewed"
+                .to_string(),
+        );
+    }
+
+    reasons
+}
+
+fn metric_reason(metric: &MetricEvidence) -> String {
+    format!(
+        "{} {} by {} (direction {}, threshold status {})",
+        metric.metric.as_str(),
+        movement_label(metric.movement),
+        format_percent(metric.pct.abs()),
+        direction_label(metric.direction),
+        metric.status.as_str()
+    )
+}
+
+fn metric_noise_reason(metric: &MetricEvidence) -> Option<String> {
+    let cv = metric.cv?;
+    let threshold = metric.noise_threshold.unwrap_or(DECISION_HIGH_NOISE_CV);
+    if cv > threshold {
+        Some(format!(
+            "{} noise is high: CV {} exceeds {}",
+            metric.metric.as_str(),
+            format_percent(cv),
+            format_percent(threshold)
+        ))
+    } else {
+        Some(format!(
+            "{} noise is within guidance: CV {} at or below {}",
+            metric.metric.as_str(),
+            format_percent(cv),
+            format_percent(threshold)
+        ))
+    }
+}
+
+fn print_decision_artifacts(evidence: &DecisionReadinessEvidence, out_dir: &Path) {
+    for compare in &evidence.compare_artifacts {
+        println!("  compare: {}", compare.path.display());
+    }
+    for (bench, path) in &evidence.missing_compare_artifacts {
+        println!("  compare: {} (missing for {bench})", path.display());
+    }
+    for probe in &evidence.probe_artifacts {
+        println!(
+            "  probe: {}{}",
+            probe.path.display(),
+            if probe.found { "" } else { " (missing)" }
+        );
+    }
+    println!(
+        "  decision index: {}{}",
+        out_dir.join("decision.index.json").display(),
+        if evidence.decision_index_exists {
+            ""
+        } else {
+            " (missing)"
+        }
+    );
+}
+
+fn movement_label(movement: MetricMovement) -> &'static str {
+    match movement {
+        MetricMovement::Improved => "improved",
+        MetricMovement::Regressed => "regressed",
+        MetricMovement::Unchanged => "stayed unchanged",
+        MetricMovement::Unknown => "has unknown movement",
+    }
+}
+
+fn direction_label(direction: Direction) -> &'static str {
+    match direction {
+        Direction::Lower => "lower_is_better",
+        Direction::Higher => "higher_is_better",
+    }
+}
+
+fn format_percent(value: f64) -> String {
+    format!("{:.1}%", value * 100.0)
 }
 
 #[cfg(test)]
@@ -510,11 +754,14 @@ mod tests {
         let evidence = DecisionReadinessEvidence {
             compare_found: 0,
             compare_missing: 1,
+            compare_artifacts: Vec::new(),
+            missing_compare_artifacts: vec![("bench".into(), PathBuf::from("compare.json"))],
             has_regression: false,
             has_improvement: false,
             high_noise: false,
             has_probe_config: false,
             probe_receipts_found: 0,
+            probe_artifacts: Vec::new(),
             decision_index_exists: false,
         };
         assert_eq!(
@@ -548,11 +795,17 @@ mod tests {
         let configured_only = DecisionReadinessEvidence {
             compare_found: 1,
             compare_missing: 0,
+            compare_artifacts: Vec::new(),
+            missing_compare_artifacts: Vec::new(),
             has_regression: false,
             has_improvement: false,
             high_noise: false,
             has_probe_config: true,
             probe_receipts_found: 0,
+            probe_artifacts: vec![ProbeEvidence {
+                path: PathBuf::from("probe-compare.json"),
+                found: false,
+            }],
             decision_index_exists: false,
         };
         assert_eq!(
@@ -567,11 +820,14 @@ mod tests {
         let evidence = DecisionReadinessEvidence {
             compare_found: 1,
             compare_missing: 0,
+            compare_artifacts: Vec::new(),
+            missing_compare_artifacts: Vec::new(),
             has_regression: true,
             has_improvement: true,
             high_noise: true,
             has_probe_config: false,
             probe_receipts_found: 0,
+            probe_artifacts: Vec::new(),
             decision_index_exists: false,
         };
         config.scenarios.push(ScenarioConfigFile {
