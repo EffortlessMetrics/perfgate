@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.19.0"
-current_work_item = "agent-repair-context-contract"
-current_pr = "docs(spec): define agent repair-context contract"
+current_work_item = "benchmark-recipe-catalog"
+current_pr = "init: add benchmark recipe catalog"
 
 objective = """
 Make perfgate useful after week one. A team should be able to tell which
@@ -138,14 +138,14 @@ commands = [
 
 [[work_item]]
 id = "agent-repair-context-contract"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]
 id = "benchmark-recipe-catalog"
-status = "pending"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"

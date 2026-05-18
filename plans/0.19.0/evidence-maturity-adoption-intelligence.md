@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: agent repair-context contract spec
+Current PR: benchmark recipe catalog
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -66,20 +66,20 @@ surface change requires an accepted spec and explicit proof.
 | 498 | Evidence maturity proposal | merged | `docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md` |
 | 499 | Evidence maturity contract spec | merged | `docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md` |
 | 500 | Evidence maturity implementation plan | merged | `plans/0.19.0/evidence-maturity-adoption-intelligence.md`, `.codex/goals/active.toml` |
-| 501 | Agent repair-context contract spec | current | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
-| 502 | Benchmark recipe catalog | pending | `perfgate init`, recipe metadata, CLI tests |
-| 503 | Benchmark recipe guidance | pending | docs for recipes and anti-patterns |
-| 504 | Baseline maturity doctor | pending | `perfgate baseline doctor`, CLI tests |
-| 505 | Signal maturity doctor | pending | `perfgate doctor signal`, CLI tests |
-| 506 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
-| 507 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
-| 508 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
-| 509 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
-| 510 | Server backup/restore smoke | pending | server/CLI tests |
-| 511 | Server retention and migration policy | pending | server docs/status |
-| 512 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 513 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 514 | Evidence maturity closeout | pending | handoff and goal archive |
+| 502 | Agent repair-context contract spec | merged | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
+| 503 | Benchmark recipe catalog | current | `perfgate init`, recipe metadata, CLI tests |
+| 504 | Benchmark recipe guidance | pending | docs for recipes and anti-patterns |
+| 505 | Baseline maturity doctor | pending | `perfgate baseline doctor`, CLI tests |
+| 506 | Signal maturity doctor | pending | `perfgate doctor signal`, CLI tests |
+| 507 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
+| 508 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
+| 509 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
+| 510 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
+| 511 | Server backup/restore smoke | pending | server/CLI tests |
+| 512 | Server retention and migration policy | pending | server docs/status |
+| 513 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 514 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 515 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -117,7 +117,7 @@ Revert this plan and active goal manifest. Proposal and spec remain valid.
 
 ## Work item: agent-repair-context-contract
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked specs: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md; docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md
 Blocks: agent-repair-context-fixtures
@@ -180,7 +180,7 @@ Revert the spec PR. Evidence maturity spec remains valid without agent details.
 
 ## Work item: benchmark-recipe-catalog
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: benchmark-recipe-guidance, product-claims

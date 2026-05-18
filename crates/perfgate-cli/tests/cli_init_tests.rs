@@ -149,8 +149,20 @@ fn init_suggest_benches_generates_language_neutral_commented_candidates() {
 
     let config =
         fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
-    assert!(config.contains("# Benchmark suggestions (generic-command)"));
+    assert!(config.contains("# Benchmark recipe: generic-command"));
     assert!(config.contains("# Review and edit before committing."));
+    assert!(
+        config.contains("# Best for: language-neutral command benchmarks with stable local input.")
+    );
+    assert!(config.contains("# Bad for: commands that depend on external services"));
+    assert!(config.contains("# Expected noise: unknown until calibrated."));
+    assert!(config.contains("# Recommended mode: advisory until signal maturity is proven."));
+    assert!(
+        config.contains("# Should block PRs: only after baseline and signal maturity are proven.")
+    );
+    assert!(
+        config.contains("# Paired-mode hint: use paired mode if repeated local runs disagree.")
+    );
     assert!(config.contains("# [[bench]]"));
     assert!(config.contains("# name = \"command-smoke\""));
     assert!(config.contains("# command = [\"./scripts/bench.sh\"]"));
@@ -176,7 +188,7 @@ fn init_suggest_benches_accepts_explicit_rust_cli_profile() {
 
     let config =
         fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
-    assert!(config.contains("# Benchmark suggestions (rust-cli)"));
+    assert!(config.contains("# Benchmark recipe: rust-cli-smoke"));
     assert!(config.contains("# name = \"cli-help\""));
     assert!(config.contains("# command = [\"cargo\", \"run\", \"-q\", \"--\", \"--help\"]"));
     assert!(
@@ -202,7 +214,72 @@ fn init_suggest_benches_auto_detects_node_repo() {
 
     let config =
         fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
-    assert!(config.contains("# Benchmark suggestions (node)"));
+    assert!(config.contains("# Benchmark recipe: node-command"));
     assert!(config.contains("# command = [\"node\", \"scripts/bench.js\"]"));
     assert!(config.contains("# command = [\"npm\", \"run\", \"bench\"]"));
+}
+
+#[test]
+fn init_suggest_benches_accepts_rust_cli_recipe_alias() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    let output = perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["init", "--suggest-benches", "rust-cli-smoke"])
+        .assert()
+        .success()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8(output).expect("stderr is utf8");
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(config.contains("# Benchmark recipe: rust-cli-smoke"));
+    assert!(stderr.contains("Appended reviewable benchmark suggestions (rust-cli-smoke)"));
+}
+
+#[test]
+fn init_suggest_benches_auto_detects_python_repo() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    fs::write(
+        temp_dir.path().join("pyproject.toml"),
+        r#"[project]
+name = "example"
+"#,
+    )
+    .expect("write pyproject.toml");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["init", "--suggest-benches"])
+        .assert()
+        .success();
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(config.contains("# Benchmark recipe: python-command"));
+    assert!(config.contains("# command = [\"python\", \"scripts/bench.py\"]"));
+    assert!(config.contains("# command = [\"python\", \"-m\", \"benchmarks\"]"));
+}
+
+#[test]
+fn init_suggest_benches_accepts_http_smoke_recipe() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["init", "--suggest-benches", "http-smoke"])
+        .assert()
+        .success();
+
+    let config =
+        fs::read_to_string(temp_dir.path().join("perfgate.toml")).expect("read generated config");
+    assert!(config.contains("# Benchmark recipe: http-smoke"));
+    assert!(config.contains("# command = [\"curl\", \"-fsS\", \"http://127.0.0.1:8080/health\"]"));
+    assert!(config.contains("# command = [\"./scripts/bench-http.sh\"]"));
+    assert!(
+        !config.contains("\n[[bench]]"),
+        "http suggestions must stay commented until reviewed"
+    );
 }

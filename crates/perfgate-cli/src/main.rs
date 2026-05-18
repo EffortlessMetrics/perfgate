@@ -1721,11 +1721,19 @@ pub enum BenchmarkSuggestionProfile {
     /// Infer a conservative suggestion profile from nearby repo files.
     Auto,
     /// Rust command-line app suggestions.
+    #[value(name = "rust-cli", alias = "rust-cli-smoke")]
     RustCli,
     /// Rust workspace suggestions.
+    #[value(name = "rust-workspace", alias = "rust-workspace-advisory")]
     RustWorkspace,
     /// Node.js benchmark command suggestions.
+    #[value(name = "node", alias = "node-command")]
     Node,
+    /// Python benchmark command suggestions.
+    #[value(name = "python-command", alias = "python")]
+    PythonCommand,
+    /// HTTP smoke benchmark suggestions.
+    HttpSmoke,
     /// Language-neutral command benchmark suggestions.
     GenericCommand,
 }
@@ -1734,9 +1742,11 @@ impl BenchmarkSuggestionProfile {
     fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
-            Self::RustCli => "rust-cli",
-            Self::RustWorkspace => "rust-workspace",
-            Self::Node => "node",
+            Self::RustCli => "rust-cli-smoke",
+            Self::RustWorkspace => "rust-workspace-advisory",
+            Self::Node => "node-command",
+            Self::PythonCommand => "python-command",
+            Self::HttpSmoke => "http-smoke",
             Self::GenericCommand => "generic-command",
         }
     }

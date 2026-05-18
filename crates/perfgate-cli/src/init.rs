@@ -23,6 +23,13 @@ fn resolve_benchmark_suggestion_profile(
         return BenchmarkSuggestionProfile::Node;
     }
 
+    if scan_dir.join("pyproject.toml").exists()
+        || scan_dir.join("setup.py").exists()
+        || scan_dir.join("requirements.txt").exists()
+    {
+        return BenchmarkSuggestionProfile::PythonCommand;
+    }
+
     let cargo_toml = scan_dir.join("Cargo.toml");
     if let Ok(content) = fs::read_to_string(cargo_toml) {
         if content.contains("[workspace]") {
@@ -40,8 +47,14 @@ fn render_benchmark_suggestions(profile: BenchmarkSuggestionProfile) -> String {
             render_benchmark_suggestions(BenchmarkSuggestionProfile::GenericCommand)
         }
         BenchmarkSuggestionProfile::RustCli => r#"
-# Benchmark suggestions (rust-cli)
+# Benchmark recipe: rust-cli-smoke
 # Review and edit before committing. These are candidates, not policy.
+# Best for: CLI startup, argument parsing, and command wiring smoke.
+# Bad for: steady-state throughput, parser hot loops, and compile-heavy checks.
+# Expected noise: low to medium on stable hosts.
+# Recommended mode: advisory until calibrated, then gate if the workload matters.
+# Should block PRs: only after baseline and signal maturity are proven.
+# Paired-mode hint: use paired mode if host or startup variance dominates.
 #
 # Fast first-hour check: low setup cost and useful for smoke gating.
 # [[bench]]
@@ -55,8 +68,14 @@ fn render_benchmark_suggestions(profile: BenchmarkSuggestionProfile) -> String {
 "#
         .to_string(),
         BenchmarkSuggestionProfile::RustWorkspace => r#"
-# Benchmark suggestions (rust-workspace)
+# Benchmark recipe: rust-workspace-advisory
 # Review and edit before committing. These are candidates, not policy.
+# Best for: broad workspace health and catching expensive integration paths.
+# Bad for: first-hour blocking gates and isolated performance attribution.
+# Expected noise: medium to high because compile and test setup can dominate.
+# Recommended mode: advisory until calibrated; split into smaller gates later.
+# Should block PRs: not until compile/test noise is understood.
+# Paired-mode hint: use paired mode when CI runner drift changes the verdict.
 #
 # Fast first-hour check: choose one small package or command with low setup cost.
 # [[bench]]
@@ -70,8 +89,14 @@ fn render_benchmark_suggestions(profile: BenchmarkSuggestionProfile) -> String {
 "#
         .to_string(),
         BenchmarkSuggestionProfile::Node => r#"
-# Benchmark suggestions (node)
+# Benchmark recipe: node-command
 # Review and edit before committing. These are candidates, not policy.
+# Best for: dedicated Node benchmark scripts with stable local input.
+# Bad for: package install, network calls, and commands that mix build/test/perf.
+# Expected noise: low to medium when dependencies and inputs are stable.
+# Recommended mode: advisory until calibrated; gate only stable scripts.
+# Should block PRs: only for deterministic benchmark scripts.
+# Paired-mode hint: use paired mode if JIT warmup or runner variance dominates.
 #
 # Fast first-hour check: a dedicated benchmark script with stable input.
 # [[bench]]
@@ -84,9 +109,57 @@ fn render_benchmark_suggestions(profile: BenchmarkSuggestionProfile) -> String {
 # command = ["npm", "run", "bench"]
 "#
         .to_string(),
-        BenchmarkSuggestionProfile::GenericCommand => r#"
-# Benchmark suggestions (generic-command)
+        BenchmarkSuggestionProfile::PythonCommand => r#"
+# Benchmark recipe: python-command
 # Review and edit before committing. These are candidates, not policy.
+# Best for: dedicated Python benchmark scripts with fixed input and environment.
+# Bad for: dependency installation, network calls, and correctness-only test runs.
+# Expected noise: medium when interpreter startup or environment setup dominates.
+# Recommended mode: advisory until calibrated; gate only stable workloads.
+# Should block PRs: only after repeat count and baseline maturity are proven.
+# Paired-mode hint: use paired mode if interpreter startup or host variance dominates.
+#
+# Fast first-hour check: a dedicated benchmark script with stable input.
+# [[bench]]
+# name = "python-bench"
+# command = ["python", "scripts/bench.py"]
+#
+# Module path: useful when the project already exposes a benchmark module.
+# [[bench]]
+# name = "python-module-bench"
+# command = ["python", "-m", "benchmarks"]
+"#
+        .to_string(),
+        BenchmarkSuggestionProfile::HttpSmoke => r#"
+# Benchmark recipe: http-smoke
+# Review and edit before committing. These are candidates, not policy.
+# Best for: local HTTP handlers, smoke latency, and simple service endpoints.
+# Bad for: internet calls, shared staging services, and unisolated dependencies.
+# Expected noise: medium to high unless the service and host are isolated.
+# Recommended mode: advisory first; gate only local isolated endpoints.
+# Should block PRs: only after service startup and network noise are controlled.
+# Paired-mode hint: use paired mode when service startup or runner networking dominates.
+#
+# Local endpoint smoke: replace URL with a local service endpoint under test.
+# [[bench]]
+# name = "http-health"
+# command = ["curl", "-fsS", "http://127.0.0.1:8080/health"]
+#
+# Scripted HTTP benchmark: keep setup and request load deterministic.
+# [[bench]]
+# name = "http-smoke"
+# command = ["./scripts/bench-http.sh"]
+"#
+        .to_string(),
+        BenchmarkSuggestionProfile::GenericCommand => r#"
+# Benchmark recipe: generic-command
+# Review and edit before committing. These are candidates, not policy.
+# Best for: language-neutral command benchmarks with stable local input.
+# Bad for: commands that depend on external services or mix setup with runtime.
+# Expected noise: unknown until calibrated.
+# Recommended mode: advisory until signal maturity is proven.
+# Should block PRs: only after baseline and signal maturity are proven.
+# Paired-mode hint: use paired mode if repeated local runs disagree.
 #
 # Fast first-hour check: a stable command that measures the workload directly.
 # [[bench]]
