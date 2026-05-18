@@ -1,6 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 542
+assertion_line: 593
 expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
@@ -42,6 +42,7 @@ Commands:
   watch Watch for file changes and re-run benchmarks with live terminal output
   serve Start a local dashboard server backed by SQLite
   ledger Inspect optional decision-ledger readiness without making it required
+  policy Inspect advisory policy rollout profiles and promotion metadata
   scale Validate computational complexity (scaling behavior) of a benchmark
   comment Post or update a performance report comment on a GitHub pull request
   trend Analyze metric trends and predict budget threshold breaches

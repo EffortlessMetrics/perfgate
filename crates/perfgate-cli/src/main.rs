@@ -9,6 +9,7 @@ mod decision_suggest;
 mod doctor;
 mod init;
 mod ledger_doctor;
+mod policy;
 mod probe_templates;
 mod repair_context;
 mod storage;
@@ -79,6 +80,7 @@ use perfgate_types::{
     ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt,
     VerdictStatus,
 };
+use policy::{PolicyAction, execute_policy_action};
 use regex::Regex;
 #[cfg(test)]
 use repair_context::parse_changed_files_summary;
@@ -477,6 +479,12 @@ enum Command {
     Ledger {
         #[command(subcommand)]
         action: LedgerAction,
+    },
+
+    /// Inspect advisory policy rollout profiles and promotion metadata.
+    Policy {
+        #[command(subcommand)]
+        action: PolicyAction,
     },
 
     /// Validate computational complexity (scaling behavior) of a benchmark.
@@ -3078,6 +3086,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Decision { action } => execute_decision_action(action, &server_flags),
         Command::Ledger { action } => execute_ledger_action(action, &server_flags),
+        Command::Policy { action } => execute_policy_action(action),
         Command::Probe { action } => execute_probe_action(action),
         Command::Scenario { action } => execute_scenario_action(action),
         Command::Tradeoff { action } => execute_tradeoff_action(action),

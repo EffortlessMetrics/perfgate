@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.20.0
-Current PR: policy-rollout-plan
+Current PR: policy-profile-catalog
 Linked proposal: [`PERFGATE-PROP-0007-policy-ergonomics-team-rollout`](../../docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md)
 Linked specs: [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../../docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), `PERFGATE-SPEC-0012-agent-policy-change-guardrails` (planned)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -75,8 +75,8 @@ accepted spec and explicit proof.
 |----|-----------|--------|-----------------|
 | 534 | Policy ergonomics proposal | merged | `docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md` |
 | 536 | Advisory-to-blocking promotion contract | merged | `docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md` |
-| TBD | Policy ergonomics implementation plan | current | `plans/0.20.0/policy-ergonomics-team-rollout.md`, `.codex/goals/active.toml` |
-| TBD | Policy profile catalog | pending | policy profile metadata and focused CLI tests |
+| 538 | Policy ergonomics implementation plan | merged | `plans/0.20.0/policy-ergonomics-team-rollout.md`, `.codex/goals/active.toml` |
+| TBD | Policy profile catalog | current | policy profile metadata and focused CLI tests |
 | TBD | Rollout profile guidance | pending | user-facing profile and promotion-path docs |
 | TBD | Promotion readiness doctor | pending | `perfgate policy doctor --config perfgate.toml` |
 | TBD | Policy patch output | pending | `perfgate policy emit-patch --config perfgate.toml --bench <bench> --to <state>` |
@@ -91,7 +91,7 @@ accepted spec and explicit proof.
 
 ## Work item: implementation-plan
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: policy-profile-catalog, rollout-profile-guidance, promotion-readiness-doctor
@@ -145,7 +145,7 @@ and promotion contract remain accepted artifacts.
 
 ## Work item: policy-profile-catalog
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: rollout-profile-guidance, promotion-readiness-doctor

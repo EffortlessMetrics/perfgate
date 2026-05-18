@@ -23,6 +23,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("ledger"))
+        .stdout(predicate::str::contains("policy"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("probe"))
@@ -438,6 +439,30 @@ fn cli_help_ledger_doctor() {
 }
 
 #[test]
+fn cli_help_policy() {
+    perfgate_cmd()
+        .args(["policy", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Inspect advisory policy rollout profiles",
+        ))
+        .stdout(predicate::str::contains("profiles"));
+}
+
+#[test]
+fn cli_help_policy_profiles() {
+    perfgate_cmd()
+        .args(["policy", "profiles", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "List reviewable policy rollout profiles",
+        ))
+        .stdout(predicate::str::contains("--profile"));
+}
+
+#[test]
 fn cli_help_probe() {
     perfgate_cmd()
         .args(["probe", "--help"])
@@ -658,6 +683,19 @@ fn snapshot_help_ledger_doctor() {
     insta::assert_snapshot!(
         "help_ledger_doctor",
         help_output(&["ledger", "doctor", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy() {
+    insta::assert_snapshot!("help_policy", help_output(&["policy", "--help"]));
+}
+
+#[test]
+fn snapshot_help_policy_profiles() {
+    insta::assert_snapshot!(
+        "help_policy_profiles",
+        help_output(&["policy", "profiles", "--help"])
     );
 }
 
