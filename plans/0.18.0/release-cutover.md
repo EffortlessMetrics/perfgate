@@ -69,7 +69,9 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 482 | Final proof after restored coverage | merged | `docs/audits/release-0.18.0-final-proof-after-restored-coverage.md` |
 | 483 | Pre-release readiness handoff | merged | `docs/handoffs/2026-05-17-0-18-pre-release-readiness.md` |
 | 484 | CLI init module extraction | merged | `crates/perfgate-cli/src/init.rs`; no release-state change |
-| 485 | Final proof after init extraction | in review | `docs/audits/release-0.18.0-final-proof-after-init-extraction.md` |
+| 485 | Final proof after init extraction | merged | `docs/audits/release-0.18.0-final-proof-after-init-extraction.md` |
+| 490 | First-hour path tightening | merged | README and first-hour/action docs; no release-state change |
+| 491 | Publish packet/current-main sync | implemented | `docs/audits/release-0.18.0-publish-packet.md` |
 | 425 | Publish crates | blocked | crates.io publication in dependency order |
 | 426 | Verify crates.io publication | blocked | `cargo info` / `cargo search` registry proof |
 | 427 | Cut GitHub release | blocked | `v0.18.0`, GitHub release, release assets, checksums |

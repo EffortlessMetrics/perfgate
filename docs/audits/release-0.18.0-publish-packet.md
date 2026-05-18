@@ -2,9 +2,13 @@
 
 Date: 2026-05-17
 
-Branch: `release/0-18-pre-release-readiness-handoff`
+Branch: `release/0-18-publish-packet-sync`
 
-Prepared against main commit: `df78199b2c1ba8388b9588cb06c90a873cd1abda`
+Prepared from main state: through #490
+(`1d8e3e581451cf75c79e60491115f31ab9523858`) plus this packet-sync PR.
+The release operator must publish from the pulled `main` commit that contains
+this packet, and must record that exact `git rev-parse HEAD` value in the
+publication audit.
 
 Purpose: give the release operator a single copy-ready packet for the first
 irreversible 0.18.0 release step: publishing the five public crates. This packet
@@ -23,6 +27,17 @@ Linked proof:
 - [`v0.18.0 Final Pre-Publish Proof`](release-0.18.0-final-prepublish-proof.md)
 - [`v0.18.0 Restored Coverage Proof`](release-0.18.0-restored-coverage-proof.md)
 - [`v0.18.0 Final Proof After Restored Coverage`](release-0.18.0-final-proof-after-restored-coverage.md)
+- [`v0.18.0 Final Proof After Init Extraction`](release-0.18.0-final-proof-after-init-extraction.md)
+
+Current-main sync notes:
+
+- #485 refreshed the broad release-candidate proof after #484 extracted
+  `perfgate init` into `crates/perfgate-cli/src/init.rs`.
+- #490 tightened the first-hour user path to show `doctor`,
+  `init --suggest-benches`, local `check`, baseline promotion, and the
+  CI-equivalent `check --require-baseline` confirmation.
+- No crates were published, no tags or releases were created, no aliases moved,
+  and no public install smoke was claimed by either PR.
 
 ## Release Boundary
 
@@ -74,7 +89,10 @@ cargo +1.95.0 run -p xtask -- publish-check --package-list
 Stop if:
 
 - `git status --short` prints any tracked or untracked release-relevant files.
-- `git rev-parse HEAD` is not the intended release commit.
+- `git rev-parse HEAD` is not the pulled `main` commit that contains this
+  packet and all intended release-candidate changes.
+- any release-relevant code, public-surface, schema, action, version, or proof
+  change landed after this packet without a reviewed refresh.
 - `publish-check --package-list` does not list exactly the five expected public
   crates.
 
