@@ -1,17 +1,17 @@
 # perfgate 0.19.0 Evidence Maturity and Adoption Intelligence Plan
 
-Status: active
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: proof freshness tiers and claims
+Current PR: evidence maturity closeout
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
 Linked policy: policy ledgers remain referenced by specs and status docs; no policy row changes in this plan PR
 Support/status impact: product claims should be added or promoted after behavior and proof land, with proof freshness tiers where appropriate
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check
-Blocks: evidence maturity implementation PRs
+Blocks:
 Blocked by:
 Rollback: revert this plan and `.codex/goals/active.toml`; proposal and spec remain valid source-of-truth artifacts
 
@@ -78,8 +78,8 @@ surface change requires an accepted spec and explicit proof.
 | 518 | Server backup/restore smoke | merged | server/CLI tests |
 | 520 | Server retention and migration policy | merged | server docs/status |
 | 524 | Agent repair-context fixtures | merged | repair-context tests/fixtures |
-| 528 | Proof freshness tiers and claims | current | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 529 | Evidence maturity closeout | pending | handoff and goal archive |
+| 528 | Proof freshness tiers and claims | merged | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 530 | Evidence maturity closeout | current | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -727,7 +727,7 @@ git diff --check
 
 ## Work item: proof-freshness-claims
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: final-closeout
@@ -763,7 +763,7 @@ git diff --check
 
 ## Work item: final-closeout
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked specs: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md; docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md
 Blocks:
