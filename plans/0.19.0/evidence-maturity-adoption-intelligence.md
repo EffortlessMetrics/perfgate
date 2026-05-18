@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: calibration patch output
+Current PR: decision example pack
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -71,15 +71,15 @@ surface change requires an accepted spec and explicit proof.
 | 505 | Benchmark recipe guidance | merged | docs for recipes and anti-patterns |
 | 506 | Baseline maturity doctor | merged | `perfgate baseline doctor`, CLI tests |
 | 508 | Signal maturity doctor | merged | `perfgate doctor signal`, CLI tests |
-| 509 | Calibration patch output | current | `perfgate calibrate --emit-patch`, CLI tests |
-| 510 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
-| 511 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
-| 512 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
-| 513 | Server backup/restore smoke | pending | server/CLI tests |
-| 514 | Server retention and migration policy | pending | server docs/status |
-| 515 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 516 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 517 | Evidence maturity closeout | pending | handoff and goal archive |
+| 510 | Calibration patch output | merged | `perfgate calibrate --emit-patch`, CLI tests |
+| 511 | Decision example pack | current | examples/fixtures and optional `decision examples` |
+| 512 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
+| 513 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
+| 514 | Server backup/restore smoke | pending | server/CLI tests |
+| 515 | Server retention and migration policy | pending | server docs/status |
+| 516 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 517 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 518 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -421,7 +421,7 @@ Revert the `doctor signal` subcommand and tests. Existing plain `doctor` and
 
 ## Work item: calibration-patch-output
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: product-claims
@@ -476,7 +476,7 @@ base advisory `calibrate` command remains usable.
 
 ## Work item: decision-example-pack
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: decision-suggestion-reasons
@@ -508,15 +508,31 @@ perfgate decision examples
 
 - Do not make structured decisions mandatory for local gates.
 - Do not treat noise as an accepted tradeoff.
+- Do not add a new CLI command unless the examples need it.
+
+### Acceptance
+
+- Pattern examples cover latency/throughput, memory/runtime,
+  startup/steady-state, probe-backed tradeoff, and noisy-no-decision shapes.
+- Each example names what moved, why it matters, receipts to inspect, reviewer
+  action, and what not to do.
+- Existing outcome gallery links to the pattern pack.
+- No receipt schema, action behavior, or public crate changes are made.
 
 ### Proof commands
 
 ```bash
-cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 fmt --all -- --check
+cargo +1.95.0 run -p xtask -- docs-check
 cargo +1.95.0 run -p xtask -- doc-test
-cargo +1.95.0 run -p xtask -- schema-compat
+cargo +1.95.0 run -p xtask -- docs-source-check
 git diff --check
 ```
+
+### Rollback
+
+Remove the pattern pack docs and gallery links. Existing structured-decision
+commands and fixtures remain unchanged.
 
 ## Work item: decision-suggestion-reasons
 

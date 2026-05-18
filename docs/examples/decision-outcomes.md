@@ -8,6 +8,11 @@ and [`PERFGATE-SPEC-0007`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.
 Use these examples when a CI summary, `decision.md`, or decision bundle looks
 unfamiliar.
 
+For examples of common tradeoff review conversations before the final verdict,
+see the
+[`examples/performance-decision/patterns`](../../examples/performance-decision/patterns/README.md)
+pack.
+
 ## Common Review Packet
 
 Structured decisions are review packets. A complete local packet usually has:
@@ -69,4 +74,3 @@ Before accepting a structured decision:
 - confirm the local reproduction command is present; and
 - bundle the decision when it needs to travel with a PR, release, issue, audit,
   or agent handoff.
-

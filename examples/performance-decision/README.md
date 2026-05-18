@@ -47,4 +47,6 @@ slightly. That evidence remains visible in the generated `probe-compare.json`;
 the tradeoff rule accepts the memory regression only because the local
 tokenizer regression stays bounded and the dominant batch-loop probe improves.
 
-For common decision shapes, see the [`outcomes`](outcomes/README.md) gallery.
+For common final verdicts, see the [`outcomes`](outcomes/README.md) gallery.
+For common review conversations before a decision is accepted, see the
+[`patterns`](patterns/README.md) pack.
