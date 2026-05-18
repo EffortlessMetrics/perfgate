@@ -76,10 +76,10 @@ surface change requires an accepted spec and explicit proof.
 | 512 | Decision suggestion reasons | merged | `perfgate decision suggest`, CLI tests |
 | 514 | Canary freshness matrix | merged | `docs/status/CANARY_MATRIX.md` |
 | 518 | Server backup/restore smoke | merged | server/CLI tests |
-| 519 | Server retention and migration policy | current | server docs/status |
-| 520 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 521 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 522 | Evidence maturity closeout | pending | handoff and goal archive |
+| 520 | Server retention and migration policy | current | server docs/status |
+| 521 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 522 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 523 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
