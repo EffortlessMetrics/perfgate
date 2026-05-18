@@ -4,7 +4,7 @@ Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: evidence maturity closeout
+Current PR: complete
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -13,7 +13,7 @@ Support/status impact: product claims should be added or promoted after behavior
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check
 Blocks:
 Blocked by:
-Rollback: revert this plan and `.codex/goals/active.toml`; proposal and spec remain valid source-of-truth artifacts
+Rollback: revert this plan and the archived goal update; proposal and spec remain valid source-of-truth artifacts
 
 ## Goal
 
@@ -38,8 +38,9 @@ This plan sequences implementation for
 
 ## Activation Boundary
 
-The 0.18 release cutover is complete and archived. `.codex/goals/active.toml`
-now tracks this 0.19 evidence maturity lane.
+The 0.18 release cutover is complete and archived. This 0.19 evidence maturity
+lane is also complete and archived at
+`.codex/goals/archive/perfgate-evidence-maturity-adoption-intelligence.toml`.
 
 This plan does not publish crates, move tags, change action aliases, expand the
 public crate surface, or alter receipt schemas by default. Any schema or public
