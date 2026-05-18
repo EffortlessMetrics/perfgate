@@ -292,7 +292,13 @@ pub(super) fn classify_check_error(error: &anyhow::Error) -> FailureClass {
     }
 
     let message = error.to_string().to_ascii_lowercase();
-    if message.contains("no benchmarks")
+    if message.contains("program not found")
+        || message.contains("failed to run iteration")
+        || message.contains("failed to run benchmark")
+        || message.contains("run command")
+    {
+        FailureClass::SetupCommandFailed
+    } else if message.contains("no benchmarks")
         || message.contains("not found in config")
         || message.contains("either --bench or --all")
     {
@@ -773,6 +779,12 @@ mod tests {
     fn classify_check_error_recognizes_config_read_failure() {
         let err = anyhow::anyhow!("read perfgate.toml failed");
         assert_eq!(classify_check_error(&err), FailureClass::SetupMissingConfig);
+    }
+
+    #[test]
+    fn classify_check_error_keeps_missing_program_as_command_failure() {
+        let err = anyhow::anyhow!("failed to run iteration 1: bench-tool: program not found");
+        assert_eq!(classify_check_error(&err), FailureClass::SetupCommandFailed);
     }
 
     #[test]
