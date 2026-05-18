@@ -2,6 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repo source-of-truth stack
+
+perfgate uses a linked source-of-truth stack:
+
+```text
+Roadmap -> Proposal -> Spec -> ADR -> Plan -> Active goal -> PR -> Proof
+```
+
+Read these before changing files:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.codex/goals/active.toml`
+3. The linked implementation plan or work-item plan
+4. The linked spec for the selected work item
+5. Linked ADRs
+
+Work on exactly one ready work item per PR. Do not create a new lane, broaden
+support claims, hand-edit generated status, or add policy exceptions unless the
+selected work item explicitly requires it. Run the proof commands listed in the
+plan item and record unavailable proof honestly.
+
+Stop and report instead of guessing when the active goal is missing or stale,
+linked specs/plans are missing, proof commands cannot run, unrelated staged
+changes exist, generated status is dirty, or requested work conflicts with an
+ADR.
+
 ## Build and Test Commands
 
 ```bash

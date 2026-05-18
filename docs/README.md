@@ -6,7 +6,8 @@ The stack separates why, what, how, what now, and what proves it.
 
 Existing topic docs remain valid. New governance and spec work should use these
 homes so product claims, policy gates, public surface rules, release proof, and
-Codex execution state stay reviewable.
+Codex execution state stay reviewable. The normative agent workflow and
+artifact-role contract live in [`reference/SPEC_SYSTEM.md`](reference/SPEC_SYSTEM.md).
 
 | Artifact | Owns | Location |
 |----------|------|----------|
