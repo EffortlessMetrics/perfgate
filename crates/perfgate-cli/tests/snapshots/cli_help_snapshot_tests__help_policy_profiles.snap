@@ -1,0 +1,17 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 696
+expression: "help_output(&[\"policy\", \"profiles\", \"--help\"])"
+---
+List reviewable policy rollout profiles without changing config
+
+Usage: perfgate policy profiles [OPTIONS]
+
+Options:
+      --profile <PROFILE> Show one profile instead of the full catalog [possible values: rust-cli-standard, rust-workspace-advisory, node-command-advisory, python-command-advisory, http-local-smoke, generic-command-advisory, agent-heavy-repo, server-ledger-optional]
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable
