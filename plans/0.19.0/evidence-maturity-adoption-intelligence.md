@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: signal maturity doctor
+Current PR: calibration patch output
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -70,16 +70,16 @@ surface change requires an accepted spec and explicit proof.
 | 503 | Benchmark recipe catalog | merged | `perfgate init`, recipe metadata, CLI tests |
 | 505 | Benchmark recipe guidance | merged | docs for recipes and anti-patterns |
 | 506 | Baseline maturity doctor | merged | `perfgate baseline doctor`, CLI tests |
-| 507 | Signal maturity doctor | current | `perfgate doctor signal`, CLI tests |
-| 508 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
-| 509 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
-| 510 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
-| 511 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
-| 512 | Server backup/restore smoke | pending | server/CLI tests |
-| 513 | Server retention and migration policy | pending | server docs/status |
-| 514 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 515 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 516 | Evidence maturity closeout | pending | handoff and goal archive |
+| 508 | Signal maturity doctor | merged | `perfgate doctor signal`, CLI tests |
+| 509 | Calibration patch output | current | `perfgate calibrate --emit-patch`, CLI tests |
+| 510 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
+| 511 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
+| 512 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
+| 513 | Server backup/restore smoke | pending | server/CLI tests |
+| 514 | Server retention and migration policy | pending | server docs/status |
+| 515 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 516 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 517 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -353,7 +353,7 @@ remains intact.
 
 ## Work item: signal-maturity-doctor
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: calibration-patch-output, product-claims
@@ -421,7 +421,7 @@ Revert the `doctor signal` subcommand and tests. Existing plain `doctor` and
 
 ## Work item: calibration-patch-output
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: product-claims
@@ -446,14 +446,33 @@ and when not to apply the suggestion.
 
 - No `--write` behavior.
 - No policy mutation.
+- Do not make calibration output a substitute for reviewing benchmark quality.
+
+### Acceptance
+
+- `perfgate calibrate --config perfgate.toml --bench parser --emit-patch`
+  prints a reviewable TOML fragment.
+- Patch output includes evidence used, sample count, host class, CV, suggested
+  threshold/noise values, repeat guidance, reasons, and when not to apply it.
+- Calibrate remains advisory and does not edit config.
+- Existing calibrate output still gives next commands and a no-write warning.
 
 ### Proof commands
 
 ```bash
-cargo +1.95.0 test -p perfgate-cli --all-features calibrate
+cargo +1.95.0 fmt --all -- --check
+cargo +1.95.0 test -p perfgate-cli --test cli_calibrate_tests --all-features
+cargo +1.95.0 test -p perfgate-cli --test cli_help_snapshot_tests --all-features
+cargo +1.95.0 clippy -p perfgate-cli --all-targets --all-features -- -D warnings
 cargo +1.95.0 run -p xtask -- doc-test
+cargo +1.95.0 run -p xtask -- docs-source-check
 git diff --check
 ```
+
+### Rollback
+
+Revert the `--emit-patch` flag and the richer calibration patch output. The
+base advisory `calibrate` command remains usable.
 
 ## Work item: decision-example-pack
 

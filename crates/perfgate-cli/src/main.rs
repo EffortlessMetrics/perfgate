@@ -1180,6 +1180,10 @@ pub struct CalibrateArgs {
     /// Explicit baseline receipt. Defaults to the configured baseline path.
     #[arg(long)]
     pub baseline: Option<PathBuf>,
+
+    /// Emit a copy-ready advisory TOML fragment with reasons and guardrails.
+    #[arg(long, default_value_t = false)]
+    pub emit_patch: bool,
 }
 
 #[derive(Debug, Args)]

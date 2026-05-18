@@ -117,6 +117,7 @@ fn calibrate_suggests_thresholds_from_existing_run_receipt() {
         stdout.contains("noise_policy = \"warn\""),
         "stdout: {stdout}"
     );
+    assert!(stdout.contains("run with --emit-patch"), "stdout: {stdout}");
     assert!(
         stdout.contains("Advisory only: no config was written."),
         "stdout: {stdout}"
@@ -125,6 +126,57 @@ fn calibrate_suggests_thresholds_from_existing_run_receipt() {
         fs::read_to_string(&config_path).expect("read config after calibrate"),
         original_config,
         "calibrate must not edit config in the advisory-only version"
+    );
+}
+
+#[test]
+fn calibrate_emit_patch_prints_reviewable_toml_without_editing_config() {
+    let temp_dir = tempdir().expect("temp dir");
+    let config_path = write_config(temp_dir.path());
+    let out_dir = temp_dir.path().join("artifacts").join("perfgate");
+    let run_path = out_dir.join("parser").join("run.json");
+    write_run_receipt(&run_path, "parser", 100.0, 4.0);
+    let original_config = fs::read_to_string(&config_path).expect("read config");
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("calibrate")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--bench")
+        .arg("parser")
+        .arg("--emit-patch");
+
+    let output = cmd.output().expect("run calibrate");
+    assert!(
+        output.status.success(),
+        "calibrate should succeed: stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Reviewable TOML patch:"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("# Suggested from 3 measured samples on linux-x86_64."),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("# CV: 4.0%; review before applying"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("repeat = 10"), "stdout: {stdout}");
+    assert!(stdout.contains("Reasons:"), "stdout: {stdout}");
+    assert!(stdout.contains("When not to apply:"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("benchmark is not the workload reviewers want to gate"),
+        "stdout: {stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(&config_path).expect("read config after calibrate"),
+        original_config,
+        "calibrate --emit-patch must not edit config"
     );
 }
 
