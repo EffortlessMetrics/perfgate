@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: repair-context scenario fixtures
+Current PR: proof freshness tiers and claims
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -77,9 +77,9 @@ surface change requires an accepted spec and explicit proof.
 | 514 | Canary freshness matrix | merged | `docs/status/CANARY_MATRIX.md` |
 | 518 | Server backup/restore smoke | merged | server/CLI tests |
 | 520 | Server retention and migration policy | merged | server docs/status |
-| 524 | Agent repair-context fixtures | current | repair-context tests/fixtures |
-| 525 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 526 | Evidence maturity closeout | pending | handoff and goal archive |
+| 524 | Agent repair-context fixtures | merged | repair-context tests/fixtures |
+| 527 | Proof freshness tiers and claims | current | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 528 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -693,7 +693,7 @@ git diff --check
 
 ## Work item: agent-repair-context-fixtures
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked specs: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md; docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md
 Blocks: product-claims
@@ -727,7 +727,7 @@ git diff --check
 
 ## Work item: proof-freshness-claims
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: final-closeout

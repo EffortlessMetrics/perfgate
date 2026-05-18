@@ -11,6 +11,7 @@ SUPPORT_TIERS.md
 PRODUCT_CLAIMS.md
 PLATFORM_SUPPORT.md
 CANARY_MATRIX.md
+PROOF_FRESHNESS.md
 ```
 
 Those files are intentionally introduced after this scaffold so the claim map

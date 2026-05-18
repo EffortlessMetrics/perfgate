@@ -45,9 +45,16 @@ Use concrete review targets:
 - `next-public-surface-change`
 - `next-decision-contract-change`
 - `next-release-candidate`
+- `next-evidence-maturity-change`
+- `next-canary-refresh`
+- `next-agent-repair-contract-change`
 
 Date-based reviews are allowed when a calendar deadline matters, but release or
 policy milestones are preferred when they are the real support boundary.
+
+Freshness labels live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md). Use them
+when the same support tier has mixed proof recency, such as current in-repo
+tests plus recent external canaries.
 
 ## Ownership Boundaries
 

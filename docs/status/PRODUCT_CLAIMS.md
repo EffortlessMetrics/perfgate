@@ -4,7 +4,8 @@ This file maps user-facing perfgate claims to support tiers and evidence. It is
 the status proof map; it should link to specs, tests, policy ledgers, release
 proof, or docs rather than duplicate their full contents.
 
-Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
+Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md). Proof
+freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 
 ## Claim Index
 
@@ -30,6 +31,13 @@ Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
 | PG-CLAIM-0018 | perfgate reports optional ledger readiness without making the server required. | supported | CLI, server config | next-server-ledger-change |
 | PG-CLAIM-0019 | perfgate has hosted external Action canary evidence for first-use failure UX. | advisory | GitHub Action, external canary | next-hosted-action-change |
 | PG-CLAIM-0020 | perfgate interprets core metric improvement and regression using metric direction. | supported | domain, CLI, receipts, docs | next-decision-contract-change |
+| PG-CLAIM-0021 | perfgate provides reviewable benchmark recipes with maturity metadata. | supported | CLI, docs, config | next-evidence-maturity-change |
+| PG-CLAIM-0022 | perfgate reports baseline and signal maturity as advisory trust guidance. | advisory | CLI, receipts, docs | next-evidence-maturity-change |
+| PG-CLAIM-0023 | perfgate can emit non-mutating calibration patch guidance. | advisory | CLI, config, receipts | next-signal-or-decision-change |
+| PG-CLAIM-0024 | perfgate explains structured-decision suggestions with recognizable tradeoff examples. | supported | CLI, examples, receipts | next-decision-contract-change |
+| PG-CLAIM-0025 | perfgate tracks adoption canary freshness without overclaiming one canary shape. | advisory | status docs, canaries | next-canary-refresh |
+| PG-CLAIM-0026 | perfgate documents optional ledger backup, restore, retention, and migration expectations. | advisory | server docs, tests, status | next-server-ledger-change |
+| PG-CLAIM-0027 | perfgate has fixture-backed agent repair-context guidance for common repair scenarios. | advisory | repair_context.json, CLI guidance, tests | next-agent-repair-contract-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -607,3 +615,218 @@ Known limits:
 - Raw signed `pct` remains a display field; callers must not treat its sign as judgment without metric direction.
 
 Review after: next-decision-contract-change
+
+## PG-CLAIM-0021: Benchmark recipes with maturity metadata
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs, generated config comments
+Linked docs: [`BENCHMARK_RECIPES.md`](../BENCHMARK_RECIPES.md), [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features init
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_init_tests.rs`](../../crates/perfgate-cli/tests/cli_init_tests.rs)
+- [`init.rs`](../../crates/perfgate-cli/src/init.rs)
+
+Artifacts:
+
+- `perfgate init --suggest-benches` generated recipe comments
+- recipe metadata for best fit, bad fit, expected noise, recommended mode,
+  advisory/blocking posture, and paired-mode hints
+
+Known limits:
+
+- Recipes are suggestions, not automatic benchmark selection.
+- Generated recipes do not silently mark a benchmark as gate-ready.
+
+Review after: next-evidence-maturity-change
+
+## PG-CLAIM-0022: Baseline and signal maturity guidance
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI, receipts, docs
+Linked docs: [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 test -p perfgate-cli --all-features doctor
+cargo +1.95.0 run -p xtask -- docs-source-check
+```
+
+Linked tests:
+
+- [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs)
+- [`cli_doctor_tests.rs`](../../crates/perfgate-cli/tests/cli_doctor_tests.rs)
+
+Artifacts:
+
+- `perfgate baseline doctor` maturity classifications
+- `perfgate doctor signal` sample/noise/host/baseline recommendations
+
+Known limits:
+
+- Maturity output is advisory; it does not mutate policy, promote baselines, or
+  make noisy checks blocking by itself.
+
+Review after: next-evidence-maturity-change
+
+## PG-CLAIM-0023: Non-mutating calibration patch guidance
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI, config, receipts
+Linked docs: [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features calibrate
+```
+
+Linked tests:
+
+- [`cli_calibrate_tests.rs`](../../crates/perfgate-cli/tests/cli_calibrate_tests.rs)
+- [`doctor.rs`](../../crates/perfgate-cli/src/doctor.rs)
+
+Artifacts:
+
+- `perfgate calibrate --emit-patch` TOML fragment
+- non-mutating advisory reason output
+
+Known limits:
+
+- The patch is review input. It is not written automatically and does not
+  authorize threshold loosening.
+
+Review after: next-signal-or-decision-change
+
+## PG-CLAIM-0024: Decision examples and suggestion reasons
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, examples, receipts
+Linked docs: [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`examples/decision-outcomes.md`](../examples/decision-outcomes.md), [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features decision
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_decision_suggest_tests.rs`](../../crates/perfgate-cli/tests/cli_decision_suggest_tests.rs)
+- [`cli_performance_decision_example_tests.rs`](../../crates/perfgate-cli/tests/cli_performance_decision_example_tests.rs)
+
+Artifacts:
+
+- `perfgate decision examples`
+- `perfgate decision suggest` reason lines for improvement, regression, noise,
+  and incomplete scenario/tradeoff evidence
+
+Known limits:
+
+- Decision examples teach patterns; they do not force structured decisions for
+  simple gates.
+
+Review after: next-decision-contract-change
+
+## PG-CLAIM-0025: Canary freshness matrix
+
+Tier: advisory
+Proof freshness: current
+Surface: status docs, external canary evidence, release smoke
+Linked docs: [`CANARY_MATRIX.md`](CANARY_MATRIX.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Linked gates: docs-check, docs-source-check, product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Artifacts:
+
+- canary freshness states
+- proof/non-proof columns for external and release canary shapes
+
+Known limits:
+
+- Freshness is not a support tier.
+- One canary shape does not prove every repo, runner, platform, or workflow.
+
+Review after: next-canary-refresh
+
+## PG-CLAIM-0026: Optional ledger operations policy
+
+Tier: advisory
+Proof freshness: current
+Surface: server docs, in-repo server tests, canary matrix
+Linked docs: [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`CANARY_MATRIX.md`](CANARY_MATRIX.md), [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-server --all-features backup_restore_smoke_preserves_latest_history_audit_and_dry_run
+cargo +1.95.0 run -p xtask -- docs-source-check
+```
+
+Linked tests:
+
+- [`memory.rs`](../../crates/perfgate-server/src/storage/memory.rs)
+
+Artifacts:
+
+- decision export/audit export guidance
+- restore drill guidance
+- retention and migration policy guidance
+- prune dry-run preservation proof for the in-memory store path
+
+Known limits:
+
+- This claim does not prove production database restore, large histories, or
+  migration compatibility in every deployment.
+- Server ledger mode remains optional team history, not local correctness.
+
+Review after: next-server-ledger-change
+
+## PG-CLAIM-0027: Agent repair-context guidance
+
+Tier: advisory
+Proof freshness: current
+Surface: `repair_context.json`, CLI guidance, tests
+Linked docs: [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features --test cli_repair_context_agent_tests
+cargo +1.95.0 test -p perfgate-cli --all-features check
+cargo +1.95.0 run -p xtask -- schema-compat
+```
+
+Linked tests:
+
+- [`cli_repair_context_agent_tests.rs`](../../crates/perfgate-cli/tests/cli_repair_context_agent_tests.rs)
+- [`check_guidance.rs`](../../crates/perfgate-cli/src/check_guidance.rs)
+
+Artifacts:
+
+- `repair_context.json`
+- failure-class guidance for missing baseline, regression, setup command
+  failure, high noise, host mismatch, review required, and server upload
+  failure
+
+Known limits:
+
+- Repair context is advisory. It does not make agents policy authorities, and it
+  does not authorize baseline promotion, threshold loosening, or server-ledger
+  requirements.
+
+Review after: next-agent-repair-contract-change

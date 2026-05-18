@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.19.0"
-current_work_item = "agent-repair-context-fixtures"
-current_pr = "test: cover repair-context scenarios"
+current_work_item = "proof-freshness-claims"
+current_pr = "docs(status): add proof freshness tiers"
 
 objective = """
 Make perfgate useful after week one. A team should be able to tell which
@@ -216,14 +216,14 @@ plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]
 id = "agent-repair-context-fixtures"
-status = "current"
+status = "merged"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
 
 [[work_item]]
 id = "proof-freshness-claims"
-status = "pending"
+status = "current"
 proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
 spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
 plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
