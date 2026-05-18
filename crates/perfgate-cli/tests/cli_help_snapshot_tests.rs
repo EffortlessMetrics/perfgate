@@ -78,6 +78,18 @@ fn cli_help_check() {
 }
 
 #[test]
+fn cli_help_calibrate() {
+    perfgate_cmd()
+        .args(["calibrate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Suggest advisory thresholds"))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--emit-patch"));
+}
+
+#[test]
 fn cli_help_doctor() {
     perfgate_cmd()
         .args(["doctor", "--help"])

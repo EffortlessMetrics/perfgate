@@ -327,12 +327,10 @@ pub(crate) fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
         cv.map(format_percent)
             .unwrap_or_else(|| "unavailable".to_string())
     );
-    println!(
-        "Host class: {}",
-        evidence_receipt
-            .map(host_class)
-            .unwrap_or_else(|| "unknown".to_string())
-    );
+    let evidence_host_class = evidence_receipt
+        .map(host_class)
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("Host class: {evidence_host_class}");
     println!();
     println!("Evidence:");
     if let Some(path) = run_path.as_ref().filter(|path| path.exists()) {
@@ -382,6 +380,11 @@ pub(crate) fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
     println!("  warn_factor = {:.2}", suggestion.warn_factor);
     println!("  noise_threshold = {:.2}", suggestion.noise_threshold);
     println!("  noise_policy = \"{}\"", suggestion.noise_policy.as_str());
+    if args.emit_patch {
+        print_calibration_patch(&suggestion, sample_count, cv, &evidence_host_class);
+    } else {
+        println!("  run with --emit-patch for a reasoned, copy-ready TOML fragment");
+    }
     println!();
     println!("Next:");
     if run_receipt.is_none() {
@@ -400,6 +403,69 @@ pub(crate) fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
     println!("Advisory only: no config was written.");
 
     Ok(())
+}
+
+fn print_calibration_patch(
+    suggestion: &CalibrationSuggestion,
+    sample_count: usize,
+    cv: Option<f64>,
+    host_class: &str,
+) {
+    println!();
+    println!("Reviewable TOML patch:");
+    if sample_count == 0 {
+        println!("# Suggested without local samples on {host_class}; collect receipts first.");
+    } else {
+        println!(
+            "# Suggested from {sample_count} measured sample{} on {host_class}.",
+            plural(sample_count)
+        );
+    }
+    println!(
+        "# CV: {}; {}.",
+        cv.map(format_percent)
+            .unwrap_or_else(|| "unavailable".to_string()),
+        calibration_patch_summary(suggestion)
+    );
+    println!("threshold = {:.2}", suggestion.fail_threshold);
+    println!("warn_factor = {:.2}", suggestion.warn_factor);
+    println!("noise_threshold = {:.2}", suggestion.noise_threshold);
+    println!("noise_policy = \"{}\"", suggestion.noise_policy.as_str());
+    println!("repeat = {}", suggestion.recommended_repeat);
+    println!();
+    println!("Reasons:");
+    println!(
+        "  samples: {}",
+        if sample_count == 0 {
+            "unavailable".to_string()
+        } else {
+            format!("{sample_count} measured sample{}", plural(sample_count))
+        }
+    );
+    println!(
+        "  noise: {}",
+        cv.map(format_percent)
+            .unwrap_or_else(|| "unavailable".to_string())
+    );
+    println!("  host: {host_class}");
+    if suggestion.suggest_paired {
+        println!("  paired mode: recommended before blocking");
+    } else {
+        println!("  paired mode: not required by current evidence");
+    }
+    println!();
+    println!("When not to apply:");
+    println!("  benchmark is not the workload reviewers want to gate");
+    println!("  samples are missing, too few, or collected on the wrong host class");
+    println!("  paired mode is recommended but has not been run");
+}
+
+fn calibration_patch_summary(suggestion: &CalibrationSuggestion) -> &'static str {
+    if suggestion.suggest_paired {
+        "keep advisory or use paired mode before required CI"
+    } else {
+        "review before applying to defaults or a specific benchmark budget"
+    }
 }
 
 fn find_calibration_run_path(out_dir: &Path, bench_name: &str) -> Option<PathBuf> {
