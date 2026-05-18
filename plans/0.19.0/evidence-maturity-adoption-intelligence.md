@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: server backup/restore smoke
+Current PR: server retention and migration policy
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -75,11 +75,11 @@ surface change requires an accepted spec and explicit proof.
 | 511 | Decision example pack | merged | examples/fixtures and optional `decision examples` |
 | 512 | Decision suggestion reasons | merged | `perfgate decision suggest`, CLI tests |
 | 514 | Canary freshness matrix | merged | `docs/status/CANARY_MATRIX.md` |
-| 517 | Server backup/restore smoke | current | server/CLI tests |
-| 518 | Server retention and migration policy | pending | server docs/status |
-| 519 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 520 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 521 | Evidence maturity closeout | pending | handoff and goal archive |
+| 518 | Server backup/restore smoke | merged | server/CLI tests |
+| 519 | Server retention and migration policy | current | server docs/status |
+| 520 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 521 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 522 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -634,7 +634,7 @@ git diff --check
 
 ## Work item: server-backup-restore-smoke
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: server-retention-migration-policy, product-claims
@@ -667,7 +667,7 @@ git diff --check
 
 ## Work item: server-retention-migration-policy
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: product-claims
@@ -731,7 +731,7 @@ Status: pending
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: final-closeout
-Blocked by: canary-freshness-matrix, benchmark-recipe-catalog, baseline-maturity-doctor, signal-maturity-doctor, calibration-patch-output, decision-suggestion-reasons, server-backup-restore-smoke, agent-repair-context-fixtures
+Blocked by: canary-freshness-matrix, benchmark-recipe-catalog, baseline-maturity-doctor, signal-maturity-doctor, calibration-patch-output, decision-suggestion-reasons, server-backup-restore-smoke, server-retention-migration-policy, agent-repair-context-fixtures
 
 ### Goal
 

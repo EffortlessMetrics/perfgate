@@ -122,6 +122,75 @@ For SQLite, combine database backups with JSONL exports. For PostgreSQL, use the
 database platform backup policy and keep JSONL exports for portable audit
 evidence.
 
+Backups protect service continuity; JSONL exports protect audit review. Keep
+both when the ledger is used as shared team history. A JSONL export is not a
+generic database import surface unless a later release explicitly ships and
+documents an import command.
+
+## Restore Drills
+
+Run a restore drill before storage migrations, server upgrades, retention-policy
+changes, or any release where the ledger is part of the team workflow.
+
+Minimum drill:
+
+1. Stop writes or use a point-in-time database snapshot.
+2. Export decisions and audit events for the project.
+3. Restore the SQLite database copy or PostgreSQL backup into a fresh service.
+4. Verify `decision latest`, `decision history`, `decision debt`,
+   `decision export`, `audit list`, and `audit export`.
+5. Run `decision prune --dry-run` against the restored service and confirm the
+   matched/deleted counts are unchanged from the source service.
+
+The drill proves that retained history is recoverable. It does not change the
+correctness contract: local receipts and decision bundles remain enough to
+review a decision when the server is unavailable.
+
+## Retention Policy
+
+Pick retention windows before the first production prune. Use the longest
+window needed by release review, compliance, incident response, and accepted
+tradeoff follow-up.
+
+Recommended starting point:
+
+| Record | Suggested minimum | Notes |
+|--------|-------------------|-------|
+| Decision records | 365 days | Keep longer while accepted tradeoff debt is still open or release review needs history. |
+| Audit events | 365 days | Keep at least as long as decision records so uploads, key changes, exports, and prunes remain explainable. |
+| JSONL exports | One release cycle after the next verified backup | Store outside the ledger database so prune mistakes are recoverable. |
+| Local receipts | Repository or artifact-retention policy | These remain the correctness source for review and CI reproduction. |
+
+Treat retention as policy, not storage cleanup. Do not prune merely because the
+dashboard is noisy; filter history or export older records instead. Do not use
+prune to hide a bad decision. Keep dry-run output, export paths, and operator
+notes with the change record for every forced prune.
+
+## Migration And Upgrade Policy
+
+Before migrating storage or upgrading a shared server:
+
+- record the perfgate version or commit, storage backend, project, and planned
+  maintenance window;
+- export decision and audit JSONL for the affected projects;
+- take a database backup or point-in-time snapshot;
+- pause CI uploads or make upload failure advisory while the service is under
+  maintenance;
+- apply the upgrade or migration to a restored copy first when practical;
+- verify health, metrics, decision history, latest decision, debt, export,
+  audit export, and prune dry-run after the change; and
+- keep rollback instructions with the maintenance record.
+
+For SQLite, run one active server process per database file and perform file
+backups while the service is stopped or from a consistent snapshot. For
+PostgreSQL, use the database platform's backup, restore, migration, and
+connection-drain tooling.
+
+If a migration fails after local decision receipts were created, preserve the
+receipts and repair the ledger forward from the backup or source artifacts.
+Do not rerun benchmarks, loosen thresholds, or promote new baselines merely to
+repair server history.
+
 ## Pruning
 
 Always preview retention changes first:
@@ -181,6 +250,8 @@ curl -fsS http://localhost:8080/metrics
 | SQLite busy or locked | Multiple writers or long-running local process | Stop extra server process, retry, consider Postgres for shared use |
 | Upload fails but `decision.md` exists | Server persistence failed after local decision succeeded | Preserve artifacts and rerun `decision upload` |
 | Prune removed too much | Forced prune without export or wrong retention window | Restore from database backup or JSONL export |
+| Restore drill cannot reproduce history | Backup or export policy is incomplete | Stop pruning/migration work, repair backup coverage, rerun the drill |
+| Migration changes history counts | Storage migration or query compatibility bug | Roll back to backup, preserve local receipts, and investigate before resuming uploads |
 | Dashboard stale | Server reads old storage or upload failed | Check `/health`, audit events, and latest decision history |
 
 ## Proof Commands
