@@ -78,8 +78,8 @@ surface change requires an accepted spec and explicit proof.
 | 518 | Server backup/restore smoke | merged | server/CLI tests |
 | 520 | Server retention and migration policy | merged | server docs/status |
 | 524 | Agent repair-context fixtures | merged | repair-context tests/fixtures |
-| 527 | Proof freshness tiers and claims | current | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 528 | Evidence maturity closeout | pending | handoff and goal archive |
+| 528 | Proof freshness tiers and claims | current | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 529 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
