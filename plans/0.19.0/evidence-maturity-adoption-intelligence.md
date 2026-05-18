@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: canary freshness matrix
+Current PR: server backup/restore smoke
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -74,12 +74,12 @@ surface change requires an accepted spec and explicit proof.
 | 510 | Calibration patch output | merged | `perfgate calibrate --emit-patch`, CLI tests |
 | 511 | Decision example pack | merged | examples/fixtures and optional `decision examples` |
 | 512 | Decision suggestion reasons | merged | `perfgate decision suggest`, CLI tests |
-| 513 | Canary freshness matrix | current | `docs/status/CANARY_MATRIX.md` |
-| 514 | Server backup/restore smoke | pending | server/CLI tests |
-| 515 | Server retention and migration policy | pending | server docs/status |
-| 516 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 517 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 518 | Evidence maturity closeout | pending | handoff and goal archive |
+| 514 | Canary freshness matrix | merged | `docs/status/CANARY_MATRIX.md` |
+| 517 | Server backup/restore smoke | current | server/CLI tests |
+| 518 | Server retention and migration policy | pending | server docs/status |
+| 519 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 520 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 521 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -588,7 +588,7 @@ Revert the additional `Why` and `Artifacts` output plus focused tests. Existing
 
 ## Work item: canary-freshness-matrix
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: proof-freshness-claims
@@ -634,7 +634,7 @@ git diff --check
 
 ## Work item: server-backup-restore-smoke
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: server-retention-migration-policy, product-claims
