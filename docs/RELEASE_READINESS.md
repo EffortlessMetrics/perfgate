@@ -1,8 +1,9 @@
 # Release Readiness
 
-Last verified: 2026-05-17 for v0.17.0 publication reconciliation and the
+Last verified: 2026-05-18 for v0.17.0 publication reconciliation and the
 0.18.0 release-candidate cutover proof after restored post-SRP coverage
-hardening, generated queue resolution, and the #484 init extraction. See
+hardening, generated queue resolution, the #484 init extraction, install/action
+example audit, product-claim sync, and release-candidate readiness closeout. See
 [v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md),
 [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
 [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md),

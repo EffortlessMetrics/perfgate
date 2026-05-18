@@ -1,11 +1,12 @@
 # v0.18.0 Publish Packet
 
-Date: 2026-05-17
+Date: 2026-05-18
 
-Branch: `release/0-18-publish-packet-sync`
+Branch: `main` after the release-candidate pointer-sync PR merges
 
-Prepared from main state: through #490
-(`1d8e3e581451cf75c79e60491115f31ab9523858`) plus this packet-sync PR.
+Prepared from main state: through #495
+(`c4a8e16afc33a38f4ee431d49bceeba6ca4bde65`) plus this
+release-candidate pointer-sync PR.
 The release operator must publish from the pulled `main` commit that contains
 this packet, and must record that exact `git rev-parse HEAD` value in the
 publication audit.
@@ -28,6 +29,8 @@ Linked proof:
 - [`v0.18.0 Restored Coverage Proof`](release-0.18.0-restored-coverage-proof.md)
 - [`v0.18.0 Final Proof After Restored Coverage`](release-0.18.0-final-proof-after-restored-coverage.md)
 - [`v0.18.0 Final Proof After Init Extraction`](release-0.18.0-final-proof-after-init-extraction.md)
+- [`v0.18.0 Install And Action Example Audit`](release-0.18.0-install-action-example-audit.md)
+- [`v0.18.0 Release-Candidate Readiness Closeout`](../handoffs/2026-05-18-0-18-release-candidate-readiness-closeout.md)
 
 Current-main sync notes:
 
@@ -36,8 +39,13 @@ Current-main sync notes:
 - #490 tightened the first-hour user path to show `doctor`,
   `init --suggest-benches`, local `check`, baseline promotion, and the
   CI-equivalent `check --require-baseline` confirmation.
+- #492 audited install/action examples so public refs do not imply unpublished
+  `0.18.0` crates, tags, aliases, assets, or public install smoke.
+- #493 synced product claims to the final proof and readiness boundaries.
+- #495 closed release-candidate readiness while leaving the publication lane
+  active at release-operator-gated publication.
 - No crates were published, no tags or releases were created, no aliases moved,
-  and no public install smoke was claimed by either PR.
+  and no public install smoke was claimed by these PRs.
 
 ## Release Boundary
 
