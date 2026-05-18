@@ -4,19 +4,24 @@
 //! separate from argument parsing and command dispatch in `main.rs`.
 
 use crate::{
-    CalibrateArgs, DoctorArgs, RUN_RECEIPT_FILE, ServerFlags, check_command,
-    load_optional_baseline_receipt, paired_command, read_json, resolve_configured_out_dir,
-    run_git_capture, with_tokio_runtime,
+    COMPARE_RECEIPT_FILE, CalibrateArgs, DoctorArgs, RUN_RECEIPT_FILE, ServerFlags,
+    SignalDoctorArgs, check_command, load_optional_baseline_receipt, paired_command, read_json,
+    resolve_configured_out_dir, run_git_capture, with_tokio_runtime,
 };
+use chrono::{DateTime, Utc};
 use perfgate::app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate::app::init::{CiPlatform, ci_workflow_path};
 use perfgate_client::{BaselineClient, ClientConfig, RetryConfig};
 use perfgate_types::config::load_config_file;
 use perfgate_types::error::ConfigValidationError;
-use perfgate_types::{ConfigFile, Metric, RunReceipt};
+use perfgate_types::{CompareReceipt, ConfigFile, Metric, RunReceipt};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+const SIGNAL_MATURE_SAMPLE_LIMIT: usize = 7;
+const SIGNAL_HIGH_NOISE_CV: f64 = 0.10;
+const SIGNAL_STALE_BASELINE_DAYS: i64 = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DoctorStatus {
@@ -461,6 +466,472 @@ fn host_class(receipt: &RunReceipt) -> String {
 
 fn format_percent(value: f64) -> String {
     format!("{:.1}%", value * 100.0)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SignalRecommendation {
+    SafeToGate,
+    AdvisoryOnly,
+    IncreaseSamples,
+    UsePairedMode,
+    RefreshBaseline,
+    CheckHostMismatch,
+    NoDecisionYet,
+}
+
+impl SignalRecommendation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SafeToGate => "safe_to_gate",
+            Self::AdvisoryOnly => "advisory_only",
+            Self::IncreaseSamples => "increase_samples",
+            Self::UsePairedMode => "use_paired_mode",
+            Self::RefreshBaseline => "refresh_baseline",
+            Self::CheckHostMismatch => "check_host_mismatch",
+            Self::NoDecisionYet => "no_decision_yet",
+        }
+    }
+
+    fn meaning(self) -> &'static str {
+        match self {
+            Self::SafeToGate => "signal looks stable enough for required-baseline checks",
+            Self::AdvisoryOnly => {
+                "evidence exists but is not complete enough to make blocking boring"
+            }
+            Self::IncreaseSamples => "collect more measured samples before tightening or blocking",
+            Self::UsePairedMode => {
+                "ordinary runs are noisy; compare baseline/current under paired conditions"
+            }
+            Self::RefreshBaseline => "baseline is stale enough to refresh before relying on it",
+            Self::CheckHostMismatch => {
+                "baseline/current host classes differ; rerun on a compatible host"
+            }
+            Self::NoDecisionYet => {
+                "setup or receipts are incomplete; do not treat this as a regression"
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SignalDoctorRow {
+    bench: String,
+    run_path: PathBuf,
+    baseline_path: PathBuf,
+    compare_path: PathBuf,
+    run_found: bool,
+    baseline_found: bool,
+    baseline_remote: bool,
+    compare_found: bool,
+    samples: usize,
+    cv: Option<f64>,
+    host_stability: String,
+    baseline_age_days: Option<i64>,
+    recent_drift: String,
+    recommendation: SignalRecommendation,
+}
+
+pub(crate) fn execute_signal_doctor(args: SignalDoctorArgs) -> anyhow::Result<()> {
+    let config = load_config_file(&args.config)?;
+    config
+        .validate()
+        .map_err(ConfigValidationError::ConfigFile)?;
+    let benches = configured_signal_benches(&config, args.bench.as_deref())?;
+    let out_dir = resolve_configured_out_dir(args.out_dir.as_ref(), Some(&config));
+
+    println!("perfgate doctor signal");
+    println!();
+    if benches.is_empty() {
+        println!("No benchmarks are configured.");
+        println!("Next:");
+        println!(
+            "  edit {} and add a reviewed [[bench]] command",
+            args.config.display()
+        );
+        println!("Do not:");
+        println!("  promote baselines until the benchmark measures the workload you care about");
+        return Ok(());
+    }
+
+    let mut counts = SignalDoctorCounts::default();
+    for bench_name in &benches {
+        let row = inspect_signal(&config, &out_dir, bench_name)?;
+        counts.record(row.recommendation);
+        print_signal_row(&row, &args.config);
+    }
+
+    println!();
+    println!(
+        "Summary: {} safe_to_gate, {} advisory_only, {} increase_samples, {} use_paired_mode, {} refresh_baseline, {} check_host_mismatch, {} no_decision_yet",
+        counts.safe_to_gate,
+        counts.advisory_only,
+        counts.increase_samples,
+        counts.use_paired_mode,
+        counts.refresh_baseline,
+        counts.check_host_mismatch,
+        counts.no_decision_yet
+    );
+    println!();
+    println!("Do not:");
+    println!("  treat noisy or immature evidence as policy just because receipts exist");
+    println!("  make server ledger upload part of local correctness");
+    println!();
+    println!("Advisory only: no config, baseline, threshold, or policy was changed.");
+
+    Ok(())
+}
+
+#[derive(Default)]
+struct SignalDoctorCounts {
+    safe_to_gate: usize,
+    advisory_only: usize,
+    increase_samples: usize,
+    use_paired_mode: usize,
+    refresh_baseline: usize,
+    check_host_mismatch: usize,
+    no_decision_yet: usize,
+}
+
+impl SignalDoctorCounts {
+    fn record(&mut self, recommendation: SignalRecommendation) {
+        match recommendation {
+            SignalRecommendation::SafeToGate => self.safe_to_gate += 1,
+            SignalRecommendation::AdvisoryOnly => self.advisory_only += 1,
+            SignalRecommendation::IncreaseSamples => self.increase_samples += 1,
+            SignalRecommendation::UsePairedMode => self.use_paired_mode += 1,
+            SignalRecommendation::RefreshBaseline => self.refresh_baseline += 1,
+            SignalRecommendation::CheckHostMismatch => self.check_host_mismatch += 1,
+            SignalRecommendation::NoDecisionYet => self.no_decision_yet += 1,
+        }
+    }
+}
+
+fn print_signal_row(row: &SignalDoctorRow, config_path: &Path) {
+    println!("bench: {}", row.bench);
+    println!(
+        "samples: {} measured sample{}",
+        row.samples,
+        plural(row.samples)
+    );
+    println!(
+        "cv: {}",
+        row.cv
+            .map(format_percent)
+            .unwrap_or_else(|| "unavailable".to_string())
+    );
+    println!("host stability: {}", row.host_stability);
+    println!(
+        "baseline age: {}",
+        row.baseline_age_days
+            .map(|days| format!("{days} day{}", plural(days as usize)))
+            .unwrap_or_else(|| "unknown".to_string())
+    );
+    println!("recent drift: {}", row.recent_drift);
+    println!("recommendation: {}", row.recommendation.as_str());
+    println!("meaning: {}", row.recommendation.meaning());
+    println!("artifacts:");
+    println!(
+        "  run: {}{}",
+        row.run_path.display(),
+        if row.run_found { "" } else { " (missing)" }
+    );
+    if row.baseline_remote {
+        println!(
+            "  baseline: {} (remote, not probed)",
+            row.baseline_path.display()
+        );
+    } else {
+        println!(
+            "  baseline: {}{}",
+            row.baseline_path.display(),
+            if row.baseline_found { "" } else { " (missing)" }
+        );
+    }
+    println!(
+        "  compare: {}{}",
+        row.compare_path.display(),
+        if row.compare_found { "" } else { " (missing)" }
+    );
+    println!("next:");
+    for command in signal_next_commands(row, config_path) {
+        println!("  {command}");
+    }
+    println!();
+}
+
+fn signal_next_commands(row: &SignalDoctorRow, config_path: &Path) -> Vec<String> {
+    match row.recommendation {
+        SignalRecommendation::SafeToGate => {
+            vec![check_command(config_path, Some(&row.bench), true)]
+        }
+        SignalRecommendation::UsePairedMode => vec![
+            format!(
+                "perfgate calibrate --config {} --bench {}",
+                config_path.display(),
+                row.bench
+            ),
+            paired_command(Some(&row.bench)),
+        ],
+        SignalRecommendation::IncreaseSamples => vec![
+            check_command(config_path, Some(&row.bench), false),
+            format!(
+                "perfgate calibrate --config {} --bench {}",
+                config_path.display(),
+                row.bench
+            ),
+        ],
+        SignalRecommendation::RefreshBaseline => vec![
+            check_command(config_path, Some(&row.bench), true),
+            format!("review and refresh baseline for {}", row.bench),
+        ],
+        SignalRecommendation::CheckHostMismatch => vec![
+            "rerun on the same runner class as the baseline".to_string(),
+            check_command(config_path, Some(&row.bench), true),
+        ],
+        SignalRecommendation::AdvisoryOnly => vec![
+            check_command(config_path, Some(&row.bench), false),
+            format!(
+                "perfgate baseline doctor --config {} --bench {}",
+                config_path.display(),
+                row.bench
+            ),
+        ],
+        SignalRecommendation::NoDecisionYet => vec![
+            check_command(config_path, Some(&row.bench), false),
+            format!(
+                "perfgate baseline promote --config {} --bench {}",
+                config_path.display(),
+                row.bench
+            ),
+        ],
+    }
+}
+
+fn inspect_signal(
+    config: &ConfigFile,
+    out_dir: &Path,
+    bench_name: &str,
+) -> anyhow::Result<SignalDoctorRow> {
+    let run_path = signal_run_path(out_dir, bench_name);
+    let run_receipt = if run_path.exists() {
+        Some(read_json::<RunReceipt>(&run_path)?)
+    } else {
+        None
+    };
+
+    let baseline_path = resolve_baseline_path(&None, bench_name, config);
+    let baseline_text = baseline_path.to_string_lossy();
+    let baseline_remote = is_remote_storage_uri(&baseline_text);
+    let baseline_receipt = if baseline_remote {
+        None
+    } else {
+        load_optional_baseline_receipt(&baseline_path)?
+    };
+
+    let compare_path = signal_compare_path(out_dir, bench_name);
+    let compare_receipt = if compare_path.exists() {
+        Some(read_json::<CompareReceipt>(&compare_path)?)
+    } else {
+        None
+    };
+
+    let samples = run_receipt
+        .as_ref()
+        .or(baseline_receipt.as_ref())
+        .map(measured_sample_count)
+        .unwrap_or_default();
+    let cv = run_receipt
+        .as_ref()
+        .and_then(|receipt| receipt.stats.wall_ms.cv())
+        .or_else(|| compare_receipt.as_ref().and_then(compare_cv))
+        .or_else(|| {
+            baseline_receipt
+                .as_ref()
+                .and_then(|receipt| receipt.stats.wall_ms.cv())
+        });
+    let (host_stability, host_mismatch) =
+        signal_host_stability(run_receipt.as_ref(), baseline_receipt.as_ref());
+    let baseline_age_days = baseline_receipt.as_ref().and_then(baseline_age_days);
+    let recent_drift = compare_receipt
+        .as_ref()
+        .map(signal_recent_drift)
+        .unwrap_or_else(|| "missing compare receipt".to_string());
+    let recommendation = signal_recommendation(SignalRecommendationInput {
+        baseline_found: baseline_receipt.is_some(),
+        baseline_remote,
+        compare_found: compare_receipt.is_some(),
+        samples,
+        cv,
+        host_mismatch,
+        baseline_age_days,
+    });
+
+    Ok(SignalDoctorRow {
+        bench: bench_name.to_string(),
+        run_path,
+        baseline_path,
+        compare_path,
+        run_found: run_receipt.is_some(),
+        baseline_found: baseline_receipt.is_some(),
+        baseline_remote,
+        compare_found: compare_receipt.is_some(),
+        samples,
+        cv,
+        host_stability,
+        baseline_age_days,
+        recent_drift,
+        recommendation,
+    })
+}
+
+struct SignalRecommendationInput {
+    baseline_found: bool,
+    baseline_remote: bool,
+    compare_found: bool,
+    samples: usize,
+    cv: Option<f64>,
+    host_mismatch: bool,
+    baseline_age_days: Option<i64>,
+}
+
+fn signal_recommendation(input: SignalRecommendationInput) -> SignalRecommendation {
+    if !input.baseline_found && !input.baseline_remote {
+        return SignalRecommendation::NoDecisionYet;
+    }
+    if input.host_mismatch {
+        return SignalRecommendation::CheckHostMismatch;
+    }
+    if input
+        .baseline_age_days
+        .is_some_and(|days| days > SIGNAL_STALE_BASELINE_DAYS)
+    {
+        return SignalRecommendation::RefreshBaseline;
+    }
+    if input.cv.is_some_and(|cv| cv > SIGNAL_HIGH_NOISE_CV) {
+        return SignalRecommendation::UsePairedMode;
+    }
+    if input.samples < SIGNAL_MATURE_SAMPLE_LIMIT {
+        return SignalRecommendation::IncreaseSamples;
+    }
+    if !input.compare_found || input.baseline_remote {
+        return SignalRecommendation::AdvisoryOnly;
+    }
+    SignalRecommendation::SafeToGate
+}
+
+fn configured_signal_benches(
+    config: &ConfigFile,
+    bench: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    if let Some(bench) = bench {
+        if config
+            .benches
+            .iter()
+            .any(|candidate| candidate.name == bench)
+        {
+            return Ok(vec![bench.to_string()]);
+        }
+        return Err(ConfigValidationError::BenchName(format!(
+            "bench '{}' not found in config",
+            bench
+        ))
+        .into());
+    }
+
+    Ok(config
+        .benches
+        .iter()
+        .map(|bench| bench.name.clone())
+        .collect())
+}
+
+fn signal_run_path(out_dir: &Path, bench_name: &str) -> PathBuf {
+    let per_bench = out_dir.join(bench_name).join(RUN_RECEIPT_FILE);
+    if per_bench.exists() {
+        per_bench
+    } else {
+        out_dir.join(RUN_RECEIPT_FILE)
+    }
+}
+
+fn signal_compare_path(out_dir: &Path, bench_name: &str) -> PathBuf {
+    let per_bench = out_dir.join(bench_name).join(COMPARE_RECEIPT_FILE);
+    if per_bench.exists() {
+        per_bench
+    } else {
+        out_dir.join(COMPARE_RECEIPT_FILE)
+    }
+}
+
+fn compare_cv(compare: &CompareReceipt) -> Option<f64> {
+    compare
+        .deltas
+        .values()
+        .filter_map(|delta| delta.cv)
+        .max_by(|left, right| left.total_cmp(right))
+}
+
+fn signal_recent_drift(compare: &CompareReceipt) -> String {
+    let status = compare.verdict.status.as_str();
+    let largest_regression = compare
+        .deltas
+        .iter()
+        .max_by(|(_, left), (_, right)| left.regression.total_cmp(&right.regression));
+
+    if let Some((metric, delta)) = largest_regression {
+        format!(
+            "{} ({} regression {})",
+            status,
+            metric.as_str(),
+            format_percent(delta.regression)
+        )
+    } else {
+        format!("{status} (no metric deltas)")
+    }
+}
+
+fn signal_host_stability(
+    run: Option<&RunReceipt>,
+    baseline: Option<&RunReceipt>,
+) -> (String, bool) {
+    match (run, baseline) {
+        (Some(run), Some(baseline)) => {
+            let run_host = host_class(run);
+            let baseline_host = host_class(baseline);
+            if run_host == baseline_host {
+                (format!("stable ({run_host})"), false)
+            } else {
+                (
+                    format!("mismatch (baseline {baseline_host}, current {run_host})"),
+                    true,
+                )
+            }
+        }
+        (None, Some(baseline)) => {
+            let baseline_host = host_class(baseline);
+            let current_host = current_host_class();
+            if baseline_host == current_host {
+                (format!("baseline-only ({baseline_host})"), false)
+            } else {
+                (
+                    format!("mismatch (baseline {baseline_host}, current {current_host})"),
+                    true,
+                )
+            }
+        }
+        (Some(run), None) => (format!("run-only ({})", host_class(run)), false),
+        (None, None) => ("unknown".to_string(), false),
+    }
+}
+
+fn current_host_class() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn baseline_age_days(receipt: &RunReceipt) -> Option<i64> {
+    let started_at = DateTime::parse_from_rfc3339(&receipt.run.started_at).ok()?;
+    let age = Utc::now().signed_duration_since(started_at.with_timezone(&Utc));
+    Some(age.num_days().max(0))
 }
 
 pub(crate) fn execute_doctor(args: DoctorArgs, server_flags: ServerFlags) -> anyhow::Result<()> {

@@ -65,6 +65,99 @@ fn write_baseline_marker(dir: &std::path::Path) {
     .expect("write baseline marker");
 }
 
+fn write_signal_receipt(path: &std::path::Path, bench: &str, sample_count: usize, cv: f64) {
+    let started_at = chrono::Utc::now() - chrono::Duration::days(1);
+    let samples = (0..sample_count)
+        .map(|_| {
+            serde_json::json!({
+                "wall_ms": 100,
+                "exit_code": 0,
+                "warmup": false,
+                "timed_out": false
+            })
+        })
+        .collect::<Vec<_>>();
+    let receipt = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": { "name": "perfgate", "version": "0.18.0" },
+        "run": {
+            "id": format!("{bench}-run"),
+            "started_at": started_at.to_rfc3339(),
+            "ended_at": (started_at + chrono::Duration::seconds(1)).to_rfc3339(),
+            "host": {
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH
+            }
+        },
+        "bench": {
+            "name": bench,
+            "command": success_command(),
+            "repeat": sample_count as u32,
+            "warmup": 0
+        },
+        "samples": samples,
+        "stats": {
+            "wall_ms": {
+                "median": 100,
+                "min": 98,
+                "max": 102,
+                "mean": 100.0,
+                "stddev": 100.0 * cv
+            }
+        }
+    });
+    fs::create_dir_all(path.parent().expect("receipt parent")).expect("create receipt parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize receipt"),
+    )
+    .expect("write receipt");
+}
+
+fn write_signal_compare(path: &std::path::Path, bench: &str) {
+    let compare = serde_json::json!({
+        "schema": "perfgate.compare.v1",
+        "tool": { "name": "perfgate", "version": "0.18.0" },
+        "bench": {
+            "name": bench,
+            "command": success_command(),
+            "repeat": 7,
+            "warmup": 0
+        },
+        "baseline_ref": { "path": "baselines/doctor-bench.json", "run_id": "baseline-run" },
+        "current_ref": { "path": "artifacts/perfgate/doctor-bench/run.json", "run_id": "current-run" },
+        "budgets": {
+            "wall_ms": {
+                "threshold": 0.20,
+                "warn_threshold": 0.10,
+                "direction": "lower"
+            }
+        },
+        "deltas": {
+            "wall_ms": {
+                "baseline": 100.0,
+                "current": 101.0,
+                "ratio": 1.01,
+                "pct": 0.01,
+                "regression": 0.01,
+                "cv": 0.03,
+                "status": "pass"
+            }
+        },
+        "verdict": {
+            "status": "pass",
+            "counts": { "pass": 1, "warn": 0, "fail": 0, "skip": 0 },
+            "reasons": []
+        }
+    });
+    fs::create_dir_all(path.parent().expect("compare parent")).expect("create compare parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&compare).expect("serialize compare"),
+    )
+    .expect("write compare");
+}
+
 #[test]
 fn doctor_reports_local_setup_without_running_benchmarks() {
     let dir = tempdir().expect("tempdir");
@@ -93,6 +186,94 @@ fn doctor_reports_local_setup_without_running_benchmarks() {
             "do not loosen thresholds to fix missing baseline setup",
         ))
         .stdout(predicate::str::contains("Summary: 0 failed"));
+}
+
+#[test]
+fn doctor_signal_reports_safe_to_gate_when_receipts_are_mature() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_signal_receipt(
+        &dir.path().join("baselines/doctor-bench.json"),
+        "doctor-bench",
+        7,
+        0.03,
+    );
+    write_signal_receipt(
+        &dir.path().join("artifacts/perfgate/doctor-bench/run.json"),
+        "doctor-bench",
+        7,
+        0.03,
+    );
+    write_signal_compare(
+        &dir.path()
+            .join("artifacts/perfgate/doctor-bench/compare.json"),
+        "doctor-bench",
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args(["doctor", "signal", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("perfgate doctor signal"))
+        .stdout(predicate::str::contains("bench: doctor-bench"))
+        .stdout(predicate::str::contains("samples: 7 measured samples"))
+        .stdout(predicate::str::contains("cv: 3.0%"))
+        .stdout(predicate::str::contains("recent drift: pass"))
+        .stdout(predicate::str::contains("recommendation: safe_to_gate"))
+        .stdout(predicate::str::contains("perfgate check --config"))
+        .stdout(predicate::str::contains("--require-baseline"))
+        .stdout(predicate::str::contains("Advisory only: no config"));
+}
+
+#[test]
+fn doctor_signal_recommends_paired_mode_for_noisy_signal() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_signal_receipt(
+        &dir.path().join("baselines/doctor-bench.json"),
+        "doctor-bench",
+        7,
+        0.20,
+    );
+    write_signal_receipt(
+        &dir.path().join("artifacts/perfgate/doctor-bench/run.json"),
+        "doctor-bench",
+        7,
+        0.20,
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args(["doctor", "signal", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("recommendation: use_paired_mode"))
+        .stdout(predicate::str::contains("ordinary runs are noisy"))
+        .stdout(predicate::str::contains("perfgate paired"));
+}
+
+#[test]
+fn doctor_signal_treats_missing_baseline_as_incomplete_setup() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_signal_receipt(
+        &dir.path().join("artifacts/perfgate/doctor-bench/run.json"),
+        "doctor-bench",
+        7,
+        0.03,
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args(["doctor", "signal", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("baseline: baselines"))
+        .stdout(predicate::str::contains("(missing)"))
+        .stdout(predicate::str::contains("recommendation: no_decision_yet"))
+        .stdout(predicate::str::contains("setup or receipts are incomplete"))
+        .stdout(predicate::str::contains("perfgate baseline promote"));
 }
 
 #[test]

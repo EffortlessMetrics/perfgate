@@ -84,9 +84,22 @@ fn cli_help_doctor() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Diagnose local setup"))
+        .stdout(predicate::str::contains("signal"))
         .stdout(predicate::str::contains("--config"))
         .stdout(predicate::str::contains("--out-dir"))
         .stdout(predicate::str::contains("--strict"));
+}
+
+#[test]
+fn cli_help_doctor_signal() {
+    perfgate_cmd()
+        .args(["doctor", "signal", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Report advisory signal maturity"))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"));
 }
 
 #[test]

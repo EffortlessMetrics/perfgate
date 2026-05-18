@@ -92,7 +92,9 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use doctor::{DoctorCheck, DoctorStatus, execute_calibrate, execute_doctor, plural};
+use doctor::{
+    DoctorCheck, DoctorStatus, execute_calibrate, execute_doctor, execute_signal_doctor, plural,
+};
 use probe_templates::execute_probe_init;
 
 const BASELINE_SERVER_NOT_CONFIGURED: &str = "baseline server is not configured; set `--baseline-server`, `PERFGATE_SERVER_URL`, or `[baseline_server].url` in `perfgate.toml`";
@@ -1182,6 +1184,9 @@ pub struct CalibrateArgs {
 
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
+    #[command(subcommand)]
+    pub command: Option<DoctorCommand>,
+
     /// Path to the config file (TOML or JSON)
     #[arg(long, default_value = "perfgate.toml")]
     pub config: PathBuf,
@@ -1193,6 +1198,27 @@ pub struct DoctorArgs {
     /// Exit non-zero if doctor finds a failed required check
     #[arg(long, default_value_t = false)]
     pub strict: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DoctorCommand {
+    /// Report advisory signal maturity from local receipts.
+    Signal(SignalDoctorArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SignalDoctorArgs {
+    /// Path to the config file (TOML or JSON)
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
+
+    /// Limit signal maturity output to one configured benchmark
+    #[arg(long)]
+    pub bench: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -2889,7 +2915,13 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Calibrate(args) => execute_calibrate(*args),
 
-        Command::Doctor(args) => execute_doctor(*args, server_flags),
+        Command::Doctor(args) => {
+            let mut args = *args;
+            match args.command.take() {
+                Some(DoctorCommand::Signal(signal_args)) => execute_signal_doctor(signal_args),
+                None => execute_doctor(args, server_flags),
+            }
+        }
 
         Command::Paired(args) => {
             let PairedArgs {

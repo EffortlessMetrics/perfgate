@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: baseline maturity doctor
+Current PR: signal maturity doctor
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -69,8 +69,8 @@ surface change requires an accepted spec and explicit proof.
 | 502 | Agent repair-context contract spec | merged | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
 | 503 | Benchmark recipe catalog | merged | `perfgate init`, recipe metadata, CLI tests |
 | 505 | Benchmark recipe guidance | merged | docs for recipes and anti-patterns |
-| 506 | Baseline maturity doctor | current | `perfgate baseline doctor`, CLI tests |
-| 507 | Signal maturity doctor | pending | `perfgate doctor signal`, CLI tests |
+| 506 | Baseline maturity doctor | merged | `perfgate baseline doctor`, CLI tests |
+| 507 | Signal maturity doctor | current | `perfgate doctor signal`, CLI tests |
 | 508 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
 | 509 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
 | 510 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
@@ -283,7 +283,7 @@ Revert the guide and links. Recipe catalog behavior remains available.
 
 ## Work item: baseline-maturity-doctor
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: signal-maturity-doctor, product-claims
@@ -353,7 +353,7 @@ remains intact.
 
 ## Work item: signal-maturity-doctor
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: calibration-patch-output, product-claims
@@ -388,14 +388,36 @@ no_decision_yet
 
 - Do not treat noisy evidence as regression.
 - Do not imply a bad workload can be fixed only by automation.
+- Do not write config, promote baselines, or make signal maturity a blocking
+  gate.
+
+### Acceptance
+
+- `perfgate doctor signal --config perfgate.toml` reports sample count, CV,
+  host stability, baseline age, recent drift, artifact paths, and next command.
+- Mature local run/baseline/compare receipts produce `safe_to_gate`.
+- High-CV evidence recommends `use_paired_mode`.
+- Missing baseline remains `no_decision_yet` setup guidance.
+- The plain `perfgate doctor --config ...` path remains compatible.
 
 ### Proof commands
 
 ```bash
-cargo +1.95.0 test -p perfgate-cli --all-features doctor
+cargo +1.95.0 fmt --all -- --check
+cargo +1.95.0 test -p perfgate-cli --test cli_doctor_tests --all-features
+cargo +1.95.0 test -p perfgate-cli --test cli_help_snapshot_tests --all-features
+cargo +1.95.0 clippy -p perfgate-cli --all-targets --all-features -- -D warnings
+cargo +1.95.0 run -p xtask -- docs-check
 cargo +1.95.0 run -p xtask -- doc-test
+cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- product-claims-check
 git diff --check
 ```
+
+### Rollback
+
+Revert the `doctor signal` subcommand and tests. Existing plain `doctor` and
+`calibrate` behavior remains intact.
 
 ## Work item: calibration-patch-output
 
