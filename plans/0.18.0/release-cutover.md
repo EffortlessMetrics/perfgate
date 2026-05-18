@@ -73,6 +73,7 @@ moving tags, creating a GitHub release, or moving action aliases by itself.
 | 490 | First-hour path tightening | merged | README and first-hour/action docs; no release-state change |
 | 491 | Publish packet/current-main sync | implemented | `docs/audits/release-0.18.0-publish-packet.md` |
 | 492 | Install/action example audit | implemented | `docs/audits/release-0.18.0-install-action-example-audit.md` |
+| 493 | Product claims readiness sync | implemented | `docs/status/PRODUCT_CLAIMS.md` |
 | 425 | Publish crates | blocked | crates.io publication in dependency order |
 | 426 | Verify crates.io publication | blocked | `cargo info` / `cargo search` registry proof |
 | 427 | Cut GitHub release | blocked | `v0.18.0`, GitHub release, release assets, checksums |

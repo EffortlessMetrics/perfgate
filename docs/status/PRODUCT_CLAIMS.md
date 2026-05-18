@@ -195,7 +195,7 @@ Review after: before-0.18.0-release
 
 Tier: supported
 Surface: GitHub Action, CLI, artifacts
-Linked docs: [`GETTING_STARTED_GITHUB_ACTIONS.md`](../GETTING_STARTED_GITHUB_ACTIONS.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
+Linked docs: [`GETTING_STARTED_GITHUB_ACTIONS.md`](../GETTING_STARTED_GITHUB_ACTIONS.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md)
 Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked gates: action-check, doc-test
 Proof commands:
@@ -217,7 +217,7 @@ Review after: next-decision-contract-change
 
 Tier: supported
 Surface: release, crates, CI
-Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md), [`audits/release-0.18.0-cutover-decision.md`](../audits/release-0.18.0-cutover-decision.md), [`audits/release-0.18.0-publish-readiness.md`](../audits/release-0.18.0-publish-readiness.md), [`audits/release-0.18.0-final-prepublish-proof.md`](../audits/release-0.18.0-final-prepublish-proof.md), [`audits/release-0.18.0-restored-coverage-proof.md`](../audits/release-0.18.0-restored-coverage-proof.md), [`audits/release-0.18.0-final-proof-after-restored-coverage.md`](../audits/release-0.18.0-final-proof-after-restored-coverage.md), [`audits/release-0.18.0-publish-packet.md`](../audits/release-0.18.0-publish-packet.md), [`audits/release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md)
+Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md), [`audits/release-0.18.0-cutover-decision.md`](../audits/release-0.18.0-cutover-decision.md), [`audits/release-0.18.0-publish-readiness.md`](../audits/release-0.18.0-publish-readiness.md), [`audits/release-0.18.0-final-prepublish-proof.md`](../audits/release-0.18.0-final-prepublish-proof.md), [`audits/release-0.18.0-restored-coverage-proof.md`](../audits/release-0.18.0-restored-coverage-proof.md), [`audits/release-0.18.0-final-proof-after-restored-coverage.md`](../audits/release-0.18.0-final-proof-after-restored-coverage.md), [`audits/release-0.18.0-final-proof-after-init-extraction.md`](../audits/release-0.18.0-final-proof-after-init-extraction.md), [`audits/release-0.18.0-publish-packet.md`](../audits/release-0.18.0-publish-packet.md), [`audits/release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md), [`audits/release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../specs/PERFGATE-SPEC-0005-release-proof-contract.md)
 Linked gates: publish-check --package-list and per-package publish dry-runs
 Proof commands:
@@ -231,13 +231,19 @@ cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-server
 cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-cli
 ```
 
+Known limits:
+
+- `0.18.0` is not published until the release-operator publication step runs.
+- Public install smoke for `0.18.0` remains unproven until it uses public
+  crates.io or GitHub release artifacts after publication.
+
 Review after: next-release-candidate
 
 ## PG-CLAIM-0009: First-hour local adoption path
 
 Tier: supported
 Surface: CLI, docs, artifacts
-Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-diffguard-small-rust-cli.md`](../audits/2026-05-13-external-canary-diffguard-small-rust-cli.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
+Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`DEBUGGING_FIRST_CI_RUN.md`](../DEBUGGING_FIRST_CI_RUN.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-final-proof-after-init-extraction.md`](../audits/release-0.18.0-final-proof-after-init-extraction.md), [`release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-diffguard-small-rust-cli.md`](../audits/2026-05-13-external-canary-diffguard-small-rust-cli.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
 Linked specs: [`PERFGATE-SPEC-0004-user-devex-paved-road`](../specs/PERFGATE-SPEC-0004-user-devex-paved-road.md), [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md)
 Proof commands:
 
@@ -261,13 +267,18 @@ Artifacts:
 - `.perfgate/README.md`
 - `artifacts/perfgate/compare.json`
 
+Known limits:
+
+- The release-candidate docs teach the 0.18 first-hour path, but public
+  `0.18.0` install smoke remains blocked until the release is published.
+
 Review after: before-0.18.0-release
 
 ## PG-CLAIM-0010: Staged adoption levels
 
 Tier: supported
 Surface: docs, CLI, GitHub Action, server ledger
-Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
+Linked docs: [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`SIGNAL_CALIBRATION.md`](../SIGNAL_CALIBRATION.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`DECISION_LEDGER_RUNBOOK.md`](../DECISION_LEDGER_RUNBOOK.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md), [`release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`2026-05-13-external-canary-shipper-large-rust-workspace.md`](../audits/2026-05-13-external-canary-shipper-large-rust-workspace.md), [`2026-05-13-external-canary-droid-action-non-rust-command.md`](../audits/2026-05-13-external-canary-droid-action-non-rust-command.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
 Linked specs: [`PERFGATE-SPEC-0007-guided-adoption-contract`](../specs/PERFGATE-SPEC-0007-guided-adoption-contract.md), [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
@@ -384,7 +395,7 @@ Review after: next-platform-metric-change
 
 Tier: supported
 Surface: CLI, config, generated docs
-Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
+Linked docs: [`FIRST_HOUR.md`](../FIRST_HOUR.md), [`ADOPTION_LEVELS.md`](../ADOPTION_LEVELS.md), [`release-0.18.0-final-proof-after-init-extraction.md`](../audits/release-0.18.0-final-proof-after-init-extraction.md), [`release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md), [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md)
 Linked specs: [`PERFGATE-SPEC-0008-first-use-ux-contract`](../specs/PERFGATE-SPEC-0008-first-use-ux-contract.md)
 Proof commands:
 
