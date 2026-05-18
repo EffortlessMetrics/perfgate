@@ -1,0 +1,235 @@
+id = "perfgate-evidence-maturity-adoption-intelligence"
+title = "perfgate 0.19 evidence maturity and adoption intelligence"
+status = "active"
+owner = "codex"
+created = "2026-05-18"
+milestone = "0.19.0"
+current_work_item = "implementation-plan"
+current_pr = "docs(plan): add evidence maturity implementation plan"
+
+objective = """
+Make perfgate useful after week one. A team should be able to tell which
+benchmarks are smoke checks, advisory, gate-ready, or paired-mode candidates;
+which baselines are immature, stale, host-mismatched, or noisy; which results
+are too noisy to trust; when structured decisions are warranted; what reviewers
+should run locally; what agents should fix first; and when optional ledger
+history is worth recording.
+"""
+
+end_state = [
+  "Benchmark recipes include reviewable maturity metadata.",
+  "Baseline doctor classifies missing, new, immature, mature, stale, host-mismatched, and high-noise baselines.",
+  "Signal doctor reports sample count, noise, host stability, baseline age, drift, and gate/advisory/paired recommendations.",
+  "Calibration can emit reviewable non-mutating config patches.",
+  "Decision examples and decision-suggestion reasons make tradeoff patterns recognizable.",
+  "Canary freshness is tracked without overstating old proof.",
+  "Optional server ledger operations have backup/restore or equivalent operational proof.",
+  "Agent repair context has a contract and fixtures for common repair scenarios.",
+  "Product claims use proof freshness tiers for implemented behavior.",
+  "The lane closes with a handoff and archived active goal.",
+]
+
+linked_proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+linked_spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+linked_plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+linked_specs = [
+  "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md",
+  "docs/specs/PERFGATE-SPEC-0008-first-use-ux-contract.md",
+  "docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md",
+]
+
+planned_specs = [
+  "PERFGATE-SPEC-0010-agent-repair-context-contract",
+]
+
+linked_adrs = [
+  "docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md",
+]
+
+linked_status = [
+  "docs/status/PRODUCT_CLAIMS.md",
+]
+
+allowed_files = [
+  "docs/**",
+  "plans/0.19.0/**",
+  ".codex/goals/**",
+  "crates/perfgate-cli/**",
+  "crates/perfgate-server/**",
+  "crates/perfgate/**",
+  "crates/perfgate-types/**",
+  "examples/**",
+  "xtask/**",
+  "action.yml",
+]
+
+forbidden_without_explicit_spec = [
+  "public crate additions or removals",
+  "receipt schema version changes",
+  "GitHub Action input changes",
+  "release tag or alias movement",
+  "automatic baseline promotion",
+  "automatic threshold loosening",
+  "server ledger required for local correctness",
+]
+
+proof = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+completion_criteria = [
+  "Evidence maturity implementation plan is merged.",
+  "Agent repair-context contract exists or is explicitly deferred with rationale.",
+  "Benchmark recipe metadata and anti-pattern guidance are implemented or explicitly deferred.",
+  "Baseline doctor and signal doctor are implemented and tested.",
+  "Calibration emits a reviewable non-mutating patch.",
+  "Decision examples and suggestion reasons are implemented and tested.",
+  "Canary freshness matrix exists.",
+  "Server backup/restore or equivalent ledger operations proof exists.",
+  "Agent repair-context fixtures cover agreed scenarios.",
+  "Product claims map implemented behavior with proof freshness tiers.",
+  "Closeout handoff records proof, non-inferences, and remaining work.",
+  "This active goal is archived with status completed.",
+]
+
+[[work_item]]
+id = "proposal"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "evidence-maturity-contract"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "implementation-plan"
+status = "current"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "agent-repair-context-contract"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+planned_spec = "PERFGATE-SPEC-0010-agent-repair-context-contract"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "benchmark-recipe-catalog"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "benchmark-recipe-guidance"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "baseline-maturity-doctor"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "signal-maturity-doctor"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "calibration-patch-output"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "decision-example-pack"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "decision-suggestion-reasons"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "canary-freshness-matrix"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "server-backup-restore-smoke"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "server-retention-migration-policy"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "agent-repair-context-fixtures"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+planned_spec = "PERFGATE-SPEC-0010-agent-repair-context-contract"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "proof-freshness-claims"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
+
+[[work_item]]
+id = "final-closeout"
+status = "pending"
+proposal = "docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md"
+spec = "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md"
+plan = "plans/0.19.0/evidence-maturity-adoption-intelligence.md"
