@@ -6,10 +6,12 @@ The stack separates why, what, how, what now, and what proves it.
 
 Existing topic docs remain valid. New governance and spec work should use these
 homes so product claims, policy gates, public surface rules, release proof, and
-Codex execution state stay reviewable.
+Codex execution state stay reviewable. The normative agent and contributor
+rail is [`reference/SPEC_SYSTEM.md`](reference/SPEC_SYSTEM.md).
 
 | Artifact | Owns | Location |
 |----------|------|----------|
+| Source-of-truth system | Artifact roles, agent boot order, stop conditions, and claim boundaries | [`reference/SPEC_SYSTEM.md`](reference/SPEC_SYSTEM.md) |
 | Proposal | Why a lane exists, who benefits, alternatives, and success criteria | [`proposals/`](proposals/) |
 | Spec | What behavior or proof contract must be true | [`specs/`](specs/) |
 | ADR | Durable architecture decisions | [`adr/`](adr/) |

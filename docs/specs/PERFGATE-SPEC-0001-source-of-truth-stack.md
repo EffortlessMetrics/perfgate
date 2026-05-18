@@ -44,6 +44,7 @@ claims, and closeout notes.
 
 | Truth | Source |
 |-------|--------|
+| Source-of-truth rail and agent boot order | `docs/reference/SPEC_SYSTEM.md` |
 | Why a lane exists | `docs/proposals/` |
 | Behavior and proof contract | `docs/specs/` |
 | Durable architecture decision | `docs/adr/` plus the historical `docs/adrs/` archive |
@@ -61,6 +62,8 @@ claims, and closeout notes.
 The stack MUST obey these duplicate-truth rules:
 
 - Proposals explain why. They MUST NOT contain the full PR checklist.
+- `docs/reference/SPEC_SYSTEM.md` defines the shared source-of-truth rail,
+  artifact roles, agent boot order, stop conditions, and closeout expectations.
 - Specs define behavior, evidence, non-goals, and proof. They MUST NOT copy
   policy ledger entries or release-readiness tables.
 - ADRs record durable architectural decisions. They MUST NOT own product

@@ -5,7 +5,8 @@ machine-readable pointers to the proposal, spec, plan, policy, proof commands,
 allowed files, forbidden files, and completion criteria for the active lane.
 
 Use `.codex/goals/active.toml` for the current goal and `.codex/goals/archive/`
-for completed or superseded manifests.
+for completed or superseded manifests. Read `docs/reference/SPEC_SYSTEM.md`
+before selecting or changing an active work item.
 
 Do not use `.perfgate/` for Codex goal state. `.perfgate/` is reserved for
 product-generated user artifacts from `perfgate init` and related workflows.
