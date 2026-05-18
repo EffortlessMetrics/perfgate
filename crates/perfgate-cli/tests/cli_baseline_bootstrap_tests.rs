@@ -54,6 +54,44 @@ fn write_run_fixture(path: &Path, bench: &str) {
     .expect("write run fixture");
 }
 
+fn write_baseline_maturity_fixture(
+    path: &Path,
+    bench: &str,
+    sample_count: usize,
+    cv: f64,
+    days_old: i64,
+) {
+    let mut receipt: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(fixtures_dir().join("baseline.json")).unwrap())
+            .expect("parse run fixture");
+    receipt["bench"]["name"] = serde_json::json!(bench);
+    receipt["run"]["host"]["os"] = serde_json::json!(std::env::consts::OS);
+    receipt["run"]["host"]["arch"] = serde_json::json!(std::env::consts::ARCH);
+    let started_at = chrono::Utc::now() - chrono::Duration::days(days_old);
+    receipt["run"]["started_at"] = serde_json::json!(started_at.to_rfc3339());
+    receipt["run"]["ended_at"] =
+        serde_json::json!((started_at + chrono::Duration::seconds(1)).to_rfc3339());
+    receipt["stats"]["wall_ms"]["mean"] = serde_json::json!(100.0);
+    receipt["stats"]["wall_ms"]["stddev"] = serde_json::json!(100.0 * cv);
+    receipt["samples"] = serde_json::json!(
+        (0..sample_count)
+            .map(|_| serde_json::json!({
+                "wall_ms": 100,
+                "exit_code": 0,
+                "warmup": false,
+                "timed_out": false
+            }))
+            .collect::<Vec<_>>()
+    );
+    fs::create_dir_all(path.parent().expect("baseline fixture has parent"))
+        .expect("create baseline parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize baseline fixture"),
+    )
+    .expect("write baseline fixture");
+}
+
 #[test]
 fn baseline_status_reports_missing_then_found_local_baseline() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
@@ -86,6 +124,64 @@ fn baseline_status_reports_missing_then_found_local_baseline() {
         .stdout(predicate::str::contains(
             "Summary: 1/1 local baseline found",
         ));
+}
+
+#[test]
+fn baseline_doctor_reports_mature_and_missing_local_baselines() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_two_bench_config(temp_dir.path());
+    write_baseline_maturity_fixture(
+        &temp_dir.path().join("baselines/test-benchmark.json"),
+        "test-benchmark",
+        7,
+        0.03,
+        0,
+    );
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["baseline", "doctor", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Baseline doctor"))
+        .stdout(predicate::str::contains("bench: test-benchmark"))
+        .stdout(predicate::str::contains("status: mature"))
+        .stdout(predicate::str::contains("bench: second-benchmark"))
+        .stdout(predicate::str::contains("status: missing"))
+        .stdout(predicate::str::contains("Summary: 1 mature"))
+        .stdout(predicate::str::contains(
+            "perfgate baseline promote --config perfgate.toml --all",
+        ))
+        .stdout(predicate::str::contains("Do not:"));
+}
+
+#[test]
+fn baseline_doctor_classifies_high_noise_as_advisory() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+    write_baseline_maturity_fixture(
+        &temp_dir.path().join("baselines/test-benchmark.json"),
+        "test-benchmark",
+        7,
+        0.20,
+        0,
+    );
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "doctor",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "test-benchmark",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("status: high_noise"))
+        .stdout(predicate::str::contains("keep advisory"))
+        .stdout(predicate::str::contains("perfgate paired"));
 }
 
 #[test]

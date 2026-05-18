@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.19.0
-Current PR: benchmark recipe guidance
+Current PR: baseline maturity doctor
 Linked proposal: [`PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence`](../../docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md)
 Linked specs: [`PERFGATE-SPEC-0009-evidence-maturity-contract`](../../docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md), [`PERFGATE-SPEC-0010-agent-repair-context-contract`](../../docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -68,18 +68,18 @@ surface change requires an accepted spec and explicit proof.
 | 500 | Evidence maturity implementation plan | merged | `plans/0.19.0/evidence-maturity-adoption-intelligence.md`, `.codex/goals/active.toml` |
 | 502 | Agent repair-context contract spec | merged | `docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md` |
 | 503 | Benchmark recipe catalog | merged | `perfgate init`, recipe metadata, CLI tests |
-| 504 | Benchmark recipe guidance | current | docs for recipes and anti-patterns |
-| 505 | Baseline maturity doctor | pending | `perfgate baseline doctor`, CLI tests |
-| 506 | Signal maturity doctor | pending | `perfgate doctor signal`, CLI tests |
-| 507 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
-| 508 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
-| 509 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
-| 510 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
-| 511 | Server backup/restore smoke | pending | server/CLI tests |
-| 512 | Server retention and migration policy | pending | server docs/status |
-| 513 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
-| 514 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
-| 515 | Evidence maturity closeout | pending | handoff and goal archive |
+| 505 | Benchmark recipe guidance | merged | docs for recipes and anti-patterns |
+| 506 | Baseline maturity doctor | current | `perfgate baseline doctor`, CLI tests |
+| 507 | Signal maturity doctor | pending | `perfgate doctor signal`, CLI tests |
+| 508 | Calibration patch output | pending | `perfgate calibrate --emit-patch`, CLI tests |
+| 509 | Decision example pack | pending | examples/fixtures and optional `decision examples` |
+| 510 | Decision suggestion reasons | pending | `perfgate decision suggest`, CLI tests |
+| 511 | Canary freshness matrix | pending | `docs/status/CANARY_MATRIX.md` |
+| 512 | Server backup/restore smoke | pending | server/CLI tests |
+| 513 | Server retention and migration policy | pending | server docs/status |
+| 514 | Agent repair-context fixtures | pending | repair-context tests/fixtures |
+| 515 | Proof freshness tiers and claims | pending | `docs/status/PRODUCT_CLAIMS.md`, support docs |
+| 516 | Evidence maturity closeout | pending | handoff and goal archive |
 
 ## Work item: implementation-plan
 
@@ -240,10 +240,10 @@ Revert recipe metadata wiring and tests.
 
 ## Work item: benchmark-recipe-guidance
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
-Blocks:
+Blocks: baseline-maturity-doctor
 Blocked by: benchmark-recipe-catalog
 
 ### Goal
@@ -273,20 +273,26 @@ Add or update docs covering:
 cargo +1.95.0 run -p xtask -- docs-check
 cargo +1.95.0 run -p xtask -- doc-test
 cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- product-claims-check
 git diff --check
 ```
 
+### Rollback
+
+Revert the guide and links. Recipe catalog behavior remains available.
+
 ## Work item: baseline-maturity-doctor
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0006-evidence-maturity-adoption-intelligence.md
 Linked spec: docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md
 Blocks: signal-maturity-doctor, product-claims
-Blocked by: implementation-plan
+Blocked by: benchmark-recipe-guidance
 
 ### Goal
 
-Add advisory baseline trust classification.
+Add advisory baseline trust classification without making maturity output a
+blocking policy.
 
 ### Production delta
 
@@ -308,26 +314,42 @@ host_mismatched
 high_noise
 ```
 
+Remote baselines may be reported as remote/not probed, but this PR must not
+make server ledger or baseline service mode required.
+
 ### Non-goals
 
 - Do not promote baselines automatically.
 - Do not rewrite config.
 - Do not change receipt schemas by default.
+- Do not make maturity output a blocking gate.
 
 ### Acceptance
 
-- Output says whether each baseline is safe to gate, advisory only, needs more
-  samples, needs host-compatible refresh, or should use paired mode.
-- Tests cover missing, immature, mature, stale, host mismatch, and high-noise
-  where fixtures exist.
+- Command reports per-bench status, path, samples, CV, host, age, and a
+  recommendation when evidence is available.
+- Missing baselines are explained as setup, not regression.
+- High-noise baselines recommend advisory/calibration/paired flow.
+- Tests cover missing/mature and high-noise local baselines.
 
 ### Proof commands
 
 ```bash
-cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 fmt --all -- --check
+cargo +1.95.0 test -p perfgate-cli --test cli_baseline_bootstrap_tests --all-features
+cargo +1.95.0 test -p perfgate-cli --test cli_help_snapshot_tests --all-features
+cargo +1.95.0 clippy -p perfgate-cli --all-targets --all-features -- -D warnings
+cargo +1.95.0 run -p xtask -- docs-check
 cargo +1.95.0 run -p xtask -- doc-test
+cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- product-claims-check
 git diff --check
 ```
+
+### Rollback
+
+Revert the command and tests. Existing `baseline status/init/promote` behavior
+remains intact.
 
 ## Work item: signal-maturity-doctor
 

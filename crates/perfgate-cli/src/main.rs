@@ -2,6 +2,7 @@
 
 mod artifact_explain;
 mod baseline;
+mod baseline_doctor;
 mod check_guidance;
 mod cli_parsing;
 mod decision_suggest;
@@ -20,6 +21,7 @@ use storage::{
 use anyhow::Context;
 use artifact_explain::execute_explain_action;
 use baseline::{BaselineSelector, parse_baseline_selector};
+use baseline_doctor::execute_baseline_doctor;
 use check_guidance::{
     FailureClass, check_command, classify_check_error, emit_check_outcome_guidance, paired_command,
     print_check_failure_guidance,
@@ -2000,6 +2002,17 @@ enum BaselineAction {
         /// Path to the config file (TOML or JSON)
         #[arg(long, default_value = "perfgate.toml")]
         config: PathBuf,
+    },
+
+    /// Report advisory baseline maturity and trust guidance.
+    Doctor {
+        /// Path to the config file (TOML or JSON)
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+
+        /// Limit doctor output to one configured benchmark
+        #[arg(long)]
+        bench: Option<String>,
     },
 
     /// Promote the latest local check artifact into the configured baseline path.
@@ -5890,6 +5903,9 @@ fn execute_baseline_action(
             execute_local_baseline_status(&config, bench.as_deref())
         }
         BaselineAction::Init { config } => execute_local_baseline_init(&config),
+        BaselineAction::Doctor { config, bench } => {
+            execute_baseline_doctor(&config, bench.as_deref())
+        }
         BaselineAction::Promote {
             config,
             bench,
@@ -5927,6 +5943,7 @@ fn execute_remote_baseline_action(
     match action {
         BaselineAction::Status { .. }
         | BaselineAction::Init { .. }
+        | BaselineAction::Doctor { .. }
         | BaselineAction::Promote { .. } => {
             unreachable!("local baseline actions are handled before server dispatch");
         }

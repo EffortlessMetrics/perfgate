@@ -157,6 +157,7 @@ fn cli_help_baseline() {
         .stdout(predicate::str::contains("Inspect local baselines"))
         .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("init"))
+        .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("promote"))
         .stdout(predicate::str::contains("list"))
         .stdout(predicate::str::contains("download"));
