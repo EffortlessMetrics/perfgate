@@ -2,6 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repo Source-of-Truth Stack
+
+Before making changes, read:
+
+1. `AGENTS.md`
+2. `docs/reference/SPEC_SYSTEM.md`
+3. `.codex/goals/active.toml`
+4. The linked implementation plan
+5. The linked spec for the selected work item
+6. Any linked ADRs
+
+### Working rule
+
+Work on exactly one work item at a time. Do not create a new lane unless asked,
+do not broaden docs-only work into behavior changes, and do not claim success
+without proof commands or an explicit unavailable-proof note.
+
+### Completion rule
+
+A PR is ready only when the intended artifact or code change exists, linked docs
+are updated when required, claim boundaries are respected, and `git diff --check` passes.
+
+### Stop conditions
+
+Stop and report instead of guessing when the active goal is missing or stale,
+linked specs/plans/ADRs are missing, proof commands cannot run, generated
+status is dirty outside the selected work item, the requested work conflicts
+with an ADR, or the branch contains unrelated staged changes.
+
 ## Build and Test Commands
 
 ```bash

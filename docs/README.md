@@ -10,6 +10,7 @@ Codex execution state stay reviewable.
 
 | Artifact | Owns | Location |
 |----------|------|----------|
+| Source-of-truth system | Artifact roles, agent workflow, proof rules, and stop conditions | [`reference/SPEC_SYSTEM.md`](reference/SPEC_SYSTEM.md) |
 | Proposal | Why a lane exists, who benefits, alternatives, and success criteria | [`proposals/`](proposals/) |
 | Spec | What behavior or proof contract must be true | [`specs/`](specs/) |
 | ADR | Durable architecture decisions | [`adr/`](adr/) |

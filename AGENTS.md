@@ -2,6 +2,51 @@
 
 This file provides guidance to autonomous agents when working with code in this repository.
 
+## Repo Source-of-Truth Stack
+
+perfgate uses a linked source-of-truth stack:
+
+```text
+Roadmap → Proposal → Spec → ADR → Plan → Active goal → PR → Proof
+```
+
+Read these before changing files:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.codex/goals/active.toml`
+3. The linked plan
+4. The linked spec
+5. Linked ADRs
+
+### Scope rule
+
+Implement one work item per PR. Docs-only artifacts are separate unless the
+linked plan explicitly says otherwise:
+
+- proposal PRs explain why;
+- spec PRs define behavior;
+- ADR PRs record durable decisions;
+- plan PRs define sequencing;
+- active goal PRs define current execution.
+
+Runtime/code PRs must link to the spec and plan item they implement.
+
+### Proof rule
+
+Run the proof commands listed in the selected plan item or active goal. If a
+proof command cannot run, record the command, why it was unavailable, any
+substitute evidence, and whether that blocks merge.
+
+### Generated status rule
+
+Do not hand-edit generated status. Run the generator or checker named in the
+plan.
+
+### Policy rule
+
+If you add an exception, update the relevant `policy/*.toml` ledger with owner,
+reason, coverage, creation date, review date, and expiry when temporary.
+
 ## Build and Test Commands
 
 ```bash
