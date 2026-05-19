@@ -9,6 +9,32 @@ and the shell wiring is checked by `cargo +1.95.0 run -p xtask -- action-check`.
 The exact artifact paths can vary by configuration. A useful summary must still
 name the verdict, point to receipts, and show a local reproduction command.
 
+## Policy Posture
+
+Use this when the Action has run `perfgate check` and needs to show whether the
+evidence is advisory, a maturity warning, a promotion candidate, or already
+blocking because existing config says so. This summary does not change the
+Action result.
+
+```text
+Policy posture:
+Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking.
+Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode.
+Gate verdict: `pass` (check exit code `0`).
+Policy doctor command:
+  perfgate policy doctor --config perfgate.toml --out-dir artifacts/perfgate --bench parser
+Review packet command:
+  perfgate policy review-packet --config perfgate.toml --bench parser --out-dir artifacts/perfgate
+Policy doctor output:
+  recommended posture: gate_candidate
+  missing: required-gate reviewer approval
+Do not: make advisory maturity output blocking, loosen thresholds, promote baselines, or require server ledger mode from this summary alone.
+```
+
+The reviewer should treat `gate_candidate` as review-ready evidence, not as an
+approved required gate. Promotion still requires a deliberate policy patch and
+review.
+
 ## Missing Baseline
 
 Use this when the first CI run has not promoted a baseline yet.

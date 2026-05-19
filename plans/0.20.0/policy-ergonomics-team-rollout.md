@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.20.0
-Current PR: review-packet
+Current PR: action-posture-summary
 Linked proposal: [`PERFGATE-PROP-0007-policy-ergonomics-team-rollout`](../../docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md)
 Linked specs: [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../../docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), `PERFGATE-SPEC-0012-agent-policy-change-guardrails` (planned)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -80,8 +80,8 @@ accepted spec and explicit proof.
 | 544 | Rollout profile guidance | merged | user-facing profile and promotion-path docs |
 | 546 | Promotion readiness doctor | merged | `perfgate policy doctor --config perfgate.toml` |
 | 549 | Policy patch output | merged | `perfgate policy emit-patch --config perfgate.toml --bench <bench> --to <state>` |
-| TBD | Performance review packet | current | report/comment artifact summary of policy posture and maturity |
-| TBD | GitHub Action posture summary | pending | Action summary posture and `action-check` fixtures |
+| 553 | Performance review packet | merged | report/comment artifact summary of policy posture and maturity |
+| TBD | GitHub Action posture summary | current | Action summary posture and `action-check` fixtures |
 | TBD | Agent policy guardrail spec | pending | `PERFGATE-SPEC-0012-agent-policy-change-guardrails` |
 | TBD | Agent policy fixtures | pending | policy guardrail fixtures for review-required changes |
 | TBD | Proof freshness claim discipline | pending | product-claims proof freshness enforcement for policy promotion |
@@ -327,7 +327,7 @@ git diff --check
 
 ## Work item: review-packet
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: action-posture-summary, agent-policy-guardrails
@@ -363,7 +363,7 @@ git diff --check
 
 ## Work item: action-posture-summary
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: policy-claims-freshness, rollout-canary-plan

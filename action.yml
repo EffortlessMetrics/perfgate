@@ -433,6 +433,109 @@ runs:
             ;;
         esac
 
+    - name: Append perfgate policy posture summary
+      if: always() && steps.run_check.outputs.exit_code != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          exit 0
+        fi
+
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        exit_code="${{ steps.run_check.outputs.exit_code }}"
+        verdict="${{ steps.run_check.outputs.verdict }}"
+        review_required="${{ steps.handle_review_required.outputs.review_required }}"
+        review_reason="${{ steps.handle_review_required.outputs.review_required_reason }}"
+
+        policy_args=(policy doctor --config "${{ inputs.config }}")
+        if [[ -n "${out}" ]]; then
+          policy_args+=(--out-dir "${out}")
+        fi
+        if [[ "${{ inputs.all }}" != "true" && -n "${{ inputs.bench }}" ]]; then
+          policy_args+=(--bench "${{ inputs.bench }}")
+        fi
+
+        review_packet_args=()
+        if [[ "${{ inputs.all }}" != "true" && -n "${{ inputs.bench }}" ]]; then
+          review_packet_args=(policy review-packet --config "${{ inputs.config }}" --bench "${{ inputs.bench }}")
+          if [[ -n "${out}" ]]; then
+            review_packet_args+=(--out-dir "${out}")
+          fi
+        fi
+
+        format_command() {
+          local formatted=""
+          local quoted=""
+          local arg
+
+          for arg in "$@"; do
+            if [[ -n "${formatted}" ]]; then
+              formatted+=" "
+            fi
+            printf -v quoted "%q" "${arg}"
+            formatted+="${quoted}"
+          done
+
+          printf "%s" "${formatted}"
+        }
+
+        policy_output="$(mktemp)"
+        policy_status="available"
+        if ! perfgate "${policy_args[@]}" > "${policy_output}" 2>&1; then
+          policy_status="unavailable"
+        fi
+
+        policy_line="$(format_command perfgate "${policy_args[@]}")"
+        review_packet_line=""
+        if [[ "${#review_packet_args[@]}" -gt 0 ]]; then
+          review_packet_line="$(format_command perfgate "${review_packet_args[@]}")"
+        fi
+
+        {
+          echo "### perfgate policy posture"
+          echo
+          echo "Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking."
+          if [[ "${{ inputs.require_baseline }}" == "true" ]]; then
+            echo "Blocking gate: required-baseline mode is enabled."
+          else
+            echo "Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode."
+          fi
+          if [[ -n "${verdict}" ]]; then
+            echo "Gate verdict: \`${verdict}\` (check exit code \`${exit_code}\`)."
+          else
+            echo "Gate verdict: unavailable (check exit code \`${exit_code}\`)."
+          fi
+          if [[ "${review_required}" == "true" ]]; then
+            echo "Policy review required: ${review_reason}"
+          fi
+          echo
+          echo "Policy doctor command:"
+          echo
+          printf '%s\n' '```bash'
+          echo "${policy_line}"
+          printf '%s\n' '```'
+          if [[ -n "${review_packet_line}" ]]; then
+            echo
+            echo "Review packet command:"
+            echo
+            printf '%s\n' '```bash'
+            echo "${review_packet_line}"
+            printf '%s\n' '```'
+          fi
+          echo
+          echo "Policy doctor output (${policy_status}):"
+          echo
+          printf '%s\n' '```text'
+          cat "${policy_output}"
+          printf '%s\n' '```'
+          echo
+          echo "Do not: make advisory maturity output blocking, loosen thresholds, promote baselines, or require server ledger mode from this summary alone."
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+        rm -f "${policy_output}"
+
     - name: Print perfgate failure summary
       if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0') || (inputs.decision == 'true' && steps.handle_review_required.outputs.exit_code != '' && steps.handle_review_required.outputs.exit_code != '0'))
       shell: bash

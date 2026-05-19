@@ -1086,6 +1086,85 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         );
     }
 
+    let Some(policy_summary_run) = action.step_run("Append perfgate policy posture summary") else {
+        errors.push(
+            "action.yml must append advisory policy posture to GITHUB_STEP_SUMMARY".to_string(),
+        );
+        return errors;
+    };
+    let policy_summary_lines = active_shell_lines(policy_summary_run);
+    if !raw_action.contains("if: always() && steps.run_check.outputs.exit_code != ''")
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
+        || !policy_summary_lines.iter().any(|line| {
+            line == "policy_args=(policy doctor --config \"${{ inputs.config }}\")"
+        })
+        || !policy_summary_lines.iter().any(|line| {
+            line == "review_packet_args=(policy review-packet --config \"${{ inputs.config }}\" --bench \"${{ inputs.bench }}\")"
+        })
+    {
+        errors.push(
+            "action.yml policy posture summary must run policy doctor and expose the review packet command".to_string(),
+        );
+    }
+    if !policy_summary_lines.iter().any(|line| {
+        line == "echo \"Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking.\""
+    }) || !policy_summary_lines.iter().any(|line| {
+        line == "echo \"Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode.\""
+    }) || !policy_summary_lines
+        .iter()
+        .any(|line| line == "echo \"Blocking gate: required-baseline mode is enabled.\"")
+    {
+        errors.push(
+            "action.yml policy posture summary must distinguish advisory and blocking posture"
+                .to_string(),
+        );
+    }
+    if !policy_summary_lines.iter().any(|line| {
+        line == "review_required=\"${{ steps.handle_review_required.outputs.review_required }}\""
+    }) || !policy_summary_lines
+        .iter()
+        .any(|line| line == "echo \"Policy review required: ${review_reason}\"")
+    {
+        errors.push(
+            "action.yml policy posture summary must surface review-required posture".to_string(),
+        );
+    }
+    if policy_summary_lines
+        .iter()
+        .any(|line| line.starts_with("echo \"```"))
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "printf '%s\\n' '```bash'")
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "printf '%s\\n' '```text'")
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "printf '%s\\n' '```'")
+    {
+        errors.push(
+            "action.yml policy posture summary must emit Markdown code fences without Bash command substitution"
+                .to_string(),
+        );
+    }
+    if !policy_summary_lines
+        .iter()
+        .any(|line| line == "echo \"### perfgate policy posture\"")
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "} >> \"${GITHUB_STEP_SUMMARY}\"")
+        || !policy_summary_lines.iter().any(|line| {
+            line == "echo \"Do not: make advisory maturity output blocking, loosen thresholds, promote baselines, or require server ledger mode from this summary alone.\""
+        })
+    {
+        errors.push(
+            "action.yml policy posture summary must write guarded posture guidance to GITHUB_STEP_SUMMARY"
+                .to_string(),
+        );
+    }
+
     let Some(failure_summary_run) = action.step_run("Print perfgate failure summary") else {
         errors.push(
             "action.yml must print a local reproduction command when perfgate fails".to_string(),
@@ -1346,6 +1425,19 @@ fn collect_action_summary_example_errors(summary_examples: &str) -> Vec<String> 
         ("server upload failure", "server upload failure"),
         ("review-required fail policy", "review_required: \"fail\""),
         ("windows path guidance", "Windows Path Or Shell Quoting"),
+        ("policy posture summary", "Policy posture:"),
+        (
+            "policy doctor command",
+            "perfgate policy doctor --config perfgate.toml",
+        ),
+        (
+            "policy review packet command",
+            "perfgate policy review-packet --config perfgate.toml",
+        ),
+        (
+            "advisory posture guardrail",
+            "make advisory maturity output blocking",
+        ),
     ];
     for (name, phrase) in required_copy {
         if !summary_examples.contains(phrase) {
@@ -6611,6 +6703,24 @@ runs:
         if [[ -f "${out}/decision.md" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
           cat "${out}/decision.md"
         fi
+    - name: Append perfgate policy posture summary
+      if: always() && steps.run_check.outputs.exit_code != ''
+      run: |
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        review_required="${{ steps.handle_review_required.outputs.review_required }}"
+        policy_args=(policy doctor --config "${{ inputs.config }}")
+        review_packet_args=(policy review-packet --config "${{ inputs.config }}" --bench "${{ inputs.bench }}")
+        {
+          echo "### perfgate policy posture"
+          echo "Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking."
+          echo "Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode."
+          echo "Blocking gate: required-baseline mode is enabled."
+          echo "Policy review required: ${review_reason}"
+          printf '%s\n' '```bash'
+          printf '%s\n' '```text'
+          printf '%s\n' '```'
+          echo "Do not: make advisory maturity output blocking, loosen thresholds, promote baselines, or require server ledger mode from this summary alone."
+        } >> "${GITHUB_STEP_SUMMARY}"
     - name: Print perfgate failure summary
       if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0') || (inputs.decision == 'true' && steps.handle_review_required.outputs.exit_code != '' && steps.handle_review_required.outputs.exit_code != '0'))
       run: |
@@ -6720,6 +6830,23 @@ pkg-fmt = "zip"
     }
 
     #[test]
+    fn action_summary_examples_reject_missing_policy_posture_copy() {
+        let examples = include_str!("../../docs/examples/action-failure-summaries.md").replace(
+            "perfgate policy doctor --config perfgate.toml",
+            "perfgate doctor",
+        );
+        let errors = collect_action_summary_example_errors(&examples);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("policy doctor command")),
+            "errors should mention missing policy posture copy: {:?}",
+            errors
+        );
+    }
+
+    #[test]
     fn action_check_rejects_missing_decision_input() {
         let action = valid_action_install_surface().replace(
             "  decision:\n    description: \"Run structured decision evaluation\"\n    default: \"false\"\n",
@@ -6730,6 +6857,21 @@ pkg-fmt = "zip"
         assert!(
             errors.iter().any(|error| error.contains("decision input")),
             "errors should mention missing decision input: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_policy_posture_summary_step() {
+        let action = valid_action_install_surface().replace(
+            "    - name: Append perfgate policy posture summary",
+            "    - name: Append posture summary",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors.iter().any(|error| error.contains("policy posture")),
+            "errors should mention missing policy posture summary: {:?}",
             errors
         );
     }
