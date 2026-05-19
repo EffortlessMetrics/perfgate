@@ -87,7 +87,7 @@ accepted spec and explicit proof.
 | 564 | Proof freshness claim discipline | merged | product-claims proof freshness enforcement for policy promotion |
 | 566 | External policy rollout canary plan | merged | status canary rerun plan for policy ergonomics |
 | 568 | Public policy rollout canary | merged | one real canary proving advisory-to-promotion path |
-| TBD | Policy ergonomics closeout | merged | handoff and archived active goal |
+| 570 | Policy ergonomics closeout | merged | handoff and archived active goal |
 
 ## Work item: implementation-plan
 
