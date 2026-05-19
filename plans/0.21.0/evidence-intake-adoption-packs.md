@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: ingest/generic-command-json
+Current PR: TBD (next: hyperfine-json-adapter)
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -69,7 +69,7 @@ schema-compat proof.
 | 574 | Evidence intake proposal | merged | `docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md` |
 | 576 | Evidence source contract | merged | `docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md` |
 | 578 | Implementation plan and active goal | merged | `plans/0.21.0/evidence-intake-adoption-packs.md`, `.codex/goals/active.toml` |
-| TBD | Generic command JSON adapter | in progress | CLI adapter/import surface, fixtures, docs |
+| 580 | Generic command JSON adapter | merged | CLI adapter/import surface, fixtures, docs |
 | TBD | hyperfine JSON adapter | pending | hyperfine fixtures, unit/direction/sample mapping |
 | TBD | Criterion adapter | pending | Criterion fixtures and non-inference docs |
 | TBD | pytest-benchmark JSON adapter | pending | Python benchmark fixtures and environment limits |
@@ -140,7 +140,7 @@ and evidence-source contract remain accepted artifacts.
 
 ## Work item: generic-command-json-adapter
 
-Status: in progress
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: hyperfine-json-adapter, custom-json-csv-mapping, imported-evidence-maturity
