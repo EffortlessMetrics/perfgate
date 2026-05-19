@@ -12,7 +12,7 @@ Action impact: no action input, alias, or workflow behavior change by default; a
 Server impact: server ledger remains optional team history; imported evidence must not require server mode for local correctness
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked ADRs: PERFGATE-ADR-0002-receipts-first-performance-decisions
-Linked plan: not created yet; planned for the 0.21 implementation-plan PR
+Linked plan: plans/0.21.0/evidence-intake-adoption-packs.md
 Linked policy: policy ledgers remain source of truth for governed exceptions, public surface, workflow policy, generated files, and release proof
 Support/status impact: product claims should add or promote evidence-intake claims only after adapters, fixtures, docs, Action proof, and canaries land
 Proof commands: cargo +1.95.0 run -p xtask -- docs-check; cargo +1.95.0 run -p xtask -- doc-test; cargo +1.95.0 run -p xtask -- docs-source-check; cargo +1.95.0 run -p xtask -- product-claims-check; git diff --check

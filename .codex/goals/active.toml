@@ -1,0 +1,170 @@
+id = "perfgate-evidence-intake-adoption-packs"
+title = "perfgate 0.21 evidence intake and adoption packs"
+status = "active"
+owner = "codex"
+created = "2026-05-19"
+milestone = "0.21.0"
+current_work_item = "implementation-plan"
+current_pr = "plans/evidence-intake-adoption-packs"
+
+objective = """
+Make perfgate useful for teams that already have benchmark ecosystems by
+mapping existing measurements into perfgate receipts, maturity, policy, review,
+and Action surfaces without turning perfgate into a benchmark engine.
+"""
+
+end_state = [
+  "The 0.21 implementation plan is merged.",
+  "Generic command JSON import exists with unit, direction, sample, host, and error fixtures.",
+  "hyperfine JSON import exists with command-timing non-inferences.",
+  "Criterion import exists for stable mapped fields with clear limits.",
+  "pytest-benchmark JSON import exists with Python/runtime limits.",
+  "k6 summary JSON import exists with HTTP/load-test non-inferences.",
+  "Custom JSON/CSV mapping is explicit and fails closed for ambiguous metrics.",
+  "Imported evidence reaches baseline doctor, signal doctor, policy doctor, review packet, Action posture, and repair context where supported.",
+  "Adoption packs exist for Rust CLI, Rust workspace, Python service, Node tool/action, HTTP local smoke, and generic command repos.",
+  "Product claims and canary freshness map adapter support without overclaiming.",
+  "At least two external canaries prove Rust and non-Rust intake-to-review paths.",
+  "The lane closes with a durable handoff and archived active goal.",
+]
+
+linked_proposal = "docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md"
+linked_spec = "docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md"
+linked_plan = "plans/0.21.0/evidence-intake-adoption-packs.md"
+
+linked_specs = [
+  "docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md",
+  "docs/specs/PERFGATE-SPEC-0009-evidence-maturity-contract.md",
+  "docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md",
+  "docs/specs/PERFGATE-SPEC-0010-agent-repair-context-contract.md",
+  "docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md",
+]
+
+linked_adrs = [
+  "docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md",
+]
+
+linked_status = [
+  "docs/status/PRODUCT_CLAIMS.md",
+  "docs/status/PROOF_FRESHNESS.md",
+  "docs/status/CANARY_MATRIX.md",
+]
+
+allowed_files = [
+  "docs/proposals/**",
+  "docs/specs/**",
+  "docs/status/**",
+  "docs/handoffs/**",
+  "docs/**",
+  "plans/0.21.0/**",
+  ".codex/goals/**",
+  "crates/perfgate-cli/**",
+  "crates/perfgate/**",
+  "crates/perfgate-types/**",
+  "xtask/**",
+  "action.yml",
+  ".github/workflows/**",
+]
+
+forbidden_without_accepted_spec = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "crates/**/Cargo.toml",
+  "schemas/**",
+  "policy/**",
+  "release tags",
+  "GitHub release aliases",
+]
+
+proof = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+completion_criteria = [
+  "0.21 implementation plan is merged.",
+  "Generic command JSON adapter is implemented and fixture-backed.",
+  "hyperfine JSON adapter is implemented and fixture-backed.",
+  "Criterion adapter is implemented for stable mapped fields.",
+  "pytest-benchmark JSON adapter is implemented and fixture-backed.",
+  "k6 summary JSON adapter is implemented and fixture-backed.",
+  "Custom JSON/CSV mapping is explicit and fail-closed.",
+  "Imported evidence reaches maturity and policy surfaces where supported.",
+  "Review packets and Action summaries can explain imported evidence.",
+  "Adoption packs exist for the planned repo shapes.",
+  "Product claims and canary freshness map adapter support conservatively.",
+  "External Rust and non-Rust canaries are recorded.",
+  "Closeout handoff records proof, non-inferences, and remaining work.",
+  "This active goal is archived with status completed.",
+]
+
+[[work_item]]
+id = "proposal"
+status = "merged"
+
+[[work_item]]
+id = "evidence-source-contract"
+status = "merged"
+
+[[work_item]]
+id = "implementation-plan"
+status = "in_progress"
+
+[[work_item]]
+id = "generic-command-json-adapter"
+status = "pending"
+
+[[work_item]]
+id = "hyperfine-json-adapter"
+status = "pending"
+
+[[work_item]]
+id = "criterion-adapter"
+status = "pending"
+
+[[work_item]]
+id = "pytest-benchmark-json-adapter"
+status = "pending"
+
+[[work_item]]
+id = "k6-summary-json-adapter"
+status = "pending"
+
+[[work_item]]
+id = "custom-json-csv-mapping"
+status = "pending"
+
+[[work_item]]
+id = "imported-evidence-maturity"
+status = "pending"
+
+[[work_item]]
+id = "review-packet-action-posture"
+status = "pending"
+
+[[work_item]]
+id = "adoption-pack-catalog"
+status = "pending"
+
+[[work_item]]
+id = "adoption-pack-docs"
+status = "pending"
+
+[[work_item]]
+id = "product-claims-canary-freshness"
+status = "pending"
+
+[[work_item]]
+id = "external-rust-canary"
+status = "pending"
+
+[[work_item]]
+id = "external-non-rust-canary"
+status = "pending"
+
+[[work_item]]
+id = "final-closeout"
+status = "pending"
