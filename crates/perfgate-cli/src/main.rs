@@ -3232,6 +3232,27 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 eprintln!(
                     "Non-inferences: Criterion statistics are not perfgate maturity policy; imported evidence remains advisory until baseline, signal, and policy surfaces support promotion."
                 );
+            } else if format == IngestFormat::PytestBenchmark {
+                eprintln!(
+                    "Evidence source: pytest_benchmark_json; seconds were mapped to lower-is-better wall_ms and pytest ops were mapped to higher-is-better throughput_per_s when present."
+                );
+                if receipt.samples.is_empty() {
+                    eprintln!(
+                        "Sample model: summary-only; pytest-benchmark JSON without stats.data does not provide raw sample evidence to perfgate."
+                    );
+                } else {
+                    eprintln!(
+                        "Sample model: pytest-benchmark stats.data entries were preserved as measured wall_ms samples."
+                    );
+                }
+                if receipt.run.host.os == "unknown" || receipt.run.host.arch == "unknown" {
+                    eprintln!(
+                        "Host context: unknown or partial; do not infer host compatibility from this import."
+                    );
+                }
+                eprintln!(
+                    "Non-inferences: passing pytest tests are correctness evidence, not performance maturity; imported evidence remains advisory until baseline, signal, and policy surfaces support promotion."
+                );
             }
             Ok(())
         }

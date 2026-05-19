@@ -230,6 +230,179 @@ fn test_ingest_criterion_unsupported_unit_fails_actionably() {
 }
 
 #[test]
+fn test_ingest_pytest_benchmark_writes_run_receipt() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("pytest-benchmark.json");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "machine_info": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": {"count": 8},
+    "python_implementation": "CPython",
+    "python_version": "3.11.0"
+  },
+  "benchmarks": [
+    {
+      "name": "test_parser",
+      "fullname": "tests/test_perf.py::test_parser",
+      "options": {"timer": "perf_counter", "warmup": false},
+      "stats": {
+        "min": 0.010,
+        "max": 0.014,
+        "mean": 0.012,
+        "stddev": 0.001,
+        "rounds": 3,
+        "iterations": 1,
+        "median": 0.012,
+        "ops": 83.333333,
+        "data": [0.010, 0.012, 0.014]
+      }
+    }
+  ],
+  "version": "4.0.0"
+}"#,
+    )
+    .expect("failed to write pytest-benchmark input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("pytest-benchmark")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "Evidence source: pytest_benchmark_json",
+        ))
+        .stderr(predicate::str::contains(
+            "pytest-benchmark stats.data entries were preserved",
+        ))
+        .stderr(predicate::str::contains(
+            "passing pytest tests are correctness evidence",
+        ));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["schema"], "perfgate.run.v1");
+    assert_eq!(receipt["bench"]["name"], "tests/test_perf.py::test_parser");
+    assert_eq!(
+        receipt["bench"]["command"][0],
+        "(ingested pytest-benchmark JSON)"
+    );
+    assert_eq!(receipt["bench"]["repeat"], 3);
+    assert_eq!(receipt["run"]["host"]["os"], "Linux");
+    assert_eq!(receipt["run"]["host"]["arch"], "x86_64");
+    assert_eq!(receipt["run"]["host"]["cpu_count"], 8);
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(3));
+    assert_eq!(receipt["samples"][0]["wall_ms"], 10);
+    assert_eq!(receipt["stats"]["wall_ms"]["mean"], 12.0);
+    assert_eq!(receipt["stats"]["throughput_per_s"]["median"], 83.333333);
+}
+
+#[test]
+fn test_ingest_pytest_benchmark_summary_only_marks_limited_noise() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("pytest-summary.json");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "benchmarks": [
+    {
+      "name": "test_summary",
+      "stats": {
+        "min": 0.010,
+        "max": 0.020,
+        "mean": 0.015,
+        "stddev": 0.002,
+        "rounds": 12,
+        "iterations": 1,
+        "median": 0.015
+      }
+    }
+  ]
+}"#,
+    )
+    .expect("failed to write pytest-benchmark summary input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("pytest")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Sample model: summary-only"))
+        .stderr(predicate::str::contains("Host context: unknown or partial"));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["bench"]["name"], "test_summary");
+    assert_eq!(receipt["bench"]["repeat"], 12);
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(0));
+    assert_eq!(receipt["run"]["host"]["os"], "unknown");
+    assert_eq!(receipt["stats"]["wall_ms"]["median"], 15);
+}
+
+#[test]
+fn test_ingest_pytest_benchmark_data_rounds_mismatch_fails_actionably() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("pytest-bad-data.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "benchmarks": [
+    {
+      "name": "bad",
+      "stats": {
+        "min": 0.010,
+        "max": 0.020,
+        "mean": 0.015,
+        "stddev": 0.002,
+        "rounds": 3,
+        "iterations": 1,
+        "median": 0.015,
+        "data": [0.010, 0.020]
+      }
+    }
+  ]
+}"#,
+    )
+    .expect("failed to write pytest-benchmark input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("pytest-benchmark")
+        .arg("--input")
+        .arg(&input_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("data length"));
+}
+
+#[test]
 fn test_ingest_generic_command_json_writes_run_receipt() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let input_path = temp_dir.path().join("generic.json");

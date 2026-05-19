@@ -196,3 +196,58 @@ Do not infer:
 - Criterion throughput units are fully preserved in `perfgate.run.v1`;
 - the first imported result should become a baseline; or
 - successful import means the benchmark should block CI.
+
+## pytest-benchmark JSON
+
+pytest-benchmark remains the Python measurement tool. perfgate imports its JSON
+as Python benchmark evidence while keeping correctness test success separate
+from performance maturity.
+
+Generate JSON from an existing pytest benchmark run:
+
+```bash
+pytest --benchmark-json=artifacts/pytest-benchmark.json
+perfgate ingest --format pytest-benchmark --input artifacts/pytest-benchmark.json --name parser-py --out artifacts/perfgate/run.json
+```
+
+Then run the same maturity and policy surfaces:
+
+```bash
+perfgate baseline doctor --config perfgate.toml
+perfgate doctor signal --config perfgate.toml
+perfgate policy doctor --config perfgate.toml --bench parser-py
+perfgate policy review-packet --config perfgate.toml --bench parser-py --out artifacts/perfgate/review-packet.md
+```
+
+Mapping:
+
+```text
+pytest-benchmark source kind -> pytest_benchmark_json
+stats.data[]                 -> raw wall_ms samples when present
+stats min/median/mean/max/stddev -> wall_ms summary fields
+stats.ops                    -> throughput_per_s point summary when present
+machine_info.system          -> run.host.os when present
+machine_info.machine/processor -> run.host.arch when present
+machine_info.cpu.count       -> run.host.cpu_count when present
+machine_info python fields   -> bench.command metadata when present
+host                         -> unknown for missing fields
+```
+
+If `stats.data` is missing, perfgate imports the summary fields without creating
+synthetic samples. The receipt remains useful for baseline comparison, but noise
+and maturity guidance is weaker until raw samples are available.
+
+Use pytest-benchmark's documented JSON output flag
+[`--benchmark-json`](https://pytest-benchmark.readthedocs.io/en/latest/usage.html)
+to create the source artifact.
+
+Do not infer:
+
+- passing pytest tests are performance maturity evidence;
+- pytest-benchmark `ops` is a full sample distribution after import;
+- summary-only JSON has raw sample/noise support;
+- Python interpreter/runtime details have dedicated structured policy semantics
+  in `perfgate.run.v1`;
+- missing host fields prove host compatibility;
+- the first imported result should become a baseline; or
+- successful import means the benchmark should block CI.
