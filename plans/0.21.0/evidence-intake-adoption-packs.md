@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: ingest/pytest-benchmark-adapter
+Current PR: TBD
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -72,7 +72,7 @@ schema-compat proof.
 | 580 | Generic command JSON adapter | merged | CLI adapter/import surface, fixtures, docs |
 | 585 | hyperfine JSON adapter | merged | hyperfine fixtures, unit/direction/sample mapping |
 | 591 | Criterion adapter | merged | Criterion fixtures and non-inference docs |
-| TBD | pytest-benchmark JSON adapter | in progress | Python benchmark fixtures and environment limits |
+| 597 | pytest-benchmark JSON adapter | merged | Python benchmark fixtures and environment limits |
 | TBD | k6 summary JSON adapter | pending | HTTP/load-test fixtures and capacity non-inferences |
 | TBD | Custom JSON/CSV mapping | pending | explicit field mapping and fail-closed errors |
 | TBD | Imported evidence maturity integration | pending | baseline doctor, signal doctor, calibration/policy surfaces |
@@ -243,7 +243,7 @@ git diff --check
 
 ## Work item: pytest-benchmark-json-adapter
 
-Status: in progress
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: python-adoption-pack, external-non-rust-canary

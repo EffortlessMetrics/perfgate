@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-19"
 milestone = "0.21.0"
-current_work_item = "pytest-benchmark-json-adapter"
-current_pr = "ingest/pytest-benchmark-adapter"
+current_work_item = "k6-summary-json-adapter"
+current_pr = "TBD"
 
 objective = """
 Make perfgate useful for teams that already have benchmark ecosystems by
@@ -127,7 +127,7 @@ status = "merged"
 
 [[work_item]]
 id = "pytest-benchmark-json-adapter"
-status = "in_progress"
+status = "merged"
 
 [[work_item]]
 id = "k6-summary-json-adapter"
