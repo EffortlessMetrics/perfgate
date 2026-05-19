@@ -71,7 +71,10 @@ Implemented surfaces:
 - a post-0.20 canary rerun plan in [`CANARY_MATRIX.md`](../status/CANARY_MATRIX.md);
   and
 - a real external non-Rust policy rollout canary:
-  [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md).
+  [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md);
+  and
+- a hosted external Action policy posture canary:
+  [`2026-05-19-hosted-policy-action-canary-droid-action.md`](../audits/2026-05-19-hosted-policy-action-canary-droid-action.md).
 
 ## What Teams Can Now Do
 
@@ -142,11 +145,12 @@ Durable lane artifacts:
 - [`PROOF_FRESHNESS.md`](../status/PROOF_FRESHNESS.md)
 - [`PRODUCT_CLAIMS.md`](../status/PRODUCT_CLAIMS.md)
 - [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md)
+- [`2026-05-19-hosted-policy-action-canary-droid-action.md`](../audits/2026-05-19-hosted-policy-action-canary-droid-action.md)
 
 Representative proof from the lane included focused CLI policy tests, help
 snapshot tests, check guidance tests, `action-check`, schema compatibility,
 product-claims validation, docs-source validation, and the external local
-policy rollout canary.
+policy rollout canary plus hosted external Action policy posture canary.
 
 Closeout proof:
 
@@ -170,7 +174,9 @@ git diff --check
 - This lane did not auto-promote baselines.
 - This lane did not auto-loosen thresholds.
 - This lane did not make all mature benchmarks blocking.
-- The policy rollout canary did not run hosted external Action policy posture.
+- The hosted policy Action canary did not prove mature `gate_candidate`
+  promotion, `required_gate` approval, public `0.20` install behavior, or every
+  hosted runner and action input combination.
 - The policy rollout canary did not prove public 0.20 install behavior.
 - The policy rollout canary did not prove probe-backed policy rollout.
 

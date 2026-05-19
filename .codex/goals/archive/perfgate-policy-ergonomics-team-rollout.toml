@@ -25,6 +25,7 @@ end_state = [
   "Agent policy fixtures cover missing baseline, noisy signal, mature promotion candidate, regression, tradeoff candidate, and stale proof.",
   "Product claims use proof freshness before policy claim promotion.",
   "At least one external canary records the policy rollout path.",
+  "At least one hosted external Action canary records policy posture summary output.",
   "The lane closes with a durable handoff and archived active goal.",
 ]
 
@@ -93,6 +94,7 @@ completion_criteria = [
   "Agent policy fixtures prove review-required boundaries.",
   "Proof freshness constrains policy claim promotion.",
   "External policy rollout canary is recorded.",
+  "Hosted external Action policy posture canary is recorded.",
   "Closeout handoff records proof, non-inferences, and remaining work.",
   "This active goal is archived with status completed.",
 ]
