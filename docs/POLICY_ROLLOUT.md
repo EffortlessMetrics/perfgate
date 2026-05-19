@@ -101,6 +101,19 @@ Check signal maturity:
 perfgate doctor signal --config perfgate.toml
 ```
 
+Check whether the evidence is ready for policy review:
+
+```bash
+perfgate policy doctor --config perfgate.toml
+perfgate policy doctor --config perfgate.toml --bench parser
+```
+
+`policy doctor` reports the current posture, recommended posture, baseline
+maturity, signal confidence, host compatibility, calibration status, proof
+freshness, decision readiness, missing requirements, artifacts, and next
+commands. It is advisory: it does not edit config, promote baselines, loosen
+thresholds, make a gate blocking, or require server ledger mode.
+
 Emit a reviewable calibration patch when enough samples exist:
 
 ```bash

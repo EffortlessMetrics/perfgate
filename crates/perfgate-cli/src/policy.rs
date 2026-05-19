@@ -1,6 +1,16 @@
 //! Policy rollout metadata and advisory policy surfaces.
 
-use clap::{Subcommand, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
+use perfgate_types::ConfigFile;
+use perfgate_types::config::load_config_file;
+use perfgate_types::error::ConfigValidationError;
+use std::path::{Path, PathBuf};
+
+use crate::baseline_doctor::{
+    BaselineDoctorRow, BaselineMaturity, configured_benches, inspect_baseline,
+};
+use crate::doctor::{SignalDoctorRow, SignalRecommendation, inspect_signal, plural};
+use crate::{check_command, paired_command, resolve_configured_out_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum PolicyProfileName {
@@ -45,6 +55,24 @@ pub enum PolicyAction {
         #[arg(long)]
         profile: Option<PolicyProfileName>,
     },
+
+    /// Report advisory policy promotion readiness without changing config.
+    Doctor(PolicyDoctorArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct PolicyDoctorArgs {
+    /// Path to the config file (TOML or JSON).
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
+
+    /// Limit promotion readiness output to one configured benchmark.
+    #[arg(long)]
+    pub bench: Option<String>,
 }
 
 #[derive(Debug)]
@@ -287,6 +315,433 @@ pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> String {
     out
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PolicyPosture {
+    Smoke,
+    Advisory,
+    GateCandidate,
+    Quarantined,
+}
+
+impl PolicyPosture {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Smoke => "smoke",
+            Self::Advisory => "advisory",
+            Self::GateCandidate => "gate_candidate",
+            Self::Quarantined => "quarantined",
+        }
+    }
+}
+
+#[derive(Default)]
+struct PolicyDoctorCounts {
+    smoke: usize,
+    advisory: usize,
+    gate_candidate: usize,
+    quarantined: usize,
+}
+
+impl PolicyDoctorCounts {
+    fn record(&mut self, posture: PolicyPosture) {
+        match posture {
+            PolicyPosture::Smoke => self.smoke += 1,
+            PolicyPosture::Advisory => self.advisory += 1,
+            PolicyPosture::GateCandidate => self.gate_candidate += 1,
+            PolicyPosture::Quarantined => self.quarantined += 1,
+        }
+    }
+}
+
+pub fn execute_policy_doctor(args: PolicyDoctorArgs) -> anyhow::Result<()> {
+    let config = load_config_file(&args.config)?;
+    config
+        .validate()
+        .map_err(ConfigValidationError::ConfigFile)?;
+    let benches = configured_benches(&config, args.bench.as_deref())?;
+    let out_dir = resolve_configured_out_dir(args.out_dir.as_ref(), Some(&config));
+
+    println!("perfgate policy doctor");
+    println!("Config: {}", args.config.display());
+    println!();
+
+    if benches.is_empty() {
+        println!("No benchmarks are configured.");
+        println!("Next:");
+        println!(
+            "  edit {} and add a reviewed [[bench]] command",
+            args.config.display()
+        );
+        println!("Do not:");
+        println!(
+            "  promote baselines or policy until the benchmark measures the workload you care about"
+        );
+        println!();
+        println!(
+            "Advisory only: no config, baseline, threshold, policy, or server setting was changed."
+        );
+        return Ok(());
+    }
+
+    let mut counts = PolicyDoctorCounts::default();
+    for bench in &benches {
+        let baseline = inspect_baseline(&config, bench)?;
+        let signal = inspect_signal(&config, &out_dir, bench)?;
+        let recommended = recommended_posture(&baseline, &signal);
+        counts.record(recommended);
+        print_policy_doctor_row(&config, &args.config, &baseline, &signal, recommended);
+    }
+
+    println!();
+    println!(
+        "Summary: {} gate_candidate, {} advisory, {} smoke, {} quarantined",
+        counts.gate_candidate, counts.advisory, counts.smoke, counts.quarantined
+    );
+    println!();
+    println!("Do not:");
+    println!("  do not make a benchmark blocking just because it is mature");
+    println!("  do not loosen thresholds or promote baselines from this advisory output");
+    println!("  do not require server ledger mode for local correctness");
+    println!();
+    println!(
+        "Advisory only: no config, baseline, threshold, policy, or server setting was changed."
+    );
+
+    Ok(())
+}
+
+fn print_policy_doctor_row(
+    config: &ConfigFile,
+    config_path: &Path,
+    baseline: &BaselineDoctorRow,
+    signal: &SignalDoctorRow,
+    recommended: PolicyPosture,
+) {
+    let current = current_posture(baseline);
+
+    println!("bench: {}", baseline.bench);
+    println!("current posture: {}", current.as_str());
+    println!("recommended posture: {}", recommended.as_str());
+    println!("baseline maturity: {}", baseline.maturity.as_str());
+    println!("signal confidence: {}", signal.recommendation.as_str());
+    println!("host compatibility: {}", host_compatibility(signal));
+    println!("calibration status: {}", calibration_status(signal));
+    println!("proof freshness: {}", proof_freshness(baseline, signal));
+    println!(
+        "decision readiness: {}",
+        decision_readiness(config, &baseline.bench)
+    );
+    println!("artifacts:");
+    println!(
+        "  run: {}{}",
+        signal.run_path.display(),
+        if signal.run_found { "" } else { " (missing)" }
+    );
+    if signal.baseline_remote {
+        println!(
+            "  baseline: {} (remote, not probed)",
+            signal.baseline_path.display()
+        );
+    } else {
+        println!(
+            "  baseline: {}{}",
+            signal.baseline_path.display(),
+            if signal.baseline_found {
+                ""
+            } else {
+                " (missing)"
+            }
+        );
+    }
+    println!(
+        "  compare: {}{}",
+        signal.compare_path.display(),
+        if signal.compare_found {
+            ""
+        } else {
+            " (missing)"
+        }
+    );
+    println!("why:");
+    for reason in policy_reasons(baseline, signal, recommended) {
+        println!("  - {reason}");
+    }
+    println!("missing:");
+    for missing in policy_missing_requirements(baseline, signal, recommended) {
+        println!("  - {missing}");
+    }
+    println!("next:");
+    for command in policy_next_commands(config_path, baseline, signal, recommended) {
+        println!("  {command}");
+    }
+    println!("do not:");
+    for item in policy_do_not(recommended) {
+        println!("  - {item}");
+    }
+    println!();
+}
+
+fn current_posture(baseline: &BaselineDoctorRow) -> PolicyPosture {
+    match baseline.maturity {
+        BaselineMaturity::Missing => PolicyPosture::Smoke,
+        _ => PolicyPosture::Advisory,
+    }
+}
+
+fn recommended_posture(baseline: &BaselineDoctorRow, signal: &SignalDoctorRow) -> PolicyPosture {
+    match baseline.maturity {
+        BaselineMaturity::Missing => return PolicyPosture::Advisory,
+        BaselineMaturity::HostMismatched | BaselineMaturity::Stale => {
+            return PolicyPosture::Quarantined;
+        }
+        BaselineMaturity::HighNoise => return PolicyPosture::Advisory,
+        BaselineMaturity::New | BaselineMaturity::Immature | BaselineMaturity::Remote => {
+            return PolicyPosture::Advisory;
+        }
+        BaselineMaturity::Mature => {}
+    }
+
+    match signal.recommendation {
+        SignalRecommendation::SafeToGate => PolicyPosture::GateCandidate,
+        SignalRecommendation::CheckHostMismatch | SignalRecommendation::RefreshBaseline => {
+            PolicyPosture::Quarantined
+        }
+        SignalRecommendation::UsePairedMode
+        | SignalRecommendation::AdvisoryOnly
+        | SignalRecommendation::IncreaseSamples
+        | SignalRecommendation::NoDecisionYet => PolicyPosture::Advisory,
+    }
+}
+
+fn host_compatibility(signal: &SignalDoctorRow) -> String {
+    if matches!(
+        signal.recommendation,
+        SignalRecommendation::CheckHostMismatch
+    ) {
+        format!("host_mismatch ({})", signal.host_stability)
+    } else {
+        format!("compatible_or_not_checked ({})", signal.host_stability)
+    }
+}
+
+fn calibration_status(signal: &SignalDoctorRow) -> &'static str {
+    if signal.cv.is_some_and(|cv| cv > 0.10) {
+        "paired mode or calibration review required before promotion"
+    } else if signal.samples >= 7 && signal.cv.is_some() {
+        "review recommended before required_gate"
+    } else {
+        "insufficient evidence for reviewed calibration"
+    }
+}
+
+fn proof_freshness(baseline: &BaselineDoctorRow, signal: &SignalDoctorRow) -> String {
+    match baseline.maturity {
+        BaselineMaturity::Missing => "unproven (baseline missing)".to_string(),
+        BaselineMaturity::Stale => "stale (baseline older than maturity window)".to_string(),
+        BaselineMaturity::Remote => {
+            "unproven locally (remote baseline history not probed)".to_string()
+        }
+        _ if signal.run_found && signal.compare_found => {
+            "current (local run and compare receipts present)".to_string()
+        }
+        _ if baseline.age_days.is_some() => format!(
+            "recent baseline receipt ({} day{} old), compare receipt {}",
+            baseline.age_days.unwrap_or_default(),
+            plural(baseline.age_days.unwrap_or_default() as usize),
+            if signal.compare_found {
+                "present"
+            } else {
+                "missing"
+            }
+        ),
+        _ => "unproven (receipt freshness unavailable)".to_string(),
+    }
+}
+
+fn decision_readiness(config: &ConfigFile, bench_name: &str) -> &'static str {
+    let scenario_for_bench = config
+        .scenarios
+        .iter()
+        .any(|scenario| scenario.bench == bench_name);
+    match (scenario_for_bench, config.tradeoffs.is_empty()) {
+        (true, false) => "scenario and tradeoff evidence configured",
+        (true, true) => "scenario evidence configured; add tradeoff policy only for real tradeoffs",
+        (false, false) => "tradeoff policy exists; connect scenario evidence before relying on it",
+        (false, true) => {
+            "simple gate first; structured decisions are optional until a tradeoff appears"
+        }
+    }
+}
+
+fn policy_reasons(
+    baseline: &BaselineDoctorRow,
+    signal: &SignalDoctorRow,
+    recommended: PolicyPosture,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    reasons.push(format!("baseline {}", baseline.maturity.as_str()));
+    reasons.push(format!(
+        "signal {}: {}",
+        signal.recommendation.as_str(),
+        signal.recommendation.meaning()
+    ));
+    if let Some(samples) = baseline
+        .samples
+        .or(Some(signal.samples))
+        .filter(|samples| *samples > 0)
+    {
+        reasons.push(format!(
+            "{samples} measured sample{} available",
+            plural(samples)
+        ));
+    }
+    if let Some(cv) = baseline.cv.or(signal.cv) {
+        reasons.push(format!("observed CV {}", format_percent(cv)));
+    }
+    match recommended {
+        PolicyPosture::GateCandidate => {
+            reasons.push("evidence can be reviewed for gate_candidate, not required_gate".into());
+        }
+        PolicyPosture::Quarantined => {
+            reasons.push(
+                "policy should pause until host, freshness, or setup evidence is repaired".into(),
+            );
+        }
+        PolicyPosture::Advisory => {
+            reasons.push(
+                "evidence should remain advisory until missing requirements are resolved".into(),
+            );
+        }
+        PolicyPosture::Smoke => {
+            reasons.push("use this only for setup confidence until evidence exists".into());
+        }
+    }
+    reasons
+}
+
+fn policy_missing_requirements(
+    baseline: &BaselineDoctorRow,
+    signal: &SignalDoctorRow,
+    recommended: PolicyPosture,
+) -> Vec<&'static str> {
+    let mut missing = Vec::new();
+    match baseline.maturity {
+        BaselineMaturity::Missing => missing.push("baseline promotion after workload review"),
+        BaselineMaturity::New | BaselineMaturity::Immature => {
+            missing.push("more measured samples before blocking")
+        }
+        BaselineMaturity::HighNoise => missing.push("paired-mode or calibration review"),
+        BaselineMaturity::HostMismatched => missing.push("compatible runner-class evidence"),
+        BaselineMaturity::Stale => missing.push("fresh baseline review"),
+        BaselineMaturity::Remote => missing.push("server history review before gating"),
+        BaselineMaturity::Mature => {}
+    }
+    match signal.recommendation {
+        SignalRecommendation::SafeToGate => {}
+        SignalRecommendation::AdvisoryOnly => missing.push("compare receipt for current evidence"),
+        SignalRecommendation::IncreaseSamples => missing.push("signal sample count"),
+        SignalRecommendation::UsePairedMode => missing.push("paired-mode evidence"),
+        SignalRecommendation::RefreshBaseline => missing.push("baseline refresh"),
+        SignalRecommendation::CheckHostMismatch => missing.push("host-compatible rerun"),
+        SignalRecommendation::NoDecisionYet => missing.push("complete setup receipts"),
+    }
+    if recommended == PolicyPosture::GateCandidate {
+        missing.push("required-gate reviewer approval");
+        missing.push("reviewable policy patch");
+    }
+    if missing.is_empty() {
+        missing.push("none for advisory gate_candidate review; required_gate still needs approval");
+    }
+    missing
+}
+
+fn policy_next_commands(
+    config_path: &Path,
+    baseline: &BaselineDoctorRow,
+    signal: &SignalDoctorRow,
+    recommended: PolicyPosture,
+) -> Vec<String> {
+    match baseline.maturity {
+        BaselineMaturity::Missing => {
+            return vec![
+                check_command(config_path, Some(&baseline.bench), false),
+                format!(
+                    "perfgate baseline promote --config {} --bench {}",
+                    config_path.display(),
+                    baseline.bench
+                ),
+            ];
+        }
+        BaselineMaturity::HighNoise => {
+            return vec![
+                format!(
+                    "perfgate calibrate --config {} --bench {} --emit-patch",
+                    config_path.display(),
+                    baseline.bench
+                ),
+                paired_command(Some(&baseline.bench)),
+            ];
+        }
+        BaselineMaturity::HostMismatched | BaselineMaturity::Stale => {
+            return vec![
+                "rerun on the intended runner class and review the refreshed baseline".to_string(),
+                check_command(config_path, Some(&baseline.bench), true),
+            ];
+        }
+        BaselineMaturity::New | BaselineMaturity::Immature | BaselineMaturity::Remote => {}
+        BaselineMaturity::Mature => {}
+    }
+
+    match (recommended, signal.recommendation) {
+        (PolicyPosture::GateCandidate, _) => vec![
+            check_command(config_path, Some(&baseline.bench), true),
+            format!("review promotion evidence for {}", baseline.bench),
+        ],
+        (_, SignalRecommendation::UsePairedMode) => vec![
+            format!(
+                "perfgate calibrate --config {} --bench {} --emit-patch",
+                config_path.display(),
+                baseline.bench
+            ),
+            paired_command(Some(&baseline.bench)),
+        ],
+        (_, SignalRecommendation::NoDecisionYet) => vec![
+            check_command(config_path, Some(&baseline.bench), false),
+            format!(
+                "perfgate baseline doctor --config {} --bench {}",
+                config_path.display(),
+                baseline.bench
+            ),
+        ],
+        _ => vec![check_command(config_path, Some(&baseline.bench), true)],
+    }
+}
+
+fn policy_do_not(recommended: PolicyPosture) -> Vec<&'static str> {
+    match recommended {
+        PolicyPosture::GateCandidate => vec![
+            "do not make this a required gate without reviewer approval",
+            "do not treat gate_candidate as already blocking",
+        ],
+        PolicyPosture::Quarantined => vec![
+            "do not force this benchmark through CI while evidence is untrustworthy",
+            "do not loosen thresholds to hide quarantine reasons",
+        ],
+        PolicyPosture::Advisory => vec![
+            "do not make advisory evidence blocking by default",
+            "do not promote baselines or thresholds without review",
+        ],
+        PolicyPosture::Smoke => vec![
+            "do not infer workload performance from setup smoke alone",
+            "do not require server ledger mode for local correctness",
+        ],
+    }
+}
+
+fn format_percent(value: f64) -> String {
+    format!("{:.1}%", value * 100.0)
+}
+
 fn render_profile(out: &mut String, profile: &PolicyProfile) {
     out.push_str(&format!("Profile: {}\n", profile.name));
     out.push_str(&format!("Summary: {}\n", profile.summary));
@@ -319,6 +774,7 @@ pub fn execute_policy_action(action: PolicyAction) -> anyhow::Result<()> {
             print!("{}", render_policy_profiles(profile));
             Ok(())
         }
+        PolicyAction::Doctor(args) => execute_policy_doctor(args),
     }
 }
 

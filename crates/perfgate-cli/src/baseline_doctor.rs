@@ -17,7 +17,7 @@ const HIGH_NOISE_CV: f64 = 0.10;
 const STALE_BASELINE_DAYS: i64 = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BaselineMaturity {
+pub(crate) enum BaselineMaturity {
     Missing,
     New,
     Immature,
@@ -29,7 +29,7 @@ enum BaselineMaturity {
 }
 
 impl BaselineMaturity {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Missing => "missing",
             Self::New => "new",
@@ -42,7 +42,7 @@ impl BaselineMaturity {
         }
     }
 
-    fn recommendation(self) -> &'static str {
+    pub(crate) fn recommendation(self) -> &'static str {
         match self {
             Self::Missing => "run a local check and promote only after reviewing the workload",
             Self::New => "keep advisory until more measured samples exist",
@@ -56,14 +56,14 @@ impl BaselineMaturity {
     }
 }
 
-struct BaselineDoctorRow {
-    bench: String,
-    path: String,
-    maturity: BaselineMaturity,
-    samples: Option<usize>,
-    cv: Option<f64>,
-    host: Option<String>,
-    age_days: Option<i64>,
+pub(crate) struct BaselineDoctorRow {
+    pub(crate) bench: String,
+    pub(crate) path: String,
+    pub(crate) maturity: BaselineMaturity,
+    pub(crate) samples: Option<usize>,
+    pub(crate) cv: Option<f64>,
+    pub(crate) host: Option<String>,
+    pub(crate) age_days: Option<i64>,
 }
 
 pub(crate) fn execute_baseline_doctor(
@@ -200,7 +200,10 @@ fn print_row(row: &BaselineDoctorRow) {
     println!("recommendation: {}", row.maturity.recommendation());
 }
 
-fn inspect_baseline(config: &ConfigFile, bench_name: &str) -> anyhow::Result<BaselineDoctorRow> {
+pub(crate) fn inspect_baseline(
+    config: &ConfigFile,
+    bench_name: &str,
+) -> anyhow::Result<BaselineDoctorRow> {
     let path = resolve_baseline_path(&None, bench_name, config);
     let path_text = path.to_string_lossy().to_string();
     if is_remote_storage_uri(&path_text) {
@@ -279,7 +282,10 @@ fn load_validated_baseline_config(config_path: &Path) -> anyhow::Result<ConfigFi
     Ok(config)
 }
 
-fn configured_benches(config: &ConfigFile, bench: Option<&str>) -> anyhow::Result<Vec<String>> {
+pub(crate) fn configured_benches(
+    config: &ConfigFile,
+    bench: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
     if let Some(bench) = bench {
         if config
             .benches

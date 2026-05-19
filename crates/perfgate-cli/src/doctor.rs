@@ -535,7 +535,7 @@ fn format_percent(value: f64) -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SignalRecommendation {
+pub(crate) enum SignalRecommendation {
     SafeToGate,
     AdvisoryOnly,
     IncreaseSamples,
@@ -546,7 +546,7 @@ enum SignalRecommendation {
 }
 
 impl SignalRecommendation {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::SafeToGate => "safe_to_gate",
             Self::AdvisoryOnly => "advisory_only",
@@ -558,7 +558,7 @@ impl SignalRecommendation {
         }
     }
 
-    fn meaning(self) -> &'static str {
+    pub(crate) fn meaning(self) -> &'static str {
         match self {
             Self::SafeToGate => "signal looks stable enough for required-baseline checks",
             Self::AdvisoryOnly => {
@@ -580,21 +580,21 @@ impl SignalRecommendation {
 }
 
 #[derive(Debug)]
-struct SignalDoctorRow {
-    bench: String,
-    run_path: PathBuf,
-    baseline_path: PathBuf,
-    compare_path: PathBuf,
-    run_found: bool,
-    baseline_found: bool,
-    baseline_remote: bool,
-    compare_found: bool,
-    samples: usize,
-    cv: Option<f64>,
-    host_stability: String,
-    baseline_age_days: Option<i64>,
-    recent_drift: String,
-    recommendation: SignalRecommendation,
+pub(crate) struct SignalDoctorRow {
+    pub(crate) bench: String,
+    pub(crate) run_path: PathBuf,
+    pub(crate) baseline_path: PathBuf,
+    pub(crate) compare_path: PathBuf,
+    pub(crate) run_found: bool,
+    pub(crate) baseline_found: bool,
+    pub(crate) baseline_remote: bool,
+    pub(crate) compare_found: bool,
+    pub(crate) samples: usize,
+    pub(crate) cv: Option<f64>,
+    pub(crate) host_stability: String,
+    pub(crate) baseline_age_days: Option<i64>,
+    pub(crate) recent_drift: String,
+    pub(crate) recommendation: SignalRecommendation,
 }
 
 pub(crate) fn execute_signal_doctor(args: SignalDoctorArgs) -> anyhow::Result<()> {
@@ -773,7 +773,7 @@ fn signal_next_commands(row: &SignalDoctorRow, config_path: &Path) -> Vec<String
     }
 }
 
-fn inspect_signal(
+pub(crate) fn inspect_signal(
     config: &ConfigFile,
     out_dir: &Path,
     bench_name: &str,

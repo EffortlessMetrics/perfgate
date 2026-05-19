@@ -447,7 +447,8 @@ fn cli_help_policy() {
         .stdout(predicate::str::contains(
             "Inspect advisory policy rollout profiles",
         ))
-        .stdout(predicate::str::contains("profiles"));
+        .stdout(predicate::str::contains("profiles"))
+        .stdout(predicate::str::contains("doctor"));
 }
 
 #[test]
@@ -460,6 +461,20 @@ fn cli_help_policy_profiles() {
             "List reviewable policy rollout profiles",
         ))
         .stdout(predicate::str::contains("--profile"));
+}
+
+#[test]
+fn cli_help_policy_doctor() {
+    perfgate_cmd()
+        .args(["policy", "doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Report advisory policy promotion readiness",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"));
 }
 
 #[test]
@@ -696,6 +711,14 @@ fn snapshot_help_policy_profiles() {
     insta::assert_snapshot!(
         "help_policy_profiles",
         help_output(&["policy", "profiles", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_doctor() {
+    insta::assert_snapshot!(
+        "help_policy_doctor",
+        help_output(&["policy", "doctor", "--help"])
     );
 }
 
