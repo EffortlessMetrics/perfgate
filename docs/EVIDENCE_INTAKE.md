@@ -4,8 +4,8 @@ perfgate can sit above existing benchmark tools. The benchmark tool still
 measures; perfgate imports the result into reviewable receipts, maturity, policy,
 and Action surfaces.
 
-The first intake format is reviewable generic command JSON. It is intended for
-teams that already run a script and can emit a small JSON artifact.
+The foundational intake format is reviewable generic command JSON. It is
+intended for teams that already run a script and can emit a small JSON artifact.
 
 ## Generic Command JSON
 
@@ -140,5 +140,59 @@ Do not infer:
 - hyperfine command timing excludes shell, setup, cache, or compile overhead;
 - missing host context proves host compatibility;
 - user and system time remain separate after import;
+- the first imported result should become a baseline; or
+- successful import means the benchmark should block CI.
+
+## Criterion
+
+Criterion remains the Rust measurement tool. perfgate imports clear wall-time
+evidence from Criterion-compatible outputs and keeps the result advisory until
+normal maturity and policy surfaces support promotion.
+
+Preferred input is cargo-criterion's JSON message stream:
+
+```bash
+cargo criterion --message-format=json > artifacts/criterion.jsonl
+perfgate ingest --format criterion --input artifacts/criterion.jsonl --name parser-large --out artifacts/perfgate/run.json
+```
+
+perfgate also accepts Criterion `raw.csv` files for a single benchmark:
+
+```bash
+perfgate ingest --format criterion --input target/criterion/parser/new/raw.csv --name parser-large --out artifacts/perfgate/run.json
+```
+
+Then run the same maturity and policy surfaces:
+
+```bash
+perfgate baseline doctor --config perfgate.toml
+perfgate doctor signal --config perfgate.toml
+perfgate policy doctor --config perfgate.toml --bench parser-large
+perfgate policy review-packet --config perfgate.toml --bench parser-large --out artifacts/perfgate/review-packet.md
+```
+
+Mapping:
+
+```text
+Criterion source kind        -> criterion
+cargo-criterion measured_values / iteration_count -> raw wall_ms samples
+Criterion raw.csv sample_measured_value / iteration_count -> raw wall_ms samples
+mean/median estimates       -> wall_ms summary fields where present
+throughput per_iteration    -> bench.work_units where present
+host                         -> unknown
+```
+
+Criterion `new/estimates.json` can be imported as a summary-only fallback, but
+Criterion documents those JSON files as private implementation details in its
+[CSV output guide](https://bheisler.github.io/criterion.rs/book/user_guide/csv_output.html).
+Prefer cargo-criterion JSON messages or `raw.csv` when reviewable sample
+evidence is needed.
+
+Do not infer:
+
+- Criterion confidence intervals are the same as perfgate maturity policy;
+- summary-only `estimates.json` has raw sample/noise support;
+- missing host context proves host compatibility;
+- Criterion throughput units are fully preserved in `perfgate.run.v1`;
 - the first imported result should become a baseline; or
 - successful import means the benchmark should block CI.

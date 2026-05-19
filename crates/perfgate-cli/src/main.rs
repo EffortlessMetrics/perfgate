@@ -1335,7 +1335,7 @@ pub struct IngestArgs {
     #[arg(long)]
     pub format: Option<String>,
 
-    /// Path to the input file (or directory for criterion)
+    /// Path to the input file
     #[arg(long)]
     pub input: Option<PathBuf>,
 
@@ -3210,6 +3210,27 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 }
                 eprintln!(
                     "Non-inferences: hyperfine command timing may include shell, setup, cache, or compile overhead; imported evidence remains advisory until maturity and policy surfaces support promotion."
+                );
+            } else if format == IngestFormat::Criterion {
+                eprintln!(
+                    "Evidence source: criterion; clear wall-time fields were mapped to lower-is-better wall_ms."
+                );
+                if receipt.samples.is_empty() {
+                    eprintln!(
+                        "Sample model: summary-only; Criterion estimates.json does not provide raw per-sample evidence to perfgate."
+                    );
+                } else {
+                    eprintln!(
+                        "Sample model: Criterion measured samples were preserved where cargo-criterion JSONL or raw.csv provided them."
+                    );
+                }
+                if receipt.run.host.os == "unknown" || receipt.run.host.arch == "unknown" {
+                    eprintln!(
+                        "Host context: unknown; Criterion output does not prove host compatibility."
+                    );
+                }
+                eprintln!(
+                    "Non-inferences: Criterion statistics are not perfgate maturity policy; imported evidence remains advisory until baseline, signal, and policy surfaces support promotion."
                 );
             }
             Ok(())

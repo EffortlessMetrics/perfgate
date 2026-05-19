@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: TBD (next: criterion-adapter)
+Current PR: `ingest/criterion-adapter`
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -71,7 +71,7 @@ schema-compat proof.
 | 578 | Implementation plan and active goal | merged | `plans/0.21.0/evidence-intake-adoption-packs.md`, `.codex/goals/active.toml` |
 | 580 | Generic command JSON adapter | merged | CLI adapter/import surface, fixtures, docs |
 | 585 | hyperfine JSON adapter | merged | hyperfine fixtures, unit/direction/sample mapping |
-| TBD | Criterion adapter | pending | Criterion fixtures and non-inference docs |
+| TBD | Criterion adapter | in progress | Criterion fixtures and non-inference docs |
 | TBD | pytest-benchmark JSON adapter | pending | Python benchmark fixtures and environment limits |
 | TBD | k6 summary JSON adapter | pending | HTTP/load-test fixtures and capacity non-inferences |
 | TBD | Custom JSON/CSV mapping | pending | explicit field mapping and fail-closed errors |
@@ -213,7 +213,7 @@ git diff --check
 
 ## Work item: criterion-adapter
 
-Status: pending
+Status: in progress
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: rust-adoption-pack, external-rust-canary

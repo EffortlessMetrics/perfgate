@@ -111,6 +111,125 @@ fn test_ingest_hyperfine_exit_code_mismatch_fails_actionably() {
 }
 
 #[test]
+fn test_ingest_criterion_jsonl_writes_run_receipt() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("criterion.jsonl");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        r#"{"reason":"warmup","id":"ignored"}
+{"reason":"benchmark-complete","id":"parser/large","iteration_count":[10,20,30],"measured_values":[50000000.0,100000000.0,150000000.0],"unit":"ns","throughput":[{"per_iteration":5000,"unit":"elements"}],"mean":{"estimate":5000000.0,"lower_bound":4900000.0,"upper_bound":5100000.0,"unit":"ns"},"median":{"estimate":4950000.0,"lower_bound":4890000.0,"upper_bound":5010000.0,"unit":"ns"}}"#,
+    )
+    .expect("failed to write Criterion input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("criterion")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Evidence source: criterion"))
+        .stderr(predicate::str::contains("Criterion measured samples"))
+        .stderr(predicate::str::contains("Host context: unknown"))
+        .stderr(predicate::str::contains(
+            "Criterion statistics are not perfgate maturity policy",
+        ));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["schema"], "perfgate.run.v1");
+    assert_eq!(receipt["bench"]["name"], "parser/large");
+    assert_eq!(receipt["bench"]["repeat"], 3);
+    assert_eq!(receipt["bench"]["work_units"], 5000);
+    assert_eq!(receipt["run"]["host"]["os"], "unknown");
+    assert_eq!(
+        receipt["bench"]["command"][0],
+        "(ingested Criterion benchmark)"
+    );
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(3));
+    assert_eq!(receipt["samples"][0]["wall_ms"], 5);
+    assert_eq!(receipt["stats"]["wall_ms"]["median"], 5);
+    assert_eq!(receipt["stats"]["wall_ms"]["mean"], 5.0);
+}
+
+#[test]
+fn test_ingest_criterion_estimates_marks_summary_only() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("estimates.json");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "mean": {"point_estimate": 5000000.0},
+  "median": {"point_estimate": 4950000.0},
+  "std_dev": {"point_estimate": 200000.0}
+}"#,
+    )
+    .expect("failed to write Criterion estimates input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("criterion")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--name")
+        .arg("criterion-summary")
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Sample model: summary-only"))
+        .stderr(predicate::str::contains(
+            "Criterion statistics are not perfgate maturity policy",
+        ));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["bench"]["name"], "criterion-summary");
+    assert_eq!(receipt["bench"]["repeat"], 0);
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(0));
+    assert_eq!(receipt["stats"]["wall_ms"]["median"], 5);
+}
+
+#[test]
+fn test_ingest_criterion_unsupported_unit_fails_actionably() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("criterion-bad-unit.json");
+
+    fs::write(
+        &input_path,
+        r#"{"reason":"benchmark-complete","id":"bad","iteration_count":[1],"measured_values":[42.0],"unit":"cycles"}"#,
+    )
+    .expect("failed to write Criterion input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("criterion")
+        .arg("--input")
+        .arg(&input_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("unsupported or ambiguous"));
+}
+
+#[test]
 fn test_ingest_generic_command_json_writes_run_receipt() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let input_path = temp_dir.path().join("generic.json");
