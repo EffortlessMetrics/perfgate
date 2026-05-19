@@ -1331,7 +1331,7 @@ pub struct IngestArgs {
     #[command(subcommand)]
     pub command: Option<IngestCommand>,
 
-    /// Input format: criterion, hyperfine, gobench, pytest, otel
+    /// Input format: generic-command-json, criterion, hyperfine, gobench, pytest, otel
     #[arg(long)]
     pub format: Option<String>,
 
@@ -3158,7 +3158,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown ingest format '{}'; supported: criterion, hyperfine, gobench, pytest, otel",
+                    "unknown ingest format '{}'; supported: generic-command-json, criterion, hyperfine, gobench, pytest, otel",
                     format
                 )
             })?;
@@ -3177,6 +3177,24 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             let receipt = ingest::ingest(&request)?;
             write_json(&out, &receipt, pretty)?;
             eprintln!("Ingested {} -> {}", input.display(), out.display());
+            if format == IngestFormat::GenericCommandJson {
+                eprintln!(
+                    "Evidence source: generic_command_json; unit and direction came from the input and ambiguous mappings fail closed."
+                );
+                if receipt.run.host.os == "unknown" || receipt.run.host.arch == "unknown" {
+                    eprintln!(
+                        "Host context: unknown; do not infer host compatibility from this import."
+                    );
+                }
+                if receipt.samples.is_empty() {
+                    eprintln!(
+                        "Sample model: summary-only; noise and maturity support are limited until raw samples are available."
+                    );
+                }
+                eprintln!(
+                    "Non-inferences: imported evidence remains advisory; no baseline was promoted; policy posture still requires policy doctor or review-packet output."
+                );
+            }
             Ok(())
         }
         Command::Badge(args) => execute_badge(*args),

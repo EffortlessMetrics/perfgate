@@ -7,6 +7,7 @@
 //! - **pytest-benchmark** (`.benchmarks/*.json`)
 
 mod criterion;
+mod generic_command_json;
 mod gobench;
 mod hyperfine;
 mod otel;
@@ -21,6 +22,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub use criterion::parse_criterion;
+pub use generic_command_json::parse_generic_command_json;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
 pub use otel::parse_otel_json;
@@ -31,6 +33,7 @@ pub use pytest::parse_pytest_benchmark;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IngestFormat {
     Criterion,
+    GenericCommandJson,
     Hyperfine,
     GoBench,
     PytestBenchmark,
@@ -42,6 +45,9 @@ impl IngestFormat {
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "criterion" => Some(Self::Criterion),
+            "generic-command-json" | "generic_command_json" | "generic-json" | "generic_json" => {
+                Some(Self::GenericCommandJson)
+            }
             "hyperfine" => Some(Self::Hyperfine),
             "gobench" | "go" => Some(Self::GoBench),
             "pytest" | "pytest-benchmark" | "pytest_benchmark" => Some(Self::PytestBenchmark),
@@ -69,6 +75,9 @@ pub struct IngestRequest {
 pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
     match request.format {
         IngestFormat::Criterion => parse_criterion(&request.input, request.name.as_deref()),
+        IngestFormat::GenericCommandJson => {
+            parse_generic_command_json(&request.input, request.name.as_deref())
+        }
         IngestFormat::Hyperfine => parse_hyperfine(&request.input, request.name.as_deref()),
         IngestFormat::GoBench => parse_gobench(&request.input, request.name.as_deref()),
         IngestFormat::PytestBenchmark => {
@@ -225,6 +234,14 @@ mod tests {
         assert_eq!(
             IngestFormat::parse("hyperfine"),
             Some(IngestFormat::Hyperfine)
+        );
+        assert_eq!(
+            IngestFormat::parse("generic-command-json"),
+            Some(IngestFormat::GenericCommandJson)
+        );
+        assert_eq!(
+            IngestFormat::parse("generic_json"),
+            Some(IngestFormat::GenericCommandJson)
         );
         assert_eq!(IngestFormat::parse("gobench"), Some(IngestFormat::GoBench));
         assert_eq!(IngestFormat::parse("go"), Some(IngestFormat::GoBench));

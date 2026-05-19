@@ -5281,6 +5281,7 @@ fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
         "README.md",
         "docs/CONFIG.md",
         "docs/DEBUGGING_FIRST_CI_RUN.md",
+        "docs/EVIDENCE_INTAKE.md",
         "docs/FLAKINESS.md",
         "docs/FLEET_AGGREGATION.md",
         "docs/PAIRED_BENCHMARKING.md",

@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-19"
 milestone = "0.21.0"
-current_work_item = "implementation-plan"
-current_pr = "plans/evidence-intake-adoption-packs"
+current_work_item = "generic-command-json-adapter"
+current_pr = "ingest/generic-command-json"
 
 objective = """
 Make perfgate useful for teams that already have benchmark ecosystems by
@@ -111,11 +111,11 @@ status = "merged"
 
 [[work_item]]
 id = "implementation-plan"
-status = "in_progress"
+status = "merged"
 
 [[work_item]]
 id = "generic-command-json-adapter"
-status = "pending"
+status = "in_progress"
 
 [[work_item]]
 id = "hyperfine-json-adapter"
