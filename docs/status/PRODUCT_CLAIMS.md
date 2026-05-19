@@ -839,7 +839,7 @@ Review after: next-agent-repair-contract-change
 Tier: supported
 Proof freshness: current
 Surface: CLI, docs, config
-Linked docs: [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Linked docs: [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md), [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md)
 Proof commands:
 
 ```bash
@@ -872,7 +872,7 @@ Review after: next-policy-ergonomics-change
 Tier: supported
 Proof freshness: current
 Surface: CLI, GitHub Action, artifacts
-Linked docs: [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Linked docs: [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md), [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md)
 Proof commands:
 
 ```bash
@@ -898,6 +898,8 @@ Known limits:
   truth.
 - Action posture summaries preserve existing configured exit-code behavior.
 - Advisory maturity output does not become blocking from the summary alone.
+- The 2026-05-19 policy rollout canary exercised the local review packet path,
+  not hosted external Action posture.
 
 Review after: next-policy-ergonomics-change
 
@@ -906,7 +908,7 @@ Review after: next-policy-ergonomics-change
 Tier: advisory
 Proof freshness: current
 Surface: CLI guidance, specs, tests
-Linked docs: [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Linked docs: [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md), [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md)
 Proof commands:
 
 ```bash

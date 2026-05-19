@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.20.0
-Current PR: rollout-canary-plan
+Current PR: policy-rollout-canary
 Linked proposal: [`PERFGATE-PROP-0007-policy-ergonomics-team-rollout`](../../docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md)
 Linked specs: [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../../docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../../docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -85,8 +85,8 @@ accepted spec and explicit proof.
 | 559 | Agent policy guardrail spec | merged | `PERFGATE-SPEC-0012-agent-policy-change-guardrails` |
 | 562 | Agent policy fixtures | merged | policy guardrail fixtures for review-required changes |
 | 564 | Proof freshness claim discipline | merged | product-claims proof freshness enforcement for policy promotion |
-| TBD | External policy rollout canary plan | current | status canary rerun plan for policy ergonomics |
-| TBD | Public policy rollout canary | pending | one real canary proving advisory-to-promotion path |
+| 566 | External policy rollout canary plan | merged | status canary rerun plan for policy ergonomics |
+| TBD | Public policy rollout canary | current | one real canary proving advisory-to-promotion path |
 | TBD | Policy ergonomics closeout | pending | handoff and archived active goal |
 
 ## Work item: implementation-plan
@@ -493,7 +493,7 @@ git diff --check
 
 ## Work item: rollout-canary-plan
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: policy-rollout-canary
@@ -522,7 +522,7 @@ agent-heavy repo
 
 ## Work item: policy-rollout-canary
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: final-closeout
@@ -535,8 +535,10 @@ Record at least one external canary using the policy ergonomics path.
 ### Acceptance
 
 The canary records advisory check, baseline maturity, signal maturity,
-promotion doctor output, review packet, GitHub Action posture, what confused
-the user, what changed, what it proves, and what it does not prove.
+promotion doctor output, review packet, generated workflow/action posture
+boundary, what confused the user, what changed, what it proves, and what it
+does not prove. Hosted Action posture is recorded only when hosted CI is part
+of the canary.
 
 ## Work item: final-closeout
 

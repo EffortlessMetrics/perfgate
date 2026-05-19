@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.20.0"
-current_work_item = "rollout-canary-plan"
-current_pr = "rollout-canary-plan"
+current_work_item = "policy-rollout-canary"
+current_pr = "policy-rollout-canary"
 
 objective = """
 Make perfgate safe for teams to promote mature performance evidence into
@@ -147,11 +147,11 @@ status = "merged"
 
 [[work_item]]
 id = "rollout-canary-plan"
-status = "current"
+status = "merged"
 
 [[work_item]]
 id = "policy-rollout-canary"
-status = "pending"
+status = "current"
 
 [[work_item]]
 id = "final-closeout"
