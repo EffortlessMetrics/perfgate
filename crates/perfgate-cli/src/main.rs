@@ -3194,6 +3194,23 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 eprintln!(
                     "Non-inferences: imported evidence remains advisory; no baseline was promoted; policy posture still requires policy doctor or review-packet output."
                 );
+            } else if format == IngestFormat::Hyperfine {
+                eprintln!(
+                    "Evidence source: hyperfine_json; seconds were mapped to lower-is-better wall_ms and raw timing runs were preserved as samples."
+                );
+                if receipt.stats.cpu_ms.is_some() {
+                    eprintln!(
+                        "CPU timing: hyperfine user+system time was mapped to cpu_ms; separate user/system fields are not preserved in perfgate.run.v1."
+                    );
+                }
+                if receipt.run.host.os == "unknown" || receipt.run.host.arch == "unknown" {
+                    eprintln!(
+                        "Host context: unknown; hyperfine JSON does not prove host compatibility."
+                    );
+                }
+                eprintln!(
+                    "Non-inferences: hyperfine command timing may include shell, setup, cache, or compile overhead; imported evidence remains advisory until maturity and policy surfaces support promotion."
+                );
             }
             Ok(())
         }

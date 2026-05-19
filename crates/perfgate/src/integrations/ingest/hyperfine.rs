@@ -4,11 +4,15 @@
 //! where each entry contains `command`, `times` (array of seconds),
 //! `mean`, `stddev`, `median`, `min`, `max`, etc.
 
-use anyhow::Context;
-use perfgate_types::{RunReceipt, Sample, Stats};
+use anyhow::{Context, bail};
+use perfgate_types::{
+    BenchMeta, HostInfo, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample, Stats, ToolInfo, U64Summary,
+};
 use serde::Deserialize;
+use time::OffsetDateTime;
+use uuid::Uuid;
 
-use super::{compute_u64_summary, make_receipt};
+use super::compute_u64_summary;
 
 /// A single result entry from hyperfine JSON output.
 #[derive(Debug, Deserialize)]
@@ -16,11 +20,17 @@ struct HyperfineResult {
     command: String,
     /// Raw timing data in seconds.
     times: Vec<f64>,
+    #[serde(default)]
+    exit_codes: Option<Vec<i32>>,
     mean: f64,
     stddev: f64,
     median: f64,
     min: f64,
     max: f64,
+    #[serde(default)]
+    user: Option<f64>,
+    #[serde(default)]
+    system: Option<f64>,
 }
 
 /// Top-level hyperfine JSON structure.
@@ -47,16 +57,32 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
         .map(|n| n.to_string())
         .unwrap_or_else(|| result.command.clone());
 
-    // hyperfine times are in seconds; convert to milliseconds.
+    if result.times.is_empty() {
+        bail!("hyperfine JSON result requires non-empty raw times");
+    }
+    if let Some(exit_codes) = &result.exit_codes
+        && exit_codes.len() != result.times.len()
+    {
+        bail!(
+            "hyperfine JSON exit_codes length ({}) does not match times length ({})",
+            exit_codes.len(),
+            result.times.len()
+        );
+    }
+
     let mut wall_values = Vec::new();
     let mut samples = Vec::new();
 
-    for &t in &result.times {
-        let ms = seconds_to_ms(t);
-        wall_values.push(ms);
+    for (index, &time_seconds) in result.times.iter().enumerate() {
+        let wall_ms = seconds_to_ms(time_seconds, "times")?;
+        wall_values.push(wall_ms);
         samples.push(Sample {
-            wall_ms: ms,
-            exit_code: 0,
+            wall_ms,
+            exit_code: result
+                .exit_codes
+                .as_ref()
+                .and_then(|exit_codes| exit_codes.get(index).copied())
+                .unwrap_or(0),
             warmup: false,
             timed_out: false,
             cpu_ms: None,
@@ -74,20 +100,15 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
     }
 
     let mut stats = compute_u64_summary(&wall_values);
-    // Override with hyperfine's own statistics (more precise).
-    // median/min/max are u64 so integer seconds_to_ms() is fine.
-    stats.median = seconds_to_ms(result.median);
-    stats.min = seconds_to_ms(result.min);
-    stats.max = seconds_to_ms(result.max);
-    // IMPORTANT: Use f64 arithmetic here, NOT seconds_to_ms(). See the
-    // GOTCHA on seconds_to_ms — integer truncation would lose sub-ms
-    // precision that budget evaluation and significance testing rely on.
-    stats.mean = Some(result.mean * 1000.0);
-    stats.stddev = Some(result.stddev * 1000.0);
+    stats.median = seconds_to_ms(result.median, "median")?;
+    stats.min = seconds_to_ms(result.min, "min")?;
+    stats.max = seconds_to_ms(result.max, "max")?;
+    stats.mean = Some(seconds_to_ms_f64(result.mean, "mean")?);
+    stats.stddev = Some(seconds_to_ms_f64(result.stddev, "stddev")?);
 
     let full_stats = Stats {
         wall_ms: stats,
-        cpu_ms: None,
+        cpu_ms: cpu_ms_summary(result.user, result.system)?,
         page_faults: None,
         ctx_switches: None,
         max_rss_kb: None,
@@ -99,23 +120,107 @@ pub fn parse_hyperfine(input: &str, name: Option<&str>) -> anyhow::Result<RunRec
         throughput_per_s: None,
     };
 
-    Ok(make_receipt(&bench_name, samples, full_stats))
+    Ok(make_hyperfine_receipt(
+        &bench_name,
+        &result.command,
+        samples,
+        full_stats,
+    ))
 }
 
 /// Integer seconds-to-ms conversion for sample `wall_ms` values (u64).
 ///
-/// GOTCHA: This intentionally truncates to integer milliseconds -- it is only
-/// appropriate for per-sample u64 fields where sub-ms precision is not needed.
-/// For stats fields (mean, stddev) use direct `f64` arithmetic (`value * 1000.0`)
-/// to preserve sub-millisecond precision. Using this function for stats would
-/// silently destroy the fractional component that downstream budget evaluation
-/// and significance testing depend on.
-fn seconds_to_ms(s: f64) -> u64 {
-    let ms = s * 1000.0;
-    if ms < 1.0 && ms > 0.0 {
+/// This intentionally rounds to integer milliseconds. For stats fields
+/// (mean, stddev), use direct f64 arithmetic to preserve sub-millisecond
+/// precision.
+fn seconds_to_ms(seconds: f64, field: &str) -> anyhow::Result<u64> {
+    if !seconds.is_finite() || seconds < 0.0 {
+        bail!("hyperfine JSON field '{field}' must be finite and non-negative");
+    }
+    let milliseconds = seconds * 1000.0;
+    if milliseconds < 1.0 && milliseconds > 0.0 {
+        Ok(1)
+    } else {
+        Ok(milliseconds.round() as u64)
+    }
+}
+
+fn seconds_to_ms_f64(seconds: f64, field: &str) -> anyhow::Result<f64> {
+    if !seconds.is_finite() || seconds < 0.0 {
+        bail!("hyperfine JSON field '{field}' must be finite and non-negative");
+    }
+    Ok(seconds * 1000.0)
+}
+
+fn cpu_ms_summary(user: Option<f64>, system: Option<f64>) -> anyhow::Result<Option<U64Summary>> {
+    if user.is_none() && system.is_none() {
+        return Ok(None);
+    }
+
+    let user_ms = user
+        .map(|value| seconds_to_ms_f64(value, "user"))
+        .transpose()?
+        .unwrap_or(0.0);
+    let system_ms = system
+        .map(|value| seconds_to_ms_f64(value, "system"))
+        .transpose()?
+        .unwrap_or(0.0);
+    let cpu_ms = user_ms + system_ms;
+    let rounded = if cpu_ms < 1.0 && cpu_ms > 0.0 {
         1
     } else {
-        ms.round() as u64
+        cpu_ms.round() as u64
+    };
+
+    Ok(Some(U64Summary {
+        median: rounded,
+        min: rounded,
+        max: rounded,
+        mean: Some(cpu_ms),
+        stddev: None,
+    }))
+}
+
+fn make_hyperfine_receipt(
+    name: &str,
+    command: &str,
+    samples: Vec<Sample>,
+    stats: Stats,
+) -> RunReceipt {
+    let now = OffsetDateTime::now_utc();
+    let timestamp = now
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+
+    RunReceipt {
+        schema: RUN_SCHEMA_V1.to_string(),
+        tool: ToolInfo {
+            name: "perfgate-ingest".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        run: RunMeta {
+            id: Uuid::new_v4().to_string(),
+            started_at: timestamp.clone(),
+            ended_at: timestamp,
+            host: HostInfo {
+                os: "unknown".to_string(),
+                arch: "unknown".to_string(),
+                cpu_count: None,
+                memory_bytes: None,
+                hostname_hash: None,
+            },
+        },
+        bench: BenchMeta {
+            name: name.to_string(),
+            cwd: None,
+            command: vec![command.to_string()],
+            repeat: samples.len() as u32,
+            warmup: 0,
+            work_units: None,
+            timeout_ms: None,
+        },
+        samples,
+        stats,
     }
 }
 
@@ -146,11 +251,16 @@ mod tests {
         let receipt = parse_hyperfine(HYPERFINE_JSON, Some("sleep-bench")).unwrap();
         assert_eq!(receipt.schema, RUN_SCHEMA_V1);
         assert_eq!(receipt.bench.name, "sleep-bench");
+        assert_eq!(receipt.bench.command, vec!["sleep 0.1"]);
         assert_eq!(receipt.samples.len(), 5);
-        // 0.102 seconds = 102 ms
         assert_eq!(receipt.stats.wall_ms.median, 102);
         assert_eq!(receipt.stats.wall_ms.min, 100);
         assert_eq!(receipt.stats.wall_ms.max, 106);
+        assert_close(receipt.stats.wall_ms.mean.unwrap(), 102.3);
+        assert_close(receipt.stats.wall_ms.stddev.unwrap(), 1.5);
+        assert_close(receipt.stats.cpu_ms.as_ref().unwrap().mean.unwrap(), 3.0);
+        assert_eq!(receipt.run.host.os, "unknown");
+        assert_eq!(receipt.run.host.arch, "unknown");
     }
 
     #[test]
@@ -160,16 +270,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_hyperfine_sample_wall_ms() {
+    fn parse_hyperfine_sample_wall_ms_and_exit_codes() {
         let receipt = parse_hyperfine(HYPERFINE_JSON, None).unwrap();
-        // Each sample should have its own wall_ms from the times array
         let wall_values: Vec<u64> = receipt.samples.iter().map(|s| s.wall_ms).collect();
         assert_eq!(wall_values, vec![100, 102, 102, 103, 106]);
+        let exit_codes: Vec<i32> = receipt.samples.iter().map(|s| s.exit_code).collect();
+        assert_eq!(exit_codes, vec![0, 0, 0, 0, 0]);
     }
 
     #[test]
     fn parse_hyperfine_multiple_results() {
-        // Only the first result should be used
         let input = r#"{
             "results": [
                 {
@@ -213,5 +323,95 @@ mod tests {
     fn parse_hyperfine_invalid_json() {
         let result = parse_hyperfine("{bad json", None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_hyperfine_preserves_nonzero_exit_codes() {
+        let input = r#"{
+            "results": [
+                {
+                    "command": "cmd /c exit 7",
+                    "mean": 0.005,
+                    "stddev": 0.001,
+                    "median": 0.005,
+                    "min": 0.004,
+                    "max": 0.006,
+                    "times": [0.004, 0.005, 0.006],
+                    "exit_codes": [0, 7, 0]
+                }
+            ]
+        }"#;
+        let receipt = parse_hyperfine(input, None).unwrap();
+        let exit_codes: Vec<i32> = receipt
+            .samples
+            .iter()
+            .map(|sample| sample.exit_code)
+            .collect();
+        assert_eq!(exit_codes, vec![0, 7, 0]);
+    }
+
+    #[test]
+    fn parse_hyperfine_rejects_empty_times() {
+        let input = r#"{
+            "results": [
+                {
+                    "command": "echo empty",
+                    "mean": 0.005,
+                    "stddev": 0.001,
+                    "median": 0.005,
+                    "min": 0.004,
+                    "max": 0.006,
+                    "times": []
+                }
+            ]
+        }"#;
+        let err = parse_hyperfine(input, None).unwrap_err();
+        assert!(err.to_string().contains("non-empty raw times"));
+    }
+
+    #[test]
+    fn parse_hyperfine_rejects_exit_code_length_mismatch() {
+        let input = r#"{
+            "results": [
+                {
+                    "command": "echo mismatch",
+                    "mean": 0.005,
+                    "stddev": 0.001,
+                    "median": 0.005,
+                    "min": 0.004,
+                    "max": 0.006,
+                    "times": [0.004, 0.005, 0.006],
+                    "exit_codes": [0, 0]
+                }
+            ]
+        }"#;
+        let err = parse_hyperfine(input, None).unwrap_err();
+        assert!(err.to_string().contains("exit_codes length"));
+    }
+
+    #[test]
+    fn parse_hyperfine_rejects_invalid_timing_values() {
+        let input = r#"{
+            "results": [
+                {
+                    "command": "echo bad",
+                    "mean": 0.005,
+                    "stddev": 0.001,
+                    "median": 0.005,
+                    "min": 0.004,
+                    "max": 0.006,
+                    "times": [-0.004]
+                }
+            ]
+        }"#;
+        let err = parse_hyperfine(input, None).unwrap_err();
+        assert!(err.to_string().contains("finite and non-negative"));
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 0.0001,
+            "expected {actual} to be close to {expected}"
+        );
     }
 }

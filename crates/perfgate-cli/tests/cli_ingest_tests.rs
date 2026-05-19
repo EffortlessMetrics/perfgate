@@ -21,11 +21,14 @@ fn test_ingest_hyperfine_writes_run_receipt() {
     {
       "command": "cargo bench",
       "times": [0.100, 0.120, 0.110],
+      "exit_codes": [0, 7, 0],
       "mean": 0.110,
       "stddev": 0.010,
       "median": 0.110,
       "min": 0.100,
-      "max": 0.120
+      "max": 0.120,
+      "user": 0.020,
+      "system": 0.005
     }
   ]
 }"#,
@@ -45,7 +48,14 @@ fn test_ingest_hyperfine_writes_run_receipt() {
 
     cmd.assert()
         .success()
-        .stderr(predicate::str::contains("Ingested"));
+        .stderr(predicate::str::contains("Ingested"))
+        .stderr(predicate::str::contains("Evidence source: hyperfine_json"))
+        .stderr(predicate::str::contains(
+            "CPU timing: hyperfine user+system",
+        ))
+        .stderr(predicate::str::contains(
+            "hyperfine command timing may include shell",
+        ));
 
     let receipt: Value = serde_json::from_str(
         &fs::read_to_string(&output_path).expect("failed to read ingest output"),
@@ -54,8 +64,50 @@ fn test_ingest_hyperfine_writes_run_receipt() {
 
     assert_eq!(receipt["schema"], "perfgate.run.v1");
     assert_eq!(receipt["bench"]["name"], "hyperfine-smoke");
+    assert_eq!(receipt["bench"]["command"][0], "cargo bench");
+    assert_eq!(receipt["run"]["host"]["os"], "unknown");
     assert_eq!(receipt["tool"]["name"], "perfgate-ingest");
     assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(3));
+    assert_eq!(receipt["samples"][1]["exit_code"], 7);
+    assert_eq!(receipt["stats"]["wall_ms"]["mean"], 110.0);
+    assert_eq!(receipt["stats"]["wall_ms"]["stddev"], 10.0);
+    assert_eq!(receipt["stats"]["cpu_ms"]["mean"], 25.0);
+}
+
+#[test]
+fn test_ingest_hyperfine_exit_code_mismatch_fails_actionably() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("hyperfine-bad-exit-codes.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "results": [
+    {
+      "command": "cargo bench",
+      "times": [0.100, 0.120, 0.110],
+      "exit_codes": [0, 0],
+      "mean": 0.110,
+      "stddev": 0.010,
+      "median": 0.110,
+      "min": 0.100,
+      "max": 0.120
+    }
+  ]
+}"#,
+    )
+    .expect("failed to write hyperfine input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("hyperfine")
+        .arg("--input")
+        .arg(&input_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("exit_codes length"));
 }
 
 #[test]

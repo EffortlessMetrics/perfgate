@@ -98,3 +98,47 @@ Do not infer:
 
 Use `perfgate policy emit-patch` only after reviewing maturity and promotion
 guidance.
+
+## hyperfine JSON
+
+hyperfine remains the measurement tool. perfgate imports its JSON as command
+timing evidence:
+
+```bash
+hyperfine --warmup 3 --runs 10 --export-json artifacts/hyperfine.json "cargo run -q -- --help"
+perfgate ingest --format hyperfine --input artifacts/hyperfine.json --name cli-help --out artifacts/perfgate/run.json
+```
+
+Then run the same maturity and policy surfaces:
+
+```bash
+perfgate baseline doctor --config perfgate.toml
+perfgate doctor signal --config perfgate.toml
+perfgate policy doctor --config perfgate.toml --bench cli-help
+perfgate policy review-packet --config perfgate.toml --bench cli-help --out artifacts/perfgate/review-packet.md
+```
+
+Mapping:
+
+```text
+hyperfine source kind  -> hyperfine_json
+times[]                -> raw wall_ms samples
+mean/median/stddev/min/max -> wall_ms summary
+exit_codes[]           -> sample exit_code values
+user + system          -> cpu_ms summary when present
+command                -> bench.command as a single shell command string
+host                   -> unknown
+```
+
+hyperfine timings are lower-is-better command timings. They can be useful as
+smoke, advisory, or gate-candidate evidence, but compile-heavy or setup-heavy
+commands should stay advisory until baseline and signal maturity prove they are
+stable enough to promote.
+
+Do not infer:
+
+- hyperfine command timing excludes shell, setup, cache, or compile overhead;
+- missing host context proves host compatibility;
+- user and system time remain separate after import;
+- the first imported result should become a baseline; or
+- successful import means the benchmark should block CI.
