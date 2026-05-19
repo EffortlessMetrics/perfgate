@@ -4,7 +4,7 @@ Status: proposed
 Owner: perfgate maintainers
 Created: 2026-05-18
 Target milestone: 0.20.0
-Linked specs: PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract, PERFGATE-SPEC-0012-agent-policy-change-guardrails (planned)
+Linked specs: PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract, PERFGATE-SPEC-0012-agent-policy-change-guardrails
 Linked ADRs: none
 Linked plan: plans/0.20.0/policy-ergonomics-team-rollout.md
 Support/status impact: docs/status/PRODUCT_CLAIMS.md and docs/status/PROOF_FRESHNESS.md should be updated only after policy ergonomics behavior and proof land
