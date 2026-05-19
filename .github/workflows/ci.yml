@@ -1,25 +1,274 @@
-name: ci
+name: EM CI
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: em-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deny:
+  cargo-deny:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
 
-  test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+  route-perfgate-rust-small:
+    name: Route Perfgate Rust Small
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.route.outputs.target }}
+      reason: ${{ steps.route.outputs.reason }}
+    steps:
+      - id: route
+        env:
+          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+        run: |
+          set -euo pipefail
+
+          trusted="true"
+          if [[ "${EVENT_NAME}" == "pull_request" && "${PR_HEAD_REPO}" != "${REPO}" ]]; then
+            trusted="false"
+          fi
+
+          if [[ "${trusted}" != "true" ]]; then
+            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "reason=fork_or_untrusted_pr" >> "$GITHUB_OUTPUT"
+            echo "router_target=github"
+            echo "router_reason=fork_or_untrusted_pr"
+            exit 0
+          fi
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "reason=missing_runner_token" >> "$GITHUB_OUTPUT"
+            echo "router_target=github"
+            echo "router_reason=missing_runner_token"
+            exit 0
+          fi
+
+          api="https://api.github.com/orgs/${GITHUB_REPOSITORY_OWNER}/actions/runners?per_page=100"
+
+          if ! runners="$(curl -fsS \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api")"; then
+            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "reason=runner_api_failed" >> "$GITHUB_OUTPUT"
+            echo "router_target=github"
+            echo "router_reason=runner_api_failed"
+            exit 0
+          fi
+
+          idle_with_labels() {
+            local label1="$1"
+            jq --arg label1 "$label1" '
+              [
+                .runners[]
+                | select(.status == "online")
+                | select(.busy == false)
+                | select(([.labels[].name] | index("em-ci")) != null)
+                | select(([.labels[].name] | index("rust-small")) != null)
+                | select(([.labels[].name] | index("trusted-pr")) != null)
+                | select(([.labels[].name] | index($label1)) != null)
+              ] | length
+            ' <<< "$runners"
+          }
+
+          idle_cx43="$(idle_with_labels cx43)"
+          idle_cx53="$(idle_with_labels cx53)"
+
+          if [[ "${idle_cx43}" -gt 0 ]]; then
+            target="cx43"
+            reason="cx43_idle"
+          elif [[ "${idle_cx53}" -gt 0 ]]; then
+            target="cx53"
+            reason="cx53_idle"
+          else
+            target="github"
+            reason="no_idle_runner"
+          fi
+
+          echo "target=${target}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          echo "router_target=${target}"
+          echo "router_reason=${reason}"
+          echo "idle_cx43=${idle_cx43}"
+          echo "idle_cx53=${idle_cx53}"
+
+  perfgate-rust-small-cx43:
+    name: Perfgate Rust Small on CX43
+    needs: route-perfgate-rust-small
+    if: needs.route-perfgate-rust-small.outputs.target == 'cx43'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, em-ci, cx43, rust-small, trusted-pr]
+    timeout-minutes: 45
+    env:
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      SCCACHE_CACHE_SIZE: 40G
+      RUSTC_WRAPPER: /usr/local/cargo/bin/sccache
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "8"
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      PERFGATE_CI_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard disk
+        run: |
+          set -euo pipefail
+          ci-disk-guard /mnt/ci-scratch 80
+          ci-disk-guard /mnt/docker 20
+          ci-disk-guard /mnt/ci-cache 20
+
+      - name: Run xtask CI in em-ci-rust
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
+
+          docker run --rm \
+            --label em.ci=true \
+            --cpus="8" \
+            --memory="14g" \
+            --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v /mnt/ci-cache:/mnt/ci-cache \
+            -v /mnt/ci-scratch:/mnt/ci-scratch \
+            -w /work \
+            -e CARGO_HOME \
+            -e SCCACHE_DIR \
+            -e SCCACHE_CACHE_SIZE \
+            -e RUSTC_WRAPPER \
+            -e CARGO_INCREMENTAL \
+            -e CARGO_BUILD_JOBS \
+            -e TMPDIR \
+            -e CARGO_TARGET_DIR \
+            -e PERFGATE_CI_TARGET_DIR \
+            -e PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            em-ci-rust:1.95 \
+            -c 'set -euo pipefail
+                cargo fmt --version
+                cargo clippy --version
+                rustc --version
+                cargo --version
+                cargo run -p xtask -- ci'
+
+      - name: Cleanup scratch
+        if: always()
+        run: |
+          docker run --rm \
+            --label em.ci=true \
+            --entrypoint /bin/bash \
+            -v /mnt/ci-scratch:/mnt/ci-scratch \
+            em-ci-rust:1.95 \
+            -c 'rm -rf "/mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}" "/mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}"' || true
+
+      - name: Disk report
+        if: always()
+        run: |
+          df -h / /mnt/docker /mnt/actions /mnt/ci-scratch /mnt/ci-cache /mnt/ci-artifacts || true
+          du -sh /mnt/ci-cache/* /mnt/ci-scratch/* /mnt/docker 2>/dev/null || true
+
+  perfgate-rust-small-cx53:
+    name: Perfgate Rust Small on CX53
+    needs: route-perfgate-rust-small
+    if: needs.route-perfgate-rust-small.outputs.target == 'cx53'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, em-ci, cx53, rust-small, trusted-pr]
+    timeout-minutes: 45
+    env:
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      SCCACHE_CACHE_SIZE: 60G
+      RUSTC_WRAPPER: /usr/local/cargo/bin/sccache
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "12"
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      PERFGATE_CI_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard disk
+        run: |
+          set -euo pipefail
+          ci-disk-guard /mnt/ci-scratch 100
+          ci-disk-guard /mnt/docker 20
+          ci-disk-guard /mnt/ci-cache 20
+
+      - name: Run xtask CI in em-ci-rust
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
+
+          docker run --rm \
+            --label em.ci=true \
+            --cpus="14" \
+            --memory="28g" \
+            --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v /mnt/ci-cache:/mnt/ci-cache \
+            -v /mnt/ci-scratch:/mnt/ci-scratch \
+            -w /work \
+            -e CARGO_HOME \
+            -e SCCACHE_DIR \
+            -e SCCACHE_CACHE_SIZE \
+            -e RUSTC_WRAPPER \
+            -e CARGO_INCREMENTAL \
+            -e CARGO_BUILD_JOBS \
+            -e TMPDIR \
+            -e CARGO_TARGET_DIR \
+            -e PERFGATE_CI_TARGET_DIR \
+            -e PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            em-ci-rust:1.95 \
+            -c 'set -euo pipefail
+                cargo fmt --version
+                cargo clippy --version
+                rustc --version
+                cargo --version
+                cargo run -p xtask -- ci'
+
+      - name: Cleanup scratch
+        if: always()
+        run: |
+          docker run --rm \
+            --label em.ci=true \
+            --entrypoint /bin/bash \
+            -v /mnt/ci-scratch:/mnt/ci-scratch \
+            em-ci-rust:1.95 \
+            -c 'rm -rf "/mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}" "/mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}"' || true
+
+      - name: Disk report
+        if: always()
+        run: |
+          df -h / /mnt/docker /mnt/actions /mnt/ci-scratch /mnt/ci-cache /mnt/ci-artifacts || true
+          du -sh /mnt/ci-cache/* /mnt/ci-scratch/* /mnt/docker 2>/dev/null || true
+
+  perfgate-rust-small-github:
+    name: Perfgate Rust Small on GitHub Hosted
+    needs: route-perfgate-rust-small
+    if: needs.route-perfgate-rust-small.outputs.target == 'github'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PERFGATE_CI_TARGET_DIR: target/perfgate-ci
     steps:
       - uses: actions/checkout@v4
 
@@ -28,12 +277,28 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
-      - name: Run CI Suite (xtask)
+      - name: Run xtask CI
         run: cargo run -p xtask -- ci
 
-  server-integration:
-    name: server integration (memory/sqlite/postgres)
+  perfgate-windows:
+    name: Perfgate Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Run xtask CI
+        run: cargo run -p xtask -- ci
+
+  perfgate-server-integration:
+    name: Perfgate Server Integration
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
@@ -59,3 +324,57 @@ jobs:
         env:
           PERFGATE_TEST_POSTGRES_URL: postgres://perfgate@localhost:5432/perfgate
         run: cargo test -p perfgate-cli --test cli_server_tests live_server -- --nocapture
+
+  perfgate-ci-result:
+    name: Perfgate Swarm CI Result
+    needs:
+      - cargo-deny
+      - route-perfgate-rust-small
+      - perfgate-rust-small-cx43
+      - perfgate-rust-small-cx53
+      - perfgate-rust-small-github
+      - perfgate-windows
+      - perfgate-server-integration
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate result
+        run: |
+          set -euo pipefail
+
+          route_target="${{ needs.route-perfgate-rust-small.outputs.target }}"
+
+          echo "route_target=${route_target}"
+          echo "route_reason=${{ needs.route-perfgate-rust-small.outputs.reason }}"
+
+          test_required() {
+            local name="$1"
+            local result="$2"
+            if [[ "$result" != "success" ]]; then
+              echo "::error::${name} result was ${result}, expected success"
+              exit 1
+            fi
+          }
+
+          test_required "cargo-deny" "${{ needs.cargo-deny.result }}"
+          test_required "route-perfgate-rust-small" "${{ needs.route-perfgate-rust-small.result }}"
+          test_required "perfgate-windows" "${{ needs.perfgate-windows.result }}"
+          test_required "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
+
+          case "${route_target}" in
+            cx43)
+              test_required "perfgate-rust-small-cx43" "${{ needs.perfgate-rust-small-cx43.result }}"
+              ;;
+            cx53)
+              test_required "perfgate-rust-small-cx53" "${{ needs.perfgate-rust-small-cx53.result }}"
+              ;;
+            github)
+              test_required "perfgate-rust-small-github" "${{ needs.perfgate-rust-small-github.result }}"
+              ;;
+            *)
+              echo "::error::unknown route target: ${route_target}"
+              exit 1
+              ;;
+          esac
+
+          echo "Perfgate Swarm CI Result passed"
