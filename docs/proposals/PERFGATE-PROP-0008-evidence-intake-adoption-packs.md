@@ -4,7 +4,7 @@ Status: proposed
 Owner: perfgate maintainers
 Created: 2026-05-19
 Target milestone: 0.21.0
-Linked specs: planned PERFGATE-SPEC-0013-evidence-source-contract
+Linked specs: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Linked ADRs: none
 Linked plan: not created yet; planned for the 0.21 implementation-plan PR
 Support/status impact: docs/status/PRODUCT_CLAIMS.md and docs/status/CANARY_MATRIX.md should be updated only after adapters, adoption packs, tests, and external canaries land
