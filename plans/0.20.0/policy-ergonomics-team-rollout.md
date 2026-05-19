@@ -88,7 +88,7 @@ accepted spec and explicit proof.
 | 566 | External policy rollout canary plan | merged | status canary rerun plan for policy ergonomics |
 | 568 | Public policy rollout canary | merged | one real canary proving advisory-to-promotion path |
 | 570 | Policy ergonomics closeout | merged | handoff and archived active goal |
-| TBD | Hosted policy Action posture canary | merged | external Action summary proof for policy posture |
+| 572 | Hosted policy Action posture canary | merged | external Action summary proof for policy posture |
 
 ## Work item: implementation-plan
 
