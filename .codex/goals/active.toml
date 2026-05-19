@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.20.0"
-current_work_item = "agent-policy-fixtures"
-current_pr = "agent-policy-fixtures"
+current_work_item = "policy-claims-freshness"
+current_pr = "policy-claims-freshness"
 
 objective = """
 Make perfgate safe for teams to promote mature performance evidence into
@@ -139,11 +139,11 @@ status = "merged"
 
 [[work_item]]
 id = "agent-policy-fixtures"
-status = "current"
+status = "merged"
 
 [[work_item]]
 id = "policy-claims-freshness"
-status = "pending"
+status = "current"
 
 [[work_item]]
 id = "rollout-canary-plan"

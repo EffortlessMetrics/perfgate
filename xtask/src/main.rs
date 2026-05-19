@@ -5082,6 +5082,28 @@ fn collect_product_claim_errors(
             )),
         }
 
+        if let Some(freshness) = claim_field(&claim.body, "Proof freshness") {
+            match freshness.as_str() {
+                "current" | "recent" | "stale" | "superseded" | "unproven" => {}
+                value => errors.push(format!(
+                    "{} line {} uses unknown proof freshness `{}`",
+                    claim.id, claim.line, value
+                )),
+            }
+
+            if matches!(tier.as_deref(), Some("stable" | "supported"))
+                && matches!(freshness.as_str(), "stale" | "superseded" | "unproven")
+            {
+                errors.push(format!(
+                    "{} line {} uses `{}` proof freshness for a `{}` claim; refresh proof or lower the claim language",
+                    claim.id,
+                    claim.line,
+                    freshness,
+                    tier.as_deref().unwrap_or("unknown")
+                ));
+            }
+        }
+
         if claim_field(&claim.body, "Surface").is_none() {
             errors.push(format!(
                 "{} line {} is missing `Surface:`",
@@ -6220,6 +6242,85 @@ Review after: before-release
                 .iter()
                 .any(|error| error.contains("references `PERFGATE-SPEC-0007` as planned")),
             "expected stale planned spec error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_accepts_supported_claim_with_current_freshness() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Policy posture
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-policy-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    }
+
+    #[test]
+    fn product_claims_check_rejects_unknown_proof_freshness() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Policy posture
+
+Tier: advisory
+Proof freshness: fresh-ish
+Surface: CLI, docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-policy-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("unknown proof freshness")),
+            "expected proof freshness error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_rejects_supported_claim_with_stale_freshness() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Policy posture
+
+Tier: supported
+Proof freshness: stale
+Surface: CLI, docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-policy-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors.iter().any(|error| {
+                error.contains("uses `stale` proof freshness for a `supported` claim")
+            }),
+            "expected stale supported-claim error, got {errors:?}"
         );
     }
 

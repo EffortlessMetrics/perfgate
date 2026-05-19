@@ -29,6 +29,28 @@ use the weakest relevant state in its language:
 - `unproven` gaps should stay in "known limits" or canary matrices, not in
   positive claim text.
 
+## Claim Promotion Discipline
+
+Policy rollout claims should carry an explicit `Proof freshness:` field before
+they are promoted or used as support for team policy. The product-claims check
+accepts only these freshness states:
+
+```text
+current
+recent
+stale
+superseded
+unproven
+```
+
+`stable` and `supported` claims cannot use `stale`, `superseded`, or
+`unproven` as their proof freshness. Refresh the proof, lower the claim
+language, or keep the gap in "Known limits" instead.
+
+Freshness still does not make advisory guidance blocking. A current maturity or
+policy-rollout claim can support a recommendation, but required gates still
+need a deliberate policy patch and reviewer approval.
+
 ## Non-Inferences
 
 - Fresh proof for one repo shape does not prove every repo shape.

@@ -38,6 +38,9 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 | PG-CLAIM-0025 | perfgate tracks adoption canary freshness without overclaiming one canary shape. | advisory | status docs, canaries | next-canary-refresh |
 | PG-CLAIM-0026 | perfgate documents optional ledger backup, restore, retention, and migration expectations. | advisory | server docs, tests, status | next-server-ledger-change |
 | PG-CLAIM-0027 | perfgate has fixture-backed agent repair-context guidance for common repair scenarios. | advisory | repair_context.json, CLI guidance, tests | next-agent-repair-contract-change |
+| PG-CLAIM-0028 | perfgate supports advisory policy rollout profiles, promotion readiness, and non-mutating policy patches. | supported | CLI, docs, config | next-policy-ergonomics-change |
+| PG-CLAIM-0029 | perfgate surfaces policy posture in review packets and Action summaries without changing configured behavior. | supported | CLI, action, artifacts | next-policy-ergonomics-change |
+| PG-CLAIM-0030 | perfgate has fixture-backed agent policy guardrails for review-required policy changes. | advisory | CLI guidance, specs, tests | next-agent-policy-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -830,3 +833,105 @@ Known limits:
   requirements.
 
 Review after: next-agent-repair-contract-change
+
+## PG-CLAIM-0028: Advisory policy rollout profiles
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs, config
+Linked docs: [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 run -p xtask -- docs-source-check
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Linked tests:
+
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`policy.rs`](../../crates/perfgate-cli/src/policy.rs)
+
+Artifacts:
+
+- `perfgate policy profiles`
+- `perfgate policy doctor --config perfgate.toml`
+- `perfgate policy emit-patch --config perfgate.toml --bench <bench> --to <posture>`
+
+Known limits:
+
+- Policy profiles are starting points, not automatic benchmark selection.
+- Promotion readiness and emitted patches are advisory and non-mutating.
+- `required_gate` still requires deliberate review and policy application.
+
+Review after: next-policy-ergonomics-change
+
+## PG-CLAIM-0029: Review packet and Action policy posture
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, GitHub Action, artifacts
+Linked docs: [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`examples/action-failure-summaries.md`](../examples/action-failure-summaries.md), [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 run -p xtask -- action-check
+cargo +1.95.0 run -p xtask -- schema-compat
+```
+
+Linked tests:
+
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`xtask/src/main.rs`](../../xtask/src/main.rs)
+
+Artifacts:
+
+- `perfgate policy review-packet --config perfgate.toml --bench <bench>`
+- Action summary policy posture block
+- local reproduction and policy doctor commands in review surfaces
+
+Known limits:
+
+- Review packets summarize receipts; they do not replace receipts as source of
+  truth.
+- Action posture summaries preserve existing configured exit-code behavior.
+- Advisory maturity output does not become blocking from the summary alone.
+
+Review after: next-policy-ergonomics-change
+
+## PG-CLAIM-0030: Agent policy guardrails
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI guidance, specs, tests
+Linked docs: [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 test -p perfgate-cli --all-features check
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Linked tests:
+
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`check_guidance.rs`](../../crates/perfgate-cli/src/check_guidance.rs)
+
+Artifacts:
+
+- policy review-packet `Agent Guardrails` section
+- missing-baseline, noisy-signal, mature-promotion, regression,
+  tradeoff-candidate, and stale-proof guardrail fixtures
+
+Known limits:
+
+- Agent guardrails do not make agents policy authorities.
+- Agents may inspect, rerun, summarize, and propose reviewable patches, but
+  baseline promotion, threshold loosening, required-gate changes, tradeoff
+  acceptance, and ledger requirements remain review-required.
+- Fresh guardrail fixtures do not prove every agent workflow or external repo.
+
+Review after: next-agent-policy-change
