@@ -1,11 +1,11 @@
 id = "perfgate-policy-ergonomics-team-rollout"
 title = "perfgate 0.20 policy ergonomics and team rollout"
-status = "active"
+status = "completed"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.20.0"
-current_work_item = "policy-rollout-canary"
-current_pr = "policy-rollout-canary"
+current_work_item = "final-closeout"
+current_pr = "policy-ergonomics-closeout"
 
 objective = """
 Make perfgate safe for teams to promote mature performance evidence into
@@ -151,8 +151,8 @@ status = "merged"
 
 [[work_item]]
 id = "policy-rollout-canary"
-status = "current"
+status = "merged"
 
 [[work_item]]
 id = "final-closeout"
-status = "pending"
+status = "merged"

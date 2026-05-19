@@ -1,10 +1,10 @@
 # perfgate 0.20.0 Policy Ergonomics and Team Rollout Plan
 
-Status: active
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.20.0
-Current PR: policy-rollout-canary
+Current PR: none (implemented)
 Linked proposal: [`PERFGATE-PROP-0007-policy-ergonomics-team-rollout`](../../docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md)
 Linked specs: [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../../docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../../docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -86,8 +86,8 @@ accepted spec and explicit proof.
 | 562 | Agent policy fixtures | merged | policy guardrail fixtures for review-required changes |
 | 564 | Proof freshness claim discipline | merged | product-claims proof freshness enforcement for policy promotion |
 | 566 | External policy rollout canary plan | merged | status canary rerun plan for policy ergonomics |
-| TBD | Public policy rollout canary | current | one real canary proving advisory-to-promotion path |
-| TBD | Policy ergonomics closeout | pending | handoff and archived active goal |
+| 568 | Public policy rollout canary | merged | one real canary proving advisory-to-promotion path |
+| TBD | Policy ergonomics closeout | merged | handoff and archived active goal |
 
 ## Work item: implementation-plan
 
@@ -522,7 +522,7 @@ agent-heavy repo
 
 ## Work item: policy-rollout-canary
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: final-closeout
@@ -542,7 +542,7 @@ of the canary.
 
 ## Work item: final-closeout
 
-Status: pending
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked specs: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md; docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md
 Blocks:
