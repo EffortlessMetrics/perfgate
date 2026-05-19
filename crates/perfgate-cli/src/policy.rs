@@ -754,6 +754,25 @@ fn render_policy_review_packet(
         out.push_str(&format!("- Next: `{command}`\n"));
     }
 
+    let agent_guardrails = agent_policy_guardrails(
+        &evidence.config,
+        baseline,
+        signal,
+        recommended,
+        compare.as_ref(),
+    );
+    out.push_str("\n## Agent Guardrails\n\n");
+    out.push_str(&format!("- Scenario: `{}`\n", agent_guardrails.scenario));
+    out.push_str(&format!("- Allowed: {}\n", agent_guardrails.allowed));
+    out.push_str(&format!(
+        "- Review required: {}\n",
+        agent_guardrails.review_required
+    ));
+    out.push_str(&format!(
+        "- Forbidden by default: {}\n",
+        agent_guardrails.forbidden_by_default
+    ));
+
     out.push_str("\n## Do Not\n\n");
     for item in policy_do_not(recommended) {
         out.push_str(&format!("- {item}\n"));
@@ -821,6 +840,100 @@ fn push_artifact_line(out: &mut String, label: &str, path: &Path, exists: bool) 
         path.display(),
         if exists { "" } else { " (missing)" }
     ));
+}
+
+struct AgentPolicyGuardrails {
+    scenario: &'static str,
+    allowed: &'static str,
+    review_required: &'static str,
+    forbidden_by_default: &'static str,
+}
+
+fn agent_policy_guardrails(
+    config: &ConfigFile,
+    baseline: &BaselineDoctorRow,
+    signal: &SignalDoctorRow,
+    recommended: PolicyPosture,
+    compare: Option<&CompareReceipt>,
+) -> AgentPolicyGuardrails {
+    if baseline.maturity == BaselineMaturity::Missing {
+        return AgentPolicyGuardrails {
+            scenario: "missing_baseline",
+            allowed: "rerun the check and inspect run/report artifacts",
+            review_required: "baseline promotion after workload review",
+            forbidden_by_default: "do not promote a missing baseline blindly or loosen thresholds",
+        };
+    }
+
+    if baseline.maturity == BaselineMaturity::Stale
+        || signal.recommendation == SignalRecommendation::RefreshBaseline
+    {
+        return AgentPolicyGuardrails {
+            scenario: "stale_proof",
+            allowed: "refresh proof or rerun on the intended runner class",
+            review_required: "claim promotion or required_gate changes from refreshed proof",
+            forbidden_by_default: "do not cite stale proof as current support for blocking policy",
+        };
+    }
+
+    if baseline.maturity == BaselineMaturity::HighNoise
+        || signal.recommendation == SignalRecommendation::UsePairedMode
+    {
+        return AgentPolicyGuardrails {
+            scenario: "noisy_signal",
+            allowed: "recommend paired mode, more samples, or calibration review",
+            review_required: "policy promotion or threshold changes",
+            forbidden_by_default: "do not treat noisy evidence as a confirmed regression or required gate",
+        };
+    }
+
+    if has_tradeoff_evidence(config, &baseline.bench) && compare_has_policy_movement(compare) {
+        return AgentPolicyGuardrails {
+            scenario: "tradeoff_candidate",
+            allowed: "run decision suggest or bundle decision evidence",
+            review_required: "accepting a tradeoff or recording team history",
+            forbidden_by_default: "do not accept bounded regressions without decision evidence and reviewer approval",
+        };
+    }
+
+    if compare_has_policy_movement(compare) {
+        return AgentPolicyGuardrails {
+            scenario: "regression",
+            allowed: "reproduce locally and inspect compare/report artifacts",
+            review_required: "baseline refresh, threshold loosening, or tradeoff acceptance",
+            forbidden_by_default: "do not update the baseline or loosen thresholds to make CI green",
+        };
+    }
+
+    if recommended == PolicyPosture::GateCandidate {
+        return AgentPolicyGuardrails {
+            scenario: "mature_promotion_candidate",
+            allowed: "emit a gate_candidate patch with reasons",
+            review_required: "required_gate approval",
+            forbidden_by_default: "do not treat gate_candidate as already blocking",
+        };
+    }
+
+    AgentPolicyGuardrails {
+        scenario: "advisory_policy_review",
+        allowed: "inspect artifacts, rerun commands, and summarize posture",
+        review_required: "any config write, profile change, baseline promotion, or ledger requirement",
+        forbidden_by_default: "do not infer absent evidence or make advisory output blocking",
+    }
+}
+
+fn has_tradeoff_evidence(config: &ConfigFile, bench_name: &str) -> bool {
+    let scenario_for_bench = config
+        .scenarios
+        .iter()
+        .any(|scenario| scenario.bench == bench_name);
+    scenario_for_bench && !config.tradeoffs.is_empty()
+}
+
+fn compare_has_policy_movement(compare: Option<&CompareReceipt>) -> bool {
+    compare
+        .map(|compare| matches!(compare.verdict.status.as_str(), "warn" | "fail"))
+        .unwrap_or(false)
 }
 
 fn target_review_notes(
