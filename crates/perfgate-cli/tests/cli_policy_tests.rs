@@ -19,6 +19,10 @@ fn success_command() -> Vec<&'static str> {
 }
 
 fn write_config(dir: &Path) {
+    write_config_with_extra(dir, "");
+}
+
+fn write_config_with_extra(dir: &Path, extra: &str) {
     let command = success_command()
         .iter()
         .map(|part| format!("\"{}\"", part))
@@ -36,6 +40,7 @@ out_dir = "artifacts/perfgate"
 [[bench]]
 name = "policy-bench"
 command = [{command}]
+{extra}
 "#
         ),
     )
@@ -43,7 +48,17 @@ command = [{command}]
 }
 
 fn write_run_receipt(path: &Path, bench: &str, sample_count: usize, cv: f64) {
-    let started_at = chrono::Utc::now() - chrono::Duration::days(1);
+    write_run_receipt_with_age(path, bench, sample_count, cv, 1);
+}
+
+fn write_run_receipt_with_age(
+    path: &Path,
+    bench: &str,
+    sample_count: usize,
+    cv: f64,
+    age_days: i64,
+) {
+    let started_at = chrono::Utc::now() - chrono::Duration::days(age_days);
     let samples = (0..sample_count)
         .map(|_| {
             serde_json::json!({
@@ -92,6 +107,20 @@ fn write_run_receipt(path: &Path, bench: &str, sample_count: usize, cv: f64) {
 }
 
 fn write_compare_receipt(path: &Path, bench: &str, cv: f64) {
+    write_compare_receipt_with_status(path, bench, cv, "pass", 0.01);
+}
+
+fn write_compare_receipt_with_status(path: &Path, bench: &str, cv: f64, status: &str, pct: f64) {
+    let counts = match status {
+        "fail" => serde_json::json!({ "pass": 0, "warn": 0, "fail": 1, "skip": 0 }),
+        "warn" => serde_json::json!({ "pass": 0, "warn": 1, "fail": 0, "skip": 0 }),
+        _ => serde_json::json!({ "pass": 1, "warn": 0, "fail": 0, "skip": 0 }),
+    };
+    let reasons = if status == "pass" {
+        serde_json::json!([])
+    } else {
+        serde_json::json!(["wall_ms regression exceeds policy"])
+    };
     let compare = serde_json::json!({
         "schema": "perfgate.compare.v1",
         "tool": { "name": "perfgate", "version": "0.20.0" },
@@ -113,18 +142,18 @@ fn write_compare_receipt(path: &Path, bench: &str, cv: f64) {
         "deltas": {
             "wall_ms": {
                 "baseline": 100.0,
-                "current": 101.0,
-                "ratio": 1.01,
-                "pct": 0.01,
-                "regression": 0.01,
+                "current": 100.0 * (1.0 + pct),
+                "ratio": 1.0 + pct,
+                "pct": pct,
+                "regression": pct,
                 "cv": cv,
-                "status": "pass"
+                "status": status
             }
         },
         "verdict": {
-            "status": "pass",
-            "counts": { "pass": 1, "warn": 0, "fail": 0, "skip": 0 },
-            "reasons": []
+            "status": status,
+            "counts": counts,
+            "reasons": reasons
         }
     });
     fs::create_dir_all(path.parent().expect("compare parent")).expect("create compare parent");
@@ -482,4 +511,200 @@ fn policy_review_packet_can_write_markdown_artifact_for_setup_state() {
     assert!(packet.contains("- Recommended posture: `advisory`"));
     assert!(packet.contains("baseline promotion after workload review"));
     assert!(packet.contains("do not loosen thresholds or promote baselines"));
+}
+
+fn policy_review_packet_stdout(dir: &Path) -> String {
+    let output = perfgate_cmd()
+        .current_dir(dir)
+        .args([
+            "policy",
+            "review-packet",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+        ])
+        .output()
+        .expect("run policy review-packet");
+    assert!(
+        output.status.success(),
+        "review packet should succeed: stderr {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("stdout utf8")
+}
+
+fn write_mature_policy_artifacts(dir: &Path, status: &str) {
+    write_run_receipt(
+        &dir.join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_run_receipt(
+        &dir.join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    let pct = if status == "pass" { 0.01 } else { 0.25 };
+    write_compare_receipt_with_status(
+        &dir.join("artifacts/perfgate/policy-bench/compare.json"),
+        "policy-bench",
+        0.03,
+        status,
+        pct,
+    );
+}
+
+#[test]
+fn policy_review_packet_agent_guardrail_missing_baseline() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("## Agent Guardrails"));
+    assert!(packet.contains("- Scenario: `missing_baseline`"));
+    assert!(packet.contains("- Allowed: rerun the check and inspect run/report artifacts"));
+    assert!(packet.contains("- Review required: baseline promotion after workload review"));
+    assert!(packet.contains(
+        "- Forbidden by default: do not promote a missing baseline blindly or loosen thresholds"
+    ));
+}
+
+#[test]
+fn policy_review_packet_agent_guardrail_noisy_signal() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_run_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.20,
+    );
+    write_run_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.20,
+    );
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("- Scenario: `noisy_signal`"));
+    assert!(
+        packet.contains("- Allowed: recommend paired mode, more samples, or calibration review")
+    );
+    assert!(packet.contains("- Review required: policy promotion or threshold changes"));
+    assert!(packet.contains(
+        "- Forbidden by default: do not treat noisy evidence as a confirmed regression or required gate"
+    ));
+}
+
+#[test]
+fn policy_review_packet_agent_guardrail_mature_promotion_candidate() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_mature_policy_artifacts(dir.path(), "pass");
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("- Scenario: `mature_promotion_candidate`"));
+    assert!(packet.contains("- Allowed: emit a gate_candidate patch with reasons"));
+    assert!(packet.contains("- Review required: required_gate approval"));
+    assert!(
+        packet.contains("- Forbidden by default: do not treat gate_candidate as already blocking")
+    );
+}
+
+#[test]
+fn policy_review_packet_agent_guardrail_regression() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_mature_policy_artifacts(dir.path(), "fail");
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("- Gate verdict: `fail`"));
+    assert!(packet.contains("- Scenario: `regression`"));
+    assert!(packet.contains("- Allowed: reproduce locally and inspect compare/report artifacts"));
+    assert!(packet.contains(
+        "- Review required: baseline refresh, threshold loosening, or tradeoff acceptance"
+    ));
+    assert!(packet.contains(
+        "- Forbidden by default: do not update the baseline or loosen thresholds to make CI green"
+    ));
+}
+
+#[test]
+fn policy_review_packet_agent_guardrail_tradeoff_candidate() {
+    let dir = tempdir().expect("tempdir");
+    write_config_with_extra(
+        dir.path(),
+        r#"
+[[scenario]]
+name = "release"
+bench = "policy-bench"
+weight = 1.0
+
+[[tradeoff]]
+name = "memory_for_runtime"
+if_failed = "max_rss_kb"
+downgrade_to = "warn"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+min_improvement_ratio = 1.05
+"#,
+    );
+    write_mature_policy_artifacts(dir.path(), "fail");
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("- Decision suggestion: scenario and tradeoff evidence configured"));
+    assert!(packet.contains("- Scenario: `tradeoff_candidate`"));
+    assert!(packet.contains("- Allowed: run decision suggest or bundle decision evidence"));
+    assert!(packet.contains("- Review required: accepting a tradeoff or recording team history"));
+    assert!(packet.contains(
+        "- Forbidden by default: do not accept bounded regressions without decision evidence and reviewer approval"
+    ));
+}
+
+#[test]
+fn policy_review_packet_agent_guardrail_stale_proof() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_run_receipt_with_age(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.03,
+        45,
+    );
+    write_run_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_compare_receipt(
+        &dir.path()
+            .join("artifacts/perfgate/policy-bench/compare.json"),
+        "policy-bench",
+        0.03,
+    );
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("- Baseline maturity: `stale`"));
+    assert!(packet.contains("- Proof freshness: stale"));
+    assert!(packet.contains("- Scenario: `stale_proof`"));
+    assert!(packet.contains("- Allowed: refresh proof or rerun on the intended runner class"));
+    assert!(packet.contains(
+        "- Review required: claim promotion or required_gate changes from refreshed proof"
+    ));
+    assert!(packet.contains(
+        "- Forbidden by default: do not cite stale proof as current support for blocking policy"
+    ));
 }

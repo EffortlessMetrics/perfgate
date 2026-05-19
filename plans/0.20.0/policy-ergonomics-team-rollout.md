@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.20.0
-Current PR: agent-policy-guardrails
+Current PR: agent-policy-fixtures
 Linked proposal: [`PERFGATE-PROP-0007-policy-ergonomics-team-rollout`](../../docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md)
 Linked specs: [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../../docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../../docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -82,8 +82,8 @@ accepted spec and explicit proof.
 | 549 | Policy patch output | merged | `perfgate policy emit-patch --config perfgate.toml --bench <bench> --to <state>` |
 | 553 | Performance review packet | merged | report/comment artifact summary of policy posture and maturity |
 | 557 | GitHub Action posture summary | merged | Action summary posture and `action-check` fixtures |
-| TBD | Agent policy guardrail spec | current | `PERFGATE-SPEC-0012-agent-policy-change-guardrails` |
-| TBD | Agent policy fixtures | pending | policy guardrail fixtures for review-required changes |
+| 559 | Agent policy guardrail spec | merged | `PERFGATE-SPEC-0012-agent-policy-change-guardrails` |
+| TBD | Agent policy fixtures | current | policy guardrail fixtures for review-required changes |
 | TBD | Proof freshness claim discipline | pending | product-claims proof freshness enforcement for policy promotion |
 | TBD | External policy rollout canary plan | pending | status canary rerun plan for policy ergonomics |
 | TBD | Public policy rollout canary | pending | one real canary proving advisory-to-promotion path |
@@ -391,7 +391,7 @@ git diff --check
 
 ## Work item: agent-policy-guardrails
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked specs: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md; docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md
 Blocks: agent-policy-fixtures
@@ -432,7 +432,7 @@ git diff --check
 
 ## Work item: agent-policy-fixtures
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked specs: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md; docs/specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md
 Blocks: policy-claims-freshness
