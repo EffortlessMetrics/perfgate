@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-19"
 milestone = "0.21.0"
-current_work_item = "hyperfine-json-adapter"
-current_pr = "ingest/hyperfine-json-adapter"
+current_work_item = "criterion-adapter"
+current_pr = "TBD"
 
 objective = """
 Make perfgate useful for teams that already have benchmark ecosystems by
@@ -119,7 +119,7 @@ status = "merged"
 
 [[work_item]]
 id = "hyperfine-json-adapter"
-status = "in_progress"
+status = "merged"
 
 [[work_item]]
 id = "criterion-adapter"
