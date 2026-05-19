@@ -33,6 +33,61 @@ adoption evidence?
 | Action artifact upload path | hosted external pass/fail canary | 2026-05-15 | [`2026-05-15-hosted-external-action-canary-droid-action.md`](../audits/2026-05-15-hosted-external-action-canary-droid-action.md) | Hosted pass and forced-failure action runs uploaded per-bench artifacts, including `run.json`, `compare.json`, `report.json`, and failure `repair_context.json`. | All artifact retention policies, all storage/download modes, or every runner platform. | `recent` |
 | Optional server-ledger operations smoke | in-repo optional ledger operations | 2026-05-18 | [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`2026-05-13-external-trust-closeout.md`](../handoffs/2026-05-13-external-trust-closeout.md), [`memory.rs`](../../crates/perfgate-server/src/storage/memory.rs) | In-repo proof covers optional decision upload/history/latest/debt/export, dry-run prune preservation, audit visibility, API key create/list/rotate smoke, and in-memory backup/restore equivalence for latest/history/audit plus prune dry-run preservation. | External team operation, production database backup/restore, production retention execution, large histories, migration compatibility, or any requirement that server mode be part of local correctness. | `current` |
 | Probe-backed external canary | real repo with stable probe IDs | Not run | No durable artifact yet. | Nothing yet; this remains a planned canary shape for a repo with meaningful stable probes. | Probe adoption in external repos, probe naming stability under refactor, and probe-backed hosted CI. | `unproven` |
+| Policy rollout canary | real repo using advisory-to-promotion workflow | Planned for 0.20 | No durable artifact yet. | Nothing yet; this remains the next policy-ergonomics canary shape. | Team adoption of policy profiles, promotion doctor, review packets, action posture, or agent guardrails in an external repo. | `unproven` |
+
+## Policy Rollout Rerun Plan
+
+The 0.20 policy ergonomics lane adds advisory-to-blocking rollout surfaces on
+top of the 0.19 evidence maturity work. Existing canaries remain useful
+adoption history, but they did not exercise the full policy rollout path.
+
+The next canary reruns should focus on whether a team can safely move from
+advisory evidence toward reviewed policy without creating brittle gates.
+
+| Target | Existing proof to reuse | Rerun should record | Do not infer |
+|--------|-------------------------|---------------------|--------------|
+| Small Rust CLI | `diffguard` local first-hour canary | benchmark recipe, advisory check, baseline doctor, signal doctor, promotion doctor, policy patch output, review packet | every Rust CLI workload is gate-ready |
+| Large Rust workspace | `shipper` local first-hour canary | compile-heavy/advisory posture, noisy signal guidance, baseline maturity, promotion deferral, review packet | workspace test commands should block by default |
+| Non-Rust command repo | `droid-action` local command canary | language-neutral recipe, advisory baseline, signal maturity, policy doctor, generated review packet | non-Rust shell portability across every runner |
+| Hosted Action path | hosted `droid-action` Action canary | Action policy posture summary, artifact upload, local reproduction, advisory versus blocking wording | every hosted runner or action input combination |
+| Public install path | `0.18.0` public install smoke | public install plus policy command discovery after a future public release | current-source canaries prove public artifacts |
+| Failure summary path | hosted forced-failure canary plus examples | missing baseline, regression, maturity warning, and policy review-required wording | every shell/platform failure mode |
+| Agent-heavy repo | no durable policy canary yet | review packet guardrails, allowed/review-required/forbidden actions, proof freshness handling | agents are policy authorities |
+
+### Minimum Policy Canary Packet
+
+Each policy rollout canary should record:
+
+```text
+repo shape
+perfgate version or source commit
+benchmark recipe or existing benchmark
+baseline doctor output
+signal doctor output
+policy doctor output
+policy emit-patch output
+policy review-packet output
+GitHub Action summary when hosted CI is part of the canary
+what confused the user or agent
+what changed in docs, config, or tooling
+what it proves
+what it does not prove
+freshness state after the run
+```
+
+The first 0.20 policy canary only needs to cover one real repo, but it should
+exercise the full advisory-to-promotion review path. Broader matrix reruns can
+follow after the path is proven once.
+
+### Rerun Boundaries
+
+- Do not rerun every historical canary in this planning PR.
+- Do not treat canaries as mandatory release gates without an accepted spec.
+- Do not make a policy canary promote baselines, loosen thresholds, or make a
+  gate blocking without a visible review surface.
+- Do not cite source-built canaries as public-install proof.
+- Keep server ledger mode optional team history in any canary that configures
+  ledger upload.
 
 ## Use
 
