@@ -489,8 +489,16 @@ runs:
 
         policy_line="$(format_command perfgate "${policy_args[@]}")"
         review_packet_line=""
+        review_packet_output=""
+        review_packet_status="skipped"
         if [[ "${#review_packet_args[@]}" -gt 0 ]]; then
           review_packet_line="$(format_command perfgate "${review_packet_args[@]}")"
+          review_packet_output="$(mktemp)"
+          if ! perfgate "${review_packet_args[@]}" > "${review_packet_output}" 2>&1; then
+            review_packet_status="unavailable"
+          else
+            review_packet_status="available"
+          fi
         fi
 
         {
@@ -524,6 +532,20 @@ runs:
             printf '%s\n' '```bash'
             echo "${review_packet_line}"
             printf '%s\n' '```'
+            echo
+            echo "Benchmark passport (${review_packet_status}):"
+            echo
+            printf '%s\n' '```text'
+            if [[ -n "${review_packet_output}" ]]; then
+              if [[ "${review_packet_status}" == "available" ]]; then
+                awk '/^## Benchmark Passport/{flag=1; print; next} /^## / && flag{exit} flag{print}' "${review_packet_output}"
+              else
+                cat "${review_packet_output}"
+              fi
+            else
+              echo "Run a single-benchmark Action invocation or policy review-packet command to emit a benchmark passport."
+            fi
+            printf '%s\n' '```'
           fi
           echo
           echo "Policy doctor output (${policy_status}):"
@@ -536,6 +558,9 @@ runs:
         } >> "${GITHUB_STEP_SUMMARY}"
 
         rm -f "${policy_output}"
+        if [[ -n "${review_packet_output}" ]]; then
+          rm -f "${review_packet_output}"
+        fi
 
     - name: Print perfgate failure summary
       if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0') || (inputs.decision == 'true' && steps.handle_review_required.outputs.exit_code != '' && steps.handle_review_required.outputs.exit_code != '0'))

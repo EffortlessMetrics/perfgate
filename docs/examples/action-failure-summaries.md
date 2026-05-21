@@ -25,6 +25,12 @@ Policy doctor command:
   perfgate policy doctor --config perfgate.toml --out-dir artifacts/perfgate --bench parser
 Review packet command:
   perfgate policy review-packet --config perfgate.toml --bench parser --out-dir artifacts/perfgate
+Benchmark passport:
+  Source kind: native perfgate run
+  Baseline status: mature
+  Signal maturity: safe_to_gate
+  Policy posture: gate_candidate
+  Next safe action: perfgate check --config perfgate.toml --bench parser --require-baseline
 Policy doctor output:
   recommended posture: gate_candidate
   missing: required-gate reviewer approval

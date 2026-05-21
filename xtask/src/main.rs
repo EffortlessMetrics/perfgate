@@ -1127,6 +1127,27 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
             "action.yml policy posture summary must run policy doctor and expose the review packet command".to_string(),
         );
     }
+    if !policy_summary_lines
+        .iter()
+        .any(|line| line == "review_packet_output=\"\"")
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "review_packet_status=\"skipped\"")
+        || !policy_summary_lines.iter().any(|line| {
+            line == "if ! perfgate \"${review_packet_args[@]}\" > \"${review_packet_output}\" 2>&1; then"
+        })
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "echo \"Benchmark passport (${review_packet_status}):\"")
+        || !policy_summary_lines.iter().any(|line| {
+            line == "awk '/^## Benchmark Passport/{flag=1; print; next} /^## / && flag{exit} flag{print}' \"${review_packet_output}\""
+        })
+    {
+        errors.push(
+            "action.yml policy posture summary must surface the benchmark passport from review-packet output"
+                .to_string(),
+        );
+    }
     if !policy_summary_lines.iter().any(|line| {
         line == "echo \"Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking.\""
     }) || !policy_summary_lines.iter().any(|line| {
@@ -7113,6 +7134,11 @@ runs:
         review_required="${{ steps.handle_review_required.outputs.review_required }}"
         policy_args=(policy doctor --config "${{ inputs.config }}")
         review_packet_args=(policy review-packet --config "${{ inputs.config }}" --bench "${{ inputs.bench }}")
+        review_packet_output=""
+        review_packet_status="skipped"
+        if ! perfgate "${review_packet_args[@]}" > "${review_packet_output}" 2>&1; then
+          review_packet_status="unavailable"
+        fi
         {
           echo "### perfgate policy posture"
           echo "Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking."
@@ -7120,8 +7146,10 @@ runs:
           echo "Blocking gate: required-baseline mode is enabled."
           echo "Imported evidence: policy doctor output includes source kind, source path, metric mapping, maturity limits, and advisory boundaries when receipts expose them."
           echo "Policy review required: ${review_reason}"
+          echo "Benchmark passport (${review_packet_status}):"
           printf '%s\n' '```bash'
           printf '%s\n' '```text'
+          awk '/^## Benchmark Passport/{flag=1; print; next} /^## / && flag{exit} flag{print}' "${review_packet_output}"
           printf '%s\n' '```'
           echo "Do not: make advisory maturity output blocking, loosen thresholds, promote baselines, or require server ledger mode from this summary alone."
         } >> "${GITHUB_STEP_SUMMARY}"
