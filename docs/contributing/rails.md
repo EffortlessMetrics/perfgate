@@ -19,3 +19,13 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 3. Keep lane trackers focused by lane; do not create one giant shared active queue.
 4. Do not migrate or rewrite `.codex/`, `.spec/`, `.claude/`, or `.jules/` as part of Rails changes.
 5. Keep artifact IDs repo-scoped (`PERFGATE-PROP-*`, `PERFGATE-SPEC-*`, `PERFGATE-ADR-*`).
+
+## Validation
+
+Run this before opening or merging Rails artifact changes:
+
+```bash
+cargo run -p xtask -- rails check
+```
+
+The check validates `.rails/index.toml`, registered artifact and lane paths, status values, ID prefixes, registry links, the required human docs, and the absence of the legacy `.perfgate-spec/` namespace.

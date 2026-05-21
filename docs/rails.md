@@ -22,3 +22,9 @@ Rails does **not** own, modify, migrate, or validate:
 - Every Rails-owned artifact is linked through `.rails/index.toml`.
 - No Rails-owned artifact path may live under `.codex/`, `.spec/`, `.claude/`, or `.jules/`.
 - Lane sequencing lives in focused lane trackers under `.rails/lanes/`; do not create one global queue file.
+
+Validate the registry with:
+
+```bash
+cargo run -p xtask -- rails check
+```
