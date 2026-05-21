@@ -112,6 +112,15 @@ fn command_contains(repair: &Value, needle: &str) -> bool {
         .any(|command| command.contains(needle))
 }
 
+fn array_contains(repair: &Value, field: &str, needle: &str) -> bool {
+    repair[field]
+        .as_array()
+        .unwrap_or_else(|| panic!("{field} array"))
+        .iter()
+        .filter_map(|value| value.as_str())
+        .any(|value| value.contains(needle))
+}
+
 #[test]
 fn missing_baseline_repair_context_is_agent_operable() {
     let temp_dir = tempdir().expect("temp dir");
@@ -158,6 +167,7 @@ fn missing_baseline_repair_context_is_agent_operable() {
     assert_eq!(repair["schema"], "perfgate.repair_context.v1");
     assert_eq!(repair["benchmark"], "agent-missing-baseline");
     assert_eq!(repair["status"], "warn");
+    assert_eq!(repair["failure_class"], "missing_baseline");
     assert!(repair.get("compare_receipt_path").is_none());
     assert!(
         repair["report_path"]
@@ -165,8 +175,42 @@ fn missing_baseline_repair_context_is_agent_operable() {
             .unwrap()
             .ends_with("report.json")
     );
+    assert!(array_contains(&repair, "artifact_paths", "run.json"));
+    assert!(array_contains(&repair, "artifact_paths", "report.json"));
+    assert!(array_contains(
+        &repair,
+        "artifact_paths",
+        "repair_context.json"
+    ));
     assert!(command_contains(&repair, "rerun current command"));
     assert!(command_contains(&repair, "perfgate paired"));
+    assert!(
+        repair["local_reproduction_command"]
+            .as_str()
+            .unwrap()
+            .contains("rerun current command")
+    );
+    assert!(array_contains(&repair, "safe_commands", "perfgate paired"));
+    assert!(array_contains(
+        &repair,
+        "forbidden_changes",
+        "do not promote the current run as a baseline without human review"
+    ));
+    assert!(array_contains(
+        &repair,
+        "forbidden_changes",
+        "do not loosen"
+    ));
+    assert!(array_contains(
+        &repair,
+        "human_review_required",
+        "baseline promotion"
+    ));
+    assert!(array_contains(
+        &repair,
+        "proof_commands_after_repair",
+        "perfgate check --config <config> --bench agent-missing-baseline --require-baseline"
+    ));
 }
 
 #[test]
@@ -208,12 +252,14 @@ fn regression_repair_context_preserves_compare_and_breached_metric() {
     assert_eq!(repair["schema"], "perfgate.repair_context.v1");
     assert_eq!(repair["benchmark"], "agent-regression");
     assert_eq!(repair["status"], "fail");
+    assert_eq!(repair["failure_class"], "performance_regression");
     assert!(
         repair["compare_receipt_path"]
             .as_str()
             .unwrap()
             .ends_with("compare.json")
     );
+    assert!(array_contains(&repair, "artifact_paths", "compare.json"));
     let breached = repair["breached_metrics"]
         .as_array()
         .expect("breached metrics array");
@@ -225,6 +271,26 @@ fn regression_repair_context_preserves_compare_and_breached_metric() {
     );
     assert!(command_contains(&repair, "perfgate explain --compare"));
     assert!(command_contains(&repair, "perfgate compare --baseline"));
+    assert!(array_contains(
+        &repair,
+        "safe_commands",
+        "perfgate compare --baseline"
+    ));
+    assert!(array_contains(
+        &repair,
+        "forbidden_changes",
+        "do not promote the current run as a baseline until the regression is understood"
+    ));
+    assert!(array_contains(
+        &repair,
+        "human_review_required",
+        "threshold changes"
+    ));
+    assert!(array_contains(
+        &repair,
+        "proof_commands_after_repair",
+        "perfgate review explain --config <config> --bench agent-regression"
+    ));
 }
 
 #[test]

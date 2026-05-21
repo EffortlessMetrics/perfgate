@@ -74,6 +74,16 @@ fn build_repair_context(
     let git = git_metadata();
     let changed_files = changed_files_summary();
     let suggested = recommended_next_commands(outcome, baseline_path);
+    let failure_class = repair_failure_class(outcome, &breached_metrics);
+    let artifact_paths = repair_artifact_paths(outcome);
+    let local_reproduction_command = suggested
+        .iter()
+        .find(|command| command.starts_with("rerun current command:"))
+        .cloned();
+    let safe_commands = suggested.clone();
+    let forbidden_changes = forbidden_changes(&failure_class);
+    let human_review_required = human_review_required(&failure_class);
+    let proof_commands_after_repair = proof_commands_after_repair(&outcome.run_receipt.bench.name);
 
     RepairContextReceipt {
         schema: REPAIR_CONTEXT_SCHEMA_V1.to_string(),
@@ -88,7 +98,132 @@ fn build_repair_context(
         changed_files,
         otel_span,
         recommended_next_commands: suggested,
+        failure_class: Some(failure_class),
+        artifact_paths,
+        local_reproduction_command,
+        safe_commands,
+        forbidden_changes,
+        human_review_required,
+        proof_commands_after_repair,
     }
+}
+
+fn repair_failure_class(outcome: &CheckOutcome, breaches: &[RepairMetricBreach]) -> String {
+    if outcome.compare_receipt.is_none() {
+        return "missing_baseline".to_string();
+    }
+    if outcome
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("host mismatch"))
+    {
+        return "host_mismatch".to_string();
+    }
+    if outcome.suggest_paired
+        || outcome
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("high noise"))
+    {
+        return "high_noise".to_string();
+    }
+    if outcome
+        .report
+        .verdict
+        .reasons
+        .iter()
+        .any(|reason| reason.contains("review_required") || reason.contains("review required"))
+    {
+        return "review_required".to_string();
+    }
+    if !breaches.is_empty()
+        || matches!(
+            outcome.report.verdict.status,
+            VerdictStatus::Warn | VerdictStatus::Fail
+        )
+    {
+        return "performance_regression".to_string();
+    }
+    "pass".to_string()
+}
+
+fn repair_artifact_paths(outcome: &CheckOutcome) -> Vec<String> {
+    let mut paths = vec![
+        outcome.run_path.display().to_string(),
+        outcome.report_path.display().to_string(),
+        outcome.markdown_path.display().to_string(),
+    ];
+    if let Some(compare_path) = &outcome.compare_path {
+        paths.push(compare_path.display().to_string());
+    }
+    if let Some(profile_path) = &outcome.report.profile_path {
+        paths.push(profile_path.clone());
+    }
+    paths.push(
+        outcome
+            .run_path
+            .parent()
+            .unwrap_or(Path::new(""))
+            .join("repair_context.json")
+            .display()
+            .to_string(),
+    );
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn forbidden_changes(failure_class: &str) -> Vec<String> {
+    let mut changes = vec![
+        "do not loosen fail, warn, or noise thresholds to make this check pass".to_string(),
+        "do not make this benchmark required_gate without human review".to_string(),
+        "do not require server ledger history for local correctness".to_string(),
+    ];
+    match failure_class {
+        "missing_baseline" => changes
+            .push("do not promote the current run as a baseline without human review".to_string()),
+        "performance_regression" => changes.push(
+            "do not promote the current run as a baseline until the regression is understood"
+                .to_string(),
+        ),
+        "high_noise" => {
+            changes.push("do not treat noisy evidence as a confirmed regression".to_string())
+        }
+        "host_mismatch" => changes.push(
+            "do not accept host-mismatched evidence without checking host compatibility"
+                .to_string(),
+        ),
+        "review_required" => {
+            changes.push("do not accept a tradeoff without decision evidence".to_string())
+        }
+        _ => {}
+    }
+    changes
+}
+
+fn human_review_required(failure_class: &str) -> Vec<String> {
+    let mut required = vec![
+        "threshold changes".to_string(),
+        "required_gate policy changes".to_string(),
+        "tradeoff acceptance".to_string(),
+    ];
+    if matches!(
+        failure_class,
+        "missing_baseline" | "performance_regression" | "host_mismatch"
+    ) {
+        required.push("baseline promotion".to_string());
+    }
+    if failure_class == "review_required" {
+        required.push("structured decision acceptance".to_string());
+    }
+    required
+}
+
+fn proof_commands_after_repair(bench_name: &str) -> Vec<String> {
+    vec![
+        format!("perfgate check --config <config> --bench {bench_name} --require-baseline"),
+        format!("perfgate review explain --config <config> --bench {bench_name}"),
+    ]
 }
 
 fn recommended_next_commands(outcome: &CheckOutcome, baseline_path: Option<&Path>) -> Vec<String> {

@@ -4,6 +4,13 @@
   "description": "A machine-readable failure package for automated triage.",
   "type": "object",
   "properties": {
+    "artifact_paths": {
+      "description": "Receipt and review artifacts relevant to this repair context.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "benchmark": {
       "description": "Benchmark name associated with the check.",
       "type": "string"
@@ -33,6 +40,20 @@
         "null"
       ]
     },
+    "failure_class": {
+      "description": "Optional agent-facing failure classification.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "forbidden_changes": {
+      "description": "Changes that require explicit human review and must not be made as a blind fix.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "git": {
       "description": "Git metadata (if available).",
       "anyOf": [
@@ -42,6 +63,20 @@
         {
           "type": "null"
         }
+      ]
+    },
+    "human_review_required": {
+      "description": "Policy or evidence decisions that require human review.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "local_reproduction_command": {
+      "description": "Copyable local reproduction command when available.",
+      "type": [
+        "string",
+        "null"
       ]
     },
     "otel_span": {
@@ -62,6 +97,13 @@
         "null"
       ]
     },
+    "proof_commands_after_repair": {
+      "description": "Commands to prove the repair after code changes.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "recommended_next_commands": {
       "description": "Suggested next actions for humans/agents.",
       "type": "array",
@@ -72,6 +114,13 @@
     "report_path": {
       "description": "Path to report artifact.",
       "type": "string"
+    },
+    "safe_commands": {
+      "description": "Commands an agent may suggest or run after review.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "schema": {
       "description": "Schema identifier, always \"perfgate.repair_context.v1\".",
