@@ -86,4 +86,44 @@ mod tests {
         assert!(is_remote_storage_uri("gs://bucket/key"));
         assert!(!is_remote_storage_uri("local/path"));
     }
+
+    #[test]
+    fn test_resolve_baseline_path_uses_remote_baseline_dir_without_double_slash() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig {
+                baseline_pattern: None,
+                baseline_dir: Some("s3://perfgate/baselines/".to_string()),
+                ..Default::default()
+            },
+            baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
+            tradeoffs: Vec::new(),
+            ratchet: None,
+            scenarios: Vec::new(),
+            benches: Vec::new(),
+        };
+
+        assert_eq!(
+            resolve_baseline_path(&None, "api-latency", &config),
+            PathBuf::from("s3://perfgate/baselines/api-latency.json")
+        );
+    }
+
+    #[test]
+    fn test_resolve_baseline_path_uses_default_convention_when_no_defaults_provided() {
+        let config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
+            tradeoffs: Vec::new(),
+            ratchet: None,
+            scenarios: Vec::new(),
+            benches: Vec::new(),
+        };
+
+        assert_eq!(
+            resolve_baseline_path(&None, "checkout", &config),
+            PathBuf::from("baselines/checkout.json")
+        );
+    }
 }
