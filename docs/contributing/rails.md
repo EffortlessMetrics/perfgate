@@ -21,6 +21,9 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 5. Keep artifact IDs repo-scoped (`PERFGATE-PROP-*`, `PERFGATE-SPEC-*`, `PERFGATE-ADR-*`).
 6. Keep registered lane `id`, `status`, and `owner` values synchronized with the lane tracker.
 7. When a lane becomes `implemented`, register an implemented closeout artifact for that lane in `.rails/index.toml`.
+8. Keep `.rails/index.toml` header fields stable: schema version `1.0`, repo
+   `perfgate`, framework `rails`, root `.rails`, the registered prefix
+   conventions, and the external namespace map.
 
 ## Validation
 
@@ -30,4 +33,9 @@ Run this before opening or merging Rails artifact changes:
 cargo run -p xtask -- rails check
 ```
 
-The check validates `.rails/index.toml`, registered artifact and lane paths, status values, ID prefixes, registry links, unregistered owned artifacts, support claim references, policy ledger paths, lane tracker identity/status/owner consistency, closeouts for implemented lanes, the required human docs, and the absence of the legacy `.perfgate-spec/` namespace.
+The check validates `.rails/index.toml` schema/project/convention/namespace
+fields, registered artifact and lane paths, status values, ID prefixes, registry
+links, unregistered owned artifacts, support claim references, policy ledger
+paths, lane tracker identity/status/owner consistency, closeouts for implemented
+lanes, the required human docs, and the absence of the legacy `.perfgate-spec/`
+namespace.

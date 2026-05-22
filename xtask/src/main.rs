@@ -4754,7 +4754,13 @@ struct SourceDoc {
 
 #[derive(Debug, Deserialize)]
 struct RailsIndex {
+    #[serde(default)]
+    schema_version: String,
     project: RailsProject,
+    #[serde(default)]
+    conventions: RailsConventions,
+    #[serde(default)]
+    external_namespaces: RailsExternalNamespaces,
     #[serde(default)]
     artifact: Vec<RailsArtifact>,
     #[serde(default)]
@@ -4763,8 +4769,25 @@ struct RailsIndex {
 
 #[derive(Debug, Deserialize)]
 struct RailsProject {
+    repo: String,
     framework: String,
     root: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RailsConventions {
+    proposal_prefix: String,
+    spec_prefix: String,
+    adr_prefix: String,
+    lane_prefix: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RailsExternalNamespaces {
+    codex: String,
+    speckit: String,
+    claude: String,
+    jules: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -4885,18 +4908,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
         }
     };
 
-    if index.project.framework != "rails" {
-        errors.push(format!(
-            ".rails/index.toml project.framework must be `rails`, got `{}`",
-            index.project.framework
-        ));
-    }
-    if index.project.root != ".rails" {
-        errors.push(format!(
-            ".rails/index.toml project.root must be `.rails`, got `{}`",
-            index.project.root
-        ));
-    }
+    validate_rails_index_contract(&index, &mut errors);
 
     let mut artifact_ids = BTreeMap::<String, String>::new();
     let mut artifact_paths = BTreeMap::<String, String>::new();
@@ -5013,6 +5025,90 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
     }
 
     Ok(errors)
+}
+
+fn validate_rails_index_contract(index: &RailsIndex, errors: &mut Vec<String>) {
+    if index.schema_version != "1.0" {
+        errors.push(format!(
+            ".rails/index.toml schema_version must be `1.0`, got `{}`",
+            index.schema_version
+        ));
+    }
+    if index.project.repo != "perfgate" {
+        errors.push(format!(
+            ".rails/index.toml project.repo must be `perfgate`, got `{}`",
+            index.project.repo
+        ));
+    }
+    if index.project.framework != "rails" {
+        errors.push(format!(
+            ".rails/index.toml project.framework must be `rails`, got `{}`",
+            index.project.framework
+        ));
+    }
+    if index.project.root != ".rails" {
+        errors.push(format!(
+            ".rails/index.toml project.root must be `.rails`, got `{}`",
+            index.project.root
+        ));
+    }
+
+    validate_rails_index_value(
+        "conventions.proposal_prefix",
+        &index.conventions.proposal_prefix,
+        "PERFGATE-PROP",
+        errors,
+    );
+    validate_rails_index_value(
+        "conventions.spec_prefix",
+        &index.conventions.spec_prefix,
+        "PERFGATE-SPEC",
+        errors,
+    );
+    validate_rails_index_value(
+        "conventions.adr_prefix",
+        &index.conventions.adr_prefix,
+        "PERFGATE-ADR",
+        errors,
+    );
+    validate_rails_index_value(
+        "conventions.lane_prefix",
+        &index.conventions.lane_prefix,
+        "PERFGATE-LANE",
+        errors,
+    );
+    validate_rails_index_value(
+        "external_namespaces.codex",
+        &index.external_namespaces.codex,
+        ".codex",
+        errors,
+    );
+    validate_rails_index_value(
+        "external_namespaces.speckit",
+        &index.external_namespaces.speckit,
+        ".spec",
+        errors,
+    );
+    validate_rails_index_value(
+        "external_namespaces.claude",
+        &index.external_namespaces.claude,
+        ".claude",
+        errors,
+    );
+    validate_rails_index_value(
+        "external_namespaces.jules",
+        &index.external_namespaces.jules,
+        ".jules",
+        errors,
+    );
+}
+
+fn validate_rails_index_value(field: &str, actual: &str, expected: &str, errors: &mut Vec<String>) {
+    if actual != expected {
+        errors.push(format!(
+            ".rails/index.toml {field} must be `{expected}`, got `{actual}`"
+        ));
+    }
 }
 
 fn validate_rails_support_and_policy(
@@ -6749,6 +6845,18 @@ repo = "perfgate"
 framework = "rails"
 root = ".rails"
 
+[conventions]
+proposal_prefix = "PERFGATE-PROP"
+spec_prefix = "PERFGATE-SPEC"
+adr_prefix = "PERFGATE-ADR"
+lane_prefix = "PERFGATE-LANE"
+
+[external_namespaces]
+codex = ".codex"
+speckit = ".spec"
+claude = ".claude"
+jules = ".jules"
+
 [[artifact]]
 id = "PERFGATE-PROP-9999"
 kind = "proposal"
@@ -6782,6 +6890,16 @@ owner = "test"
         fs::write(path, index).expect("append rails index");
     }
 
+    fn replace_rails_index(root: &Path, from: &str, to: &str) {
+        let path = root.join(".rails/index.toml");
+        let index = fs::read_to_string(&path).expect("read rails index");
+        assert!(
+            index.contains(from),
+            "rails index did not contain expected text: {from}"
+        );
+        fs::write(path, index.replace(from, to)).expect("replace rails index");
+    }
+
     #[test]
     fn rails_check_accepts_implemented_lane_with_registered_closeout() {
         let root = unique_temp_dir("perfgate_rails_closeout_ok");
@@ -6804,6 +6922,87 @@ owner = "test"
             errors
                 .iter()
                 .any(|error| error.contains("implemented Rails lane demo-lane")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_index_schema_version_drift() {
+        let root = unique_temp_dir("perfgate_rails_schema_version_drift");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(
+            &root,
+            "schema_version = \"1.0\"",
+            "schema_version = \"2.0\"",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error
+                    .contains(".rails/index.toml schema_version must be `1.0`, got `2.0`")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_project_repo_drift() {
+        let root = unique_temp_dir("perfgate_rails_project_repo_drift");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(&root, "repo = \"perfgate\"", "repo = \"perfgate-swarm\"");
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                ".rails/index.toml project.repo must be `perfgate`, got `perfgate-swarm`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_index_convention_prefix_drift() {
+        let root = unique_temp_dir("perfgate_rails_convention_prefix_drift");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(
+            &root,
+            "spec_prefix = \"PERFGATE-SPEC\"",
+            "spec_prefix = \"OTHER-SPEC\"",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                ".rails/index.toml conventions.spec_prefix must be `PERFGATE-SPEC`, got `OTHER-SPEC`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_external_namespace_drift() {
+        let root = unique_temp_dir("perfgate_rails_external_namespace_drift");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(&root, "codex = \".codex\"", "codex = \".rails/codex\"");
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                ".rails/index.toml external_namespaces.codex must be `.codex`, got `.rails/codex`"
+            )),
             "unexpected errors: {:?}",
             errors
         );

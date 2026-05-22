@@ -18,6 +18,13 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 ## Behavior
 
 - Rails-owned artifacts must be indexed in `.rails/index.toml`.
+- `.rails/index.toml` must use schema version `1.0`.
+- `.rails/index.toml` must identify the repo as `perfgate`, framework as
+  `rails`, and root as `.rails`.
+- `.rails/index.toml` must preserve the registered ID-prefix conventions for
+  proposals, specs, ADRs, and lanes.
+- `.rails/index.toml` must preserve external namespace mappings for `.codex/`,
+  `.spec/`, `.claude/`, and `.jules/`.
 - Rails-owned artifact paths must live under `.rails/`.
 - Rails-owned artifacts under proposals, specs, ADRs, closeouts, support, and policy directories must be registered.
 - Rails support claim references and policy ledger paths must resolve.
@@ -57,7 +64,8 @@ Promotion once index/lane validators are implemented and used in CI.
 
 ## Failure modes
 
-Missing linked artifacts, unregistered owned artifacts, unresolved support
-claim references, unresolved policy ledger paths, lane tracker drift, missing
-closeouts for implemented lanes, or paths under external namespaces must fail
-validation.
+Registry schema drift, project identity drift, prefix convention drift, external
+namespace drift, missing linked artifacts, unregistered owned artifacts,
+unresolved support claim references, unresolved policy ledger paths, lane
+tracker drift, missing closeouts for implemented lanes, or paths under external
+namespaces must fail validation.
