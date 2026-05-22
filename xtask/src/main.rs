@@ -4928,6 +4928,13 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
         }
     }
 
+    let implemented_closeout_paths = index
+        .artifact
+        .iter()
+        .filter(|artifact| artifact.kind == "closeout" && artifact.status == "implemented")
+        .map(|artifact| artifact.path.as_str())
+        .collect::<Vec<_>>();
+
     let mut lane_ids = BTreeSet::<String>::new();
     for lane in &index.lane {
         if lane.owner.trim().is_empty() {
@@ -4948,6 +4955,16 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
             &mut errors,
         );
         validate_rails_registered_path(root, "lane", &lane.id, &lane.path, &mut errors);
+        if lane.status == "implemented"
+            && !implemented_closeout_paths
+                .iter()
+                .any(|path| rails_path_file_name(path).contains(&lane.id))
+        {
+            errors.push(format!(
+                "implemented Rails lane {} must have a registered implemented closeout artifact whose filename contains `{}`",
+                lane.id, lane.id
+            ));
+        }
         if !lane_ids.insert(lane.id.clone()) {
             errors.push(format!("duplicate Rails lane id {}", lane.id));
         }
@@ -5030,6 +5047,10 @@ fn validate_rails_link(
             "Rails artifact {source_id} {field} references unknown artifact id {target_id}"
         ));
     }
+}
+
+fn rails_path_file_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 fn collect_docs_source_errors(root: &Path) -> anyhow::Result<Vec<String>> {
@@ -6337,6 +6358,114 @@ mod tests {
             fs::create_dir_all(parent).expect("create parent dir");
         }
         fs::write(path, content).expect("write test file");
+    }
+
+    fn write_minimal_rails_stack(root: &Path, include_closeout: bool) {
+        write_test_file(root, "docs/rails.md", "# Rails\n");
+        write_test_file(root, "docs/contributing/rails.md", "# Rails contributing\n");
+        write_test_file(
+            root,
+            ".rails/proposals/PERFGATE-PROP-9999-demo.md",
+            "# Proposal\n",
+        );
+        write_test_file(root, ".rails/specs/PERFGATE-SPEC-9999-demo.md", "# Spec\n");
+        write_test_file(
+            root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+"#,
+        );
+        if include_closeout {
+            write_test_file(
+                root,
+                ".rails/closeouts/PERFGATE-CLOSEOUT-9999-demo-lane.md",
+                "# Demo lane: closeout\n",
+            );
+        }
+
+        let closeout_artifact = if include_closeout {
+            r#"
+[[artifact]]
+id = "PERFGATE-CLOSEOUT-9999"
+kind = "closeout"
+path = ".rails/closeouts/PERFGATE-CLOSEOUT-9999-demo-lane.md"
+status = "implemented"
+owner = "test"
+linked_proposal = "PERFGATE-PROP-9999"
+linked_specs = ["PERFGATE-SPEC-9999"]
+"#
+        } else {
+            ""
+        };
+
+        write_test_file(
+            root,
+            ".rails/index.toml",
+            &format!(
+                r#"schema_version = "1.0"
+
+[project]
+repo = "perfgate"
+framework = "rails"
+root = ".rails"
+
+[[artifact]]
+id = "PERFGATE-PROP-9999"
+kind = "proposal"
+path = ".rails/proposals/PERFGATE-PROP-9999-demo.md"
+status = "implemented"
+owner = "test"
+
+[[artifact]]
+id = "PERFGATE-SPEC-9999"
+kind = "spec"
+path = ".rails/specs/PERFGATE-SPEC-9999-demo.md"
+status = "implemented"
+owner = "test"
+linked_proposal = "PERFGATE-PROP-9999"
+{closeout_artifact}
+[[lane]]
+id = "demo-lane"
+name = "Demo lane"
+path = ".rails/lanes/demo-lane/tracker.toml"
+status = "implemented"
+owner = "test"
+"#
+            ),
+        );
+    }
+
+    #[test]
+    fn rails_check_accepts_implemented_lane_with_registered_closeout() {
+        let root = unique_temp_dir("perfgate_rails_closeout_ok");
+        write_minimal_rails_stack(&root, true);
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert_eq!(errors, Vec::<String>::new());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_requires_registered_closeout_for_implemented_lane() {
+        let root = unique_temp_dir("perfgate_rails_closeout_missing");
+        write_minimal_rails_stack(&root, false);
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("implemented Rails lane demo-lane")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
