@@ -35,6 +35,7 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - External namespaces may be listed for awareness, but not owned.
 - Specs define behavior contracts, not PR ordering.
 - Lane trackers define focused implementation sequence.
+- Lane tracker paths must be `.rails/lanes/<lane-id>/tracker.toml`.
 - Lane tracker `schema_version` must be `1.0`.
 - Lane tracker `id`, `name`, `status`, and `owner` must match the registry entry.
 - Implemented lanes must have a registered implemented closeout artifact.
@@ -73,5 +74,6 @@ Registry schema drift, project identity drift, prefix convention drift, external
 namespace drift, missing linked artifacts, unregistered owned artifacts,
 wrong-kind artifact links, unresolved support claim references, unresolved
 policy ledger paths, duplicate support claim or policy ledger IDs, lane tracker
-schema drift, lane tracker identity drift, missing closeouts for implemented
-lanes, or paths under external namespaces must fail validation.
+path drift, lane tracker schema drift, lane tracker identity drift, missing
+closeouts for implemented lanes, or paths under external namespaces must fail
+validation.

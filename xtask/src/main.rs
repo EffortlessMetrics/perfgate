@@ -5019,6 +5019,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
             &mut errors,
         );
         validate_rails_registered_path(root, "lane", &lane.id, &lane.path, &mut errors);
+        validate_rails_lane_path(lane, &mut errors);
         validate_rails_lane_tracker(root, lane, &mut errors);
         if lane.status == "implemented"
             && !implemented_closeout_paths
@@ -5497,6 +5498,16 @@ fn validate_rails_registered_path(
     if !path.exists() {
         errors.push(format!(
             "Rails {label} {id} links to missing path `{raw_path}`"
+        ));
+    }
+}
+
+fn validate_rails_lane_path(lane: &RailsLane, errors: &mut Vec<String>) {
+    let expected_path = format!(".rails/lanes/{}/tracker.toml", lane.id);
+    if lane.path != expected_path {
+        errors.push(format!(
+            "Rails lane {} path `{}` must be `{}`",
+            lane.id, lane.path, expected_path
         ));
     }
 }
@@ -7330,6 +7341,39 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails lane demo-lane tracker status `active` must match index status `implemented`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_lane_tracker_path_drift() {
+        let root = unique_temp_dir("perfgate_rails_tracker_path_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/other/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+"#,
+        );
+        replace_rails_index(
+            &root,
+            "path = \".rails/lanes/demo-lane/tracker.toml\"",
+            "path = \".rails/other/demo-lane/tracker.toml\"",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane path `.rails/other/demo-lane/tracker.toml` must be `.rails/lanes/demo-lane/tracker.toml`"
             )),
             "unexpected errors: {:?}",
             errors
