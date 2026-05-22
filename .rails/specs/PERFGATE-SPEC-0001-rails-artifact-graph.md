@@ -22,6 +22,7 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - External namespaces may be listed for awareness, but not owned.
 - Specs define behavior contracts, not PR ordering.
 - Lane trackers define focused implementation sequence.
+- Lane tracker `id`, `status`, and `owner` must match the registry entry.
 - Implemented lanes must have a registered implemented closeout artifact.
 
 ## Non-goals
@@ -54,5 +55,5 @@ Promotion once index/lane validators are implemented and used in CI.
 
 ## Failure modes
 
-Missing linked artifacts, missing closeouts for implemented lanes, or paths
-under external namespaces must fail validation.
+Missing linked artifacts, lane tracker drift, missing closeouts for implemented
+lanes, or paths under external namespaces must fail validation.

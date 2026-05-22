@@ -4790,6 +4790,13 @@ struct RailsLane {
     owner: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct RailsLaneTracker {
+    id: String,
+    status: String,
+    owner: String,
+}
+
 fn cmd_rails_check(root: &Path) -> anyhow::Result<()> {
     let errors = collect_rails_errors(root)?;
 
@@ -4955,6 +4962,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
             &mut errors,
         );
         validate_rails_registered_path(root, "lane", &lane.id, &lane.path, &mut errors);
+        validate_rails_lane_tracker(root, lane, &mut errors);
         if lane.status == "implemented"
             && !implemented_closeout_paths
                 .iter()
@@ -4971,6 +4979,53 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
     }
 
     Ok(errors)
+}
+
+fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<String>) {
+    let path = root.join(&lane.path);
+    if !path.exists() {
+        return;
+    }
+
+    let raw = match fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            errors.push(format!(
+                "Rails lane {} tracker `{}` could not be read: {err}",
+                lane.id, lane.path
+            ));
+            return;
+        }
+    };
+    let tracker = match toml::from_str::<RailsLaneTracker>(&raw) {
+        Ok(tracker) => tracker,
+        Err(err) => {
+            errors.push(format!(
+                "Rails lane {} tracker `{}` must parse as TOML: {err}",
+                lane.id, lane.path
+            ));
+            return;
+        }
+    };
+
+    if tracker.id != lane.id {
+        errors.push(format!(
+            "Rails lane {} tracker id `{}` must match index id `{}`",
+            lane.id, tracker.id, lane.id
+        ));
+    }
+    if tracker.status != lane.status {
+        errors.push(format!(
+            "Rails lane {} tracker status `{}` must match index status `{}`",
+            lane.id, tracker.status, lane.status
+        ));
+    }
+    if tracker.owner != lane.owner {
+        errors.push(format!(
+            "Rails lane {} tracker owner `{}` must match index owner `{}`",
+            lane.id, tracker.owner, lane.owner
+        ));
+    }
 }
 
 fn validate_rails_artifact_kind(kind: &str, id: &str, errors: &mut Vec<String>) {
@@ -6462,6 +6517,62 @@ owner = "test"
             errors
                 .iter()
                 .any(|error| error.contains("implemented Rails lane demo-lane")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_lane_tracker_status_drift() {
+        let root = unique_temp_dir("perfgate_rails_tracker_status_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "active"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane tracker status `active` must match index status `implemented`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_lane_tracker_owner_drift() {
+        let root = unique_temp_dir("perfgate_rails_tracker_owner_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "other-owner"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane tracker owner `other-owner` must match index owner `test`"
+            )),
             "unexpected errors: {:?}",
             errors
         );
