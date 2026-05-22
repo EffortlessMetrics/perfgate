@@ -5173,11 +5173,17 @@ fn validate_rails_support_artifact(
             artifact.id
         ));
     }
+    let mut claim_ids = BTreeSet::<&str>::new();
     for claim in &support.claim {
         if claim.id.trim().is_empty() {
             errors.push(format!(
                 "Rails support artifact {} has a claim with an empty id",
                 artifact.id
+            ));
+        } else if !claim_ids.insert(claim.id.as_str()) {
+            errors.push(format!(
+                "Rails support artifact {} has duplicate claim id {}",
+                artifact.id, claim.id
             ));
         }
         if claim.statement.trim().is_empty() {
@@ -5249,11 +5255,17 @@ fn validate_rails_policy_artifact(root: &Path, artifact: &RailsArtifact, errors:
             artifact.id
         ));
     }
+    let mut ledger_ids = BTreeSet::<&str>::new();
     for ledger in &policy.ledger {
         if ledger.id.trim().is_empty() {
             errors.push(format!(
                 "Rails policy artifact {} has a ledger with an empty id",
                 artifact.id
+            ));
+        } else if !ledger_ids.insert(ledger.id.as_str()) {
+            errors.push(format!(
+                "Rails policy artifact {} has duplicate ledger id {}",
+                artifact.id, ledger.id
             ));
         }
         if ledger.owner.trim().is_empty() {
@@ -7129,6 +7141,52 @@ owner = "test"
     }
 
     #[test]
+    fn rails_check_rejects_duplicate_support_claim_ids() {
+        let root = unique_temp_dir("perfgate_rails_support_duplicate_claim");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/support/claim-map.toml",
+            r#"schema_version = "1.0"
+
+[[claim]]
+id = "PERFGATE-CLAIM-9999"
+statement = "Test claim"
+proof = ["cargo test"]
+references = ["docs/rails.md"]
+
+[[claim]]
+id = "PERFGATE-CLAIM-9999"
+statement = "Duplicate test claim"
+proof = ["cargo test"]
+references = ["docs/rails.md"]
+"#,
+        );
+        append_rails_index(
+            &root,
+            r#"
+[[artifact]]
+id = "PERFGATE-SUPPORT-9999"
+kind = "support"
+path = ".rails/support/claim-map.toml"
+status = "accepted"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails support artifact PERFGATE-SUPPORT-9999 has duplicate claim id PERFGATE-CLAIM-9999"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn rails_check_rejects_missing_policy_ledger_path() {
         let root = unique_temp_dir("perfgate_rails_policy_missing_path");
         write_minimal_rails_stack(&root, true);
@@ -7160,6 +7218,50 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails policy ledger missing-ledger path `docs/missing-policy.md` does not exist"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_duplicate_policy_ledger_ids() {
+        let root = unique_temp_dir("perfgate_rails_policy_duplicate_ledger");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/policy/ledgers.toml",
+            r#"schema_version = "1.0"
+
+[[ledger]]
+id = "test-ledger"
+path = "docs/rails.md"
+owner = "test"
+
+[[ledger]]
+id = "test-ledger"
+path = "docs/contributing/rails.md"
+owner = "test"
+"#,
+        );
+        append_rails_index(
+            &root,
+            r#"
+[[artifact]]
+id = "PERFGATE-POLICY-9999"
+kind = "policy"
+path = ".rails/policy/ledgers.toml"
+status = "accepted"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails policy artifact PERFGATE-POLICY-9999 has duplicate ledger id test-ledger"
             )),
             "unexpected errors: {:?}",
             errors
