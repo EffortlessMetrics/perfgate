@@ -4912,6 +4912,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
 
     let mut artifact_ids = BTreeMap::<String, String>::new();
     let mut artifact_paths = BTreeMap::<String, String>::new();
+    let mut artifact_kinds = BTreeMap::<String, String>::new();
     for artifact in &index.artifact {
         if artifact.owner.trim().is_empty() {
             errors.push(format!("artifact {} has an empty owner", artifact.id));
@@ -4939,6 +4940,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
                 artifact.id, previous_path, artifact.path
             ));
         }
+        artifact_kinds.insert(artifact.id.clone(), artifact.kind.clone());
         if let Some(previous_id) = artifact_paths.insert(artifact.path.clone(), artifact.id.clone())
         {
             errors.push(format!(
@@ -4954,7 +4956,8 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
                 &artifact.id,
                 "linked_proposal",
                 linked_proposal,
-                &artifact_ids,
+                "proposal",
+                &artifact_kinds,
                 &mut errors,
             );
         }
@@ -4963,7 +4966,8 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
                 &artifact.id,
                 "linked_specs",
                 linked_spec,
-                &artifact_ids,
+                "spec",
+                &artifact_kinds,
                 &mut errors,
             );
         }
@@ -4972,7 +4976,8 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
                 &artifact.id,
                 "linked_adrs",
                 linked_adr,
-                &artifact_ids,
+                "adr",
+                &artifact_kinds,
                 &mut errors,
             );
         }
@@ -5470,12 +5475,20 @@ fn validate_rails_link(
     source_id: &str,
     field: &str,
     target_id: &str,
-    artifact_ids: &BTreeMap<String, String>,
+    expected_kind: &str,
+    artifact_kinds: &BTreeMap<String, String>,
     errors: &mut Vec<String>,
 ) {
-    if !artifact_ids.contains_key(target_id) {
+    let Some(actual_kind) = artifact_kinds.get(target_id) else {
         errors.push(format!(
             "Rails artifact {source_id} {field} references unknown artifact id {target_id}"
+        ));
+        return;
+    };
+
+    if actual_kind != expected_kind {
+        errors.push(format!(
+            "Rails artifact {source_id} {field} references {target_id}, which is kind `{actual_kind}`; expected `{expected_kind}`"
         ));
     }
 }
@@ -7002,6 +7015,72 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 ".rails/index.toml external_namespaces.codex must be `.codex`, got `.rails/codex`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_linked_proposal_wrong_kind() {
+        let root = unique_temp_dir("perfgate_rails_linked_proposal_wrong_kind");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(
+            &root,
+            "linked_proposal = \"PERFGATE-PROP-9999\"",
+            "linked_proposal = \"PERFGATE-SPEC-9999\"",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "linked_proposal references PERFGATE-SPEC-9999, which is kind `spec`; expected `proposal`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_linked_spec_wrong_kind() {
+        let root = unique_temp_dir("perfgate_rails_linked_spec_wrong_kind");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(
+            &root,
+            "linked_specs = [\"PERFGATE-SPEC-9999\"]",
+            "linked_specs = [\"PERFGATE-PROP-9999\"]",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "linked_specs references PERFGATE-PROP-9999, which is kind `proposal`; expected `spec`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_linked_adr_wrong_kind() {
+        let root = unique_temp_dir("perfgate_rails_linked_adr_wrong_kind");
+        write_minimal_rails_stack(&root, true);
+        replace_rails_index(
+            &root,
+            "linked_specs = [\"PERFGATE-SPEC-9999\"]",
+            "linked_specs = [\"PERFGATE-SPEC-9999\"]\nlinked_adrs = [\"PERFGATE-SPEC-9999\"]",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "linked_adrs references PERFGATE-SPEC-9999, which is kind `spec`; expected `adr`"
             )),
             "unexpected errors: {:?}",
             errors

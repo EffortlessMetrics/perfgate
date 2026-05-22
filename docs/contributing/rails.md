@@ -24,6 +24,8 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 8. Keep `.rails/index.toml` header fields stable: schema version `1.0`, repo
    `perfgate`, framework `rails`, root `.rails`, the registered prefix
    conventions, and the external namespace map.
+9. Keep artifact links typed: `linked_proposal` points to a proposal,
+   `linked_specs` point to specs, and `linked_adrs` point to ADRs.
 
 ## Validation
 
@@ -35,7 +37,7 @@ cargo run -p xtask -- rails check
 
 The check validates `.rails/index.toml` schema/project/convention/namespace
 fields, registered artifact and lane paths, status values, ID prefixes, registry
-links, unregistered owned artifacts, support claim references, policy ledger
-paths, lane tracker identity/status/owner consistency, closeouts for implemented
-lanes, the required human docs, and the absence of the legacy `.perfgate-spec/`
-namespace.
+links, link target kinds, unregistered owned artifacts, support claim
+references, policy ledger paths, lane tracker identity/status/owner consistency,
+closeouts for implemented lanes, the required human docs, and the absence of the
+legacy `.perfgate-spec/` namespace.

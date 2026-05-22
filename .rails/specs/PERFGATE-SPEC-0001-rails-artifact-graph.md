@@ -28,6 +28,8 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - Rails-owned artifact paths must live under `.rails/`.
 - Rails-owned artifacts under proposals, specs, ADRs, closeouts, support, and policy directories must be registered.
 - Rails support claim references and policy ledger paths must resolve.
+- Rails links must resolve to the expected artifact kind: proposals to
+  proposals, specs to specs, and ADRs to ADRs.
 - External namespaces may be listed for awareness, but not owned.
 - Specs define behavior contracts, not PR ordering.
 - Lane trackers define focused implementation sequence.
@@ -66,6 +68,6 @@ Promotion once index/lane validators are implemented and used in CI.
 
 Registry schema drift, project identity drift, prefix convention drift, external
 namespace drift, missing linked artifacts, unregistered owned artifacts,
-unresolved support claim references, unresolved policy ledger paths, lane
-tracker drift, missing closeouts for implemented lanes, or paths under external
-namespaces must fail validation.
+wrong-kind artifact links, unresolved support claim references, unresolved
+policy ledger paths, lane tracker drift, missing closeouts for implemented
+lanes, or paths under external namespaces must fail validation.
