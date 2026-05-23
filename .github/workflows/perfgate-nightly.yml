@@ -70,11 +70,13 @@ jobs:
             --title "perf: refresh nightly baselines and trends" \
             --body "Automatic nightly baseline calibration and trend persistence for gha-ubuntu-24.04-x86_64. 
             
-            This PR updates the canonical performance baselines and saves the latest trend data (JSONL/Prometheus/Summary) to \`baselines/trends/\` for long-term historical analysis." \
+            This PR updates the canonical performance baselines and saves the latest trend data (JSONL/Prometheus/Summary) to \`baselines/trends/\` for long-term historical analysis.
+
+            Maintainer note: update the branch if protected checks do not start automatically, wait for \`Perfgate Swarm CI Result\`, then squash-merge. Generated baseline PRs must not merge by merge commit." \
             --base main \
             --head "$BRANCH_NAME" || echo "PR already exists"
           
-          gh pr merge "$BRANCH_NAME" --auto --merge || echo "Already merged or merge failed"
+          echo "Baseline PR is ready for maintainer review; squash-merge only after Perfgate Swarm CI Result passes."
 
       - name: Upload nightly artifacts
         if: always()
