@@ -6474,8 +6474,22 @@ fn extract_product_claim_index_entries(content: &str) -> Vec<ProductClaimIndexEn
     let index_re =
         Regex::new(r"^\|\s*(PG-CLAIM-\d{4})\s*\|").expect("claim index regex should compile");
     let mut entries = Vec::new();
+    let mut in_claim_index = false;
 
     for (idx, line) in content.lines().enumerate() {
+        if line == "## Claim Index" {
+            in_claim_index = true;
+            continue;
+        }
+
+        if in_claim_index && line.starts_with("## ") {
+            break;
+        }
+
+        if !in_claim_index {
+            continue;
+        }
+
         if let Some(captures) = index_re.captures(line) {
             entries.push(ProductClaimIndexEntry {
                 id: captures[1].to_string(),
@@ -8992,6 +9006,57 @@ Review after: next-claim-change
                 .iter()
                 .any(|error| error.contains("Claim Index order must match claim section order")),
             "expected index order error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_ignores_claim_tables_outside_claim_index() {
+        let content = r###"# Product Claims
+
+## Claim Index
+
+| Claim ID | Claim | Tier | Surface | Review after |
+|----------|-------|------|---------|--------------|
+| PG-CLAIM-0001 | first | advisory | docs | next-claim-change |
+| PG-CLAIM-0002 | second | advisory | docs | next-claim-change |
+
+## PG-CLAIM-0001: First claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+
+## PG-CLAIM-0002: Second claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+
+## Reference Table
+
+| Related claim | Note |
+|---------------|------|
+| PG-CLAIM-9999 | placeholder reference outside the Claim Index |
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors.is_empty(),
+            "expected non-index claim table rows to be ignored, got {errors:?}"
         );
     }
 
