@@ -6286,6 +6286,7 @@ fn collect_product_claim_errors(
     let mut errors = Vec::new();
     let claims = extract_product_claim_sections(content);
     let mut ids = BTreeSet::new();
+    let mut previous_claim_id: Option<String> = None;
     let planned_spec_re = Regex::new(r"\b(PERFGATE-SPEC-\d{4})\b.*\bplanned\b")
         .expect("planned spec regex should compile");
 
@@ -6296,6 +6297,16 @@ fn collect_product_claim_errors(
     }
 
     for claim in claims {
+        if let Some(previous) = previous_claim_id.as_deref()
+            && claim.id.as_str() <= previous
+        {
+            errors.push(format!(
+                "product claim section `{}` line {} appears after `{}`; keep claim sections sorted by ID",
+                claim.id, claim.line, previous
+            ));
+        }
+        previous_claim_id = Some(claim.id.clone());
+
         if !ids.insert(claim.id.clone()) {
             errors.push(format!("duplicate claim id `{}`", claim.id));
         }
@@ -8798,6 +8809,46 @@ Review after: before-release
                 .iter()
                 .any(|error| error.contains("references `PERFGATE-SPEC-0007` as planned")),
             "expected stale planned spec error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_rejects_out_of_order_claim_sections() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0002: Later claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+
+## PG-CLAIM-0001: Earlier claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("keep claim sections sorted by ID")),
+            "expected claim ordering error, got {errors:?}"
         );
     }
 
