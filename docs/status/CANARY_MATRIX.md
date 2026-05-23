@@ -113,6 +113,55 @@ their existing benchmark tools while adopting perfgate review surfaces.
 Source-built canaries should be cited as current-source proof only. They do not
 prove public release artifacts until a release installs and runs the same path.
 
+## First Useful Review Canary Plan
+
+The first useful performance review lane added the full source-built review
+loop: adoption recommendation, dry-run setup, review explain, benchmark
+passport, repair guardrails, and non-mutating promotion plans. The matrix keeps
+that proof separate from hosted and public-artifact claims until those paths are
+rerun deliberately.
+
+| Target | Existing proof to reuse | Rerun should record | Do not infer |
+|--------|-------------------------|---------------------|--------------|
+| Hosted external Action review loop | first useful review fixture proof plus hosted policy Action canary | adoption recommendation output, dry-run setup artifacts, Action summary passport, uploaded artifacts, repair context, baseline promote-plan, policy promote-plan | every hosted runner, fork-safety path, or public release artifact behavior |
+| Public release review loop | public install smoke plus first useful review fixture proof | public install source, adoption recommend/apply output, review explain output, benchmark passport, repair context, baseline/policy promote-plan output | current-source proof applies to public artifacts before the release that contains these commands |
+| Existing benchmark-tool repo | evidence intake adapter canaries plus first useful review fixture proof | source benchmark artifact, adapter command, imported receipt, review explain, benchmark passport, promotion plans, non-inferences encountered | one tool adapter proves every upstream JSON variant or every workload is gate-ready |
+| Agent repair handoff | repair-context fixtures plus review explain guardrails | repair context path, allowed commands, forbidden changes, human-review requirements, proof commands after repair, agent confusion or unsafe suggestion avoided | agents are policy authorities or may promote baselines, loosen thresholds, accept tradeoffs, or require ledger mode |
+
+### Minimum First Useful Review Canary Packet
+
+Each first-useful-review canary should record:
+
+```text
+repo shape
+perfgate version, source commit, or public artifact
+adoption recommendation output
+dry-run setup artifacts
+evidence source and receipt path
+review explain output
+benchmark passport
+repair context path when generated
+baseline promote-plan output
+policy promote-plan output
+Action summary and uploaded artifacts when hosted CI is part of the canary
+what confused the user, reviewer, or agent
+what changed in docs, config, or tooling
+what it proves
+what it does not prove
+freshness state after the run
+```
+
+### First Useful Review Boundaries
+
+- Do not cite source-built first-useful-review proof as hosted Action proof.
+- Do not cite hosted Action proof as public-release proof.
+- Do not make a canary promote baselines, loosen thresholds, or make a gate
+  blocking without a visible review surface.
+- Do not treat adoption recommendation as proof that a workload is a good
+  required gate.
+- Keep repair context and agent prompts advisory; agents remain reviewers and
+  fixers, not policy authorities.
+
 ## Use
 
 Use this matrix when updating product claims, release notes, or closeouts:
