@@ -6031,7 +6031,7 @@ fn collect_active_goal_link_references(value: &toml::Value, paths: &mut BTreeSet
             let Some(item) = item.as_table() else {
                 continue;
             };
-            for key in ["proposal", "spec", "adr", "plan"] {
+            for key in ["proposal", "spec", "adr", "plan", "implementation_plan"] {
                 if let Some(value) = item.get(key) {
                     collect_path_references_from_toml_leaf(value, paths);
                 }
@@ -8284,6 +8284,36 @@ linked_policy = ["policy/public_crates.txt"]
         let errors = collect_docs_source_errors(&root).expect("collect source errors");
         assert!(errors.is_empty(), "unexpected errors: {errors:?}");
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn active_goal_rejects_missing_work_item_implementation_plan_link() {
+        let root = unique_temp_dir("perfgate_active_goal_missing_implementation_plan");
+        write_test_file(
+            &root,
+            ".codex/goals/active.toml",
+            r#"
+id = "test"
+
+[[work_item]]
+id = "demo-work"
+proposal = ".rails/proposals/PERFGATE-PROP-9999-demo.md"
+spec = ".rails/specs/PERFGATE-SPEC-9999-demo.md"
+implementation_plan = ".rails/lanes/demo-lane/missing-plan.md"
+"#,
+        );
+
+        let mut errors = Vec::new();
+        validate_active_goal_toml(&root, &mut errors).expect("validate active goal");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                ".codex/goals/active.toml links to missing file `.rails/lanes/demo-lane/missing-plan.md`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
         let _ = fs::remove_dir_all(root);
     }
 
