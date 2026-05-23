@@ -12,7 +12,7 @@ Linked ADRs: PERFGATE-ADR-0001
 - `.rails/index.toml` is the single registry for Rails artifacts and lanes.
 - Human guidance exists in `docs/rails.md` and `docs/contributing/rails.md`.
 - Foundational proposal, spec, and ADR artifacts are registered and linked.
-- `cargo xtask rails check` validates registry parseability, artifact IDs, file paths, statuses, links, and the absence of `.perfgate-spec/`.
+- `cargo +1.95.0 run -p xtask -- rails check` validates registry parseability, artifact IDs, file paths, statuses, links, support-claim IDs, lane tracker schema, and the absence of `.perfgate-spec/`.
 
 ## Proof
 
@@ -23,4 +23,4 @@ Linked ADRs: PERFGATE-ADR-0001
 
 - Product lanes should use `.rails/` for durable proposals, specs, trackers, support maps, policy references, and closeouts.
 - `.codex/` remains agent execution state only and is not a durable Rails artifact root.
-- Future validator slices may add deeper lane tracker schema checks when the lane vocabulary stabilizes.
+- Validator follow-up slices now enforce support-claim ID prefixes, reject unknown Rails TOML fields, and require lane tracker objective/end-state content.

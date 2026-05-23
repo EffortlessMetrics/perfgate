@@ -12,7 +12,7 @@ Adopt .rails/ as the durable framework root and establish the initial artifact g
 end_state = [
   ".rails/ footprint and docs are in place.",
   "Foundational proposal/spec/ADR are linked in index.",
-  "Rails registry validation is available through cargo xtask rails check.",
+  "Rails registry validation is available through cargo +1.95.0 run -p xtask -- rails check.",
 ]
 
 [[work_item]]
