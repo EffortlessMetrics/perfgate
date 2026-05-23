@@ -4836,6 +4836,7 @@ struct SourceDoc {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsIndex {
     #[serde(default)]
     schema_version: String,
@@ -4851,6 +4852,7 @@ struct RailsIndex {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsProject {
     repo: String,
     framework: String,
@@ -4858,6 +4860,7 @@ struct RailsProject {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsConventions {
     proposal_prefix: String,
     spec_prefix: String,
@@ -4866,6 +4869,7 @@ struct RailsConventions {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsExternalNamespaces {
     codex: String,
     speckit: String,
@@ -4874,6 +4878,7 @@ struct RailsExternalNamespaces {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsArtifact {
     id: String,
     kind: String,
@@ -4889,6 +4894,7 @@ struct RailsArtifact {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsLane {
     id: String,
     name: String,
@@ -4898,6 +4904,7 @@ struct RailsLane {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsLaneTracker {
     schema_version: String,
     id: String,
@@ -4905,10 +4912,15 @@ struct RailsLaneTracker {
     status: String,
     owner: String,
     #[serde(default)]
+    objective: String,
+    #[serde(default)]
+    end_state: Vec<String>,
+    #[serde(default)]
     work_item: Vec<RailsLaneWorkItem>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsLaneWorkItem {
     id: String,
     status: String,
@@ -4929,6 +4941,7 @@ struct RailsLaneWorkItem {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsSupportMap {
     schema_version: String,
     #[serde(default)]
@@ -4936,6 +4949,7 @@ struct RailsSupportMap {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsSupportClaim {
     id: String,
     statement: String,
@@ -4946,6 +4960,7 @@ struct RailsSupportClaim {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsPolicyReference {
     schema_version: String,
     #[serde(default)]
@@ -4953,6 +4968,7 @@ struct RailsPolicyReference {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RailsPolicyLedger {
     id: String,
     path: String,
@@ -5567,6 +5583,26 @@ fn validate_rails_lane_tracker(
             "Rails lane {} tracker owner `{}` must match index owner `{}`",
             lane.id, tracker.owner, lane.owner
         ));
+    }
+    if tracker.objective.trim().is_empty() {
+        errors.push(format!(
+            "Rails lane {} tracker objective must be non-empty",
+            lane.id
+        ));
+    }
+    if tracker.end_state.is_empty() {
+        errors.push(format!(
+            "Rails lane {} tracker must list end_state entries",
+            lane.id
+        ));
+    }
+    for end_state in &tracker.end_state {
+        if end_state.trim().is_empty() {
+            errors.push(format!(
+                "Rails lane {} tracker has an empty end_state entry",
+                lane.id
+            ));
+        }
     }
 
     let mut work_item_ids = BTreeSet::<&str>::new();
@@ -7194,6 +7230,14 @@ id = "demo-lane"
 name = "Demo lane"
 status = "implemented"
 owner = "test"
+
+objective = """
+Demo lane objective.
+"""
+
+end_state = [
+  "Demo lane done.",
+]
 "#,
         );
         write_test_file(
@@ -7939,6 +7983,77 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error
                 .contains("Rails lane demo-lane tracker schema_version `2.0` must be `1.0`")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_lane_tracker_unknown_fields() {
+        let root = unique_temp_dir("perfgate_rails_tracker_unknown_fields");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+review_cadence = "weekly"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| {
+                error.contains("Rails lane demo-lane tracker")
+                    && error.contains("must parse as TOML")
+                    && error.contains("review_cadence")
+            }),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_empty_lane_tracker_objective_and_end_state() {
+        let root = unique_temp_dir("perfgate_rails_tracker_empty_goal");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+objective = " "
+end_state = [" "]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error
+                    .contains("Rails lane demo-lane tracker objective must be non-empty")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error
+                    .contains("Rails lane demo-lane tracker has an empty end_state entry")),
             "unexpected errors: {:?}",
             errors
         );

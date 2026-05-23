@@ -46,6 +46,10 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - Lane tracker paths must be `.rails/lanes/<lane-id>/tracker.toml`.
 - Lane tracker `schema_version` must be `1.0`.
 - Lane tracker `id`, `name`, `status`, and `owner` must match the registry entry.
+- Lane tracker `objective` must be non-empty, and lane tracker `end_state`
+  must list non-empty done-state entries.
+- Rails TOML artifacts must not contain unknown fields outside their documented
+  schemas.
 - Lane tracker work item IDs must be non-empty and unique within the lane tracker.
 - Lane tracker work item statuses must use the allowed lane-work vocabulary:
   `planned`, `ready`, `active`, `blocked`, `implemented`, or `superseded`.
@@ -97,9 +101,10 @@ namespace drift, missing linked artifacts, unregistered owned artifacts,
 artifact kind-directory drift, artifact filename identity drift, wrong-kind
 artifact links, unresolved support claim references, unresolved policy ledger
 paths, duplicate support claim or policy ledger IDs, empty support proof
-commands, support claim ID prefix drift, lane tracker path drift, lane tracker
-schema drift, lane tracker identity drift, duplicate lane work item IDs,
-unknown lane work item statuses,
+commands, support claim ID prefix drift, unknown Rails TOML fields, lane tracker
+path drift, lane tracker schema drift, lane tracker identity drift, empty lane
+tracker objective or end state entries, duplicate lane work item IDs, unknown
+lane work item statuses,
 unfinished work items in implemented lanes,
 unknown or wrong-kind lane work item source links, unresolved lane work item
 implementation plans, unknown or self-referential lane work item dependencies,
