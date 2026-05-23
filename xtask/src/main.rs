@@ -6303,7 +6303,12 @@ fn collect_product_claim_errors(
         return errors;
     }
 
-    if !claim_index.is_empty() {
+    if claim_index.is_empty() {
+        errors.push(
+            "PRODUCT_CLAIMS.md must include a `## Claim Index` table listing every claim section"
+                .into(),
+        );
+    } else {
         validate_product_claim_index(&claim_index, &claims, &mut errors);
     }
 
@@ -8793,6 +8798,12 @@ Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
     fn product_claims_check_accepts_claim_with_linked_tests() {
         let content = r###"# Product Claims
 
+## Claim Index
+
+| Claim ID | Claim | Tier | Surface | Review after |
+|----------|-------|------|---------|--------------|
+| PG-CLAIM-0001 | Reviewable decisions | supported | CLI, receipts | before-release |
+
 ## PG-CLAIM-0001: Reviewable decisions
 
 Tier: supported
@@ -8810,6 +8821,34 @@ Review after: before-release
 
         let errors = collect_product_claim_errors(content, &BTreeSet::new());
         assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    }
+
+    #[test]
+    fn product_claims_check_rejects_missing_claim_index() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Reviewable decisions
+
+Tier: supported
+Surface: CLI, receipts
+Linked tests:
+- crates/perfgate-cli/tests/decision.rs
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+```
+
+Review after: before-release
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("must include a `## Claim Index` table")),
+            "expected missing Claim Index error, got {errors:?}"
+        );
     }
 
     #[test]
@@ -9063,6 +9102,12 @@ Review after: next-claim-change
     #[test]
     fn product_claims_check_accepts_supported_claim_with_current_freshness() {
         let content = r###"# Product Claims
+
+## Claim Index
+
+| Claim ID | Claim | Tier | Surface | Review after |
+|----------|-------|------|---------|--------------|
+| PG-CLAIM-0001 | Policy posture | supported | CLI, docs | next-policy-change |
 
 ## PG-CLAIM-0001: Policy posture
 
