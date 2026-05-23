@@ -1,5 +1,7 @@
-id = "<claim-id>"
-claim = "<user-visible claim>"
+schema_version = "1.0"
+
+[[claim]]
+id = "PERFGATE-CLAIM-0001"
+statement = "<user-visible claim>"
 proof = ["<command or artifact>"]
-source = "<doc or policy reference>"
-status = "active"
+references = ["<doc or policy reference>"]
