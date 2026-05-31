@@ -22,13 +22,24 @@ env:
 
 jobs:
   fuzz:
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     timeout-minutes: 90 # Allow enough time for all targets
     if: >-
       github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'fuzz') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      contains(github.event.pull_request.labels.*.name, 'release-proof')
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.labels.*.name, 'fuzz') ||
+         contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+         contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') ||
+         contains(github.event.pull_request.labels.*.name, 'release-proof')))
 
     steps:
       - uses: actions/checkout@v4

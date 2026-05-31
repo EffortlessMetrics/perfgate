@@ -15,13 +15,25 @@ permissions:
 jobs:
   smoke:
     name: Action Smoke Lane
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
-      contains(github.event.pull_request.labels.*.name, 'self-smoke') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      contains(github.event.pull_request.labels.*.name, 'release-proof')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+         contains(github.event.pull_request.labels.*.name, 'self-smoke') ||
+         contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+         contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') ||
+         contains(github.event.pull_request.labels.*.name, 'release-proof')))
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -43,13 +55,25 @@ jobs:
 
   perf:
     name: Core Perf Lane
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
-      contains(github.event.pull_request.labels.*.name, 'perf') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      contains(github.event.pull_request.labels.*.name, 'release-proof')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+         contains(github.event.pull_request.labels.*.name, 'perf') ||
+         contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+         contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') ||
+         contains(github.event.pull_request.labels.*.name, 'release-proof')))
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -73,13 +97,25 @@ jobs:
 
   paired:
     name: Paired PR-vs-Main Lane
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
-      contains(github.event.pull_request.labels.*.name, 'paired') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      contains(github.event.pull_request.labels.*.name, 'release-proof')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+         contains(github.event.pull_request.labels.*.name, 'paired') ||
+         contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+         contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') ||
+         contains(github.event.pull_request.labels.*.name, 'release-proof')))
     steps:
       - name: Checkout Current
         uses: actions/checkout@v4

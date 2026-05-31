@@ -17,20 +17,73 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  runner-routing-policy:
+    name: Runner Routing Policy
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on:
+      group: em-ci-nano
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx23
+        - ci-nano
+        - trusted-pr
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check runner routing policy
+        run: scripts/ci/check-runner-routing.sh
+
+  runner-routing-policy-fork:
+    name: Runner Routing Policy (Fork Safe)
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check runner routing policy without self-hosted access
+        run: scripts/ci/check-runner-routing.sh
+
   cargo-deny:
     name: cargo-deny
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx43
+        - rust-medium
+        - trusted-pr
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
 
   route-perfgate-rust-small:
     name: Route Perfgate Rust Small
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm'
-    runs-on: self-hosted
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on:
+      group: em-ci-nano
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx23
+        - ci-nano
+        - trusted-pr
     outputs:
       target: ${{ steps.route.outputs.target }}
       reason: ${{ steps.route.outputs.reason }}
@@ -41,14 +94,8 @@ jobs:
           GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
         run: |
           set -euo pipefail
-
-          trusted="true"
-          if [[ "${EVENT_NAME}" == "pull_request" && "${PR_HEAD_REPO}" != "${REPO}" ]]; then
-            trusted="false"
-          fi
 
           fallback_allowed="false"
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
@@ -59,19 +106,11 @@ jobs:
             fallback_allowed="true"
           fi
 
-          if [[ "${trusted}" != "true" ]]; then
-            echo "target=github" >> "$GITHUB_OUTPUT"
-            echo "reason=fork_or_untrusted_pr" >> "$GITHUB_OUTPUT"
-            echo "fallback_allowed=true" >> "$GITHUB_OUTPUT"
-            echo "router_target=github"
-            echo "router_reason=fork_or_untrusted_pr"
-            exit 0
-          fi
-
           if [[ -z "${GH_TOKEN:-}" ]]; then
             echo "::error::EM_RUNNER_READ_TOKEN is missing for ${REPO}; perfgate-swarm must prove routed self-hosted CI or explicit busy-runner fallback."
             echo "target=unconfigured" >> "$GITHUB_OUTPUT"
             echo "reason=missing_runner_token" >> "$GITHUB_OUTPUT"
+            echo "fallback_allowed=${fallback_allowed}" >> "$GITHUB_OUTPUT"
             echo "router_target=unconfigured"
             echo "router_reason=missing_runner_token"
             exit 1
@@ -80,12 +119,14 @@ jobs:
           api="https://api.github.com/orgs/${GITHUB_REPOSITORY_OWNER}/actions/runners?per_page=100"
 
           if ! runners="$(curl -fsS \
+            -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$api")"; then
-            echo "::error::Unable to read org runners; cannot prove CX43/CX53 routing."
+            echo "::error::Unable to read org runners; cannot prove CX43/CPX42/CX53 routing."
             echo "target=unconfigured" >> "$GITHUB_OUTPUT"
             echo "reason=runner_api_failed" >> "$GITHUB_OUTPUT"
+            echo "fallback_allowed=${fallback_allowed}" >> "$GITHUB_OUTPUT"
             echo "router_target=unconfigured"
             echo "router_reason=runner_api_failed"
             exit 1
@@ -93,25 +134,43 @@ jobs:
 
           idle_with_labels() {
             local label1="$1"
-            jq --arg label1 "$label1" '
-              [
-                .runners[]
-                | select(.status == "online")
-                | select(.busy == false)
-                | select(([.labels[].name] | index("em-ci")) != null)
-                | select(([.labels[].name] | index("rust-small")) != null)
-                | select(([.labels[].name] | index("trusted-pr")) != null)
-                | select(([.labels[].name] | index($label1)) != null)
-              ] | length
-            ' <<< "$runners"
+            local label2="${2:-}"
+            if [[ -n "${label2}" ]]; then
+              jq --arg label1 "$label1" --arg label2 "$label2" '
+                [
+                  .runners[]
+                  | select(.status == "online")
+                  | select(.busy == false)
+                  | select(([.labels[].name] | index("em-ci")) != null)
+                  | select(([.labels[].name] | index("trusted-pr")) != null)
+                  | select(([.labels[].name] | index($label1)) != null)
+                  | select(([.labels[].name] | index($label2)) != null)
+                ] | length
+              ' <<< "$runners"
+            else
+              jq --arg label1 "$label1" '
+                [
+                  .runners[]
+                  | select(.status == "online")
+                  | select(.busy == false)
+                  | select(([.labels[].name] | index("em-ci")) != null)
+                  | select(([.labels[].name] | index("trusted-pr")) != null)
+                  | select(([.labels[].name] | index($label1)) != null)
+                ] | length
+              ' <<< "$runners"
+            fi
           }
 
-          idle_cx43="$(idle_with_labels cx43)"
-          idle_cx53="$(idle_with_labels cx53)"
+          idle_cx43="$(idle_with_labels cx43 rust-medium)"
+          idle_cpx42="$(idle_with_labels cpx42 rust-16gb)"
+          idle_cx53="$(idle_with_labels cx53 rust-large)"
 
           if [[ "${idle_cx43}" -gt 0 ]]; then
             target="cx43"
             reason="cx43_idle"
+          elif [[ "${idle_cpx42}" -gt 0 ]]; then
+            target="cpx42"
+            reason="cpx42_idle"
           elif [[ "${idle_cx53}" -gt 0 ]]; then
             target="cx53"
             reason="cx53_idle"
@@ -129,15 +188,26 @@ jobs:
           echo "router_target=${target}"
           echo "router_reason=${reason}"
           echo "idle_cx43=${idle_cx43}"
+          echo "idle_cpx42=${idle_cpx42}"
           echo "idle_cx53=${idle_cx53}"
 
   perfgate-rust-small-cx43:
     name: Perfgate Rust Small on CX43
     needs: route-perfgate-rust-small
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'cx43'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.route-perfgate-rust-small.outputs.target == 'cx43'
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, Linux, X64, em-ci, cx43, rust-small, trusted-pr]
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx43
+        - rust-medium
+        - trusted-pr
     timeout-minutes: 45
     env:
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -151,19 +221,16 @@ jobs:
       PERFGATE_CI_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Guard disk
         run: |
           set -euo pipefail
           ci-disk-guard /mnt/ci-scratch 80
           ci-disk-guard /mnt/docker 20
           ci-disk-guard /mnt/ci-cache 20
-
       - name: Run xtask CI in em-ci-rust
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
-
           docker run --rm \
             --label em.ci=true \
             --cpus="8" \
@@ -190,7 +257,6 @@ jobs:
                 rustc --version
                 cargo --version
                 cargo run -p xtask -- ci'
-
       - name: Cleanup scratch
         if: always()
         run: |
@@ -200,20 +266,84 @@ jobs:
             -v /mnt/ci-scratch:/mnt/ci-scratch \
             em-ci-rust:1.95 \
             -c 'rm -rf "/mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}" "/mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}"' || true
-
       - name: Disk report
         if: always()
         run: |
           df -h / /mnt/docker /mnt/actions /mnt/ci-scratch /mnt/ci-cache /mnt/ci-artifacts || true
           du -sh /mnt/ci-cache/* /mnt/ci-scratch/* /mnt/docker 2>/dev/null || true
 
+  perfgate-rust-small-cpx42:
+    name: Perfgate Rust Small on CPX42
+    needs: route-perfgate-rust-small
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.route-perfgate-rust-small.outputs.target == 'cpx42'
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cpx42
+        - rust-medium
+        - rust-16gb
+        - trusted-pr
+    timeout-minutes: 45
+    env:
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      SCCACHE_CACHE_SIZE: 30G
+      RUSTC_WRAPPER: /usr/local/cargo/bin/sccache
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "6"
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      PERFGATE_CI_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - name: Prepare CPX42 scratch and cache
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR" "$CARGO_HOME" "$SCCACHE_DIR"
+          ci-disk-guard /mnt/ci-scratch 60
+          ci-disk-guard /mnt/ci-cache 20
+          rustc --version
+          cargo --version
+          sccache --show-stats || true
+          df -h / /mnt/ci-scratch /mnt/ci-cache || true
+      - name: Run xtask CI direct on host
+        run: cargo run -p xtask -- ci
+      - name: CPX42 stats and cleanup
+        if: always()
+        run: |
+          sccache --show-stats || true
+          df -h / /mnt/ci-scratch /mnt/ci-cache || true
+          du -sh "$CARGO_TARGET_DIR" "$TMPDIR" 2>/dev/null || true
+          rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+
   perfgate-rust-small-cx53:
     name: Perfgate Rust Small on CX53
     needs: route-perfgate-rust-small
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'cx53'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.route-perfgate-rust-small.outputs.target == 'cx53'
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, Linux, X64, em-ci, cx53, rust-small, trusted-pr]
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     timeout-minutes: 45
     env:
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -227,19 +357,16 @@ jobs:
       PERFGATE_CI_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Guard disk
         run: |
           set -euo pipefail
           ci-disk-guard /mnt/ci-scratch 100
           ci-disk-guard /mnt/docker 20
           ci-disk-guard /mnt/ci-cache 20
-
       - name: Run xtask CI in em-ci-rust
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
-
           docker run --rm \
             --label em.ci=true \
             --cpus="14" \
@@ -266,7 +393,6 @@ jobs:
                 rustc --version
                 cargo --version
                 cargo run -p xtask -- ci'
-
       - name: Cleanup scratch
         if: always()
         run: |
@@ -276,7 +402,6 @@ jobs:
             -v /mnt/ci-scratch:/mnt/ci-scratch \
             em-ci-rust:1.95 \
             -c 'rm -rf "/mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}" "/mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}"' || true
-
       - name: Disk report
         if: always()
         run: |
@@ -286,45 +411,52 @@ jobs:
   perfgate-rust-small-github:
     name: Perfgate Rust Small on GitHub Hosted
     needs: route-perfgate-rust-small
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'github' && needs.route-perfgate-rust-small.outputs.fallback_allowed == 'true'
-    runs-on: self-hosted
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      needs.route-perfgate-rust-small.outputs.target == 'github' &&
+      needs.route-perfgate-rust-small.outputs.fallback_allowed == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       PERFGATE_CI_TARGET_DIR: target/perfgate-ci
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
-
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
-      - name: Run tiny fallback check
+      - name: Run bounded fallback check
         run: cargo check --workspace --all-targets
 
   perfgate-windows:
     name: Perfgate Windows
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx43
+        - rust-medium
+        - trusted-pr
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
-
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
       - name: Run xtask CI
         run: cargo run -p xtask -- ci
 
@@ -332,8 +464,18 @@ jobs:
     name: Perfgate Server Integration
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx43
+        - rust-medium
+        - trusted-pr
     timeout-minutes: 30
     services:
       postgres:
@@ -351,32 +493,32 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
-
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
       - name: Run live baseline server CLI workflows
         env:
           PERFGATE_TEST_POSTGRES_URL: postgres://perfgate@localhost:5432/perfgate
         run: cargo test -p perfgate-cli --test cli_server_tests live_server -- --nocapture
 
-  perfgate-ci-result:
+  perfgate-rust-small-result:
     name: Perfgate Swarm CI Result
     needs:
+      - runner-routing-policy
+      - runner-routing-policy-fork
       - cargo-deny
       - route-perfgate-rust-small
       - perfgate-rust-small-cx43
+      - perfgate-rust-small-cpx42
       - perfgate-rust-small-cx53
       - perfgate-rust-small-github
       - perfgate-windows
       - perfgate-server-integration
     if: always() && github.repository == 'EffortlessMetrics/perfgate-swarm'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Evaluate result
         run: |
@@ -396,17 +538,40 @@ jobs:
             fi
           }
 
+          test_optional_skip_or_success() {
+            local name="$1"
+            local result="$2"
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::${name} result was ${result}, expected success or skipped"
+              exit 1
+            fi
+          }
+
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
+            test_required "runner-routing-policy-fork" "${{ needs.runner-routing-policy-fork.result }}"
+            echo "Fork PR detected; self-hosted routing intentionally skipped."
+            exit 0
+          fi
+
+          test_required "runner-routing-policy" "${{ needs.runner-routing-policy.result }}"
           test_required "route-perfgate-rust-small" "${{ needs.route-perfgate-rust-small.result }}"
 
           if [[ "${{ github.event_name }}" != "pull_request" ]] || [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]]; then
             test_required "cargo-deny" "${{ needs.cargo-deny.result }}"
             test_required "perfgate-windows" "${{ needs.perfgate-windows.result }}"
             test_required "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
+          else
+            test_optional_skip_or_success "cargo-deny" "${{ needs.cargo-deny.result }}"
+            test_optional_skip_or_success "perfgate-windows" "${{ needs.perfgate-windows.result }}"
+            test_optional_skip_or_success "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
           fi
 
           case "${route_target}" in
             cx43)
               test_required "perfgate-rust-small-cx43" "${{ needs.perfgate-rust-small-cx43.result }}"
+              ;;
+            cpx42)
+              test_required "perfgate-rust-small-cpx42" "${{ needs.perfgate-rust-small-cpx42.result }}"
               ;;
             cx53)
               test_required "perfgate-rust-small-cx53" "${{ needs.perfgate-rust-small-cx53.result }}"

@@ -16,7 +16,16 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx43
+        - rust-medium
+        - trusted-pr
     steps:
       - uses: actions/checkout@v4
 

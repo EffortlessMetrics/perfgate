@@ -23,7 +23,16 @@ on:
 
 jobs:
   mutation-test:
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     timeout-minutes: 120 # Mutation testing can take a while
 
     steps:

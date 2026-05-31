@@ -12,7 +12,16 @@ permissions:
 jobs:
   nightly:
     name: Nightly Calibration Lane
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
