@@ -8,7 +8,8 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 - Spec: behavior contracts and required evidence.
 - ADR: durable architecture decisions.
 - Lane tracker: focused implementation sequence.
-- Support map: what users may claim and what proves it.
+- Support map: Rails-owned support claims and cross-links to product-claim
+  proof. Broad product claims stay in `docs/status/PRODUCT_CLAIMS.md`.
 - Policy reference: where live ledgers are governed.
 - Closeout: what landed, what proved it, and what remains.
 

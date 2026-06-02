@@ -9,3 +9,17 @@ references = [
   "docs/rails.md",
   "docs/contributing/rails.md",
 ]
+
+[[claim]]
+id = "PERFGATE-CLAIM-0002"
+statement = "Perfgate product claims are governed by docs/status/PRODUCT_CLAIMS.md; the Rails support map records Rails-owned support claims and cross-links instead of duplicating every product claim."
+proof = [
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+]
+references = [
+  "docs/status/PRODUCT_CLAIMS.md",
+  "docs/status/SUPPORT_TIERS.md",
+  "docs/status/PROOF_FRESHNESS.md",
+  "docs/contributing/rails.md",
+]
