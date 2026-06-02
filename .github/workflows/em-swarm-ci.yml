@@ -51,10 +51,12 @@ jobs:
 
   cargo-deny:
     name: cargo-deny
+    needs: route-perfgate-rust-small
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) &&
+      (github.event_name != 'push' || needs.route-perfgate-rust-small.outputs.target != 'github')
     runs-on:
       group: em-ci-small
       labels:
@@ -433,10 +435,12 @@ jobs:
 
   perfgate-windows:
     name: Perfgate Windows
+    needs: route-perfgate-rust-small
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) &&
+      (github.event_name != 'push' || needs.route-perfgate-rust-small.outputs.target != 'github')
     runs-on:
       group: em-ci-small
       labels:
@@ -462,10 +466,12 @@ jobs:
 
   perfgate-server-integration:
     name: Perfgate Server Integration
+    needs: route-perfgate-rust-small
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) &&
+      (github.event_name != 'push' || needs.route-perfgate-rust-small.outputs.target != 'github')
     runs-on:
       group: em-ci-small
       labels:
@@ -556,7 +562,11 @@ jobs:
           test_required "runner-routing-policy" "${{ needs.runner-routing-policy.result }}"
           test_required "route-perfgate-rust-small" "${{ needs.route-perfgate-rust-small.result }}"
 
-          if [[ "${{ github.event_name }}" != "pull_request" ]] || [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]]; then
+          if [[ "${{ github.event_name }}" == "push" && "${route_target}" == "github" ]]; then
+            test_optional_skip_or_success "cargo-deny" "${{ needs.cargo-deny.result }}"
+            test_optional_skip_or_success "perfgate-windows" "${{ needs.perfgate-windows.result }}"
+            test_optional_skip_or_success "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
+          elif [[ "${{ github.event_name }}" != "pull_request" ]] || [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]]; then
             test_required "cargo-deny" "${{ needs.cargo-deny.result }}"
             test_required "perfgate-windows" "${{ needs.perfgate-windows.result }}"
             test_required "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
