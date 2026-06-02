@@ -552,7 +552,7 @@ mod tests {
         VerdictCounts, VerdictStatus,
     };
 
-    type TestResult = anyhow::Result<()>;
+    type TestResult<T = ()> = anyhow::Result<T>;
 
     fn dummy_receipt(bench: &str) -> RunReceipt {
         RunReceipt {
@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_filters_by_git_ref_git_sha_and_tags() {
+    async fn list_filters_by_git_ref_git_sha_and_tags() -> TestResult {
         let s = InMemoryStore::new();
         s.create(&record(
             "p",
@@ -862,8 +862,7 @@ mod tests {
             Some("aaa"),
             vec!["release", "smoke"],
         ))
-        .await
-        .unwrap();
+        .await?;
         s.create(&record(
             "p",
             "b",
@@ -872,8 +871,7 @@ mod tests {
             Some("bbb"),
             vec!["smoke"],
         ))
-        .await
-        .unwrap();
+        .await?;
         s.create(&record(
             "p",
             "b",
@@ -882,15 +880,14 @@ mod tests {
             Some("ccc"),
             vec!["release"],
         ))
-        .await
-        .unwrap();
+        .await?;
 
         // git_ref filter
         let q = ListBaselinesQuery {
             git_ref: Some("refs/heads/main".into()),
             ..Default::default()
         };
-        let resp = s.list("p", &q).await.unwrap();
+        let resp = s.list("p", &q).await?;
         assert_eq!(resp.pagination.total, 2);
 
         // git_sha filter
@@ -898,7 +895,7 @@ mod tests {
             git_sha: Some("bbb".into()),
             ..Default::default()
         };
-        let resp = s.list("p", &q).await.unwrap();
+        let resp = s.list("p", &q).await?;
         assert_eq!(resp.pagination.total, 1);
         assert_eq!(resp.baselines[0].version, "v2");
 
@@ -907,42 +904,43 @@ mod tests {
             tags: Some("release,smoke".into()),
             ..Default::default()
         };
-        let resp = s.list("p", &q).await.unwrap();
+        let resp = s.list("p", &q).await?;
         assert_eq!(resp.pagination.total, 1);
         assert_eq!(resp.baselines[0].version, "v1");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_filters_by_since_until_window() {
+    async fn list_filters_by_since_until_window() -> TestResult {
         let s = InMemoryStore::new();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        s.create(&record_at("p", "b", "v2", day(5))).await.unwrap();
-        s.create(&record_at("p", "b", "v3", day(10))).await.unwrap();
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        s.create(&record_at("p", "b", "v2", day(5))).await?;
+        s.create(&record_at("p", "b", "v3", day(10))).await?;
 
         let q = ListBaselinesQuery {
             since: Some(day(4)),
             until: Some(day(9)),
             ..Default::default()
         };
-        let resp = s.list("p", &q).await.unwrap();
+        let resp = s.list("p", &q).await?;
         assert_eq!(resp.pagination.total, 1);
         assert_eq!(resp.baselines[0].version, "v2");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_paginates_in_descending_created_at_order() {
+    async fn list_paginates_in_descending_created_at_order() -> TestResult {
         let s = InMemoryStore::new();
         for i in 0..5 {
             s.create(&record_at("p", "b", &format!("v{i}"), day(i)))
-                .await
-                .unwrap();
+                .await?;
         }
         let q = ListBaselinesQuery {
             limit: 2,
             offset: 0,
             ..Default::default()
         };
-        let page1 = s.list("p", &q).await.unwrap();
+        let page1 = s.list("p", &q).await?;
         assert_eq!(page1.baselines.len(), 2);
         assert!(page1.pagination.has_more);
         assert_eq!(page1.pagination.total, 5);
@@ -955,112 +953,105 @@ mod tests {
             offset: 4,
             ..Default::default()
         };
-        let last = s.list("p", &q).await.unwrap();
+        let last = s.list("p", &q).await?;
         assert_eq!(last.baselines.len(), 1);
         assert!(!last.pagination.has_more);
         assert_eq!(last.baselines[0].version, "v0");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_excludes_deleted_and_other_projects() {
+    async fn list_excludes_deleted_and_other_projects() -> TestResult {
         let s = InMemoryStore::new();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        s.create(&record_at("p", "b", "v2", day(2))).await.unwrap();
-        s.create(&record_at("other", "b", "v1", day(3)))
-            .await
-            .unwrap();
-        s.delete("p", "b", "v1").await.unwrap();
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        s.create(&record_at("p", "b", "v2", day(2))).await?;
+        s.create(&record_at("other", "b", "v1", day(3))).await?;
+        s.delete("p", "b", "v1").await?;
 
-        let resp = s.list("p", &ListBaselinesQuery::default()).await.unwrap();
+        let resp = s.list("p", &ListBaselinesQuery::default()).await?;
         assert_eq!(resp.pagination.total, 1);
         assert_eq!(resp.baselines[0].version, "v2");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_returns_receipt_in_summary_and_respects_include_receipt_flag() {
+    async fn list_returns_receipt_in_summary_and_respects_include_receipt_flag() -> TestResult {
         // The InMemoryStore relies on the BaselineRecord -> BaselineSummary `From`
         // impl, which always populates `receipt: Some(...)`. The include_receipt
         // flag forces the same overwrite. This test pins that current behavior
         // so a future refactor that intentionally hides receipts behind the flag
         // will trip and prompt an update.
         let s = InMemoryStore::new();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        let default = s.list("p", &ListBaselinesQuery::default()).await.unwrap();
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        let default = s.list("p", &ListBaselinesQuery::default()).await?;
         assert!(default.baselines[0].receipt.is_some());
         let with_receipt = s
             .list("p", &ListBaselinesQuery::new().with_receipts())
-            .await
-            .unwrap();
+            .await?;
         assert!(with_receipt.baselines[0].receipt.is_some());
-        assert_eq!(
-            default.baselines[0].receipt.as_ref().unwrap().bench.name,
-            with_receipt.baselines[0]
-                .receipt
-                .as_ref()
-                .unwrap()
-                .bench
-                .name
-        );
+        let default_receipt = default.baselines[0]
+            .receipt
+            .as_ref()
+            .context("default summary should include receipt")?;
+        let explicit_receipt = with_receipt.baselines[0]
+            .receipt
+            .as_ref()
+            .context("explicit summary should include receipt")?;
+        assert_eq!(default_receipt.bench.name, explicit_receipt.bench.name);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_versions_marks_newest_as_current_and_sorts_desc() {
+    async fn list_versions_marks_newest_as_current_and_sorts_desc() -> TestResult {
         let s = InMemoryStore::new();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        s.create(&record_at("p", "b", "v3", day(3))).await.unwrap();
-        s.create(&record_at("p", "b", "v2", day(2))).await.unwrap();
-        let versions: Vec<BaselineVersion> = s.list_versions("p", "b").await.unwrap();
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        s.create(&record_at("p", "b", "v3", day(3))).await?;
+        s.create(&record_at("p", "b", "v2", day(2))).await?;
+        let versions: Vec<BaselineVersion> = s.list_versions("p", "b").await?;
         let names: Vec<_> = versions.iter().map(|v| v.version.clone()).collect();
         assert_eq!(names, vec!["v3", "v2", "v1"]);
         assert!(versions[0].is_current);
         assert!(versions[1..].iter().all(|v| !v.is_current));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_versions_skips_deleted_versions() {
+    async fn list_versions_skips_deleted_versions() -> TestResult {
         let s = InMemoryStore::new();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        s.create(&record_at("p", "b", "v2", day(2))).await.unwrap();
-        s.delete("p", "b", "v2").await.unwrap();
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        s.create(&record_at("p", "b", "v2", day(2))).await?;
+        s.delete("p", "b", "v2").await?;
         let names: Vec<_> = s
             .list_versions("p", "b")
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .map(|v| v.version)
             .collect();
         assert_eq!(names, vec!["v1"]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn create_verdict_and_list_filters_by_status_and_benchmark() {
+    async fn create_verdict_and_list_filters_by_status_and_benchmark() -> TestResult {
         let s = InMemoryStore::new();
         s.create_verdict(&verdict_at("p", "b1", VerdictStatus::Pass, day(1)))
-            .await
-            .unwrap();
+            .await?;
         s.create_verdict(&verdict_at("p", "b1", VerdictStatus::Fail, day(2)))
-            .await
-            .unwrap();
+            .await?;
         s.create_verdict(&verdict_at("p", "b2", VerdictStatus::Pass, day(3)))
-            .await
-            .unwrap();
+            .await?;
         s.create_verdict(&verdict_at("other", "b1", VerdictStatus::Pass, day(4)))
-            .await
-            .unwrap();
+            .await?;
 
         // project isolation
-        let all = s
-            .list_verdicts("p", &ListVerdictsQuery::default())
-            .await
-            .unwrap();
+        let all = s.list_verdicts("p", &ListVerdictsQuery::default()).await?;
         assert_eq!(all.pagination.total, 3);
         // desc by created_at
         assert_eq!(all.verdicts[0].benchmark, "b2");
 
         let only_b1 = s
             .list_verdicts("p", &ListVerdictsQuery::new().with_benchmark("b1"))
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(only_b1.pagination.total, 2);
 
         let only_fail = s
@@ -1068,39 +1059,39 @@ mod tests {
                 "p",
                 &ListVerdictsQuery::new().with_status(VerdictStatus::Fail),
             )
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(only_fail.pagination.total, 1);
         assert_eq!(only_fail.verdicts[0].benchmark, "b1");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_verdicts_filters_by_time_window_and_paginates() {
+    async fn list_verdicts_filters_by_time_window_and_paginates() -> TestResult {
         let s = InMemoryStore::new();
         for i in 0..5 {
             s.create_verdict(&verdict_at("p", "b", VerdictStatus::Pass, day(i)))
-                .await
-                .unwrap();
+                .await?;
         }
         let q = ListVerdictsQuery {
             since: Some(day(1)),
             until: Some(day(3)),
             ..Default::default()
         };
-        let resp = s.list_verdicts("p", &q).await.unwrap();
+        let resp = s.list_verdicts("p", &q).await?;
         assert_eq!(resp.pagination.total, 3);
 
         let q = ListVerdictsQuery::new().with_limit(2).with_offset(2);
-        let resp = s.list_verdicts("p", &q).await.unwrap();
+        let resp = s.list_verdicts("p", &q).await?;
         assert_eq!(resp.verdicts.len(), 2);
         // With 5 total and offset=2/limit=2 we still have 1 page remaining.
         assert!(resp.pagination.has_more);
         assert_eq!(resp.pagination.total, 5);
 
         let q = ListVerdictsQuery::new().with_limit(2).with_offset(4);
-        let resp = s.list_verdicts("p", &q).await.unwrap();
+        let resp = s.list_verdicts("p", &q).await?;
         assert_eq!(resp.verdicts.len(), 1);
         assert!(!resp.pagination.has_more);
+        Ok(())
     }
 
     fn decision_at(
@@ -1111,7 +1102,7 @@ mod tests {
         accepted_rules: Vec<&str>,
         review_required: bool,
         ts: chrono::DateTime<Utc>,
-    ) -> DecisionRecord {
+    ) -> TestResult<DecisionRecord> {
         let tradeoff_json = serde_json::json!({
             "schema": "perfgate.tradeoff.v1",
             "tool": {"name": "perfgate", "version": "0.0.0-test"},
@@ -1139,9 +1130,9 @@ mod tests {
             }
         });
         let tradeoff: perfgate_types::TradeoffReceipt =
-            serde_json::from_value(tradeoff_json).expect("tradeoff fixture must parse");
+            serde_json::from_value(tradeoff_json).context("tradeoff fixture must parse")?;
 
-        DecisionRecord {
+        Ok(DecisionRecord {
             schema: perfgate_types::baseline_service::DECISION_RECORD_SCHEMA_V1.to_string(),
             id: format!("dec-{}", ts.timestamp_millis()),
             project: project.to_string(),
@@ -1157,11 +1148,11 @@ mod tests {
             tradeoff_receipt: tradeoff,
             artifact_index: None,
             created_at: ts,
-        }
+        })
     }
 
     #[tokio::test]
-    async fn create_and_latest_decision_returns_max_by_created_at() {
+    async fn create_and_latest_decision_returns_max_by_created_at() -> TestResult {
         let s = InMemoryStore::new();
         for (project, ts) in [
             ("p", day(1)),
@@ -1177,22 +1168,27 @@ mod tests {
                 vec![],
                 false,
                 ts,
-            ))
-            .await
-            .unwrap();
+            )?)
+            .await?;
         }
-        let latest = s.latest_decision("p").await.unwrap().unwrap();
+        let latest = s
+            .latest_decision("p")
+            .await?
+            .context("latest decision should exist")?;
         assert_eq!(latest.created_at, day(5));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn latest_decision_returns_none_when_empty() {
+    async fn latest_decision_returns_none_when_empty() -> TestResult {
         let s = InMemoryStore::new();
-        assert!(s.latest_decision("p").await.unwrap().is_none());
+        assert!(s.latest_decision("p").await?.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_decisions_filters_by_scenario_status_verdict_review_required_accepted_and_rule() {
+    async fn list_decisions_filters_by_scenario_status_verdict_review_required_accepted_and_rule()
+    -> TestResult {
         let s = InMemoryStore::new();
         // d1: scenario=a, status=Pass, verdict=Pass, review=false, accepted=[r1]
         s.create_decision(&decision_at(
@@ -1203,9 +1199,8 @@ mod tests {
             vec!["r1"],
             false,
             day(1),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
         // d2: scenario=b, status=Warn, verdict=Warn, review=true, accepted=[]
         s.create_decision(&decision_at(
             "p",
@@ -1215,9 +1210,8 @@ mod tests {
             vec![],
             true,
             day(2),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
         // d3: scenario=a, status=Fail, verdict=Fail, review=false, accepted=[r1,r2]
         s.create_decision(&decision_at(
             "p",
@@ -1227,36 +1221,36 @@ mod tests {
             vec!["r1", "r2"],
             false,
             day(3),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
 
         let q = ListDecisionsQuery::new().with_scenario("a");
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 2);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 2);
 
         let q = ListDecisionsQuery::new().with_status(MetricStatus::Fail);
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 1);
 
         let q = ListDecisionsQuery::new().with_verdict(VerdictStatus::Warn);
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 1);
 
         let q = ListDecisionsQuery::new().with_review_required(true);
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 1);
 
         // accepted=true => has any accepted_rules
         let q = ListDecisionsQuery::new().with_accepted(true);
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 2);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 2);
 
         let q = ListDecisionsQuery::new().with_accepted(false);
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 1);
 
         // rule filter matches against accepted_rules
         let q = ListDecisionsQuery::new().with_rule("r2");
-        assert_eq!(s.list_decisions("p", &q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_decisions("p", &q).await?.pagination.total, 1);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_decisions_sorts_desc_and_paginates() {
+    async fn list_decisions_sorts_desc_and_paginates() -> TestResult {
         let s = InMemoryStore::new();
         for i in 0..4 {
             s.create_decision(&decision_at(
@@ -1267,16 +1261,15 @@ mod tests {
                 vec![],
                 false,
                 day(i),
-            ))
-            .await
-            .unwrap();
+            )?)
+            .await?;
         }
         let q = ListDecisionsQuery {
             limit: 2,
             offset: 0,
             ..Default::default()
         };
-        let page1 = s.list_decisions("p", &q).await.unwrap();
+        let page1 = s.list_decisions("p", &q).await?;
         assert!(page1.pagination.has_more);
         assert_eq!(page1.decisions[0].created_at, day(3));
         assert_eq!(page1.decisions[1].created_at, day(2));
@@ -1285,12 +1278,13 @@ mod tests {
             offset: 2,
             ..Default::default()
         };
-        let page2 = s.list_decisions("p", &q).await.unwrap();
+        let page2 = s.list_decisions("p", &q).await?;
         assert!(!page2.pagination.has_more);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn prune_decisions_dry_run_does_not_remove_anything() {
+    async fn prune_decisions_dry_run_does_not_remove_anything() -> TestResult {
         let s = InMemoryStore::new();
         s.create_decision(&decision_at(
             "p",
@@ -1300,9 +1294,8 @@ mod tests {
             vec![],
             false,
             day(1),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
         s.create_decision(&decision_at(
             "p",
             Some("a"),
@@ -1311,27 +1304,26 @@ mod tests {
             vec![],
             false,
             day(5),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
 
-        let resp = s.prune_decisions("p", day(3), true).await.unwrap();
+        let resp = s.prune_decisions("p", day(3), true).await?;
         assert_eq!(resp.matched, 1);
         assert_eq!(resp.deleted, 0);
         assert!(resp.dry_run);
         // Still two decisions in the store
         assert_eq!(
             s.list_decisions("p", &ListDecisionsQuery::default())
-                .await
-                .unwrap()
+                .await?
                 .pagination
                 .total,
             2
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn prune_decisions_removes_older_and_respects_project_scope() {
+    async fn prune_decisions_removes_older_and_respects_project_scope() -> TestResult {
         let s = InMemoryStore::new();
         s.create_decision(&decision_at(
             "p",
@@ -1341,9 +1333,8 @@ mod tests {
             vec![],
             false,
             day(1),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
         s.create_decision(&decision_at(
             "p",
             Some("a"),
@@ -1352,9 +1343,8 @@ mod tests {
             vec![],
             false,
             day(5),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
         // Old decision in another project must not be pruned.
         s.create_decision(&decision_at(
             "other",
@@ -1364,11 +1354,10 @@ mod tests {
             vec![],
             false,
             day(1),
-        ))
-        .await
-        .unwrap();
+        )?)
+        .await?;
 
-        let resp = s.prune_decisions("p", day(3), false).await.unwrap();
+        let resp = s.prune_decisions("p", day(3), false).await?;
         assert_eq!(resp.matched, 1);
         assert_eq!(resp.deleted, 1);
         assert!(!resp.dry_run);
@@ -1377,8 +1366,7 @@ mod tests {
         // p has only the newer one left
         assert_eq!(
             s.list_decisions("p", &ListDecisionsQuery::default())
-                .await
-                .unwrap()
+                .await?
                 .pagination
                 .total,
             1
@@ -1386,16 +1374,17 @@ mod tests {
         // other project untouched
         assert_eq!(
             s.list_decisions("other", &ListDecisionsQuery::default())
-                .await
-                .unwrap()
+                .await?
                 .pagination
                 .total,
             1
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn audit_log_event_then_list_filters_by_project_actor_action_resource_and_time() {
+    async fn audit_log_event_then_list_filters_by_project_actor_action_resource_and_time()
+    -> TestResult {
         let s = InMemoryStore::new();
         s.log_event(&audit_at(
             "p",
@@ -1405,8 +1394,7 @@ mod tests {
             "v1",
             day(1),
         ))
-        .await
-        .unwrap();
+        .await?;
         s.log_event(&audit_at(
             "p",
             "bob",
@@ -1415,8 +1403,7 @@ mod tests {
             "v2",
             day(2),
         ))
-        .await
-        .unwrap();
+        .await?;
         s.log_event(&audit_at(
             "other",
             "alice",
@@ -1425,36 +1412,35 @@ mod tests {
             "v3",
             day(3),
         ))
-        .await
-        .unwrap();
+        .await?;
 
         // project filter
         let q = ListAuditEventsQuery {
             project: Some("p".into()),
             ..Default::default()
         };
-        assert_eq!(s.list_events(&q).await.unwrap().pagination.total, 2);
+        assert_eq!(s.list_events(&q).await?.pagination.total, 2);
 
         // actor filter
         let q = ListAuditEventsQuery {
             actor: Some("alice".into()),
             ..Default::default()
         };
-        assert_eq!(s.list_events(&q).await.unwrap().pagination.total, 2);
+        assert_eq!(s.list_events(&q).await?.pagination.total, 2);
 
         // action filter (matches the Display impl: lowercase)
         let q = ListAuditEventsQuery {
             action: Some("delete".into()),
             ..Default::default()
         };
-        assert_eq!(s.list_events(&q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_events(&q).await?.pagination.total, 1);
 
         // resource_type filter
         let q = ListAuditEventsQuery {
             resource_type: Some("baseline".into()),
             ..Default::default()
         };
-        assert_eq!(s.list_events(&q).await.unwrap().pagination.total, 3);
+        assert_eq!(s.list_events(&q).await?.pagination.total, 3);
 
         // time window filter
         let q = ListAuditEventsQuery {
@@ -1462,11 +1448,12 @@ mod tests {
             until: Some(day(2)),
             ..Default::default()
         };
-        assert_eq!(s.list_events(&q).await.unwrap().pagination.total, 1);
+        assert_eq!(s.list_events(&q).await?.pagination.total, 1);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn audit_list_sorts_desc_and_paginates() {
+    async fn audit_list_sorts_desc_and_paginates() -> TestResult {
         let s = InMemoryStore::new();
         for i in 0..5 {
             s.log_event(&audit_at(
@@ -1477,19 +1464,19 @@ mod tests {
                 &format!("v{i}"),
                 day(i),
             ))
-            .await
-            .unwrap();
+            .await?;
         }
         let q = ListAuditEventsQuery {
             limit: 2,
             offset: 0,
             ..Default::default()
         };
-        let page = s.list_events(&q).await.unwrap();
+        let page = s.list_events(&q).await?;
         assert!(page.pagination.has_more);
         assert_eq!(page.events.len(), 2);
         assert_eq!(page.events[0].resource_id, "v4");
         assert_eq!(page.events[1].resource_id, "v3");
+        Ok(())
     }
 
     #[tokio::test]
@@ -1519,7 +1506,7 @@ mod tests {
                 vec!["runtime_for_memory"],
                 false,
                 day(1),
-            ))
+            )?)
             .await?;
         source
             .create_decision(&decision_at(
@@ -1530,7 +1517,7 @@ mod tests {
                 vec!["memory_for_runtime"],
                 true,
                 day(5),
-            ))
+            )?)
             .await?;
         source
             .log_event(&audit_at(
