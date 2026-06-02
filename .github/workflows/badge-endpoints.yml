@@ -16,16 +16,8 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on:
-      group: em-ci-small
-      labels:
-        - self-hosted
-        - linux
-        - x64
-        - em-ci
-        - cx43
-        - rust-medium
-        - trusted-pr
+    # Generated badge metadata is not performance proof; keep it off routed Rust runners.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
