@@ -18,6 +18,7 @@ const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
 
 const BADGE_ENDPOINT_DIR: &str = "badges";
 const BADGE_ENDPOINT_TARGET_DIR: &str = "target/xtask/badges";
+const DOGFOOD_BASELINE_ROOT: &str = "baselines/gha-ubuntu-24.04-x86_64/";
 const RIPR_BADGE_VERSION: &str = "0.5.0";
 const RIPR_PR_DIR: &str = "target/ripr/pr";
 const RIPR_REVIEW_DIR: &str = "target/ripr/review";
@@ -1486,6 +1487,10 @@ fn collect_workflow_policy_errors_from_entries<'a>(
             }
         };
 
+        if is_perfgate_nightly_workflow(path) {
+            errors.extend(collect_nightly_baseline_workflow_errors(path, &workflow));
+        }
+
         for (job_name, job) in workflow.jobs {
             for (index, step) in job.steps.iter().enumerate() {
                 let Some(run) = step.run.as_deref() else {
@@ -1504,6 +1509,52 @@ fn collect_workflow_policy_errors_from_entries<'a>(
                 }
             }
         }
+    }
+
+    errors
+}
+
+fn is_perfgate_nightly_workflow(path: &str) -> bool {
+    path.replace('\\', "/")
+        .ends_with(".github/workflows/perfgate-nightly.yml")
+}
+
+fn collect_nightly_baseline_workflow_errors(
+    path: &str,
+    workflow: &WorkflowDefinition,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let Some(job) = workflow.jobs.get("nightly") else {
+        errors.push(format!("{path} must define nightly baseline job `nightly`"));
+        return errors;
+    };
+    let Some(step) = job
+        .steps
+        .iter()
+        .find(|step| step.name.as_deref() == Some("Create or update baseline PR"))
+    else {
+        errors.push(format!(
+            "{path} must define `Create or update baseline PR` for generated baseline review"
+        ));
+        return errors;
+    };
+    let Some(run) = step.run.as_deref() else {
+        errors.push(format!(
+            "{path} `Create or update baseline PR` must include a run script"
+        ));
+        return errors;
+    };
+
+    let expected_git_add = format!("git add {DOGFOOD_BASELINE_ROOT} baselines/trends/");
+    if !run.contains(&expected_git_add) {
+        errors.push(format!(
+            "{path} baseline PR step must stage `{DOGFOOD_BASELINE_ROOT}` and `baselines/trends/`"
+        ));
+    }
+    if run.contains("gha-self-hosted-x86_64") {
+        errors.push(format!(
+            "{path} baseline PR step must not reference stale `gha-self-hosted-x86_64` baselines"
+        ));
     }
 
     errors
@@ -4335,7 +4386,7 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
         }
         DogfoodAction::Promote => {
             println!("Promoting nightly outputs to baselines...");
-            let target_root = Path::new("baselines/gha-ubuntu-24.04-x86_64/");
+            let target_root = Path::new(DOGFOOD_BASELINE_ROOT);
             fs::create_dir_all(target_root)?;
 
             let pattern = "artifacts/perfgate/extras/**/perfgate.run.v1.json";
@@ -9928,6 +9979,9 @@ name: perfgate-nightly
 jobs:
   nightly:
     steps:
+      - name: Create or update baseline PR
+        run: |
+          git add baselines/gha-ubuntu-24.04-x86_64/ baselines/trends/
       - name: Merge generated PR
         run: |
           gh pr merge "$BRANCH_NAME" --auto --merge
@@ -9952,6 +10006,10 @@ name: perfgate-nightly
 jobs:
   nightly:
     steps:
+      - name: Create or update baseline PR
+        run: |
+          git add baselines/gha-ubuntu-24.04-x86_64/ baselines/trends/
+          echo "Automatic nightly baseline calibration and trend persistence for gha-ubuntu-24.04-x86_64."
       - name: Explain generated PR handling
         run: |
           # gh pr merge "$BRANCH_NAME" --auto --merge
@@ -9960,6 +10018,31 @@ jobs:
         )]);
 
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn workflow_policy_rejects_stale_nightly_baseline_root() {
+        let errors = collect_workflow_policy_errors_from_entries([(
+            ".github/workflows/perfgate-nightly.yml",
+            r#"
+name: perfgate-nightly
+jobs:
+  nightly:
+    steps:
+      - name: Create or update baseline PR
+        run: |
+          git add baselines/gha-self-hosted-x86_64/ baselines/trends/
+          echo "Automatic nightly baseline calibration and trend persistence for gha-self-hosted-x86_64."
+"#,
+        )]);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("stale `gha-self-hosted-x86_64`")),
+            "errors should mention stale nightly baseline root: {:?}",
+            errors
+        );
     }
 
     #[test]
