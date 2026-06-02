@@ -10,9 +10,14 @@ Developer automation crate for the perfgate workspace.
   opt-in package-list and publish dry-run proof for release prep.
 - Validates GitHub Action install and release asset wiring (`action-check`).
 - Validates public crate dispositions and compatibility-wrapper isolation (`public-surface`).
+- Validates source-of-truth rails, source docs, product-claim proof maps, and
+  generated-file policy (`rails check`, `docs-source-check`,
+  `product-claims-check`, `check-file-policy`).
 - Enforces workspace architecture dependency rules (`arch`).
+- Checks generated documentation drift (`docs-check`).
 - Validates documentation CLI examples plus TOML, JSON, and YAML snippets (`doc-test`).
 - Validates fixtures against vendored contracts (`conform`).
+- Runs the fast local PR gate bundle (`pr`).
 - Syncs golden fixtures into `contracts/fixtures` (`sync-fixtures`).
 - Runs mutation testing helpers (`mutants`).
 
@@ -32,9 +37,15 @@ cargo run -p xtask -- publish-check --package-list
 cargo run -p xtask -- publish-check --dry-run --package perfgate-types
 cargo run -p xtask -- action-check
 cargo run -p xtask -- public-surface
+cargo run -p xtask -- rails check
 cargo run -p xtask -- arch
+cargo run -p xtask -- docs-check
 cargo run -p xtask -- doc-test
+cargo run -p xtask -- docs-source-check
+cargo run -p xtask -- product-claims-check
+cargo run -p xtask -- check-file-policy
 cargo run -p xtask -- conform
+cargo run -p xtask -- pr
 cargo run -p xtask -- mutants --crate perfgate-domain --summary  # logical alias for perfgate::domain
 ```
 

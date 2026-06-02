@@ -43,8 +43,15 @@ cargo test test_name
 cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
 
-# Full CI check (fmt, clippy, test, schema generation)
+# Full CI check (fmt, clippy, test, schemas, docs/source rails, product claims)
 cargo run -p xtask -- ci
+
+# Fast PR/source-of-truth checks
+cargo run -p xtask -- pr
+cargo run -p xtask -- rails check
+cargo run -p xtask -- docs-source-check
+cargo run -p xtask -- product-claims-check
+cargo run -p xtask -- check-file-policy
 
 # Generate JSON schemas to schemas/
 cargo run -p xtask -- schema
