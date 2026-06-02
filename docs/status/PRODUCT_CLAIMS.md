@@ -16,7 +16,7 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 | PG-CLAIM-0003 | the server decision ledger is optional team-scale history, not a correctness prerequisite. | supported | server, CLI, receipts | next-server-ledger-change |
 | PG-CLAIM-0004 | perfgate has five public crates as the durable public surface. | stable | crates, policy | next-public-surface-change |
 | PG-CLAIM-0005 | Rust 1.95 is the governed MSRV for the current release lane. | stable | toolchain, CI, release | next-msrv-change |
-| PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | supported | policy, CI | next-policy-ledger-change |
+| PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | advisory | policy, CI | next-policy-ledger-change |
 | PG-CLAIM-0007 | the GitHub Action surfaces local reproduction for decision-enabled gates. | supported | action, CLI, artifacts | next-decision-contract-change |
 | PG-CLAIM-0008 | release readiness is proven by the publish-order matrix, not by version bumps alone. | supported | release, crates, CI | next-release |
 | PG-CLAIM-0009 | perfgate supports a first-hour local adoption path. | supported | CLI, docs, artifacts | next-onboarding-change |
@@ -182,7 +182,8 @@ Review after: next-msrv-change
 
 ## PG-CLAIM-0006: Policy-ledger governed exceptions
 
-Tier: supported
+Tier: advisory
+Proof freshness: current
 Surface: policy files, CI, release readiness
 Linked docs: [`POLICY_ALLOWLISTS.md`](../POLICY_ALLOWLISTS.md), [`CLIPPY_POLICY.md`](../CLIPPY_POLICY.md), [`NO_PANIC_POLICY.md`](../NO_PANIC_POLICY.md), [`FILE_POLICY.md`](../FILE_POLICY.md)
 Linked specs: [`PERFGATE-SPEC-0006-policy-ledger-contracts`](../specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md)
@@ -202,10 +203,16 @@ Linked policy:
 Proof commands:
 
 ```bash
-cargo +1.95.0 run -p xtask -- policy check-no-panic-family
 cargo +1.95.0 run -p xtask -- public-surface --strict
 cargo +1.95.0 run -p xtask -- arch
 ```
+
+Known limits:
+
+- `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is currently
+  a drift detector, not passing release proof. On 2026-06-02 it reported
+  `220 no-panic policy issue(s) found`, so do not promote this claim back to
+  `supported` until the no-panic debt is removed or explicitly reviewed.
 
 Review after: next-policy-ledger-change
 
