@@ -542,14 +542,17 @@ impl AuditStore for InMemoryStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Context as _;
     use crate::models::{
         AuditAction, AuditResourceType, BaselineRecordExt, BaselineSource, BaselineVersion,
     };
-    use chrono::{Duration, TimeZone, Utc};
+    use chrono::{Duration, Utc};
     use perfgate_types::{
         BenchMeta, HostInfo, MetricStatus, RunMeta, RunReceipt, Stats, ToolInfo, U64Summary,
         VerdictCounts, VerdictStatus,
     };
+
+    type TestResult = anyhow::Result<()>;
 
     fn dummy_receipt(bench: &str) -> RunReceipt {
         RunReceipt {
@@ -680,26 +683,25 @@ mod tests {
     }
 
     fn day(n: i64) -> chrono::DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap() + Duration::days(n)
+        chrono::DateTime::<Utc>::from_timestamp_nanos(1_767_225_600_000_000_000)
+            + Duration::days(n)
     }
 
     #[tokio::test]
-    async fn new_and_default_produce_empty_stores() {
+    async fn new_and_default_produce_empty_stores() -> TestResult {
         let s = InMemoryStore::new();
         let default_store = InMemoryStore::default();
         for store in [&s, &default_store] {
             assert_eq!(store.backend_type(), "memory");
-            assert!(matches!(
-                store.health_check().await.unwrap(),
-                StorageHealth::Healthy
-            ));
-            assert!(store.get("p", "b", "v").await.unwrap().is_none());
-            assert!(store.get_latest("p", "b").await.unwrap().is_none());
+            assert!(matches!(store.health_check().await?, StorageHealth::Healthy));
+            assert!(store.get("p", "b", "v").await?.is_none());
+            assert!(store.get_latest("p", "b").await?.is_none());
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn create_then_get_round_trip() {
+    async fn create_then_get_round_trip() -> TestResult {
         let s = InMemoryStore::new();
         let r = record(
             "p",
@@ -709,118 +711,143 @@ mod tests {
             Some("abc"),
             vec!["a"],
         );
-        s.create(&r).await.unwrap();
-        let got = s.get("p", "b", "v1").await.unwrap().unwrap();
+        s.create(&r).await?;
+        let got = s
+            .get("p", "b", "v1")
+            .await?
+            .context("created baseline should be present")?;
         assert_eq!(got.version, "v1");
         assert_eq!(got.git_ref.as_deref(), Some("refs/heads/main"));
         assert_eq!(got.tags, vec!["a".to_string()]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn create_duplicate_returns_already_exists() {
+    async fn create_duplicate_returns_already_exists() -> TestResult {
         let s = InMemoryStore::new();
         let r = record("p", "b", "v1", None, None, vec![]);
-        s.create(&r).await.unwrap();
-        let err = s.create(&r).await.expect_err("expected duplicate error");
+        s.create(&r).await?;
+        let err = match s.create(&r).await {
+            Ok(()) => anyhow::bail!("expected duplicate baseline error"),
+            Err(err) => err,
+        };
         assert!(matches!(err, StoreError::AlreadyExists(_)));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn get_treats_soft_deleted_record_as_absent() {
+    async fn get_treats_soft_deleted_record_as_absent() -> TestResult {
         let s = InMemoryStore::new();
         s.create(&record("p", "b", "v1", None, None, vec![]))
-            .await
-            .unwrap();
-        assert!(s.delete("p", "b", "v1").await.unwrap());
-        assert!(s.get("p", "b", "v1").await.unwrap().is_none());
+            .await?;
+        assert!(s.delete("p", "b", "v1").await?);
+        assert!(s.get("p", "b", "v1").await?.is_none());
         // Second soft-delete returns false (already deleted).
-        assert!(!s.delete("p", "b", "v1").await.unwrap());
+        assert!(!s.delete("p", "b", "v1").await?);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn delete_missing_returns_false() {
+    async fn delete_missing_returns_false() -> TestResult {
         let s = InMemoryStore::new();
-        assert!(!s.delete("p", "b", "missing").await.unwrap());
-        assert!(!s.hard_delete("p", "b", "missing").await.unwrap());
+        assert!(!s.delete("p", "b", "missing").await?);
+        assert!(!s.hard_delete("p", "b", "missing").await?);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn hard_delete_removes_record_completely() {
+    async fn hard_delete_removes_record_completely() -> TestResult {
         let s = InMemoryStore::new();
         s.create(&record("p", "b", "v1", None, None, vec![]))
-            .await
-            .unwrap();
-        assert!(s.hard_delete("p", "b", "v1").await.unwrap());
+            .await?;
+        assert!(s.hard_delete("p", "b", "v1").await?);
         // After hard delete the record is truly gone — create must succeed again.
         s.create(&record("p", "b", "v1", None, None, vec![]))
-            .await
-            .unwrap();
+            .await?;
+        Ok(())
     }
 
     #[tokio::test]
-    async fn update_existing_record_succeeds_and_update_missing_errors() {
+    async fn update_existing_record_succeeds_and_update_missing_errors() -> TestResult {
         let s = InMemoryStore::new();
         let mut r = record("p", "b", "v1", None, None, vec!["old"]);
-        s.create(&r).await.unwrap();
+        s.create(&r).await?;
         r.tags = vec!["new".to_string()];
-        s.update(&r).await.unwrap();
-        let got = s.get("p", "b", "v1").await.unwrap().unwrap();
+        s.update(&r).await?;
+        let got = s
+            .get("p", "b", "v1")
+            .await?
+            .context("updated baseline should be present")?;
         assert_eq!(got.tags, vec!["new".to_string()]);
 
         let missing = record("p", "b", "vmissing", None, None, vec![]);
-        let err = s.update(&missing).await.expect_err("expected not found");
+        let err = match s.update(&missing).await {
+            Ok(()) => anyhow::bail!("expected missing baseline update error"),
+            Err(err) => err,
+        };
         assert!(matches!(err, StoreError::NotFound(_)));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn get_latest_returns_record_with_max_created_at_skipping_deleted() {
+    async fn get_latest_returns_record_with_max_created_at_skipping_deleted() -> TestResult {
         let s = InMemoryStore::new();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        s.create(&record_at("p", "b", "v2", day(3))).await.unwrap();
-        s.create(&record_at("p", "b", "v3", day(2))).await.unwrap();
-        let latest = s.get_latest("p", "b").await.unwrap().unwrap();
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        s.create(&record_at("p", "b", "v2", day(3))).await?;
+        s.create(&record_at("p", "b", "v3", day(2))).await?;
+        let latest = s
+            .get_latest("p", "b")
+            .await?
+            .context("latest baseline should exist")?;
         assert_eq!(latest.version, "v2");
 
-        s.delete("p", "b", "v2").await.unwrap();
-        let latest = s.get_latest("p", "b").await.unwrap().unwrap();
+        s.delete("p", "b", "v2").await?;
+        let latest = s
+            .get_latest("p", "b")
+            .await?
+            .context("latest baseline should skip deleted record")?;
         assert_eq!(latest.version, "v3");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn get_latest_filters_by_project_and_benchmark() {
+    async fn get_latest_filters_by_project_and_benchmark() -> TestResult {
         let s = InMemoryStore::new();
         s.create(&record_at("other", "b", "v1", day(5)))
-            .await
-            .unwrap();
+            .await?;
         s.create(&record_at("p", "other-bench", "v1", day(5)))
-            .await
-            .unwrap();
-        s.create(&record_at("p", "b", "v1", day(1))).await.unwrap();
-        let latest = s.get_latest("p", "b").await.unwrap().unwrap();
+            .await?;
+        s.create(&record_at("p", "b", "v1", day(1))).await?;
+        let latest = s
+            .get_latest("p", "b")
+            .await?
+            .context("latest baseline should match project and benchmark")?;
         assert_eq!(latest.project, "p");
         assert_eq!(latest.benchmark, "b");
         assert_eq!(latest.version, "v1");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn list_filters_by_benchmark_exact_and_prefix() {
+    async fn list_filters_by_benchmark_exact_and_prefix() -> TestResult {
         let s = InMemoryStore::new();
         for (b, v) in [("bench-a", "v1"), ("bench-ab", "v1"), ("other", "v1")] {
-            s.create(&record_at("p", b, v, day(1))).await.unwrap();
+            s.create(&record_at("p", b, v, day(1))).await?;
         }
         // Exact match
         let q = ListBaselinesQuery::new().with_benchmark("bench-a");
-        let resp = s.list("p", &q).await.unwrap();
+        let resp = s.list("p", &q).await?;
         let names: Vec<_> = resp.baselines.iter().map(|b| b.benchmark.clone()).collect();
         assert_eq!(names, vec!["bench-a".to_string()]);
         assert_eq!(resp.pagination.total, 1);
 
         // Prefix match
         let q = ListBaselinesQuery::new().with_benchmark_prefix("bench-");
-        let resp = s.list("p", &q).await.unwrap();
+        let resp = s.list("p", &q).await?;
         let mut names: Vec<_> = resp.baselines.iter().map(|b| b.benchmark.clone()).collect();
         names.sort();
         assert_eq!(names, vec!["bench-a".to_string(), "bench-ab".to_string()]);
+        Ok(())
     }
 
     #[tokio::test]
@@ -1465,28 +1492,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn backup_restore_smoke_preserves_latest_history_audit_and_dry_run() {
+    async fn backup_restore_smoke_preserves_latest_history_audit_and_dry_run() -> TestResult {
         let source = InMemoryStore::new();
         source
             .create(&record_at("p", "bench", "v1", day(1)))
-            .await
-            .unwrap();
+            .await?;
         source
             .create(&record_at("p", "bench", "v2", day(3)))
-            .await
-            .unwrap();
+            .await?;
         source
             .create(&record_at("other", "bench", "v1", day(9)))
-            .await
-            .unwrap();
+            .await?;
         source
             .create_verdict(&verdict_at("p", "bench", VerdictStatus::Pass, day(2)))
-            .await
-            .unwrap();
+            .await?;
         source
             .create_verdict(&verdict_at("p", "bench", VerdictStatus::Warn, day(4)))
-            .await
-            .unwrap();
+            .await?;
         source
             .create_decision(&decision_at(
                 "p",
@@ -1497,8 +1519,7 @@ mod tests {
                 false,
                 day(1),
             ))
-            .await
-            .unwrap();
+            .await?;
         source
             .create_decision(&decision_at(
                 "p",
@@ -1509,8 +1530,7 @@ mod tests {
                 true,
                 day(5),
             ))
-            .await
-            .unwrap();
+            .await?;
         source
             .log_event(&audit_at(
                 "p",
@@ -1520,8 +1540,7 @@ mod tests {
                 "decision-old",
                 day(1),
             ))
-            .await
-            .unwrap();
+            .await?;
         source
             .log_event(&audit_at(
                 "p",
@@ -1531,59 +1550,64 @@ mod tests {
                 "decision-dry-run",
                 day(6),
             ))
-            .await
-            .unwrap();
+            .await?;
 
         let baseline_summaries = source
             .list("p", &ListBaselinesQuery::default())
-            .await
-            .unwrap()
+            .await?
             .baselines;
         let mut backup_baselines = Vec::new();
         for summary in baseline_summaries {
             backup_baselines.push(
                 source
                     .get("p", &summary.benchmark, &summary.version)
-                    .await
-                    .unwrap()
-                    .expect("listed baseline should resolve to full record"),
+                    .await?
+                    .with_context(|| {
+                        format!(
+                            "listed baseline should resolve to full record: {} {}",
+                            summary.benchmark, summary.version
+                        )
+                    })?,
             );
         }
         let backup_verdicts = source
             .list_verdicts("p", &ListVerdictsQuery::default())
-            .await
-            .unwrap()
+            .await?
             .verdicts;
         let backup_decisions = source
             .list_decisions("p", &ListDecisionsQuery::default())
-            .await
-            .unwrap()
+            .await?
             .decisions;
         let backup_audit = source
             .list_events(&ListAuditEventsQuery {
                 project: Some("p".to_string()),
                 ..Default::default()
             })
-            .await
-            .unwrap()
+            .await?
             .events;
 
         let restored = InMemoryStore::new();
         for baseline in &backup_baselines {
-            restored.create(baseline).await.unwrap();
+            restored.create(baseline).await?;
         }
         for verdict in &backup_verdicts {
-            restored.create_verdict(verdict).await.unwrap();
+            restored.create_verdict(verdict).await?;
         }
         for decision in &backup_decisions {
-            restored.create_decision(decision).await.unwrap();
+            restored.create_decision(decision).await?;
         }
         for event in &backup_audit {
-            restored.log_event(event).await.unwrap();
+            restored.log_event(event).await?;
         }
 
-        let source_latest_baseline = source.get_latest("p", "bench").await.unwrap().unwrap();
-        let restored_latest_baseline = restored.get_latest("p", "bench").await.unwrap().unwrap();
+        let source_latest_baseline = source
+            .get_latest("p", "bench")
+            .await?
+            .context("source latest baseline should exist")?;
+        let restored_latest_baseline = restored
+            .get_latest("p", "bench")
+            .await?
+            .context("restored latest baseline should exist")?;
         assert_eq!(
             restored_latest_baseline.version,
             source_latest_baseline.version
@@ -1592,48 +1616,87 @@ mod tests {
             restored_latest_baseline.content_hash,
             source_latest_baseline.content_hash
         );
+        let source_baseline_fingerprints: Vec<_> = backup_baselines
+            .iter()
+            .map(|record| (record.version.clone(), record.content_hash.clone()))
+            .collect();
+        let restored_baseline_summaries = restored
+            .list("p", &ListBaselinesQuery::default())
+            .await?
+            .baselines;
+        let mut restored_baseline_fingerprints = Vec::new();
+        for summary in restored_baseline_summaries {
+            let record = restored
+                .get("p", &summary.benchmark, &summary.version)
+                .await?
+                .with_context(|| {
+                    format!(
+                        "restored baseline should resolve to full record: {} {}",
+                        summary.benchmark, summary.version
+                    )
+                })?;
+            restored_baseline_fingerprints.push((record.version, record.content_hash));
+        }
+        assert_eq!(
+            restored_baseline_fingerprints,
+            source_baseline_fingerprints
+        );
         assert!(
             restored
                 .get_latest("other", "bench")
-                .await
-                .unwrap()
+                .await?
                 .is_none(),
             "backup scoped to project p should not restore other projects"
         );
 
         let source_verdict_ids: Vec<_> = source
             .list_verdicts("p", &ListVerdictsQuery::default())
-            .await
-            .unwrap()
+            .await?
             .verdicts
             .into_iter()
             .map(|record| record.id)
             .collect();
         let restored_verdict_ids: Vec<_> = restored
             .list_verdicts("p", &ListVerdictsQuery::default())
-            .await
-            .unwrap()
+            .await?
             .verdicts
             .into_iter()
             .map(|record| record.id)
             .collect();
         assert_eq!(restored_verdict_ids, source_verdict_ids);
 
-        let source_latest_decision = source.latest_decision("p").await.unwrap().unwrap();
-        let restored_latest_decision = restored.latest_decision("p").await.unwrap().unwrap();
+        let source_latest_decision = source
+            .latest_decision("p")
+            .await?
+            .context("source latest decision should exist")?;
+        let restored_latest_decision = restored
+            .latest_decision("p")
+            .await?
+            .context("restored latest decision should exist")?;
         assert_eq!(restored_latest_decision.id, source_latest_decision.id);
         assert_eq!(
             restored_latest_decision.accepted_rules,
             source_latest_decision.accepted_rules
         );
+        let source_decision_history: Vec<_> = backup_decisions
+            .iter()
+            .map(|record| (record.id.clone(), record.accepted_rules.clone()))
+            .collect();
+        let restored_decision_history: Vec<_> = restored
+            .list_decisions("p", &ListDecisionsQuery::default())
+            .await?
+            .decisions
+            .into_iter()
+            .map(|record| (record.id, record.accepted_rules))
+            .collect();
+        assert_eq!(restored_decision_history, source_decision_history);
 
         let source_audit_ids: Vec<_> = source
             .list_events(&ListAuditEventsQuery {
                 project: Some("p".to_string()),
                 ..Default::default()
             })
-            .await
-            .unwrap()
+            .await?
             .events
             .into_iter()
             .map(|event| event.id)
@@ -1643,27 +1706,26 @@ mod tests {
                 project: Some("p".to_string()),
                 ..Default::default()
             })
-            .await
-            .unwrap()
+            .await?
             .events
             .into_iter()
             .map(|event| event.id)
             .collect();
         assert_eq!(restored_audit_ids, source_audit_ids);
 
-        let prune = restored.prune_decisions("p", day(3), true).await.unwrap();
+        let prune = restored.prune_decisions("p", day(3), true).await?;
         assert_eq!(prune.matched, 1);
         assert_eq!(prune.deleted, 0);
         assert!(prune.dry_run);
         assert_eq!(
             restored
                 .list_decisions("p", &ListDecisionsQuery::default())
-                .await
-                .unwrap()
+                .await?
                 .pagination
                 .total,
             2,
             "dry-run prune must not delete restored decision history"
         );
+        Ok(())
     }
 }
