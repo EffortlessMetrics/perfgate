@@ -542,10 +542,10 @@ impl AuditStore for InMemoryStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Context as _;
     use crate::models::{
         AuditAction, AuditResourceType, BaselineRecordExt, BaselineSource, BaselineVersion,
     };
+    use anyhow::Context as _;
     use chrono::{Duration, Utc};
     use perfgate_types::{
         BenchMeta, HostInfo, MetricStatus, RunMeta, RunReceipt, Stats, ToolInfo, U64Summary,
@@ -683,8 +683,7 @@ mod tests {
     }
 
     fn day(n: i64) -> chrono::DateTime<Utc> {
-        chrono::DateTime::<Utc>::from_timestamp_nanos(1_767_225_600_000_000_000)
-            + Duration::days(n)
+        chrono::DateTime::<Utc>::from_timestamp_nanos(1_767_225_600_000_000_000) + Duration::days(n)
     }
 
     #[tokio::test]
@@ -693,7 +692,10 @@ mod tests {
         let default_store = InMemoryStore::default();
         for store in [&s, &default_store] {
             assert_eq!(store.backend_type(), "memory");
-            assert!(matches!(store.health_check().await?, StorageHealth::Healthy));
+            assert!(matches!(
+                store.health_check().await?,
+                StorageHealth::Healthy
+            ));
             assert!(store.get("p", "b", "v").await?.is_none());
             assert!(store.get_latest("p", "b").await?.is_none());
         }
@@ -813,8 +815,7 @@ mod tests {
     #[tokio::test]
     async fn get_latest_filters_by_project_and_benchmark() -> TestResult {
         let s = InMemoryStore::new();
-        s.create(&record_at("other", "b", "v1", day(5)))
-            .await?;
+        s.create(&record_at("other", "b", "v1", day(5))).await?;
         s.create(&record_at("p", "other-bench", "v1", day(5)))
             .await?;
         s.create(&record_at("p", "b", "v1", day(1))).await?;
@@ -1637,15 +1638,9 @@ mod tests {
                 })?;
             restored_baseline_fingerprints.push((record.version, record.content_hash));
         }
-        assert_eq!(
-            restored_baseline_fingerprints,
-            source_baseline_fingerprints
-        );
+        assert_eq!(restored_baseline_fingerprints, source_baseline_fingerprints);
         assert!(
-            restored
-                .get_latest("other", "bench")
-                .await?
-                .is_none(),
+            restored.get_latest("other", "bench").await?.is_none(),
             "backup scoped to project p should not restore other projects"
         );
 

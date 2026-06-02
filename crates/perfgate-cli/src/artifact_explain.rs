@@ -322,70 +322,85 @@ mod tests {
     }
 
     #[test]
-    fn collect_artifact_files_returns_empty_when_directory_missing() {
-        let tmp = tempdir().unwrap();
+    fn collect_artifact_files_returns_empty_when_directory_missing() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let nonexistent = tmp.path().join("nope");
         let mut known = Vec::new();
         let mut unknown = Vec::new();
-        collect_artifact_files(&nonexistent, &nonexistent, &mut known, &mut unknown).unwrap();
+        collect_artifact_files(&nonexistent, &nonexistent, &mut known, &mut unknown)?;
         assert!(known.is_empty());
         assert!(unknown.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn collect_artifact_files_classifies_known_and_unknown_files() {
-        let tmp = tempdir().unwrap();
+    fn collect_artifact_files_classifies_known_and_unknown_files() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let root = tmp.path();
-        fs::write(root.join("run.json"), "{}").unwrap();
-        fs::write(root.join("report.json"), "{}").unwrap();
-        fs::write(root.join("README.txt"), "info").unwrap();
+        fs::write(root.join("run.json"), "{}")?;
+        fs::write(root.join("report.json"), "{}")?;
+        fs::write(root.join("README.txt"), "info")?;
 
         let mut known = Vec::new();
         let mut unknown = Vec::new();
-        collect_artifact_files(root, root, &mut known, &mut unknown).unwrap();
+        collect_artifact_files(root, root, &mut known, &mut unknown)?;
         let known_names: Vec<String> = known
             .iter()
-            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
+            .map(|(p, _)| {
+                p.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("known artifact has no file name: {}", p.display())
+                    })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
         assert!(known_names.contains(&"run.json".to_string()));
         assert!(known_names.contains(&"report.json".to_string()));
         let unknown_names: Vec<String> = unknown
             .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
+            .map(|p| {
+                p.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("unknown artifact has no file name: {}", p.display())
+                    })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
         assert_eq!(unknown_names, vec!["README.txt"]);
+        Ok(())
     }
 
     #[test]
-    fn collect_artifact_files_recurses_into_subdirectories() {
-        let tmp = tempdir().unwrap();
+    fn collect_artifact_files_recurses_into_subdirectories() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let root = tmp.path();
         let nested = root.join("bench-a");
-        fs::create_dir_all(&nested).unwrap();
-        fs::write(nested.join("compare.json"), "{}").unwrap();
+        fs::create_dir_all(&nested)?;
+        fs::write(nested.join("compare.json"), "{}")?;
 
         let mut known = Vec::new();
         let mut unknown = Vec::new();
-        collect_artifact_files(root, root, &mut known, &mut unknown).unwrap();
+        collect_artifact_files(root, root, &mut known, &mut unknown)?;
         assert_eq!(known.len(), 1);
         let (path, role) = &known[0];
         assert_eq!(path, &PathBuf::from("bench-a/compare.json"));
         assert_eq!(*role, "baseline/current comparison receipt");
+        Ok(())
     }
 
     #[test]
-    fn collect_artifact_files_sorts_known_and_unknown_lists() {
-        let tmp = tempdir().unwrap();
+    fn collect_artifact_files_sorts_known_and_unknown_lists() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let root = tmp.path();
         // Write in an order that's not sorted.
-        fs::write(root.join("report.json"), "{}").unwrap();
-        fs::write(root.join("compare.json"), "{}").unwrap();
-        fs::write(root.join("zzz-unknown.txt"), "x").unwrap();
-        fs::write(root.join("aaa-unknown.txt"), "x").unwrap();
+        fs::write(root.join("report.json"), "{}")?;
+        fs::write(root.join("compare.json"), "{}")?;
+        fs::write(root.join("zzz-unknown.txt"), "x")?;
+        fs::write(root.join("aaa-unknown.txt"), "x")?;
 
         let mut known = Vec::new();
         let mut unknown = Vec::new();
-        collect_artifact_files(root, root, &mut known, &mut unknown).unwrap();
+        collect_artifact_files(root, root, &mut known, &mut unknown)?;
 
         let known_paths: Vec<PathBuf> = known.iter().map(|(p, _)| p.clone()).collect();
         let mut sorted = known_paths.clone();
@@ -394,40 +409,40 @@ mod tests {
         let mut sorted_unknown = unknown.clone();
         sorted_unknown.sort();
         assert_eq!(unknown, sorted_unknown);
+        Ok(())
     }
 
     #[test]
-    fn execute_explain_artifacts_succeeds_when_out_dir_missing() {
-        let tmp = tempdir().unwrap();
+    fn execute_explain_artifacts_succeeds_when_out_dir_missing() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let missing = tmp.path().join("perfgate-nope");
-        let result = execute_explain_artifacts(ExplainArtifactsArgs { out_dir: missing });
-        assert!(result.is_ok());
+        execute_explain_artifacts(ExplainArtifactsArgs { out_dir: missing })?;
+        Ok(())
     }
 
     #[test]
-    fn execute_explain_artifacts_succeeds_for_empty_dir() {
-        let tmp = tempdir().unwrap();
+    fn execute_explain_artifacts_succeeds_for_empty_dir() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let out_dir = tmp.path().to_path_buf();
-        let result = execute_explain_artifacts(ExplainArtifactsArgs { out_dir });
-        assert!(result.is_ok());
+        execute_explain_artifacts(ExplainArtifactsArgs { out_dir })?;
+        Ok(())
     }
 
     #[test]
-    fn execute_explain_artifacts_succeeds_with_known_artifacts() {
-        let tmp = tempdir().unwrap();
+    fn execute_explain_artifacts_succeeds_with_known_artifacts() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let out_dir = tmp.path().to_path_buf();
-        fs::write(out_dir.join("run.json"), "{}").unwrap();
-        fs::write(out_dir.join("comment.md"), "ok").unwrap();
-        let result = execute_explain_artifacts(ExplainArtifactsArgs { out_dir });
-        assert!(result.is_ok());
+        fs::write(out_dir.join("run.json"), "{}")?;
+        fs::write(out_dir.join("comment.md"), "ok")?;
+        execute_explain_artifacts(ExplainArtifactsArgs { out_dir })?;
+        Ok(())
     }
 
     #[test]
-    fn execute_explain_action_dispatches_artifacts_variant() {
-        let tmp = tempdir().unwrap();
+    fn execute_explain_action_dispatches_artifacts_variant() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
         let out_dir = tmp.path().to_path_buf();
-        let result =
-            execute_explain_action(ExplainAction::Artifacts(ExplainArtifactsArgs { out_dir }));
-        assert!(result.is_ok());
+        execute_explain_action(ExplainAction::Artifacts(ExplainArtifactsArgs { out_dir }))?;
+        Ok(())
     }
 }
