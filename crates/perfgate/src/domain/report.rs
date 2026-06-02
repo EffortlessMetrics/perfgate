@@ -95,36 +95,31 @@ pub fn derive_report(receipt: &CompareReceipt) -> Report {
 
     // Iterate over deltas in deterministic order (BTreeMap is sorted by key)
     for (metric, delta) in &receipt.deltas {
-        match delta.status {
+        let code = match delta.status {
             MetricStatus::Pass | MetricStatus::Skip => continue,
-            MetricStatus::Warn | MetricStatus::Fail => {
-                let code = match delta.status {
-                    MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
-                    MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
-                    _ => unreachable!(),
-                };
+            MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
+            MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
+        };
 
-                // Get the threshold from budgets if available
-                let threshold = receipt
-                    .budgets
-                    .get(metric)
-                    .map(|b| b.threshold)
-                    .unwrap_or(0.0);
+        // Get the threshold from budgets if available
+        let threshold = receipt
+            .budgets
+            .get(metric)
+            .map(|b| b.threshold)
+            .unwrap_or(0.0);
 
-                findings.push(Finding {
-                    code,
-                    check_id: CHECK_ID_BUDGET.to_string(),
-                    data: FindingData {
-                        metric_name: metric_to_string(*metric),
-                        bench_name: receipt.bench.name.clone(),
-                        baseline: delta.baseline,
-                        current: delta.current,
-                        regression_pct: delta.regression,
-                        threshold,
-                    },
-                });
-            }
-        }
+        findings.push(Finding {
+            code,
+            check_id: CHECK_ID_BUDGET.to_string(),
+            data: FindingData {
+                metric_name: metric_to_string(*metric),
+                bench_name: receipt.bench.name.clone(),
+                baseline: delta.baseline,
+                current: delta.current,
+                regression_pct: delta.regression,
+                threshold,
+            },
+        });
     }
 
     // Findings are already sorted by metric name since we iterate over BTreeMap

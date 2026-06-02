@@ -418,13 +418,27 @@ mod tests {
 
         assert_eq!(result.report.verdict.status, VerdictStatus::Fail);
         assert_eq!(result.report.findings.len(), 1);
-        let data = result.report.findings[0]
-            .data
-            .as_ref()
-            .expect("finding data");
-        assert_eq!(data.metric_name, "throughput_per_s");
-        assert_eq!(data.direction, Direction::Higher);
-        assert_eq!(data.regression_pct, 0.3);
+        assert_eq!(
+            result.report.findings[0]
+                .data
+                .as_ref()
+                .map(|data| data.metric_name.as_str()),
+            Some("throughput_per_s")
+        );
+        assert_eq!(
+            result.report.findings[0]
+                .data
+                .as_ref()
+                .map(|data| data.direction),
+            Some(Direction::Higher)
+        );
+        assert_eq!(
+            result.report.findings[0]
+                .data
+                .as_ref()
+                .map(|data| data.regression_pct),
+            Some(0.3)
+        );
     }
 
     #[test]

@@ -692,22 +692,16 @@ fn build_report(compare: &CompareReceipt) -> PerfgateReport {
     let mut findings = Vec::new();
 
     for (metric, delta) in &compare.deltas {
-        let severity = match delta.status {
+        let (severity, code) = match delta.status {
             MetricStatus::Pass | MetricStatus::Skip => continue,
-            MetricStatus::Warn => Severity::Warn,
-            MetricStatus::Fail => Severity::Fail,
+            MetricStatus::Warn => (Severity::Warn, FINDING_CODE_METRIC_WARN.to_string()),
+            MetricStatus::Fail => (Severity::Fail, FINDING_CODE_METRIC_FAIL.to_string()),
         };
 
         let budget = compare.budgets.get(metric);
         let (threshold, direction) = budget
             .map(|b| (b.threshold, b.direction))
             .unwrap_or((0.20, metric.default_direction()));
-
-        let code = match delta.status {
-            MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
-            MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
-            MetricStatus::Pass | MetricStatus::Skip => unreachable!(),
-        };
 
         let metric_name = format_metric(*metric).to_string();
         let regression_pct = delta.regression * 100.0;
@@ -1241,9 +1235,14 @@ mod tests {
                 .contains("throughput_per_s regression: 20.00%")
         );
         assert!(finding.message.contains("change: -20.00%"));
-        let data = finding.data.as_ref().unwrap();
-        assert_eq!(data.regression_pct, 20.0);
-        assert_eq!(data.direction, Direction::Higher);
+        assert_eq!(
+            finding.data.as_ref().map(|data| data.regression_pct),
+            Some(20.0)
+        );
+        assert_eq!(
+            finding.data.as_ref().map(|data| data.direction),
+            Some(Direction::Higher)
+        );
     }
 
     #[test]
