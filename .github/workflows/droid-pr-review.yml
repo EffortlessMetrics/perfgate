@@ -1,0 +1,79 @@
+name: Droid PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    branches: [main]
+
+concurrency:
+  group: droid-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  droid-review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'droid-review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure MiniMax M3 for Droid BYOK
+        shell: bash
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          mkdir -p "$HOME/.factory"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          api_key = os.environ.get("MINIMAX_API_KEY")
+          if not api_key:
+              raise SystemExit("MINIMAX_API_KEY is required for Droid MiniMax M3 reviews")
+
+          settings = {
+              "customModels": [
+                  {
+                      "model": "MiniMax-M3-0",
+                      "displayName": "MiniMax-M3",
+                      "baseUrl": "https://api.minimax.io/anthropic",
+                      "apiKey": api_key,
+                      "provider": "anthropic",
+                      "maxOutputTokens": 64000,
+                  }
+              ]
+          }
+
+          Path.home().joinpath(".factory", "settings.json").write_text(
+              json.dumps(settings, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run Droid Auto Review
+        uses: Factory-AI/droid-action@8ffd7a26584277528320465ff8c2c81d5c91614e
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ""
+          ANTHROPIC_BASE_URL: ""
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          automatic_review: true
+          review_model: custom:MiniMax-M3-0
+          automatic_security_review: true
+          security_model: custom:MiniMax-M3-0
