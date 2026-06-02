@@ -82,7 +82,7 @@ schema-compat proof.
 | 22 | Product claims and canary freshness | merged | `docs/status/PRODUCT_CLAIMS.md`, `docs/status/CANARY_MATRIX.md` |
 | 24 | External Rust canary | merged | existing benchmark repo import-to-review path |
 | 25 | External non-Rust canary | merged | command/HTTP/import-to-review path |
-| TBD | Final closeout | merged | handoff and archived active goal |
+| 27 | Final closeout | merged | `docs/handoffs/2026-05-20-evidence-intake-adoption-packs-closeout.md`, `.codex/goals/archive/perfgate-evidence-intake-adoption-packs.toml` |
 
 ## Work item: implementation-plan
 
