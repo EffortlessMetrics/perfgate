@@ -225,80 +225,108 @@ pub fn normalize_paired_cli_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Display;
+
+    type TestResult<T = ()> = anyhow::Result<T>;
+
+    fn ok_value<T, E: Display>(result: Result<T, E>) -> TestResult<T> {
+        result.map_err(|err| anyhow::anyhow!("{err}"))
+    }
+
+    fn err_string<T, E: Display>(result: Result<T, E>) -> TestResult<String> {
+        match result {
+            Ok(_) => anyhow::bail!("expected error"),
+            Err(err) => Ok(err.to_string()),
+        }
+    }
+
+    fn some_value<T>(value: Option<T>, context: &'static str) -> TestResult<T> {
+        value.ok_or_else(|| anyhow::anyhow!(context))
+    }
 
     #[test]
-    fn parse_duration_accepts_humantime_value() {
-        let d = parse_duration("1500ms").unwrap();
+    fn parse_duration_accepts_humantime_value() -> TestResult {
+        let d = ok_value(parse_duration("1500ms"))?;
         assert_eq!(d, Duration::from_millis(1500));
-        let d = parse_duration("2s").unwrap();
+        let d = ok_value(parse_duration("2s"))?;
         assert_eq!(d, Duration::from_secs(2));
+        Ok(())
     }
 
     #[test]
-    fn parse_duration_rejects_garbage() {
-        let err = parse_duration("not-a-duration").unwrap_err().to_string();
+    fn parse_duration_rejects_garbage() -> TestResult {
+        let err = err_string(parse_duration("not-a-duration"))?;
         assert!(err.contains("invalid duration"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_key_val_string_splits_on_first_equal() {
-        let (k, v) = parse_key_val_string("FOO=bar=baz").unwrap();
+    fn parse_key_val_string_splits_on_first_equal() -> TestResult {
+        let (k, v) = ok_value(parse_key_val_string("FOO=bar=baz"))?;
         assert_eq!(k, "FOO");
         assert_eq!(v, "bar=baz");
+        Ok(())
     }
 
     #[test]
-    fn parse_key_val_string_requires_equal_sign() {
-        let err = parse_key_val_string("no-equals").unwrap_err();
+    fn parse_key_val_string_requires_equal_sign() -> TestResult {
+        let err = err_string(parse_key_val_string("no-equals"))?;
         assert_eq!(err, "expected KEY=VALUE");
+        Ok(())
     }
 
     #[test]
-    fn parse_key_val_f64_parses_value_as_float() {
-        let (k, v) = parse_key_val_f64("p99=12.5").unwrap();
+    fn parse_key_val_f64_parses_value_as_float() -> TestResult {
+        let (k, v) = ok_value(parse_key_val_f64("p99=12.5"))?;
         assert_eq!(k, "p99");
         assert!((v - 12.5).abs() < f64::EPSILON);
+        Ok(())
     }
 
     #[test]
-    fn parse_key_val_f64_rejects_non_numeric_value() {
-        let err = parse_key_val_f64("p99=abc").unwrap_err();
+    fn parse_key_val_f64_rejects_non_numeric_value() -> TestResult {
+        let err = err_string(parse_key_val_f64("p99=abc"))?;
         assert!(err.contains("invalid float value"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_key_val_f64_requires_equal_sign() {
-        let err = parse_key_val_f64("p99").unwrap_err();
+    fn parse_key_val_f64_requires_equal_sign() -> TestResult {
+        let err = err_string(parse_key_val_f64("p99"))?;
         assert_eq!(err, "expected KEY=VALUE");
+        Ok(())
     }
 
     #[test]
-    fn parse_noise_policy_round_trip_variants() {
+    fn parse_noise_policy_round_trip_variants() -> TestResult {
         assert!(matches!(
-            parse_noise_policy("warn").unwrap(),
+            ok_value(parse_noise_policy("warn"))?,
             perfgate_types::NoisePolicy::Warn
         ));
         assert!(matches!(
-            parse_noise_policy("SKIP").unwrap(),
+            ok_value(parse_noise_policy("SKIP"))?,
             perfgate_types::NoisePolicy::Skip
         ));
         assert!(matches!(
-            parse_noise_policy("Ignore").unwrap(),
+            ok_value(parse_noise_policy("Ignore"))?,
             perfgate_types::NoisePolicy::Ignore
         ));
+        Ok(())
     }
 
     #[test]
-    fn parse_noise_policy_rejects_unknown_value() {
-        let err = parse_noise_policy("loud").unwrap_err();
+    fn parse_noise_policy_rejects_unknown_value() -> TestResult {
+        let err = err_string(parse_noise_policy("loud"))?;
         assert!(err.contains("invalid noise policy"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_flakiness_score_accepts_in_range_values() {
-        assert_eq!(parse_flakiness_score("0").unwrap(), 0.0);
-        assert_eq!(parse_flakiness_score("0.5").unwrap(), 0.5);
-        assert_eq!(parse_flakiness_score("1").unwrap(), 1.0);
+    fn parse_flakiness_score_accepts_in_range_values() -> TestResult {
+        assert_eq!(ok_value(parse_flakiness_score("0"))?, 0.0);
+        assert_eq!(ok_value(parse_flakiness_score("0.5"))?, 0.5);
+        assert_eq!(ok_value(parse_flakiness_score("1"))?, 1.0);
+        Ok(())
     }
 
     #[test]
@@ -314,9 +342,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_flakiness_score_rejects_non_numeric() {
-        let err = parse_flakiness_score("noisy").unwrap_err();
+    fn parse_flakiness_score_rejects_non_numeric() -> TestResult {
+        let err = err_string(parse_flakiness_score("noisy"))?;
         assert!(err.contains("must be a number"), "got: {err}");
+        Ok(())
     }
 
     #[test]
@@ -425,58 +454,56 @@ mod tests {
     }
 
     #[test]
-    fn parse_weight_map_handles_multiple_entries_and_trims_labels() {
+    fn parse_weight_map_handles_multiple_entries_and_trims_labels() -> TestResult {
         let input = vec!["foo=1.0".into(), " bar =2.5".into()];
-        let map = parse_weight_map(&input).unwrap();
+        let map = ok_value(parse_weight_map(&input))?;
         assert_eq!(map.len(), 2);
         assert_eq!(map["foo"], 1.0);
         assert_eq!(map["bar"], 2.5);
+        Ok(())
     }
 
     #[test]
-    fn parse_weight_map_rejects_missing_equals() {
-        let err = parse_weight_map(&["foo".into()]).unwrap_err().to_string();
+    fn parse_weight_map_rejects_missing_equals() -> TestResult {
+        let err = err_string(parse_weight_map(&["foo".into()]))?;
         assert!(err.contains("expected label=value"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_weight_map_rejects_empty_label() {
-        let err = parse_weight_map(&["=1.0".into()]).unwrap_err().to_string();
+    fn parse_weight_map_rejects_empty_label() -> TestResult {
+        let err = err_string(parse_weight_map(&["=1.0".into()]))?;
         assert!(err.contains("label cannot be empty"), "got: {err}");
-        let err = parse_weight_map(&["   =1.0".into()])
-            .unwrap_err()
-            .to_string();
+        let err = err_string(parse_weight_map(&["   =1.0".into()]))?;
         assert!(err.contains("label cannot be empty"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_weight_map_rejects_non_numeric_weight() {
-        let err = parse_weight_map(&["foo=bad".into()])
-            .unwrap_err()
-            .to_string();
+    fn parse_weight_map_rejects_non_numeric_weight() -> TestResult {
+        let err = err_string(parse_weight_map(&["foo=bad".into()]))?;
         assert!(err.contains("weight must be a number"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_weight_map_rejects_negative_and_nonfinite() {
-        let err = parse_weight_map(&["foo=-1".into()])
-            .unwrap_err()
-            .to_string();
+    fn parse_weight_map_rejects_negative_and_nonfinite() -> TestResult {
+        let err = err_string(parse_weight_map(&["foo=-1".into()]))?;
         assert!(err.contains("non-negative"), "got: {err}");
-        let err = parse_weight_map(&["foo=NaN".into()])
-            .unwrap_err()
-            .to_string();
+        let err = err_string(parse_weight_map(&["foo=NaN".into()]))?;
         assert!(err.contains("non-negative"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn parse_weight_map_empty_input_returns_empty_map() {
-        let map = parse_weight_map(&[]).unwrap();
+    fn parse_weight_map_empty_input_returns_empty_map() -> TestResult {
+        let map = ok_value(parse_weight_map(&[]))?;
         assert!(map.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_accepts_default_all_policy() {
+    fn validate_aggregate_options_accepts_default_all_policy() -> TestResult {
         let (q, fnm, vf) = validate_aggregate_options(
             AggregationPolicy::All,
             AggregateWeightMode::Configured,
@@ -485,152 +512,139 @@ mod tests {
             None,
             None,
         )
-        .unwrap();
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
         assert!(q.is_none());
         assert!(fnm.is_none());
         assert!(vf.is_none());
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_rejects_quorum_out_of_range() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_rejects_quorum_out_of_range() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::Weighted,
             AggregateWeightMode::Configured,
             Some(1.5),
             None,
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("--quorum must be between"), "got: {err}");
 
-        let err = validate_aggregate_options(
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::Weighted,
             AggregateWeightMode::Configured,
             Some(f64::NAN),
             None,
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("--quorum must be between"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_quorum_requires_weighted_or_quorum_policy() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_quorum_requires_weighted_or_quorum_policy() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::All,
             AggregateWeightMode::Configured,
             Some(0.5),
             None,
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("--quorum requires"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_inverse_variance_requires_weighted() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_inverse_variance_requires_weighted() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::Majority,
             AggregateWeightMode::InverseVariance,
             None,
             None,
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("inverse_variance requires"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_variance_floor_rules() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_variance_floor_rules() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::Weighted,
             AggregateWeightMode::InverseVariance,
             None,
             None,
             None,
             Some(0.0),
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("variance-floor"), "got: {err}");
 
-        let err = validate_aggregate_options(
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::Weighted,
             AggregateWeightMode::Configured,
             None,
             None,
             None,
             Some(1.0),
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("inverse_variance"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_fail_if_n_of_m_requires_fail_n() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_fail_if_n_of_m_requires_fail_n() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::FailIfNOfM,
             AggregateWeightMode::Configured,
             None,
             None,
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("--fail-n"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_fail_if_n_of_m_rejects_zero_or_inverted() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_fail_if_n_of_m_rejects_zero_or_inverted() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::FailIfNOfM,
             AggregateWeightMode::Configured,
             None,
             Some(0),
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("--fail-n must be at least 1"), "got: {err}");
 
-        let err = validate_aggregate_options(
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::FailIfNOfM,
             AggregateWeightMode::Configured,
             None,
             Some(3),
             Some(0),
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("--fail-m must be at least 1"), "got: {err}");
 
-        let err = validate_aggregate_options(
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::FailIfNOfM,
             AggregateWeightMode::Configured,
             None,
             Some(5),
             Some(3),
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("must be greater than or equal"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_fail_if_n_of_m_success_path() {
+    fn validate_aggregate_options_fail_if_n_of_m_success_path() -> TestResult {
         let (q, fnm, vf) = validate_aggregate_options(
             AggregationPolicy::FailIfNOfM,
             AggregateWeightMode::Configured,
@@ -639,31 +653,31 @@ mod tests {
             Some(5),
             None,
         )
-        .unwrap();
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
         assert!(q.is_none());
-        let fnm = fnm.expect("should produce FailIfNOfM");
+        let fnm = some_value(fnm, "missing FailIfNOfM result")?;
         assert_eq!(fnm.n, 2);
         assert_eq!(fnm.m, Some(5));
         assert!(vf.is_none());
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_fail_n_or_m_outside_correct_policy_errors() {
-        let err = validate_aggregate_options(
+    fn validate_aggregate_options_fail_n_or_m_outside_correct_policy_errors() -> TestResult {
+        let err = err_string(validate_aggregate_options(
             AggregationPolicy::All,
             AggregateWeightMode::Configured,
             None,
             Some(1),
             None,
             None,
-        )
-        .unwrap_err()
-        .to_string();
+        ))?;
         assert!(err.contains("fail_if_n_of_m"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn validate_aggregate_options_inverse_variance_success_passes_floor_through() {
+    fn validate_aggregate_options_inverse_variance_success_passes_floor_through() -> TestResult {
         let (q, fnm, vf) = validate_aggregate_options(
             AggregationPolicy::Weighted,
             AggregateWeightMode::InverseVariance,
@@ -672,17 +686,19 @@ mod tests {
             None,
             Some(2.5),
         )
-        .unwrap();
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
         assert_eq!(q, Some(0.6));
         assert!(fnm.is_none());
         assert_eq!(vf, Some(2.5));
+        Ok(())
     }
 
     #[test]
-    fn parse_significance_alpha_accepts_in_range() {
-        assert_eq!(parse_significance_alpha("0.05").unwrap(), 0.05);
-        assert_eq!(parse_significance_alpha("0").unwrap(), 0.0);
-        assert_eq!(parse_significance_alpha("1").unwrap(), 1.0);
+    fn parse_significance_alpha_accepts_in_range() -> TestResult {
+        assert_eq!(ok_value(parse_significance_alpha("0.05"))?, 0.05);
+        assert_eq!(ok_value(parse_significance_alpha("0"))?, 0.0);
+        assert_eq!(ok_value(parse_significance_alpha("1"))?, 1.0);
+        Ok(())
     }
 
     #[test]
@@ -693,52 +709,59 @@ mod tests {
     }
 
     #[test]
-    fn normalize_paired_cli_command_requires_nonempty_input() {
-        let err = normalize_paired_cli_command(vec![], "--current-cmd")
-            .unwrap_err()
-            .to_string();
+    fn normalize_paired_cli_command_requires_nonempty_input() -> TestResult {
+        let err = err_string(normalize_paired_cli_command(vec![], "--current-cmd"))?;
         assert!(err.contains("--current-cmd"), "got: {err}");
         assert!(err.contains("at least one argument"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_splits_quoted_single_arg() {
+    fn normalize_paired_cli_command_splits_quoted_single_arg() -> TestResult {
         let out =
             normalize_paired_cli_command(vec!["echo \"hello world\"".into()], "--current-cmd")
-                .unwrap();
+                .map_err(|err| anyhow::anyhow!("{err}"))?;
         assert_eq!(out, vec!["echo".to_string(), "hello world".to_string()]);
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_passes_through_multi_arg_form() {
+    fn normalize_paired_cli_command_passes_through_multi_arg_form() -> TestResult {
         let out = normalize_paired_cli_command(
             vec!["echo".into(), "hello world".into()],
             "--baseline-cmd",
         )
-        .unwrap();
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
         assert_eq!(out, vec!["echo".to_string(), "hello world".to_string()]);
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_single_arg_without_whitespace_returns_as_is() {
-        let out = normalize_paired_cli_command(vec!["./bench".into()], "--baseline-cmd").unwrap();
+    fn normalize_paired_cli_command_single_arg_without_whitespace_returns_as_is() -> TestResult {
+        let out = normalize_paired_cli_command(vec!["./bench".into()], "--baseline-cmd")
+            .map_err(|err| anyhow::anyhow!("{err}"))?;
         assert_eq!(out, vec!["./bench".to_string()]);
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_empty_quoted_string_is_an_error() {
+    fn normalize_paired_cli_command_empty_quoted_string_is_an_error() -> TestResult {
         // shell_words::split("   ") yields an empty Vec, which must trigger the empty-parse error
-        let err = normalize_paired_cli_command(vec!["   ".into()], "--current-cmd")
-            .unwrap_err()
-            .to_string();
+        let err = err_string(normalize_paired_cli_command(
+            vec!["   ".into()],
+            "--current-cmd",
+        ))?;
         assert!(err.contains("parsed to an empty command"), "got: {err}");
+        Ok(())
     }
 
     #[test]
-    fn normalize_paired_cli_command_reports_invalid_shell_string() {
-        let err = normalize_paired_cli_command(vec!["echo \"unterminated".into()], "--current-cmd")
-            .unwrap_err()
-            .to_string();
+    fn normalize_paired_cli_command_reports_invalid_shell_string() -> TestResult {
+        let err = err_string(normalize_paired_cli_command(
+            vec!["echo \"unterminated".into()],
+            "--current-cmd",
+        ))?;
         assert!(err.contains("failed to parse"), "got: {err}");
+        Ok(())
     }
 }
