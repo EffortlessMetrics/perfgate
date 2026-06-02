@@ -2106,6 +2106,14 @@ fn cmd_check_no_panic_family(
         for error in &errors {
             println!("  - {}", error);
         }
+        let drift_summary =
+            summarize_no_panic_policy_drift(&findings, &allowlist, no_panic_baseline.as_ref());
+        if !drift_summary.is_empty() {
+            println!("No-panic baseline drift summary:");
+            for line in &drift_summary {
+                println!("  - {}", line);
+            }
+        }
 
         anyhow::bail!(
             "{} no-panic policy issue(s) found. Update policy/no-panic-allowlist.toml or the generated baseline.",
@@ -2278,6 +2286,110 @@ fn collect_no_panic_baseline_errors(
             )),
         }
     }
+}
+
+#[derive(Default)]
+struct NoPanicPathDrift {
+    new_identities: usize,
+    new_callsites: u32,
+    increased_identities: usize,
+    increased_callsites: u32,
+}
+
+impl NoPanicPathDrift {
+    fn total_delta(&self) -> u32 {
+        self.new_callsites + self.increased_callsites
+    }
+}
+
+fn summarize_no_panic_policy_drift(
+    findings: &[NoPanicFinding],
+    allowlist: &NoPanicAllowlist,
+    baseline: Option<&NoPanicBaseline>,
+) -> Vec<String> {
+    let Some(baseline) = baseline else {
+        return Vec::new();
+    };
+
+    let baseline_counts: BTreeMap<_, _> = baseline
+        .baseline
+        .iter()
+        .map(|entry| (entry.identity(), entry.count))
+        .collect();
+    let mut by_path = BTreeMap::<String, NoPanicPathDrift>::new();
+
+    for finding in findings {
+        if is_no_panic_allowed(&finding.identity, allowlist) {
+            continue;
+        }
+
+        let drift = by_path.entry(finding.identity.path.clone()).or_default();
+        match baseline_counts.get(&finding.identity) {
+            Some(expected) if finding.count > *expected => {
+                drift.increased_identities += 1;
+                drift.increased_callsites += finding.count - *expected;
+            }
+            None => {
+                drift.new_identities += 1;
+                drift.new_callsites += finding.count;
+            }
+            _ => {}
+        }
+    }
+
+    by_path.retain(|_, drift| {
+        drift.new_identities > 0
+            || drift.new_callsites > 0
+            || drift.increased_identities > 0
+            || drift.increased_callsites > 0
+    });
+    if by_path.is_empty() {
+        return Vec::new();
+    }
+
+    let total_new_identities: usize = by_path.values().map(|drift| drift.new_identities).sum();
+    let total_new_callsites: u32 = by_path.values().map(|drift| drift.new_callsites).sum();
+    let total_increased_identities: usize = by_path
+        .values()
+        .map(|drift| drift.increased_identities)
+        .sum();
+    let total_increased_callsites: u32 = by_path
+        .values()
+        .map(|drift| drift.increased_callsites)
+        .sum();
+
+    let mut path_rows: Vec<_> = by_path.into_iter().collect();
+    path_rows.sort_by(|(left_path, left), (right_path, right)| {
+        right
+            .total_delta()
+            .cmp(&left.total_delta())
+            .then_with(|| right.new_identities.cmp(&left.new_identities))
+            .then_with(|| left_path.cmp(right_path))
+    });
+
+    let mut lines = vec![format!(
+        "{} new identities ({} callsite(s)); {} increased identities (+{} callsite(s))",
+        total_new_identities,
+        total_new_callsites,
+        total_increased_identities,
+        total_increased_callsites
+    )];
+    let omitted = path_rows.len().saturating_sub(8);
+    for (path, drift) in path_rows.into_iter().take(8) {
+        lines.push(format!(
+            "{}: {} new identities ({} callsite(s)), {} increased identities (+{} callsite(s))",
+            path,
+            drift.new_identities,
+            drift.new_callsites,
+            drift.increased_identities,
+            drift.increased_callsites
+        ));
+    }
+    if omitted > 0 {
+        lines.push(format!("{omitted} additional path(s) omitted"));
+    }
+
+    lines
 }
 
 fn count_no_panic_baseline_refresh_candidates(
@@ -9564,6 +9676,74 @@ fn demo(value: Option<u8>) {
                 .iter()
                 .any(|error| error.contains("new unbaselined panic-family identity")),
             "expected new unbaselined error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn no_panic_policy_drift_summary_groups_baseline_errors_by_path() {
+        let new_identity = no_panic_identity(
+            "crates/example/src/lib.rs",
+            "expect",
+            "method",
+            "expect",
+            "value.expect(\"present\")",
+        );
+        let increased_identity = no_panic_identity(
+            "crates/example/src/other.rs",
+            "unwrap",
+            "method",
+            "unwrap",
+            "value.unwrap()",
+        );
+        let allowed_identity = no_panic_identity(
+            "crates/example/src/allowed.rs",
+            "panic",
+            "macro",
+            "panic!",
+            "panic!(\"allowed\")",
+        );
+        let findings = vec![
+            NoPanicFinding {
+                identity: new_identity.clone(),
+                count: 2,
+            },
+            NoPanicFinding {
+                identity: increased_identity.clone(),
+                count: 4,
+            },
+            NoPanicFinding {
+                identity: allowed_identity.clone(),
+                count: 3,
+            },
+        ];
+        let baseline = NoPanicBaseline {
+            schema_version: "1.0".to_string(),
+            baseline: vec![no_panic_baseline_entry(&increased_identity, 1)],
+        };
+        let allowlist = NoPanicAllowlist {
+            schema_version: "1.0".to_string(),
+            allow: vec![no_panic_allowance(&allowed_identity, 3)],
+        };
+
+        let summary = summarize_no_panic_policy_drift(&findings, &allowlist, Some(&baseline));
+
+        assert_eq!(
+            summary[0],
+            "1 new identities (2 callsite(s)); 1 increased identities (+3 callsite(s))"
+        );
+        assert!(
+            summary.iter().any(|line| line
+                == "crates/example/src/other.rs: 0 new identities (0 callsite(s)), 1 increased identities (+3 callsite(s))"),
+            "expected increased path summary, got {summary:?}"
+        );
+        assert!(
+            summary.iter().any(|line| line
+                == "crates/example/src/lib.rs: 1 new identities (2 callsite(s)), 0 increased identities (+0 callsite(s))"),
+            "expected new path summary, got {summary:?}"
+        );
+        assert!(
+            summary.iter().all(|line| !line.contains("allowed.rs")),
+            "allowed identity should not appear in summary: {summary:?}"
         );
     }
 
