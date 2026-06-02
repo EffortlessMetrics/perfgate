@@ -38,13 +38,17 @@ A claim should move to a weaker tier when:
 
 ## Review Cadence
 
-Use concrete review targets:
+Use current concrete review targets:
 
-- `before-0.18.0-release`
+- `next-release`
+- `next-adoption-level-change`
 - `next-msrv-change`
 - `next-public-surface-change`
 - `next-decision-contract-change`
 - `next-release-candidate`
+- `next-onboarding-change`
+- `next-policy-ledger-change`
+- `next-server-ledger-change`
 - `next-evidence-maturity-change`
 - `next-evidence-intake-change`
 - `next-canary-refresh`

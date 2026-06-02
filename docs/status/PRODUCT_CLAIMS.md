@@ -11,16 +11,16 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 
 | Claim ID | Claim | Tier | Surface | Review after |
 |----------|-------|------|---------|--------------|
-| PG-CLAIM-0001 | perfgate supports reviewable performance decisions. | supported | CLI, action, receipts | before-0.18.0-release |
+| PG-CLAIM-0001 | perfgate supports reviewable performance decisions. | supported | CLI, action, receipts | next-decision-contract-change |
 | PG-CLAIM-0002 | perfgate decision bundles are portable local-first evidence. | supported | CLI, receipts | next-decision-contract-change |
-| PG-CLAIM-0003 | the server decision ledger is optional team-scale history, not a correctness prerequisite. | supported | server, CLI, receipts | before-0.18.0-release |
+| PG-CLAIM-0003 | the server decision ledger is optional team-scale history, not a correctness prerequisite. | supported | server, CLI, receipts | next-server-ledger-change |
 | PG-CLAIM-0004 | perfgate has five public crates as the durable public surface. | stable | crates, policy | next-public-surface-change |
 | PG-CLAIM-0005 | Rust 1.95 is the governed MSRV for the current release lane. | stable | toolchain, CI, release | next-msrv-change |
-| PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | supported | policy, CI | before-0.18.0-release |
+| PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | supported | policy, CI | next-policy-ledger-change |
 | PG-CLAIM-0007 | the GitHub Action surfaces local reproduction for decision-enabled gates. | supported | action, CLI, artifacts | next-decision-contract-change |
 | PG-CLAIM-0008 | release readiness is proven by the publish-order matrix, not by version bumps alone. | supported | release, crates, CI | next-release |
-| PG-CLAIM-0009 | perfgate supports a first-hour local adoption path. | supported | CLI, docs, artifacts | before-0.18.0-release |
-| PG-CLAIM-0010 | perfgate supports staged adoption levels from local gate to team ledger. | supported | docs, CLI, action, server | before-0.18.0-release |
+| PG-CLAIM-0009 | perfgate supports a first-hour local adoption path. | supported | CLI, docs, artifacts | next-onboarding-change |
+| PG-CLAIM-0010 | perfgate supports staged adoption levels from local gate to team ledger. | supported | docs, CLI, action, server | next-adoption-level-change |
 | PG-CLAIM-0011 | perfgate supports probe-backed tradeoff explanation. | supported | CLI, Rust helpers, receipts | next-probe-contract-change |
 | PG-CLAIM-0012 | perfgate supports optional team decision-ledger operations. | supported | server, CLI, dashboard, docs | next-server-ledger-change |
 | PG-CLAIM-0013 | perfgate documents platform-specific metric availability. | advisory | docs, CLI receipts | next-platform-metric-change |
@@ -77,7 +77,7 @@ Artifacts:
 - `decision.index.json`
 - `decision-bundle.json`
 
-Review after: before-0.18.0-release
+Review after: next-decision-contract-change
 
 ## PG-CLAIM-0002: Portable local-first decision bundles
 
@@ -128,7 +128,7 @@ Artifacts:
 - decision upload/history/latest/export/prune/debt responses
 - server audit events
 
-Review after: before-0.18.0-release
+Review after: next-server-ledger-change
 
 ## PG-CLAIM-0004: Five-crate public surface
 
@@ -207,7 +207,7 @@ cargo +1.95.0 run -p xtask -- public-surface --strict
 cargo +1.95.0 run -p xtask -- arch
 ```
 
-Review after: before-0.18.0-release
+Review after: next-policy-ledger-change
 
 ## PG-CLAIM-0007: Action local reproduction for decisions
 
@@ -293,7 +293,7 @@ Known limits:
   external hosted canaries were not rerun from `v0.18.0` in the release
   closeout.
 
-Review after: before-0.18.0-release
+Review after: next-onboarding-change
 
 ## PG-CLAIM-0010: Staged adoption levels
 
@@ -320,7 +320,7 @@ Artifacts:
 - `decision.index.json`
 - optional server ledger records
 
-Review after: before-0.18.0-release
+Review after: next-adoption-level-change
 
 ## PG-CLAIM-0011: Probe-backed tradeoff explanation
 
