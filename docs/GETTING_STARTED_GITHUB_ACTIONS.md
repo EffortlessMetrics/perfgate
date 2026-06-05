@@ -248,7 +248,9 @@ perfgate check \
   --md-template .github/perfgate-comment.hbs
 ```
 
-This writes `artifacts/perfgate/comment.md`.
+With `--all`, this writes `artifacts/perfgate/<bench>/comment.md` for each
+configured benchmark. With `--bench <name>`, it writes
+`artifacts/perfgate/comment.md`.
 
 ## Common Pitfalls
 

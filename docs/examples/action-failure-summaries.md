@@ -292,7 +292,7 @@ platform-specific separators.
 Reproduce locally:
   perfgate check --config perfgate.toml --bench parser --out-dir artifacts/perfgate/windows\ path --require-baseline
 Artifacts:
-artifacts/perfgate/windows path/parser/compare.json
+artifacts/perfgate/windows path/compare.json
 ```
 
 The reviewer should copy the command exactly from the action summary. If a
