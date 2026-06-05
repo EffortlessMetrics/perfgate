@@ -174,6 +174,31 @@ mod advanced_analytics_tests {
     }
 
     #[test]
+    fn compare_runs_zero_baseline_returns_skip() {
+        let baseline = make_run_receipt_with_walls("bench", &[0, 0, 0, 0, 0, 0, 0, 0]);
+        let current = make_run_receipt_with_walls("bench", &[10, 10, 10, 10, 10, 10, 10, 10]);
+        let budgets = wall_budget(0.20);
+        let stats = BTreeMap::new();
+
+        let comparison = compare_runs(&baseline, &current, &budgets, &stats, None);
+        assert!(
+            comparison.is_ok(),
+            "compare_runs should skip zero baselines: {comparison:?}"
+        );
+
+        if let Ok(comparison) = comparison {
+            let delta = comparison.deltas.get(&Metric::WallMs);
+            assert!(delta.is_some(), "wall_ms delta should be present");
+
+            if let Some(delta) = delta {
+                assert_eq!(delta.status, MetricStatus::Skip);
+                assert_eq!(comparison.verdict.status, VerdictStatus::Skip);
+                assert_eq!(comparison.verdict.counts.skip, 1);
+            }
+        }
+    }
+
+    #[test]
     fn compare_runs_can_require_significance() {
         let baseline =
             make_run_receipt_with_walls("bench", &[50, 60, 70, 80, 90, 100, 110, 120, 130, 140]);

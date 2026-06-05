@@ -7,7 +7,7 @@ use perfgate_types::{
 };
 
 use super::{
-    DomainError, compute_significance, evaluate_budget, improvement_ratio, metric_cv,
+    BudgetError, DomainError, compute_significance, evaluate_budget, improvement_ratio, metric_cv,
     metric_series_from_run, metric_value, metric_value_from_run, reason_token,
 };
 
@@ -56,6 +56,27 @@ fn aggregate_verdict_from_counts(counts: VerdictCounts, reasons: Vec<String>) ->
         status,
         counts,
         reasons,
+    }
+}
+
+fn skipped_delta(
+    baseline: f64,
+    current: f64,
+    current_cv: Option<f64>,
+    noise_threshold: Option<f64>,
+    statistic: MetricStatistic,
+) -> Delta {
+    Delta {
+        baseline,
+        current,
+        ratio: 1.0,
+        pct: 0.0,
+        regression: 0.0,
+        status: MetricStatus::Skip,
+        significance: None,
+        cv: current_cv,
+        noise_threshold,
+        statistic,
     }
 }
 
@@ -133,28 +154,24 @@ pub fn compare_stats_with_tradeoffs(
             continue;
         };
 
-        if bv <= 0.0 {
-            deltas.insert(
-                *metric,
-                Delta {
-                    baseline: bv,
-                    current: cv,
-                    ratio: 1.0,
-                    pct: 0.0,
-                    regression: 0.0,
-                    status: MetricStatus::Skip,
-                    significance: None,
-                    cv: current_cv,
-                    noise_threshold: budget.noise_threshold,
-                    statistic: MetricStatistic::Median,
-                },
-            );
-            counts.skip += 1;
-            continue;
-        }
-
-        let result = evaluate_budget(bv, cv, budget, current_cv)
-            .expect("evaluate_budget is infallible for bv > 0");
+        let result = match evaluate_budget(bv, cv, budget, current_cv) {
+            Ok(result) => result,
+            Err(BudgetError::InvalidBaseline) => {
+                deltas.insert(
+                    *metric,
+                    skipped_delta(
+                        bv,
+                        cv,
+                        current_cv,
+                        budget.noise_threshold,
+                        MetricStatistic::Median,
+                    ),
+                );
+                counts.skip += 1;
+                continue;
+            }
+            Err(BudgetError::NoSamples) => return Err(DomainError::NoSamples),
+        };
 
         match result.status {
             MetricStatus::Pass => counts.pass += 1,
@@ -250,28 +267,18 @@ pub fn compare_runs_with_tradeoffs(
             continue;
         };
 
-        if bv <= 0.0 {
-            deltas.insert(
-                *metric,
-                Delta {
-                    baseline: bv,
-                    current: cv,
-                    ratio: 1.0,
-                    pct: 0.0,
-                    regression: 0.0,
-                    status: MetricStatus::Skip,
-                    significance: None,
-                    cv: current_cv,
-                    noise_threshold: budget.noise_threshold,
-                    statistic,
-                },
-            );
-            counts.skip += 1;
-            continue;
-        }
-
-        let result = evaluate_budget(bv, cv, budget, current_cv)
-            .expect("evaluate_budget is infallible for bv > 0");
+        let result = match evaluate_budget(bv, cv, budget, current_cv) {
+            Ok(result) => result,
+            Err(BudgetError::InvalidBaseline) => {
+                deltas.insert(
+                    *metric,
+                    skipped_delta(bv, cv, current_cv, budget.noise_threshold, statistic),
+                );
+                counts.skip += 1;
+                continue;
+            }
+            Err(BudgetError::NoSamples) => return Err(DomainError::NoSamples),
+        };
 
         let mut status = result.status;
 
