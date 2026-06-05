@@ -125,6 +125,12 @@ cargo run -p xtask -- schema-compat
 cargo run -p xtask -- ci
 ```
 
+Promotion prerequisite: release candidates prepared from `perfgate-swarm` must
+first follow the [Swarm Promotion Contract](development/SWARM_PROMOTION.md).
+Publication happens from `EffortlessMetrics/perfgate` after a normal
+merge-commit promotion, not from `perfgate-swarm`; do not squash, rebase, or
+move release authority into the swarm repo.
+
 Run `publish-check --dry-run --package <name>` immediately before publishing each
 crate in dependency order. Cargo verifies packaged dependencies against
 crates.io, so downstream crates such as `perfgate` and `perfgate-cli` require
