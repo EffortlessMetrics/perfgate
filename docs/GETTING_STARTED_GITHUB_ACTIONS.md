@@ -185,6 +185,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
 
       - name: Install perfgate
         run: cargo install perfgate-cli --locked --version 0.18.0
