@@ -53,9 +53,13 @@ gate before pushing:
 ```bash
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```
+
+Replace generated suggestions, smoke commands, and placeholders before
+promoting production baselines.
 
 Commit the durable setup and baseline files, but leave generated artifacts out
 unless your team intentionally archives them:

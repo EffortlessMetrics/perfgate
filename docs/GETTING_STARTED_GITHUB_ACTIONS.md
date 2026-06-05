@@ -25,12 +25,15 @@ This creates:
 one into a real `[[bench]]`, and keep the first required gate simple until the
 signal is calibrated.
 
-The generated setup uses local in-repo baselines first. After a trusted local
-run, promote each first baseline and prove the CI-equivalent gate locally:
+The generated setup uses local in-repo baselines first. After a reviewed,
+representative local run, promote each first baseline and prove the
+CI-equivalent gate locally. Do not promote smoke-only commands, generated
+placeholders, or unreviewed suggestions as production baselines:
 
 ```bash
 perfgate check --config perfgate.toml --all
 perfgate baseline status --config perfgate.toml
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```

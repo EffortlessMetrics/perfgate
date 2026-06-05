@@ -1,4 +1,7 @@
 # perfgate.multi.toml - Runnable multi-benchmark configuration example
+#
+# Replace example commands with representative project benchmarks before
+# promoting production baselines.
 
 [defaults]
 repeat = 5
@@ -12,6 +15,8 @@ command = ["cargo", "metadata", "--format-version", "1", "--no-deps"]
 
 [[bench]]
 name = "cargo-version"
+# Smoke-only command that demonstrates multiple benches. Do not promote a
+# production baseline from tool version checks.
 command = ["cargo", "--version"]
 # Override global threshold for this specific benchmark
 [bench.budgets.wall_ms]
@@ -19,6 +24,8 @@ threshold = 0.10
 
 [[bench]]
 name = "rustc-version"
+# Smoke-only command that demonstrates multiple benches. Do not promote a
+# production baseline from tool version checks.
 command = ["rustc", "--version"]
 # This gates command runtime. Use ingest/adoption-pack flows for static metrics
 # such as bundle size instead of timing a file-stat command.

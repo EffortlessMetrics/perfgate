@@ -167,14 +167,16 @@ perfgate doctor
 perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 For the structured-decision release proof, start from that generated setup and
-prove the install-to-decision path. The first `check` creates a trusted first
-run for promotion; the second `check --require-baseline` represents the next
-change under review and writes compare receipts for `decision evaluate`:
+prove the install-to-decision path. The first `check` creates a reviewed,
+representative first run for promotion; the second `check --require-baseline`
+represents the next change under review and writes compare receipts for
+`decision evaluate`:
 
 ```bash
 cargo binstall perfgate-cli
@@ -182,6 +184,7 @@ perfgate doctor
 perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 perfgate ingest probes --file artifacts/probes-baseline.jsonl --out artifacts/perfgate/parser/probes-baseline.json

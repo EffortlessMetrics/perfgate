@@ -57,7 +57,8 @@ artifacts/perfgate/parser/report.json
 ```
 
 The reviewer should treat this as setup work unless a baseline was expected to
-exist. Promote intentionally, commit `baselines/`, and rerun CI.
+exist. Promote only after reviewing artifacts and confirming the command is
+representative, then commit `baselines/` and rerun CI.
 
 ## Policy Failure
 
@@ -189,7 +190,8 @@ perfgate check exited with code 2
 Verdict: fail (pass=0, warn=0, fail=1, benches=1)
 Reproduce locally:
   perfgate check --config perfgate.toml --all --require-baseline
-Baseline bootstrap: after reviewing the first trusted run, promote it locally:
+Baseline bootstrap: after reviewing the first representative run, promote it
+locally:
   perfgate baseline promote --config perfgate.toml --all
 Artifacts:
 artifacts/perfgate/parser/run.json

@@ -37,6 +37,7 @@ about.
 
 ```bash
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```

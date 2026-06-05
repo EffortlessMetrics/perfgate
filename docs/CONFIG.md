@@ -4,6 +4,9 @@ perfgate uses TOML configuration files for the `check` command.
 
 ## Full Example
 
+This is a runnable syntax reference. Replace smoke-only placeholder commands
+with representative project benchmarks before promoting production baselines.
+
 ```toml
 [defaults]
 repeat = 7                                    # iterations per benchmark
@@ -19,6 +22,8 @@ markdown_template = ".github/perfgate-comment.hbs"  # optional Handlebars templa
 
 [[bench]]
 name = "pst_extract"
+# Smoke-only placeholder to keep this reference runnable.
+# Replace it before promoting a production baseline.
 command = ["sh", "-c", "sleep 0.02"]
 work = 1000                                   # work units for throughput calc
 budgets = { wall_ms = { threshold = 0.20, warn_factor = 0.90, statistic = "p95" }, max_rss_kb = { threshold = 0.15, warn_factor = 0.90, statistic = "median" } }

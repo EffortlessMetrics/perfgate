@@ -3,8 +3,8 @@
 This guide is for a cold user adding perfgate to an existing repository. It
 keeps the path small: install, check the environment, initialize with
 reviewable benchmark suggestions, run one local check, promote the first
-baseline, prove the CI-equivalent gate locally, commit the durable files, and
-let CI reproduce the same gate.
+reviewed baseline, prove the CI-equivalent gate locally, commit the durable
+files, and let CI reproduce the same gate.
 
 You do not need the server, probes, scenarios, or structured decisions for this
 first hour.
@@ -89,8 +89,8 @@ Expected first-run behavior:
 
 - perfgate runs each configured benchmark command;
 - perfgate writes run receipts under the artifact directory;
-- if no baseline exists yet, perfgate tells you to promote the first trusted
-  local result instead of silently inventing a baseline.
+- if no baseline exists yet, perfgate tells you to promote the first reviewed,
+  representative local result instead of silently inventing a baseline.
 
 Useful exit-code meanings:
 
@@ -103,7 +103,9 @@ Useful exit-code meanings:
 
 ## 5. Promote The First Baseline
 
-After one local run looks representative, promote it:
+After one local run looks representative, promote it. Do not promote a
+smoke-only command, generated placeholder, or unreviewed suggestion as a
+production baseline.
 
 ```bash
 perfgate baseline promote --config perfgate.toml --all

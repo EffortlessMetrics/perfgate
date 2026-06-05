@@ -59,6 +59,7 @@ Use `check` for the first CI gate:
 
 ```bash
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 ```
 
@@ -101,9 +102,10 @@ perfgate init --ci github --profile standard --suggest-benches
 perfgate check --config perfgate.toml --all
 ```
 
-Add baseline promotion after you trust the first run:
+Add baseline promotion after the first run is reviewed and representative:
 
 ```bash
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```

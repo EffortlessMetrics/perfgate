@@ -33,6 +33,7 @@ perfgate doctor
 perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```
@@ -42,7 +43,8 @@ perfgate check --config perfgate.toml --all --require-baseline
 Keep the first config boring: one benchmark, local baselines, and a budget wide
 enough to avoid making noise look like policy. `--suggest-benches` adds
 commented candidates; review and edit one into a real `[[bench]]` entry before
-promoting a baseline. Use the
+promoting a baseline. Do not promote a smoke-only placeholder as production
+policy. Use the
 [benchmark recipe guide](BENCHMARK_RECIPES.md) when deciding whether a workload
 should be smoke-only, advisory, gate-ready, paired, or structured-decision
 input.

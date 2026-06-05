@@ -57,7 +57,8 @@ as-is.
 
 ## Promoting Baselines After Merge
 
-Use a workflow filter to run promotion only on the main branch:
+Use a workflow filter to run promotion only on the main branch after the current
+run has been reviewed and confirmed representative:
 
 ```yaml
 version: 2.1
@@ -107,6 +108,7 @@ jobs:
           name: Run and promote baselines
           command: |
             perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
+            # Review artifacts and confirm the command is representative before promotion.
             perfgate baseline promote --config perfgate.toml --all
       - store_artifacts:
           path: artifacts/perfgate

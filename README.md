@@ -60,6 +60,7 @@ perfgate init --ci github --profile standard --suggest-benches
 # Edit perfgate.toml: uncomment or add one [[bench]] for your project.
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 git add perfgate.toml .github/workflows/perfgate.yml baselines/ .perfgate/
@@ -69,7 +70,8 @@ For a concrete cold-start walkthrough, including expected files, artifacts,
 pass/fail behavior, and what to commit, see
 [`docs/FIRST_HOUR.md`](docs/FIRST_HOUR.md). `--suggest-benches` appends
 commented benchmark candidates so benchmark choice stays reviewable; edit or
-replace them before promoting a baseline.
+replace them before promoting a baseline. Do not promote a smoke-only or
+placeholder command as a production baseline.
 
 If the repo already has Criterion, hyperfine, pytest-benchmark, k6, custom
 JSON/CSV, or script-based benchmark evidence, use
@@ -204,7 +206,7 @@ Inspect local baseline state:
 perfgate baseline status --config perfgate.toml
 ```
 
-Promote a trusted current run into local baselines:
+Promote a reviewed, representative current run into local baselines:
 
 ```bash
 perfgate baseline promote --config perfgate.toml --all

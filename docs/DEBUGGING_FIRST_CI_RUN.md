@@ -12,7 +12,9 @@ perfgate check --config perfgate.toml --all
 perfgate baseline status --config perfgate.toml
 ```
 
-If the check created a trusted first run, promote it into local baselines:
+If the check created a reviewed, representative first run, promote it into
+local baselines. Do not promote a smoke-only command, generated placeholder, or
+unreviewed suggestion as a production baseline.
 
 ```bash
 perfgate baseline promote --config perfgate.toml --all
@@ -36,6 +38,7 @@ If CI reports a missing baseline:
 
 ```bash
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```

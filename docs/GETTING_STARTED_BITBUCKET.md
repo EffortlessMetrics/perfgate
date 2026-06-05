@@ -83,7 +83,8 @@ pipelines:
 
 ## Promoting Baselines After Merge
 
-On your default branch, promote the current run to update baselines:
+On your default branch, promote only a reviewed, representative current run to
+update baselines:
 
 ```yaml
 image: rust:1.95.0
@@ -96,6 +97,7 @@ pipelines:
           script:
             - cargo install perfgate-cli --locked --version 0.18.0
             - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
+            - '# Review artifacts and confirm the command is representative before promotion.'
             - perfgate baseline promote --config perfgate.toml --all
           artifacts:
             - artifacts/perfgate/**
