@@ -80,6 +80,7 @@ jobs:
         id: perfgate
         uses: EffortlessMetrics/perfgate@v0.18.0
         with:
+          version: "0.18.0"
           config: perfgate.toml
           all: "true"
           require_baseline: "true"
@@ -90,9 +91,11 @@ Omit `out_dir` to let the action use `[defaults].out_dir` from
 `perfgate.toml`. Set `out_dir` only when the workflow should override the
 config.
 
-Use `@v0.18.0` when you want an exact patch pin. If you prefer a moving tag,
-the published action aliases `@v0.18` and `@v0` now track the current
-compatible release.
+Use `@v0.18.0` plus `version: "0.18.0"` when you want an exact
+patch pin and the fastest public release-binary install. If you prefer a
+moving tag, the published action aliases `@v0.18` and `@v0` now track the
+current compatible release; omit `version` there so the action builds from the
+checked-out action source.
 
 Action outputs are available as:
 - `${{ steps.perfgate.outputs.verdict }}`
@@ -122,6 +125,7 @@ comment, opt in to decision mode:
         id: perfgate
         uses: EffortlessMetrics/perfgate@v0.18.0
         with:
+          version: "0.18.0"
           config: perfgate.toml
           all: "true"
           require_baseline: "true"

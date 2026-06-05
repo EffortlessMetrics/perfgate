@@ -120,8 +120,10 @@ The generated workflow calls the repository action:
     upload_artifact: "true"
 ```
 
-Use `@v0.18.0` for an exact patch pin, `@v0.18` for the current 0.18 line, or
-`@v0` to follow the current compatible action tag.
+Use `@v0.18.0` with `version: "0.18.0"` for an exact patch pin and
+release-binary install, `@v0.18` for the current 0.18 line, or `@v0` to follow
+the current compatible action tag. Omit `version` with moving tags so the
+action builds from the checked-out action source.
 
 ### Artifacts
 

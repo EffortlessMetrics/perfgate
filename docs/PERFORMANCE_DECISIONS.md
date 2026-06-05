@@ -379,8 +379,10 @@ Enable decision mode in the repository action:
     review_required: "warn"
 ```
 
-`@v0` tracks the current public compatible action release. Use `@v0.18.0` for
-an exact 0.18 patch pin or `@v0.18` for the current 0.18 release line.
+`@v0` tracks the current public compatible action release. Use `@v0.18.0` plus
+`version: "0.18.0"` for an exact 0.18 patch pin and release-binary install, or
+`@v0.18` for the current 0.18 release line. Omit `version` with moving tags so
+the action builds from the checked-out action source.
 
 Decision mode runs `perfgate decision evaluate --config perfgate.toml` after
 `check`, uploads the decision artifacts, and appends `decision.md` to the job
