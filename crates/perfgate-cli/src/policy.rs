@@ -442,9 +442,9 @@ fn load_policy_evidence(
         .validate()
         .map_err(ConfigValidationError::ConfigFile)?;
     let benches = configured_benches(&config, Some(bench_name))?;
-    let bench = benches
-        .first()
-        .expect("configured_benches returns one item for a valid bench");
+    let Some(bench) = benches.first() else {
+        anyhow::bail!("benchmark '{bench_name}' was not returned after config validation");
+    };
     let resolved_out_dir = resolve_configured_out_dir(out_dir, Some(&config));
     let baseline = inspect_baseline(&config, bench)?;
     let signal = inspect_signal(&config, &resolved_out_dir, bench)?;
@@ -1380,7 +1380,7 @@ fn format_percent(value: f64) -> String {
 pub fn execute_policy_action(action: PolicyAction) -> anyhow::Result<()> {
     match action {
         PolicyAction::Profiles { profile } => {
-            print!("{}", render_policy_profiles(profile));
+            print!("{}", render_policy_profiles(profile)?);
             Ok(())
         }
         PolicyAction::Doctor(args) => execute_policy_doctor(args),
@@ -1417,20 +1417,22 @@ mod tests {
     }
 
     #[test]
-    fn rendered_catalog_preserves_advisory_boundary() {
-        let rendered = render_policy_profiles(None);
+    fn rendered_catalog_preserves_advisory_boundary() -> anyhow::Result<()> {
+        let rendered = render_policy_profiles(None)?;
         assert!(rendered.contains("not automatic enforcement"));
         assert!(rendered.contains("They do not promote baselines"));
         assert!(rendered.contains("Profile: rust-cli-standard"));
         assert!(rendered.contains("Profile: server-ledger-optional"));
         assert!(rendered.contains("server ledger is required for perfgate correctness"));
+        Ok(())
     }
 
     #[test]
-    fn rendered_single_profile_excludes_other_profiles() {
-        let rendered = render_policy_profiles(Some(PolicyProfileName::NodeCommandAdvisory));
+    fn rendered_single_profile_excludes_other_profiles() -> anyhow::Result<()> {
+        let rendered = render_policy_profiles(Some(PolicyProfileName::NodeCommandAdvisory))?;
         assert!(rendered.contains("Profile: node-command-advisory"));
         assert!(rendered.contains("JIT"));
         assert!(!rendered.contains("Profile: rust-cli-standard"));
+        Ok(())
     }
 }

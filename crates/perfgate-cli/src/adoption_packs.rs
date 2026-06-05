@@ -323,14 +323,14 @@ pub fn adoption_packs() -> &'static [AdoptionPack] {
     ADOPTION_PACKS
 }
 
-pub fn adoption_pack(name: AdoptionPackName) -> &'static AdoptionPack {
+pub fn adoption_pack(name: AdoptionPackName) -> anyhow::Result<&'static AdoptionPack> {
     adoption_packs()
         .iter()
         .find(|pack| pack.name == name.as_str())
-        .expect("all AdoptionPackName values have catalog entries")
+        .with_context(|| format!("missing adoption pack catalog entry for {}", name.as_str()))
 }
 
-pub fn recommend_adoption_pack(root: &Path) -> AdoptionRecommendation {
+pub fn recommend_adoption_pack(root: &Path) -> anyhow::Result<AdoptionRecommendation> {
     let mut inspected = Vec::new();
 
     let cargo_toml = path_exists(root, "Cargo.toml", &mut inspected);
@@ -418,8 +418,8 @@ pub fn recommend_adoption_pack(root: &Path) -> AdoptionRecommendation {
         )
     };
 
-    let pack = adoption_pack(pack_name);
-    AdoptionRecommendation {
+    let pack = adoption_pack(pack_name)?;
+    Ok(AdoptionRecommendation {
         recommended_pack: pack.name,
         confidence,
         why,
@@ -433,7 +433,7 @@ pub fn recommend_adoption_pack(root: &Path) -> AdoptionRecommendation {
         ],
         known_bad_fits: pack.known_bad_fits.to_vec(),
         next_command: format!("perfgate adoption packs --pack {}", pack.name),
-    }
+    })
 }
 
 pub fn render_adoption_recommendation(recommendation: &AdoptionRecommendation) -> String {
@@ -465,7 +465,7 @@ pub fn render_adoption_apply_artifacts(
     }
 }
 
-pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> String {
+pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> anyhow::Result<String> {
     let mut out = String::new();
     out.push_str(
         "Adoption packs are reviewable starting points for existing benchmark ecosystems.\n",
@@ -475,7 +475,7 @@ pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> String {
     );
 
     let packs: Vec<&AdoptionPack> = match filter {
-        Some(name) => vec![adoption_pack(name)],
+        Some(name) => vec![adoption_pack(name)?],
         None => adoption_packs().iter().collect(),
     };
 
@@ -486,7 +486,7 @@ pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> String {
         render_pack(&mut out, pack);
     }
 
-    out
+    Ok(out)
 }
 
 fn render_config_patch(pack: &AdoptionPack, starter: StarterBench) -> String {
@@ -749,7 +749,7 @@ pub fn execute_adoption_action(action: AdoptionAction) -> anyhow::Result<()> {
                 );
             }
 
-            let recommendation = recommend_adoption_pack(&root);
+            let recommendation = recommend_adoption_pack(&root)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&recommendation)?);
             } else {
@@ -769,7 +769,7 @@ pub fn execute_adoption_action(action: AdoptionAction) -> anyhow::Result<()> {
                 );
             }
 
-            let pack = adoption_pack(pack);
+            let pack = adoption_pack(pack)?;
             let artifacts = render_adoption_apply_artifacts(pack, ci);
             let written = write_adoption_apply_artifacts(&out_dir, &artifacts)?;
             println!(
@@ -785,7 +785,7 @@ pub fn execute_adoption_action(action: AdoptionAction) -> anyhow::Result<()> {
             Ok(())
         }
         AdoptionAction::Packs { pack } => {
-            print!("{}", render_adoption_packs(pack));
+            print!("{}", render_adoption_packs(pack)?);
             Ok(())
         }
     }
@@ -812,8 +812,8 @@ mod tests {
     }
 
     #[test]
-    fn rendered_catalog_preserves_review_boundaries() {
-        let rendered = render_adoption_packs(None);
+    fn rendered_catalog_preserves_review_boundaries() -> anyhow::Result<()> {
+        let rendered = render_adoption_packs(None)?;
         assert!(rendered.contains("reviewable starting points"));
         assert!(rendered.contains("do not detect benchmarks magically"));
         assert!(rendered.contains("promote baselines"));
@@ -822,18 +822,20 @@ mod tests {
         assert!(rendered.contains("Pack: generic-command"));
         assert!(rendered.contains("Local reproduction:"));
         assert!(rendered.contains("Do not infer:"));
+        Ok(())
     }
 
     #[test]
-    fn rendered_single_pack_excludes_other_packs() {
-        let rendered = render_adoption_packs(Some(AdoptionPackName::HttpLocalSmoke));
+    fn rendered_single_pack_excludes_other_packs() -> anyhow::Result<()> {
+        let rendered = render_adoption_packs(Some(AdoptionPackName::HttpLocalSmoke))?;
         assert!(rendered.contains("Pack: http-local-smoke"));
         assert!(rendered.contains("k6 summary JSON"));
         assert!(!rendered.contains("Pack: rust-cli"));
+        Ok(())
     }
 
     #[test]
-    fn recommendation_prefers_rust_cli_shape() {
+    fn recommendation_prefers_rust_cli_shape() -> anyhow::Result<()> {
         let root = tempfile::tempdir().expect("temp dir");
         std::fs::write(
             root.path().join("Cargo.toml"),
@@ -843,7 +845,7 @@ mod tests {
         std::fs::create_dir(root.path().join("src")).expect("create src");
         std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").expect("write main");
 
-        let recommendation = recommend_adoption_pack(root.path());
+        let recommendation = recommend_adoption_pack(root.path())?;
 
         assert_eq!(recommendation.recommended_pack, "rust-cli");
         assert_eq!(recommendation.confidence, "high");
@@ -853,10 +855,11 @@ mod tests {
                 .contains(&"found Cargo.toml".to_string())
         );
         assert!(recommendation.not_inspected.contains(&"baseline maturity"));
+        Ok(())
     }
 
     #[test]
-    fn recommendation_prefers_workspace_shape_over_cli() {
+    fn recommendation_prefers_workspace_shape_over_cli() -> anyhow::Result<()> {
         let root = tempfile::tempdir().expect("temp dir");
         std::fs::write(
             root.path().join("Cargo.toml"),
@@ -866,7 +869,7 @@ mod tests {
         std::fs::create_dir(root.path().join("src")).expect("create src");
         std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").expect("write main");
 
-        let recommendation = recommend_adoption_pack(root.path());
+        let recommendation = recommend_adoption_pack(root.path())?;
 
         assert_eq!(recommendation.recommended_pack, "rust-workspace");
         assert_eq!(recommendation.confidence, "high");
@@ -875,16 +878,18 @@ mod tests {
                 .inspected
                 .contains(&"Cargo.toml contains [workspace]".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn recommendation_falls_back_to_generic_command() {
+    fn recommendation_falls_back_to_generic_command() -> anyhow::Result<()> {
         let root = tempfile::tempdir().expect("temp dir");
 
-        let recommendation = recommend_adoption_pack(root.path());
+        let recommendation = recommend_adoption_pack(root.path())?;
 
         assert_eq!(recommendation.recommended_pack, "generic-command");
         assert_eq!(recommendation.confidence, "low");
         assert!(recommendation.next_command.contains("generic-command"));
+        Ok(())
     }
 }

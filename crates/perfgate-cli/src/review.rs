@@ -173,9 +173,9 @@ fn load_review_evidence(
         .validate()
         .map_err(ConfigValidationError::ConfigFile)?;
     let benches = configured_benches(&config, Some(bench_name))?;
-    let bench = benches
-        .first()
-        .expect("configured_benches returns one item for a valid bench");
+    let Some(bench) = benches.first() else {
+        anyhow::bail!("benchmark '{bench_name}' was not returned after config validation");
+    };
     let resolved_out_dir = resolve_configured_out_dir(out_dir, Some(&config));
     let baseline = inspect_baseline(&config, bench)?;
     let signal = inspect_signal(&config, &resolved_out_dir, bench)?;

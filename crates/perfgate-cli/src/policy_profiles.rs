@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::ValueEnum;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -51,20 +52,20 @@ pub fn policy_profiles() -> &'static [PolicyProfile] {
     POLICY_PROFILES
 }
 
-pub fn policy_profile(name: PolicyProfileName) -> &'static PolicyProfile {
+pub fn policy_profile(name: PolicyProfileName) -> anyhow::Result<&'static PolicyProfile> {
     POLICY_PROFILES
         .iter()
         .find(|profile| profile.name == name.as_str())
-        .expect("all PolicyProfileName values have catalog entries")
+        .with_context(|| format!("missing policy profile catalog entry for {}", name.as_str()))
 }
 
-pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> String {
+pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> anyhow::Result<String> {
     let mut out = String::new();
     out.push_str("Policy profiles are reviewable starting points, not automatic enforcement.\n");
     out.push_str("They do not promote baselines, loosen thresholds, or make checks blocking.\n");
 
     let profiles: Vec<&PolicyProfile> = match filter {
-        Some(name) => vec![policy_profile(name)],
+        Some(name) => vec![policy_profile(name)?],
         None => policy_profiles().iter().collect(),
     };
 
@@ -75,7 +76,7 @@ pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> String {
         render_profile(&mut out, profile);
     }
 
-    out
+    Ok(out)
 }
 
 fn render_profile(out: &mut String, profile: &PolicyProfile) {
