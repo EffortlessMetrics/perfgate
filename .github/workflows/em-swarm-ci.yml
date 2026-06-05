@@ -22,16 +22,7 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on:
-      group: em-ci-nano
-      labels:
-        - self-hosted
-        - linux
-        - x64
-        - em-ci
-        - cx23
-        - ci-nano
-        - trusted-pr
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Check runner routing policy
@@ -76,16 +67,7 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on:
-      group: em-ci-nano
-      labels:
-        - self-hosted
-        - linux
-        - x64
-        - em-ci
-        - cx23
-        - ci-nano
-        - trusted-pr
+    runs-on: ubuntu-latest
     outputs:
       target: ${{ steps.route.outputs.target }}
       reason: ${{ steps.route.outputs.reason }}
