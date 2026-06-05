@@ -75,7 +75,7 @@ hand-building JSON strings.
 
 ```toml
 [dependencies]
-perfgate = { version = "0.17", features = ["probe"] }
+perfgate = { version = "0.18", features = ["probe"] }
 ```
 
 ```rust,no_run

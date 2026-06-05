@@ -11,7 +11,7 @@ add `perfgate` and access everything through its module re-exports:
 
 ```toml
 [dependencies]
-perfgate = "0.15"
+perfgate = "0.18"
 ```
 
 ## What is included

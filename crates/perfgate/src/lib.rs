@@ -49,9 +49,9 @@ pub mod integrations;
 /// use the optional Criterion measurement adapter:
 ///
 /// ```toml
-/// perfgate = { version = "0.15", features = ["probe"] }
-/// perfgate = { version = "0.15", features = ["probe-tracing"] }
-/// perfgate = { version = "0.15", features = ["probe-criterion"] }
+/// perfgate = { version = "0.18", features = ["probe"] }
+/// perfgate = { version = "0.18", features = ["probe-tracing"] }
+/// perfgate = { version = "0.18", features = ["probe-criterion"] }
 /// ```
 #[cfg(feature = "probe")]
 pub mod probe;

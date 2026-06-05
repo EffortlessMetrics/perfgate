@@ -152,7 +152,7 @@ Rust projects can emit the same JSONL with the optional facade helper:
 
 ```toml
 [dependencies]
-perfgate = { version = "0.17", features = ["probe"] }
+perfgate = { version = "0.18", features = ["probe"] }
 ```
 
 ```rust,no_run
@@ -179,7 +179,7 @@ Projects that already use `tracing` can enable the optional span adapter:
 
 ```toml
 [dependencies]
-perfgate = { version = "0.17", features = ["probe-tracing"] }
+perfgate = { version = "0.18", features = ["probe-tracing"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 ```
@@ -219,7 +219,7 @@ Criterion samples to also become probe JSONL:
 ```toml
 [dev-dependencies]
 criterion = "0.8"
-perfgate = { version = "0.17", features = ["probe-criterion"] }
+perfgate = { version = "0.18", features = ["probe-criterion"] }
 ```
 
 ```rust,no_run
