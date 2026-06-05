@@ -1387,11 +1387,26 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
             .iter()
             .any(|line| line.contains("no_baseline"))
         || !failure_summary_lines.iter().any(|line| {
-            line == "echo \"  perfgate baseline promote --config ${{ inputs.config }} --all\""
+            line == "promote_repro=(perfgate baseline promote --config \"${{ inputs.config }}\")"
         })
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "promote_repro+=(--all)")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "promote_repro+=(--bench \"${{ inputs.bench }}\")")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "promote_repro_line=\"$(format_command \"${promote_repro[@]}\")\"")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "echo \"  ${promote_repro_line}\"")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "echo \"${promote_repro_line}\"")
     {
         errors.push(
-            "action.yml failure summary must include a baseline promotion hint when no baseline evidence appears"
+            "action.yml failure summary must include a scoped baseline promotion hint when no baseline evidence appears"
                 .to_string(),
         );
     }

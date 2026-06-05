@@ -215,6 +215,37 @@ fn baseline_status_reports_missing_then_found_local_baseline() {
 }
 
 #[test]
+fn baseline_status_bench_scope_teaches_bench_commands() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_two_bench_config(temp_dir.path());
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "status",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "second-benchmark",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("MISSING second-benchmark"))
+        .stdout(predicate::str::contains(
+            "perfgate check --config perfgate.toml --bench second-benchmark",
+        ))
+        .stdout(predicate::str::contains(
+            "perfgate baseline promote --config perfgate.toml --bench second-benchmark",
+        ))
+        .stdout(predicate::str::contains("perfgate check --config perfgate.toml --all").not())
+        .stdout(
+            predicate::str::contains("perfgate baseline promote --config perfgate.toml --all")
+                .not(),
+        );
+}
+
+#[test]
 fn baseline_doctor_reports_mature_and_missing_local_baselines() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
     write_two_bench_config(temp_dir.path());
@@ -633,6 +664,29 @@ fn baseline_promote_missing_default_artifact_teaches_next_command() {
         .failure()
         .stderr(predicate::str::contains("run receipt not found"))
         .stderr(predicate::str::contains(
+            "perfgate check --config perfgate.toml --bench test-benchmark",
+        ))
+        .stderr(predicate::str::contains("perfgate check --config perfgate.toml --all").not());
+}
+
+#[test]
+fn baseline_promote_all_missing_default_artifact_teaches_all_check() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["baseline", "promote", "--config", "perfgate.toml", "--all"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("run receipt not found"))
+        .stderr(predicate::str::contains(
             "perfgate check --config perfgate.toml --all",
-        ));
+        ))
+        .stderr(
+            predicate::str::contains(
+                "perfgate check --config perfgate.toml --bench test-benchmark",
+            )
+            .not(),
+        );
 }

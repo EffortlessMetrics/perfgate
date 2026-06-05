@@ -147,7 +147,7 @@ impl SummaryUseCase {
         let mut paths = Vec::new();
         for pattern in &req.files {
             for entry in
-                glob(&pattern).with_context(|| format!("invalid glob pattern: {}", pattern))?
+                glob(pattern).with_context(|| format!("invalid glob pattern: {}", pattern))?
             {
                 paths.push(entry?);
             }

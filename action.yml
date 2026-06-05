@@ -593,11 +593,14 @@ runs:
         fi
 
         repro=(perfgate check --config "${{ inputs.config }}")
+        promote_repro=(perfgate baseline promote --config "${{ inputs.config }}")
 
         if [[ "${{ inputs.all }}" == "true" ]]; then
           repro+=(--all)
+          promote_repro+=(--all)
         else
           repro+=(--bench "${{ inputs.bench }}")
+          promote_repro+=(--bench "${{ inputs.bench }}")
         fi
 
         if [[ -n "${{ inputs.out_dir }}" ]]; then
@@ -673,6 +676,7 @@ runs:
         }
 
         repro_line="$(format_command "${repro[@]}")"
+        promote_repro_line="$(format_command "${promote_repro[@]}")"
         decision_repro=()
         decision_repro_line=""
         if [[ "${{ inputs.decision }}" == "true" ]]; then
@@ -710,7 +714,7 @@ runs:
         if has_no_baseline_reason; then
           echo
           echo "Baseline bootstrap: after reviewing the first trusted run, promote it locally:"
-          echo "  perfgate baseline promote --config ${{ inputs.config }} --all"
+          echo "  ${promote_repro_line}"
         fi
         if [[ "${{ inputs.upload_artifact }}" == "true" ]]; then
           echo
@@ -756,7 +760,7 @@ runs:
               echo "Baseline bootstrap: after reviewing the first trusted run, promote it locally:"
               echo
               printf '%s\n' '```bash'
-              echo "perfgate baseline promote --config ${{ inputs.config }} --all"
+              echo "${promote_repro_line}"
               printf '%s\n' '```'
             fi
             if [[ "${{ inputs.upload_artifact }}" == "true" ]]; then

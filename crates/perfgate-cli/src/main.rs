@@ -5844,21 +5844,20 @@ fn execute_local_baseline_status(config_path: &Path, bench: Option<&str>) -> any
         println!();
         println!("Next:");
         if missing.len() == 1 {
+            let bench_name = &missing[0];
             println!(
-                "  1. Run: perfgate check --config {} --all",
-                config_path.display()
+                "  1. Run: {}",
+                baseline_check_command(config_path, bench_name, bench.is_none())
             );
             if bench.is_some() {
-                let bench_name = &missing[0];
                 println!(
-                    "  2. Promote: perfgate baseline promote --config {} --bench {}",
-                    config_path.display(),
-                    bench_name
+                    "  2. Promote: {}",
+                    baseline_promote_command(config_path, bench_name, false)
                 );
             } else {
                 println!(
-                    "  2. Promote: perfgate baseline promote --config {} --all",
-                    config_path.display()
+                    "  2. Promote: {}",
+                    baseline_promote_command(config_path, bench_name, true)
                 );
             }
         } else {
@@ -5934,7 +5933,7 @@ fn execute_local_baseline_promote(
 
         let mut promoted = 0usize;
         for bench in &benches {
-            promote_one_local_baseline(config_path, &config, bench, None, None, &options)?;
+            promote_one_local_baseline(config_path, &config, bench, None, None, true, &options)?;
             promoted += 1;
         }
 
@@ -5956,6 +5955,7 @@ fn execute_local_baseline_promote(
         bench,
         options.current.clone(),
         options.to.clone(),
+        false,
         &options,
     )
 }
@@ -5966,6 +5966,7 @@ fn promote_one_local_baseline(
     bench: &str,
     current: Option<PathBuf>,
     to: Option<PathBuf>,
+    all: bool,
     options: &LocalBaselinePromoteOptions,
 ) -> anyhow::Result<()> {
     let current_path = if let Some(current) = current {
@@ -5989,8 +5990,8 @@ fn promote_one_local_baseline(
                     .collect::<Vec<_>>()
                     .join(" or ");
                 anyhow::bail!(
-                    "run receipt not found at {searched}; run `perfgate check --config {} --all` first, or pass --current",
-                    config_path.display()
+                    "run receipt not found at {searched}; run `{}` first, or pass --current",
+                    baseline_check_command(config_path, bench, all)
                 );
             }
         }
@@ -6025,6 +6026,33 @@ fn promote_one_local_baseline(
     eprintln!("  baseline: {}", baseline_path.display());
 
     Ok(())
+}
+
+fn baseline_check_command(config_path: &Path, bench: &str, all: bool) -> String {
+    if all {
+        format!("perfgate check --config {} --all", config_path.display())
+    } else {
+        format!(
+            "perfgate check --config {} --bench {}",
+            config_path.display(),
+            bench
+        )
+    }
+}
+
+fn baseline_promote_command(config_path: &Path, bench: &str, all: bool) -> String {
+    if all {
+        format!(
+            "perfgate baseline promote --config {} --all",
+            config_path.display()
+        )
+    } else {
+        format!(
+            "perfgate baseline promote --config {} --bench {}",
+            config_path.display(),
+            bench
+        )
+    }
 }
 
 fn execute_local_baseline_promote_plan(
