@@ -186,8 +186,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build perfgate
-        run: cargo install perfgate-cli --locked
+      - name: Install perfgate
+        run: cargo install perfgate-cli --locked --version 0.18.0
 
       - name: Run perfgate checks
         id: perfgate
@@ -222,6 +222,10 @@ jobs:
 - `fail_count`
 - `bench_count`
 - `exit_code`
+
+The manual install pin should match the perfgate release you intend to run. If
+you choose another exact action ref or release line, update the CLI `--version`
+pin at the same time.
 
 ## 5) Optional: comment markdown artifact
 
