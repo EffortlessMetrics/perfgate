@@ -3,6 +3,7 @@
 //! **Validates: Requirements 8.1**
 
 use predicates::prelude::*;
+use std::fs;
 use tempfile::tempdir;
 
 mod common;
@@ -166,6 +167,54 @@ fn test_github_annotations_missing_compare_file() {
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("read"));
+}
+
+/// Test github-annotations with baseline-less check artifacts
+/// Should explain why compare.json is absent and how to bootstrap a baseline.
+///
+/// **Validates: Requirements 8.1**
+#[test]
+fn test_github_annotations_no_baseline_report_guidance() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempdir()?;
+    let compare_path = temp_dir.path().join("compare.json");
+    fs::write(
+        temp_dir.path().join("report.json"),
+        serde_json::json!({
+            "report_type": "perfgate.report.v1",
+            "verdict": {
+                "status": "warn",
+                "counts": { "pass": 0, "warn": 1, "fail": 0, "skip": 0 },
+                "reasons": ["no_baseline"]
+            },
+            "findings": [{
+                "check_id": "perf.baseline",
+                "code": "missing",
+                "severity": "warn",
+                "message": "No baseline found for bench 'bench'; comparison skipped"
+            }],
+            "summary": { "pass_count": 0, "warn_count": 1, "fail_count": 0, "skip_count": 0, "total_count": 1 }
+        })
+        .to_string(),
+    )?;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("github-annotations")
+        .arg("--compare")
+        .arg(&compare_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("No compare receipts found"))
+        .stderr(predicate::str::contains(
+            "compare.json is not written until a baseline exists",
+        ))
+        .stderr(predicate::str::contains("run.json"))
+        .stderr(predicate::str::contains("report.json"))
+        .stderr(predicate::str::contains("comment.md"))
+        .stderr(predicate::str::contains(
+            "perfgate baseline promote --config perfgate.toml --all",
+        ));
+    Ok(())
 }
 
 /// Test github-annotations without required --compare argument

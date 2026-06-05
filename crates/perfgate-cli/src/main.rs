@@ -49,7 +49,9 @@ use perfgate::runtime::profile::{ProfileRequest, capture_flamegraph};
 use perfgate::runtime::{HostProbe, HostProbeOptions, StdHostProbe, StdProcessRunner};
 use perfgate_app::baseline_resolve::{is_remote_storage_uri, resolve_baseline_path};
 use perfgate_app::comparison_logic::{build_budgets, build_metric_statistics, verdict_from_counts};
-use perfgate_app::render::summary::{SummaryRequest, SummaryUseCase};
+use perfgate_app::render::summary::{
+    SummaryRequest, SummaryUseCase, no_baseline_compare_receipts_message_for_path,
+};
 use perfgate_app::{
     BadgeInput, BadgeStyle, BadgeType, BadgeUseCase, BenchOutcome, BisectRequest, BisectUseCase,
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
@@ -2778,6 +2780,11 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::GithubAnnotations { compare } => {
+            if !compare.exists() {
+                if let Some(message) = no_baseline_compare_receipts_message_for_path(&compare) {
+                    anyhow::bail!("{message}");
+                }
+            }
             let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
             for line in github_annotations(&compare_receipt) {
                 println!("{line}");
