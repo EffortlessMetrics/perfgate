@@ -74,7 +74,7 @@ jobs:
   performance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run perfgate
         id: perfgate
@@ -185,7 +185,7 @@ jobs:
   performance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload perfgate artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perfgate-artifacts
           path: artifacts/perfgate
@@ -257,7 +257,7 @@ uploads and verdict printing -- need `if: always()`:
 ```yaml
       - name: Upload perfgate artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perfgate-artifacts
           path: artifacts/perfgate

@@ -35,7 +35,7 @@ jobs:
          contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') ||
          contains(github.event.pull_request.labels.*.name, 'release-proof')))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -75,7 +75,7 @@ jobs:
          contains(github.event.pull_request.labels.*.name, 'ci-budget-ack') ||
          contains(github.event.pull_request.labels.*.name, 'release-proof')))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -89,7 +89,7 @@ jobs:
         run: ./target/release/perfgate check --config .ci/perfgate-pr.toml --all --mode cockpit --output-github
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: perfgate-artifacts-core-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/perfgate
@@ -118,12 +118,12 @@ jobs:
          contains(github.event.pull_request.labels.*.name, 'release-proof')))
     steps:
       - name: Checkout Current
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: current
 
       - name: Checkout Main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
           path: main
@@ -150,7 +150,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: perfgate-artifacts-paired-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/paired

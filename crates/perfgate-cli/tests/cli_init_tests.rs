@@ -62,6 +62,7 @@ harness = false
     assert!(config.contains("name = \"parser\""));
 
     let workflow = fs::read_to_string(&workflow_path).expect("read generated workflow");
+    assert!(workflow.contains("actions/checkout@v6"));
     assert!(workflow.contains("EffortlessMetrics/perfgate@v0"));
     assert!(workflow.contains("config: perfgate.toml"));
     assert!(workflow.contains("require_baseline: \"true\""));

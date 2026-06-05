@@ -23,7 +23,7 @@ jobs:
         - rust-large
         - trusted-pr
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload nightly artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: perfgate-artifacts-nightly-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

@@ -165,6 +165,7 @@ fn first_run_paved_road_creates_artifacts_and_baselines() {
 
     let workflow = fs::read_to_string(root.join(".github/workflows/perfgate.yml"))
         .expect("read generated GitHub workflow");
+    assert!(workflow.contains("actions/checkout@v6"));
     assert!(workflow.contains("EffortlessMetrics/perfgate@v0"));
     assert!(workflow.contains("config: perfgate.toml"));
     assert!(workflow.contains("require_baseline: \"true\""));

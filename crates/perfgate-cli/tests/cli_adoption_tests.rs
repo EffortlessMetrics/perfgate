@@ -201,6 +201,7 @@ fn adoption_apply_dry_run_writes_review_artifacts_without_setup_mutation() {
     assert!(config_patch.contains("# Pack: rust-cli"));
     assert!(config_patch.contains("name = \"cli-help\""));
     assert!(config_patch.contains("command = [\"cargo\", \"run\", \"-q\", \"--\", \"--help\"]"));
+    assert!(workflow.contains("actions/checkout@v6"));
     assert!(workflow.contains("EffortlessMetrics/perfgate@v0"));
     assert!(workflow.contains("require_baseline: \"false\""));
     assert!(local_commands.contains("perfgate check --config perfgate.toml --all"));
