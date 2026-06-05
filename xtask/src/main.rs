@@ -10110,6 +10110,13 @@ runs:
         review_reason="${{ steps.handle_review_required.outputs.review_required_reason }}"
         artifact_name="${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}"
         repro=(perfgate check --config "${{ inputs.config }}")
+        promote_repro=(perfgate baseline promote --config "${{ inputs.config }}")
+        if [[ "${{ inputs.all }}" == "true" ]]; then
+          promote_repro+=(--all)
+        else
+          promote_repro+=(--bench "${{ inputs.bench }}")
+        fi
+        promote_repro_line="$(format_command "${promote_repro[@]}")"
         decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
         decision_repro_line=""
         decision_repro_line="$(format_command "${decision_repro[@]}")"
@@ -10127,8 +10134,9 @@ runs:
           printf '%s\n' '```'
           printf '%s\n' '```text'
           printf '%s\n' '```'
-          echo "  perfgate baseline promote --config ${{ inputs.config }} --all"
+          echo "  ${promote_repro_line}"
           printf '%s\n' '```bash'
+          echo "${promote_repro_line}"
           printf '%s\n' '```'
           echo "Uploaded artifact: ${artifact_name}"
           find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name decision.index.json -o -name comment.md -o -name 'perfgate.*.json' \) | sort
