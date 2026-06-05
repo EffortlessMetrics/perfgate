@@ -62,10 +62,15 @@ fn execute_ledger_doctor(args: LedgerDoctorArgs, server_flags: &ServerFlags) -> 
         return Ok(());
     }
 
-    let url = server_config
-        .url
-        .as_deref()
-        .expect("checked by is_configured");
+    let Some(url) = server_config.url.as_deref() else {
+        print_ledger_readiness_line("Server URL", "missing");
+        print_ledger_readiness_line("Health", "not checked; no server URL configured");
+        print_ledger_next(&[
+            "Set `--baseline-server`, `PERFGATE_SERVER_URL`, or `[baseline_server].url`.",
+        ]);
+        print_ledger_do_not();
+        return Ok(());
+    };
     print_ledger_readiness_line("Server URL", format!("configured ({url})"));
     print_ledger_readiness_line(
         "API key",

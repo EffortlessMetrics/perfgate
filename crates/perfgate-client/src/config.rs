@@ -213,7 +213,9 @@ impl ResolvedServerConfig {
             return Ok(None);
         }
 
-        let url = self.url.as_ref().expect("checked by is_configured");
+        let Some(url) = self.url.as_ref().filter(|url| !url.is_empty()) else {
+            return Ok(None);
+        };
         let mut config = ClientConfig::new(url);
 
         if let Some(api_key) = &self.api_key {
@@ -394,6 +396,14 @@ mod tests {
         let resolved = ResolvedServerConfig::default();
 
         assert!(!resolved.is_configured());
-        assert!(resolved.create_client().unwrap().is_none());
+        assert!(matches!(resolved.create_client(), Ok(None)));
+
+        let resolved = ResolvedServerConfig {
+            url: Some(String::new()),
+            ..ResolvedServerConfig::default()
+        };
+
+        assert!(!resolved.is_configured());
+        assert!(matches!(resolved.create_client(), Ok(None)));
     }
 }
