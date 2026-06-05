@@ -17,7 +17,7 @@ version: 2.1
 jobs:
   perfgate:
     docker:
-      - image: rust:latest
+      - image: rust:1.95.0
     steps:
       - checkout
       - restore_cache:
@@ -65,7 +65,7 @@ version: 2.1
 jobs:
   perfgate:
     docker:
-      - image: rust:latest
+      - image: rust:1.95.0
     steps:
       - checkout
       - restore_cache:
@@ -89,7 +89,7 @@ jobs:
 
   perfgate-promote:
     docker:
-      - image: rust:latest
+      - image: rust:1.95.0
     steps:
       - checkout
       - restore_cache:

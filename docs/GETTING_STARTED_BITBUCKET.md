@@ -12,7 +12,7 @@ This guide explains how to integrate perfgate into your Bitbucket Pipelines.
 Add this to your `bitbucket-pipelines.yml`:
 
 ```yaml
-image: rust:latest
+image: rust:1.95.0
 
 pipelines:
   pull-requests:
@@ -41,7 +41,7 @@ definitions:
   caches:
     cargo: ~/.cargo
 
-image: rust:latest
+image: rust:1.95.0
 
 pipelines:
   pull-requests:
@@ -66,7 +66,7 @@ Bitbucket automatically injects repository variables into every step, so no
 extra `export` lines are needed:
 
 ```yaml
-image: rust:latest
+image: rust:1.95.0
 
 pipelines:
   pull-requests:
@@ -86,7 +86,7 @@ pipelines:
 On your default branch, promote the current run to update baselines:
 
 ```yaml
-image: rust:latest
+image: rust:1.95.0
 
 pipelines:
   branches:

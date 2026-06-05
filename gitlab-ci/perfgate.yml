@@ -5,7 +5,7 @@
 #
 # Usage:
 #   include:
-#     - remote: 'https://raw.githubusercontent.com/EffortlessMetrics/perfgate/v0.15.0/gitlab-ci/perfgate.yml'
+#     - remote: 'https://raw.githubusercontent.com/EffortlessMetrics/perfgate/v0.18.0/gitlab-ci/perfgate.yml'
 #
 #   perfgate-check:
 #     extends: .perfgate-check
@@ -13,7 +13,7 @@
 #       PERFGATE_CONFIG: "perfgate.toml"
 
 .perfgate-check:
-  image: rust:latest
+  image: rust:1.95.0
   stage: test
   variables:
     PERFGATE_CONFIG: "perfgate.toml"

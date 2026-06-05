@@ -13,7 +13,7 @@ Add this to your `.gitlab-ci.yml`:
 
 ```yaml
 perfgate:
-  image: rust:latest
+  image: rust:1.95.0
   stage: test
   before_script:
     - cargo install perfgate-cli
@@ -33,7 +33,7 @@ If you use a centralized baseline server, pass credentials via CI/CD variables:
 
 ```yaml
 perfgate:
-  image: rust:latest
+  image: rust:1.95.0
   stage: test
   variables:
     PERFGATE_SERVER_URL: $PERFGATE_SERVER_URL
@@ -56,7 +56,7 @@ On your default branch, promote the current run to update baselines:
 
 ```yaml
 perfgate-promote:
-  image: rust:latest
+  image: rust:1.95.0
   stage: deploy
   only:
     - main
