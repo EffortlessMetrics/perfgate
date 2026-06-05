@@ -215,7 +215,10 @@ advisory for downstream workflow policy.
 
 ## Historical Record: v0.15.1
 
-## Patch Scope
+This section is retained as a historical record only. The current published
+release and next-release blockers are recorded above.
+
+## v0.15.1 Patch Scope
 
 This patch release is intentionally narrow:
 - restore local `perfgate serve` baseline workflows (`promote --to-server`,
@@ -224,17 +227,21 @@ This patch release is intentionally narrow:
   surface
 - roll examples and release docs forward to `v0.15.1`
 
-## Current Status
+## Historical Status As Of 2026-03-28
 
-- Workspace and internal crate versions are set to `0.15.1` on `main`.
-- The local-mode baseline fix and doc cleanup are merged on `main`.
-- `cargo run -p xtask -- ci` passed locally on 2026-03-28 against `main`.
-- `cargo run -p xtask -- publish-check` passed locally on 2026-03-28 against `main`.
-- GitHub release `v0.15.1` is published with platform binaries and `sha256sums.txt`.
-- Publishable workspace crates are now published to crates.io at `0.15.1`.
-- GitHub Action tags now include the exact release tag `v0.15.1` plus moving aliases `v0.15` and `v0`.
+- At the time of this patch lane, workspace and internal crate versions were
+  set to `0.15.1` on `main`.
+- The local-mode baseline fix and doc cleanup had been merged on `main`.
+- `cargo run -p xtask -- ci` had passed locally on 2026-03-28 against `main`.
+- `cargo run -p xtask -- publish-check` had passed locally on 2026-03-28
+  against `main`.
+- GitHub release `v0.15.1` was published with platform binaries and
+  `sha256sums.txt`.
+- Publishable workspace crates were published to crates.io at `0.15.1`.
+- GitHub Action tags included the exact release tag `v0.15.1` plus moving
+  aliases `v0.15` and `v0`.
 
-## Tested and Working
+## Tested And Working In v0.15.1
 
 These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 
@@ -266,7 +273,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 | `baseline delete/verdicts` | **Works** | Live server CLI workflow covers implicit-latest delete plus verdict submit/list |
 | `check --mode cockpit` | **Works** | Produces sensor.report.v1 envelope + extras |
 
-## Known Bugs
+## Known Bugs At The Time
 
 - [#55](https://github.com/EffortlessMetrics/perfgate/issues/55) ~~Leftover DEBUG prints~~ — **Fixed** (committed)
 - [#56](https://github.com/EffortlessMetrics/perfgate/issues/56) ~~CLI examples in docs use wrong flags~~ — **Fixed** (committed)
@@ -293,7 +300,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 ### `run -p perfgate` vs `run -p perfgate-cli`
 - `cargo run -p perfgate` fails (no bin target — it's a library facade). **Fixed**: all docs now use `cargo run -p perfgate-cli --`.
 
-## What's Solid (ship with confidence)
+## What Was Solid For v0.15.1
 
 The **core local gating pipeline** is production-quality:
 - `run` → `compare` → `md`/`report` → `promote`
@@ -305,21 +312,21 @@ The **core local gating pipeline** is production-quality:
 - Host fingerprinting
 - Statistical significance (Welch's t-test)
 
-## What's Functional But Needs Hardening
+## What Needed Hardening After v0.15.1
 
 - **Baseline server** — works for dev/small-team. Storage backends (SQLite, PostgreSQL, S3) are implemented. Not load-tested. GitHub Actions OIDC is exercised; GitLab and custom OIDC exist but remain lightly exercised.
 - **`bisect`** — wraps git bisect. Works in concept but depends on repo structure and build system. Edge cases likely.
 - **`explain`** — generates prompts, doesn't call an LLM. Useful but the name oversells it.
 - **`aggregate`** — formal fleet/matrix receipt with all/majority/weighted/quorum/fail-if-n-of-m gating. Weight keys use `os-arch` labels such as `linux-x86_64`.
 
-## What's Still Missing / Deferred
+## What Was Still Missing / Deferred At v0.15.1
 
 - **Windows timeout support** — returns `AdapterError::TimeoutUnsupported`
 - **Windows page_faults/ctx_switches** — not collected
 - **OIDC beyond GitHub Actions** — GitLab/Okta not tested
 - **`cargo run -p perfgate` ergonomics** — doesn't work without specifying `--bin`
 
-## Added After v0.15.1 on Main
+## Later Main Additions After v0.15.1
 
 - **Paved first-run setup** — `perfgate init --ci github --profile standard`
   writes `perfgate.toml`, `.github/workflows/perfgate.yml`,
