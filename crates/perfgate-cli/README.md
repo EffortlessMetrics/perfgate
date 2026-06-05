@@ -34,14 +34,15 @@ perfgate run --name my-bench --out run.json -- ./my-benchmark
 # 2. Compare against a baseline
 perfgate compare --baseline baseline.json --current run.json --out cmp.json
 
-# 3. Gate CI (exit 2 on regression)
+# 3. Generate a report artifact
 perfgate report --compare cmp.json --out report.json
 ```
 
-Or use `check` for the full workflow in one command:
+`report` renders artifacts from an existing comparison; it does not enforce CI
+policy. Use `check` for the full workflow and CI exit codes:
 
 ```bash
-perfgate check --config perfgate.toml --bench my-bench
+perfgate check --config perfgate.toml --bench my-bench --require-baseline
 ```
 
 ## Commands

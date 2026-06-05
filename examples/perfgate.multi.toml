@@ -1,4 +1,4 @@
-# perfgate.multi.toml - Multi-benchmark configuration for cockpit mode
+# perfgate.multi.toml - Runnable multi-benchmark configuration example
 
 [defaults]
 repeat = 5
@@ -7,20 +7,20 @@ threshold = 0.15
 baseline_dir = "baselines"
 
 [[bench]]
-name = "api-load-test"
-command = ["./scripts/load-test.sh", "--target", "api"]
-work = 5000
+name = "cargo-metadata"
+command = ["cargo", "metadata", "--format-version", "1", "--no-deps"]
 
 [[bench]]
-name = "db-query-perf"
-command = ["./scripts/db-test.sh", "select-large-table"]
+name = "cargo-version"
+command = ["cargo", "--version"]
 # Override global threshold for this specific benchmark
 [bench.budgets.wall_ms]
 threshold = 0.10
 
 [[bench]]
-name = "frontend-bundle-size"
-command = ["stat", "-c", "%s", "dist/bundle.js"]
-# Static metrics can be gated like dynamic ones
+name = "rustc-version"
+command = ["rustc", "--version"]
+# This gates command runtime. Use ingest/adoption-pack flows for static metrics
+# such as bundle size instead of timing a file-stat command.
 [bench.budgets.wall_ms]
 threshold = 0.05

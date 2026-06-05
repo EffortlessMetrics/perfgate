@@ -56,6 +56,7 @@ From a repository root, use the smallest useful path first:
 ```bash
 perfgate doctor
 perfgate init --ci github --profile standard --suggest-benches
+# Edit perfgate.toml: uncomment or add one [[bench]] for your project.
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
 perfgate baseline promote --config perfgate.toml --all

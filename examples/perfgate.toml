@@ -1,4 +1,4 @@
-# perfgate.toml - Minimal configuration example
+# perfgate.toml - Minimal runnable configuration example
 
 [defaults]
 # Number of measured samples per benchmark
@@ -13,8 +13,9 @@ warn_factor = 0.90
 baseline_dir = "baselines"
 
 [[bench]]
-name = "my-bench"
-# Command to execute (argv format)
-command = ["./scripts/bench.sh"]
+name = "cargo-metadata"
+# Command to execute (argv format). Replace this with your project's benchmark
+# before promoting a production baseline.
+command = ["cargo", "metadata", "--format-version", "1", "--no-deps"]
 # Optional: expected units of work (enables throughput metrics)
 # work = 1000

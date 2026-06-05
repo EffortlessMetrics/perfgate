@@ -195,6 +195,7 @@ jobs:
           perfgate check \
             --config perfgate.toml \
             --all \
+            --require-baseline \
             --out-dir artifacts/perfgate \
             --output-github
 
