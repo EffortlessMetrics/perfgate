@@ -158,11 +158,14 @@ impl ServerFlags {
     }
 }
 
+const FIRST_RUN_HELP: &str = "First run:\n  perfgate doctor\n  perfgate init --ci github --profile standard --suggest-benches\n  edit perfgate.toml and add one reviewed [[bench]] command\n  perfgate check --config perfgate.toml --all\n\nPromote the first trusted run:\n  perfgate baseline promote --config perfgate.toml --all\n  perfgate check --config perfgate.toml --all --require-baseline";
+
 #[derive(Debug, Parser)]
 #[command(
     name = "perfgate",
     version,
-    about = "Perf budgets and baseline diffs for CI / PR bots"
+    about = "Perf budgets and baseline diffs for CI / PR bots",
+    after_help = FIRST_RUN_HELP
 )]
 struct Cli {
     #[command(flatten)]

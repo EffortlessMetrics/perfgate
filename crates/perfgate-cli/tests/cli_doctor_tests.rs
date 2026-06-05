@@ -369,7 +369,13 @@ fn doctor_reports_no_config_state_and_next_command() {
         .stdout(predicate::str::contains("FAIL config"))
         .stdout(predicate::str::contains("State: no_config"))
         .stdout(predicate::str::contains(
-            "perfgate init --ci github --profile standard",
+            "perfgate init --ci github --profile standard --suggest-benches",
+        ))
+        .stdout(predicate::str::contains(
+            "edit perfgate.toml and add one reviewed [[bench]] command",
+        ))
+        .stdout(predicate::str::contains(
+            "perfgate check --config perfgate.toml --all",
         ))
         .stdout(predicate::str::contains(
             "do not copy another repo's baselines before initializing this repo",

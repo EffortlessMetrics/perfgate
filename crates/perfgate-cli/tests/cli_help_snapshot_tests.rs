@@ -35,7 +35,18 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("export"))
         .stdout(predicate::str::contains("promote"))
         .stdout(predicate::str::contains("report"))
-        .stdout(predicate::str::contains("github-annotations"));
+        .stdout(predicate::str::contains("github-annotations"))
+        .stdout(predicate::str::contains("First run:"))
+        .stdout(predicate::str::contains("perfgate doctor"))
+        .stdout(predicate::str::contains(
+            "perfgate init --ci github --profile standard --suggest-benches",
+        ))
+        .stdout(predicate::str::contains(
+            "edit perfgate.toml and add one reviewed [[bench]] command",
+        ))
+        .stdout(predicate::str::contains(
+            "perfgate check --config perfgate.toml --all --require-baseline",
+        ));
 }
 
 #[test]

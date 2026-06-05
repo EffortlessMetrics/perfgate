@@ -132,7 +132,12 @@ mod adoption {
         fn next(self, config_path: &Path) -> Vec<String> {
             let config = config_path.display();
             match self {
-                Self::NoConfig => vec!["perfgate init --ci github --profile standard".to_string()],
+                Self::NoConfig => vec![
+                    "perfgate init --ci github --profile standard --suggest-benches".to_string(),
+                    "edit perfgate.toml and add one reviewed [[bench]] command".to_string(),
+                    "perfgate doctor --config perfgate.toml".to_string(),
+                    "perfgate check --config perfgate.toml --all".to_string(),
+                ],
                 Self::ConfiguredNoBenches => vec![
                     format!("edit {config} and add a reviewed [[bench]] command"),
                     format!("perfgate doctor --config {config}"),

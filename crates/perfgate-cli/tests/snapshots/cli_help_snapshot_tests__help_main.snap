@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 669
 expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
@@ -58,3 +57,13 @@ Global Options:
       --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
       --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
       --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable
+
+First run:
+  perfgate doctor
+  perfgate init --ci github --profile standard --suggest-benches
+  edit perfgate.toml and add one reviewed [[bench]] command
+  perfgate check --config perfgate.toml --all
+
+Promote the first trusted run:
+  perfgate baseline promote --config perfgate.toml --all
+  perfgate check --config perfgate.toml --all --require-baseline
