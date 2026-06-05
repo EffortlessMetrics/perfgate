@@ -297,6 +297,15 @@ fn classify_baseline(
 }
 
 fn load_validated_baseline_config(config_path: &Path) -> anyhow::Result<ConfigFile> {
+    if !config_path
+        .try_exists()
+        .with_context(|| format!("failed to inspect {}", config_path.display()))?
+    {
+        anyhow::bail!(
+            "baseline config {} not found; run `perfgate init --ci github --profile standard --suggest-benches` or pass --config <path>",
+            config_path.display()
+        );
+    }
     let config = load_config_file(config_path)
         .with_context(|| format!("failed to load {}", config_path.display()))?;
     config

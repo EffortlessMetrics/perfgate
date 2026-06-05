@@ -143,6 +143,44 @@ fn write_imported_summary_fixture(path: &Path, bench: &str) {
 }
 
 #[test]
+fn baseline_status_fails_when_config_is_missing() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["baseline", "status", "--config", "missing.toml"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "baseline config missing.toml not found",
+        ))
+        .stderr(predicate::str::contains(
+            "perfgate init --ci github --profile standard --suggest-benches",
+        ))
+        .stderr(predicate::str::contains("No benchmarks are configured").not());
+}
+
+#[test]
+fn baseline_doctor_fails_when_config_is_missing() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args(["baseline", "doctor", "--config", "missing.toml"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "baseline config missing.toml not found",
+        ))
+        .stderr(predicate::str::contains(
+            "perfgate init --ci github --profile standard --suggest-benches",
+        ))
+        .stderr(predicate::str::contains("No benchmarks are configured").not());
+}
+
+#[test]
 fn baseline_status_reports_missing_then_found_local_baseline() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
     write_config(temp_dir.path());
