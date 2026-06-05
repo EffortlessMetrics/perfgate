@@ -11,16 +11,18 @@ first hour.
 
 ## 1. Install
 
-Use the binary installer path first:
+Use the binary installer path first. If `cargo-binstall` is not installed yet,
+install it once with `cargo install cargo-binstall`.
 
 ```bash
 cargo binstall perfgate-cli
 ```
 
-If `cargo-binstall` is not available:
+If `cargo-binstall` is not available, install from source with Rust 1.95 or
+newer:
 
 ```bash
-cargo install perfgate-cli
+cargo install perfgate-cli --locked
 ```
 
 Check that the installed binary is usable:

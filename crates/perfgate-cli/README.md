@@ -8,14 +8,17 @@ all three in a single binary that fits into any CI pipeline.
 
 ## Install
 
+The binary installer avoids compiling perfgate locally. If `cargo-binstall` is
+not installed yet, install it once with `cargo install cargo-binstall`.
+
 ```bash
 # Pre-built binary (via cargo-binstall)
 cargo binstall perfgate-cli
 
-# From crates.io
-cargo install perfgate-cli
+# From crates.io with Rust 1.95 or newer
+cargo install perfgate-cli --locked
 
-# From source
+# From this repository checkout
 cargo install --path crates/perfgate-cli
 ```
 
@@ -26,6 +29,69 @@ perfgate doctor
 ```
 
 ## Quick Start
+
+Start from the repository you want to protect:
+
+```bash
+perfgate doctor
+perfgate init --ci github --profile standard --suggest-benches
+```
+
+`init` writes the local configuration, a GitHub Actions workflow, a baseline
+directory placeholder, and `.perfgate/README.md`:
+
+```text
+perfgate.toml
+.github/workflows/perfgate.yml
+baselines/.gitkeep
+.perfgate/README.md
+```
+
+Edit `perfgate.toml`, uncomment or add one `[[bench]]`, then prove the local
+gate before pushing:
+
+```bash
+perfgate doctor --config perfgate.toml
+perfgate check --config perfgate.toml --all
+perfgate baseline promote --config perfgate.toml --all
+perfgate check --config perfgate.toml --all --require-baseline
+```
+
+Commit the durable setup and baseline files, but leave generated artifacts out
+unless your team intentionally archives them:
+
+```bash
+git add perfgate.toml .github/workflows/perfgate.yml baselines/ .perfgate/README.md
+```
+
+For the full first-hour walkthrough, including expected artifacts and failure
+handling, see [First Hour With perfgate](../../docs/FIRST_HOUR.md).
+
+## GitHub Actions
+
+The generated workflow uses the published composite action:
+
+```yaml
+- uses: EffortlessMetrics/perfgate@v0
+  with:
+    config: perfgate.toml
+    all: "true"
+    require_baseline: "true"
+    upload_artifact: "true"
+```
+
+Use `@v0.18.0` with `version: "0.18.0"` for an exact patch pin and release
+binary install, `@v0.18` for the current 0.18 line, or `@v0` to follow the
+current compatible action tag. Omit `version` with moving tags so the action
+builds from the checked-out action source.
+
+For the full workflow guide, see
+[Getting Started: GitHub Actions](../../docs/GETTING_STARTED_GITHUB_ACTIONS.md).
+
+## Low-Level Receipts
+
+The paved road is `check`, but the lower-level receipt commands are available
+for custom pipelines:
 
 ```bash
 # 1. Measure
@@ -39,11 +105,7 @@ perfgate report --compare cmp.json --out report.json
 ```
 
 `report` renders artifacts from an existing comparison; it does not enforce CI
-policy. Use `check` for the full workflow and CI exit codes:
-
-```bash
-perfgate check --config perfgate.toml --bench my-bench --require-baseline
-```
+policy. Use `check` for the full workflow and CI exit codes.
 
 ## Commands
 
@@ -126,6 +188,8 @@ perfgate check --config perfgate.toml --bench my-bench --mode cockpit
 ## More
 
 - Workspace overview and CI examples: [README.md](../../README.md)
+- First-hour walkthrough: [docs/FIRST_HOUR.md](../../docs/FIRST_HOUR.md)
+- GitHub Actions setup: [docs/GETTING_STARTED_GITHUB_ACTIONS.md](../../docs/GETTING_STARTED_GITHUB_ACTIONS.md)
 - Testing strategy: [TESTING.md](../../TESTING.md)
 - API docs: [docs.rs/perfgate-cli](https://docs.rs/perfgate-cli)
 
