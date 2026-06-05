@@ -79,6 +79,67 @@ harness = false
 }
 
 #[test]
+fn init_non_github_ci_writes_release_pinned_artifact_safe_workflows() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    let install = format!(
+        "cargo install perfgate-cli --locked --version {}",
+        env!("CARGO_PKG_VERSION")
+    );
+
+    for (ci, workflow_path, platform_checks) in [
+        (
+            "gitlab",
+            ".gitlab-ci.perfgate.yml",
+            &["image: rust:1.95.0", "when: always"][..],
+        ),
+        (
+            "bitbucket",
+            "bitbucket-pipelines.perfgate.yml",
+            &[
+                "image: rust:1.95.0",
+                "|| PERFGATE_EXIT=$?",
+                "exit ${PERFGATE_EXIT:-0}",
+            ][..],
+        ),
+        (
+            "circleci",
+            ".circleci/perfgate.yml",
+            &["cimg/rust:1.95.0", "|| EXIT=$?", "when: always"][..],
+        ),
+    ] {
+        let root = temp_dir.path().join(ci);
+        fs::create_dir_all(&root).expect("create case dir");
+
+        perfgate_cmd()
+            .current_dir(&root)
+            .args(["init", "--ci", ci, "--profile", "standard"])
+            .assert()
+            .success();
+
+        let workflow =
+            fs::read_to_string(root.join(workflow_path)).expect("read generated workflow");
+        assert!(
+            workflow.contains(&install),
+            "{ci} workflow should pin install"
+        );
+        assert!(
+            workflow.contains("perfgate check --config perfgate.toml --all"),
+            "{ci} workflow should run the config-driven check"
+        );
+        assert!(
+            workflow.contains("--out-dir artifacts/perfgate"),
+            "{ci} workflow should write the documented artifact directory"
+        );
+        for expected in platform_checks {
+            assert!(
+                workflow.contains(expected),
+                "{ci} workflow should contain {expected:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn init_accepts_legacy_preset_alias() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
 

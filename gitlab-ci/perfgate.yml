@@ -18,15 +18,16 @@
   variables:
     PERFGATE_CONFIG: "perfgate.toml"
     PERFGATE_ARTIFACTS_DIR: "artifacts/perfgate"
+    PERFGATE_VERSION: "0.18.0"
   before_script:
     - |
       if ! command -v perfgate &> /dev/null; then
         echo "Installing perfgate..."
-        cargo install perfgate-cli 2>/dev/null || cargo install perfgate
+        cargo install perfgate-cli --locked --version "${PERFGATE_VERSION}"
       fi
   script:
     - mkdir -p ${PERFGATE_ARTIFACTS_DIR}
-    - perfgate check --config ${PERFGATE_CONFIG} --all
+    - perfgate check --config ${PERFGATE_CONFIG} --all --out-dir ${PERFGATE_ARTIFACTS_DIR}
   artifacts:
     when: always
     paths:

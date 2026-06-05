@@ -16,7 +16,7 @@ perfgate:
   image: rust:1.95.0
   stage: test
   before_script:
-    - cargo install perfgate-cli
+    - cargo install perfgate-cli --locked --version 0.18.0
   script:
     - perfgate check --config perfgate.toml --all
   artifacts:
@@ -39,7 +39,7 @@ perfgate:
     PERFGATE_SERVER_URL: $PERFGATE_SERVER_URL
     PERFGATE_API_KEY: $PERFGATE_API_KEY
   before_script:
-    - cargo install perfgate-cli
+    - cargo install perfgate-cli --locked --version 0.18.0
   script:
     - perfgate check --config perfgate.toml --all
   artifacts:
@@ -61,14 +61,18 @@ perfgate-promote:
   only:
     - main
   before_script:
-    - cargo install perfgate-cli
+    - cargo install perfgate-cli --locked --version 0.18.0
   script:
     - perfgate check --config perfgate.toml --all
-    - perfgate promote --current artifacts/perfgate/run.json --to baselines/bench.json
+    - perfgate baseline promote --config perfgate.toml --all
   artifacts:
     paths:
       - baselines/
 ```
+
+The install pin should match the perfgate release you intend to run. The
+promotion step uses the config-aware baseline command so `check --all`
+per-benchmark artifacts are promoted from their configured locations.
 
 ## Common Pitfalls
 

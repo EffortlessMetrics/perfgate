@@ -26,7 +26,7 @@ jobs:
             - cargo-
       - run:
           name: Install perfgate
-          command: cargo install perfgate-cli --locked
+          command: cargo install perfgate-cli --locked --version 0.18.0
       - save_cache:
           key: cargo-{{ checksum "Cargo.lock" }}
           paths:
@@ -74,7 +74,7 @@ jobs:
             - cargo-
       - run:
           name: Install perfgate
-          command: cargo install perfgate-cli --locked
+          command: cargo install perfgate-cli --locked --version 0.18.0
       - save_cache:
           key: cargo-{{ checksum "Cargo.lock" }}
           paths:
@@ -98,7 +98,7 @@ jobs:
             - cargo-
       - run:
           name: Install perfgate
-          command: cargo install perfgate-cli --locked
+          command: cargo install perfgate-cli --locked --version 0.18.0
       - save_cache:
           key: cargo-{{ checksum "Cargo.lock" }}
           paths:
@@ -107,7 +107,7 @@ jobs:
           name: Run and promote baselines
           command: |
             perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
-            perfgate promote --current artifacts/perfgate/run.json --to baselines/bench.json
+            perfgate baseline promote --config perfgate.toml --all
       - store_artifacts:
           path: artifacts/perfgate
           destination: perfgate
@@ -127,6 +127,10 @@ workflows:
             branches:
               only: main
 ```
+
+The install pin should match the perfgate release you intend to run. The
+promotion step uses the config-aware baseline command so `check --all`
+per-benchmark artifacts are promoted from their configured locations.
 
 ## Caching
 

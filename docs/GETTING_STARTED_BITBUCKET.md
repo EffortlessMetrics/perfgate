@@ -20,7 +20,7 @@ pipelines:
       - step:
           name: perfgate
           script:
-            - cargo install perfgate-cli --locked
+            - cargo install perfgate-cli --locked --version 0.18.0
             - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate || PERFGATE_EXIT=$?
             - exit ${PERFGATE_EXIT:-0}
           artifacts:
@@ -51,7 +51,7 @@ pipelines:
           caches:
             - cargo
           script:
-            - cargo install perfgate-cli --locked
+            - cargo install perfgate-cli --locked --version 0.18.0
             - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate || PERFGATE_EXIT=$?
             - exit ${PERFGATE_EXIT:-0}
           artifacts:
@@ -74,7 +74,7 @@ pipelines:
       - step:
           name: perfgate
           script:
-            - cargo install perfgate-cli --locked
+            - cargo install perfgate-cli --locked --version 0.18.0
             - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate || PERFGATE_EXIT=$?
             - exit ${PERFGATE_EXIT:-0}
           artifacts:
@@ -94,12 +94,16 @@ pipelines:
       - step:
           name: perfgate-promote
           script:
-            - cargo install perfgate-cli --locked
+            - cargo install perfgate-cli --locked --version 0.18.0
             - perfgate check --config perfgate.toml --all --out-dir artifacts/perfgate
-            - perfgate promote --current artifacts/perfgate/run.json --to baselines/bench.json
+            - perfgate baseline promote --config perfgate.toml --all
           artifacts:
             - artifacts/perfgate/**
 ```
+
+The install pin should match the perfgate release you intend to run. The
+promotion step uses the config-aware baseline command so `check --all`
+per-benchmark artifacts are promoted from their configured locations.
 
 To commit the updated baseline back to the repository, add a git push step
 after promotion or use the Bitbucket API to create a commit.
