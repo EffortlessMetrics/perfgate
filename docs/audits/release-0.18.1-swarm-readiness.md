@@ -2,15 +2,15 @@
 
 Date: 2026-06-11
 
-Source branch: `chore/0.18.1-release-prep` on `perfgate-swarm`
+Source branch: `lane/0.18.1-no-panic-governance-decision` on `perfgate-swarm`
 
-Main SHA: `a5f2893`
+Main SHA: `bea23d1eb915acc3609253714c06d6f3ce6bde4f`
 
 Purpose:
 
-This packet is the swarm-side readiness handoff for the v0.18.1 patch-release
-hardening lane. It is a narrow trust-hardening snapshot intended for the
-canonical publish lane transition into `EffortlessMetrics/perfgate`.
+This packet is the swarm-side readiness handoff for the v0.18.1 patch-release hardening
+lane. It is a narrow trust-hardening snapshot intended for the canonical publish lane
+transition into `EffortlessMetrics/perfgate`.
 
 Scope:
 
@@ -19,8 +19,8 @@ Scope:
 - no-panic governance truthing
 - action wiring and proof references
 
-This packet does not perform publish, tag, alias movement, or hosted release
-release-canary actions.
+This packet does not perform publish, tag, alias movement, or hosted release-canary
+actions.
 
 ## What landed in 0.18.1 patch source
 
@@ -42,9 +42,9 @@ Recent merged PRs included in this batch:
 
 ## Readiness status
 
-The batch is intended as a patch-release hardening layer. It improves
-first-run recovery and release-trust wording and keeps this lane free of broad
-new-product surfaces.
+The batch is intended as a patch-release hardening layer. It improves first-run
+recovery and release-trust wording and keeps this lane free of broad new-product
+surfaces.
 
 ### Included user-facing improvements
 
@@ -62,7 +62,8 @@ new-product surfaces.
   hosted canary expansion, or scheduler/adapter additions.
 - No public release artifacts or tags are generated in this packet.
 - No automatic gate-promotion flow has been performed.
-- No PR/issue queue is open for this lane.
+- Open PRs include `#262` (`docs: mark no-panic advisory posture for v0.18.1`); PR
+  `#261` (`badge: refresh public endpoints`) is outside this patch lane.
 
 ## Release-trust truth for v0.18.1
 
@@ -79,30 +80,22 @@ new-product surfaces.
 
 | Command | Result | Evidence |
 | --- | --- | --- |
-| `cargo run -p xtask -- pr` | Pass | PR validation executed for the source release lane (with local shim as documented in prior patch proof artifacts). |
 | `cargo run -p xtask -- docs-source-check` | Pass | Source-of-truth doc metadata and ID checks valid. |
 | `cargo run -p xtask -- docs-check` | Pass | Documentation drift check and link surface checks passed. |
-| `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` | Fail | `240 no-panic policy issue(s) found`; debt remains deferred. |
 | `cargo run -p xtask -- product-claims-check` | Pass | Product claims map checks passed. |
-| `cargo run -p xtask -- action-check` | Pass | Action wiring and reproduction checks passed. |
-| `cargo run -p xtask -- publish-check --package-list` | Pass | Five public publishable crates are present. |
-| `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` | Pass | Source-built package check succeeds at current workspace state. |
-| `cargo run -p xtask -- publish-check --dry-run --package perfgate` | Pass | Source-built package check succeeds at current workspace state. |
-| `cargo run -p xtask -- publish-check --dry-run --package perfgate-client` | Pass | Source-built package check succeeds at current workspace state. |
-| `cargo run -p xtask -- publish-check --dry-run --package perfgate-server` | Pass | Source-built package check succeeds at current workspace state. |
-| `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` | Pass | Source-built package check succeeds at current workspace state. |
+| `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` | Fail | `240 no-panic policy issue(s) found`; debt remains deferred. |
+| `cargo run -p xtask -- action-check` | Pass | GitHub Action install wiring checks passed. |
+| `cargo run -p xtask -- publish-check --package-list` | Pass | Five public publishable crates are listed. |
 
 ### Current status split
 
-- **Source-built swarm proof**: captured in this packet and supporting 0.18.1 patch
-  readiness evidence under `docs/audits/release-0.18.1-patch-readiness.md`.
+- **Source-built swarm proof**: captured in this packet.
 - **Public release proof**: not yet executed in this swarm packet.
 
 ## Promotion path from swarm to release authority
 
-1. Merge the coherent source batch into `EffortlessMetrics/perfgate:main`
-   using a normal merge commit (`--no-rebase --no-squash`) per
-   `development/SWARM_PROMOTION.md`.
+1. Merge the coherent source batch into `EffortlessMetrics/perfgate:main` using a
+   normal merge commit (`--no-rebase --no-squash`) per `development/SWARM_PROMOTION.md`.
 2. Verify publish readiness in `perfgate` before any release actions:
    `xtask ci`, `action-check`, `docs-check`, `docs-source-check`,
    `product-claims-check`.
@@ -115,3 +108,4 @@ new-product surfaces.
   advisory/deferred condition.
 - The canonical publishing queue remains `perfgate`; `perfgate-swarm` stays the
   development lane.
+
