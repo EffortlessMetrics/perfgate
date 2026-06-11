@@ -67,7 +67,7 @@ new-product surfaces.
 ## Release-trust truth for v0.18.1
 
 - `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` currently reports
-  `213 no-panic policy issue(s) found`.
+  `240 no-panic policy issue(s) found`.
 - This condition is intentionally treated as **advisory/deferred** for the v0.18.1
   patch proof.
 - `docs/status/PRODUCT_CLAIMS.md` explicitly keeps the no-panic-related claim at
@@ -82,7 +82,7 @@ new-product surfaces.
 | `cargo run -p xtask -- pr` | Pass | PR validation executed for the source release lane (with local shim as documented in prior patch proof artifacts). |
 | `cargo run -p xtask -- docs-source-check` | Pass | Source-of-truth doc metadata and ID checks valid. |
 | `cargo run -p xtask -- docs-check` | Pass | Documentation drift check and link surface checks passed. |
-| `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` | Fail | `213 no-panic policy issue(s) found`; debt remains deferred. |
+| `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` | Fail | `240 no-panic policy issue(s) found`; debt remains deferred. |
 | `cargo run -p xtask -- product-claims-check` | Pass | Product claims map checks passed. |
 | `cargo run -p xtask -- action-check` | Pass | Action wiring and reproduction checks passed. |
 | `cargo run -p xtask -- publish-check --package-list` | Pass | Five public publishable crates are present. |

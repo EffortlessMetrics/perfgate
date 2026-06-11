@@ -63,7 +63,7 @@ action alias movement, and public install smoke from public artifacts.
 |------|--------|----------|
 | Rust 1.95 floor | Passing | `Cargo.toml`, `rust-toolchain.toml`, hosted workflow pins, and the composite action fallback toolchain use Rust 1.95 |
 | Rust and Clippy policy | Passing | `clippy.toml`, `policy/clippy-lints.toml`, and `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` |
-| No-panic governance | Drift detected | `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is the active drift detector. On 2026-06-11 it reported `213 no-panic policy issue(s) found`, so this row is not release-passing until the debt is removed or explicitly reviewed through `policy/no-panic-baseline.toml` or `policy/no-panic-allowlist.toml`. |
+| No-panic governance | Drift detected | `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is the active drift detector. On 2026-06-11 it reported `240 no-panic policy issue(s) found`, so this row is not release-passing until the debt is removed or explicitly reviewed through `policy/no-panic-baseline.toml` or `policy/no-panic-allowlist.toml`. |
 | Non-Rust file governance | Documented | `policy/non-rust-allowlist.toml`, companion allowlists, `docs/FILE_POLICY.md`, and `docs/POLICY_ALLOWLISTS.md` |
 | CI evidence lane routing | Documented | `docs/ci/test-evidence-lanes.md`, with expensive fuzz, coverage, and self-dogfood lanes routed by label, `main`, schedule, or manual dispatch |
 | Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
@@ -98,7 +98,7 @@ action alias movement, and public install smoke from public artifacts.
 | 0.18 publication closeout | Published | [v0.18.0 Publication Closeout](audits/release-0.18.0-publication-closeout.md) records crates, tags, GitHub release assets, checksums, aliases, public install smoke, and non-inferences. |
 | 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
 | 0.18.1 swarm readiness packet | Completed | [v0.18.1 Swarm Readiness Packet](audits/release-0.18.1-swarm-readiness.md) records merged PRs #248–#258, deferred items, and source-built readiness evidence for this patch lane. |
-| 0.18.1 patch readiness proof | Conditional | [v0.18.1 Patch Readiness Proof](audits/release-0.18.1-patch-readiness.md) passed `xtask pr`, docs checks, product claims, action check, and publish dry-runs; no-panic remains blocked at `213`. |
+| 0.18.1 patch readiness proof | Conditional | [v0.18.1 Patch Readiness Proof](audits/release-0.18.1-patch-readiness.md) passed `xtask pr`, docs checks, product claims, action check, and publish dry-runs; no-panic remains blocked at `240`. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
 The only publishable packages allowed by policy are:
