@@ -2,7 +2,7 @@
 
 Date: 2026-06-11
 
-Branch: `main` on `perfgate-swarm`
+Branch: `chore/0.18.1-release-prep` on `perfgate-swarm`
 
 Purpose:
 

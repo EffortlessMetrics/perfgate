@@ -1,6 +1,6 @@
 # Release Readiness
 
-Last verified: 2026-06-11 for v0.18.1 swarm readiness packet and v0.18.1 patch-readiness proof, plus v0.18.0
+Last verified: 2026-06-11 for v0.18.1 swarm readiness packet, v0.18.1 patch-readiness proof, v0.18.1 publish packet/readiness proof, plus v0.18.0
 publication, public install smoke, release-candidate proof after restored
 post-SRP coverage hardening, generated queue resolution, the #484 init
 extraction, install/action example audit, product-claim sync, and
@@ -99,6 +99,11 @@ action alias movement, and public install smoke from public artifacts.
 | 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
 | 0.18.1 swarm readiness packet | Completed | [v0.18.1 Swarm Readiness Packet](audits/release-0.18.1-swarm-readiness.md) records merged PRs #248–#258, deferred items, and source-built readiness evidence for this patch lane. |
 | 0.18.1 patch readiness proof | Conditional | [v0.18.1 Patch Readiness Proof](audits/release-0.18.1-patch-readiness.md) passed `xtask pr`, docs checks, product claims, action check, and publish dry-runs; no-panic remains blocked at `240`. |
+| 0.18.1 publish packet | Completed | [v0.18.1 Publish Packet](audits/release-0.18.1-publish-packet.md) defines canonical publish order, target versions, and post-dry-run pre-publication constraints. |
+| 0.18.1 publish readiness proof | Conditional | [v0.18.1 Publish Readiness Proof](audits/release-0.18.1-publish-readiness.md) passed all but `perfgate-cli` due dependency resolution on unpublished `perfgate 0.18.1`. |
+| 0.18.1 release notes draft | Prepared | [v0.18.1 Release Notes Draft](audits/release-0.18.1-release-notes-draft.md) captures final user-visible claims and remaining publish tasks. |
+| 0.18.1 public install smoke | Not Yet Executed | `0.18.1` is still unpublished on crates.io and no public release artifacts exist yet for install smoke evidence. |
+| 0.18.1 publication closeout | Not Yet Executed | Publication closeout remains pending until `v0.18.1` crates.io release, GitHub release, action aliases, and public install smoke are complete. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
 The only publishable packages allowed by policy are:
