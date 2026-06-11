@@ -26,7 +26,7 @@ not publish crates, create tags, create a GitHub release, or move action aliases
 | `cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate` | Pass | Packaged and verified `perfgate v0.18.1` in dry-run mode. |
 | `cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-client` | Pass | Packaged and verified `perfgate-client v0.18.1` in dry-run mode. |
 | `cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-server` | Pass | Packaged and verified `perfgate-server v0.18.1` in dry-run mode. |
-| `cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-cli` | Fail | Blocked by dependency resolution: `perfgate v0.18.1` is not yet published (crates.io resolves `perfgate` as `0.18.0`). |
+| `cargo +1.95.0 run -p xtask -- publish-check --dry-run --package perfgate-cli` | Pass | Packaged and verified `perfgate-cli v0.18.1` in dry-run mode using the prepared same-release workspace dependency set. |
 
 ## Publish Order
 
@@ -50,8 +50,6 @@ the publish commands.
 - No `v0.18` or `v0` action alias movement was attempted.
 - No GitHub release was created.
 - Public install smoke remains blocked until public artifacts exist.
-- `perfgate-cli` dry-run is expected to succeed only after `perfgate` has been
-  published at `0.18.1`.
 
 ## Known Deferred Proof
 
