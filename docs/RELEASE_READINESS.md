@@ -74,7 +74,7 @@ action alias movement, and public install smoke from public artifacts.
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
 | Install smoke proof | Passing | Public install smoke passed with `cargo binstall perfgate-cli --version 0.18.1`; installed binary reported `perfgate 0.18.1` and completed doctor/init/check/promote/require-baseline smoke |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
-| Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
+| Documentation examples | Passing | `cargo run -p xtask -- docs-check`, `cargo run -p xtask -- docs-source-check`, `cargo run -p xtask -- product-claims-check`, and `cargo run -p xtask -- doc-test` |
 | Structured decision end-to-end | Verified | `perfgate ingest probes`, `perfgate decision evaluate`, `perfgate decision bundle` on `examples/performance-decision`, plus `perfgate serve --no-open` and `decision upload/history/debt/prune --dry-run` |
 | First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
 | Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
@@ -401,3 +401,4 @@ The **core local gating pipeline** is production-quality:
 1. **Keep action runtimes current** — first-party actions are on current majors, but future runner/runtime upgrades still need periodic review
 2. **Carry the release workflow repair forward** — future tags should continue using the recovered workflow now merged on `main`
 3. **Keep crates publish preflight in CI** — `cargo run -p xtask -- publish-check` now guards missing crate readmes and `publish = false` workspace dependencies before release
+
