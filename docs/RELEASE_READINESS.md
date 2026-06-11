@@ -1,9 +1,10 @@
 # Release Readiness
 
-Last verified: 2026-05-18 for v0.18.0 publication, public install smoke,
-release-candidate proof after restored post-SRP coverage hardening, generated
-queue resolution, the #484 init extraction, install/action example audit,
-product-claim sync, and release-candidate readiness closeout. See
+Last verified: 2026-06-11 for v0.18.1 swarm readiness packet and v0.18.1 patch-readiness proof, plus v0.18.0
+publication, public install smoke, release-candidate proof after restored
+post-SRP coverage hardening, generated queue resolution, the #484 init
+extraction, install/action example audit, product-claim sync, and
+release-candidate readiness closeout. See
 [v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md),
 [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md),
 [v0.18.0 Adoption Readiness Snapshot](audits/release-0.18.0-adoption-readiness.md),
@@ -18,6 +19,8 @@ product-claim sync, and release-candidate readiness closeout. See
 [v0.18.0 Release-Candidate Readiness Closeout](handoffs/2026-05-18-0-18-release-candidate-readiness-closeout.md),
 [v0.18.0 Public Install Smoke](audits/release-0.18.0-public-install-smoke.md),
 [v0.18.0 Publication Closeout](audits/release-0.18.0-publication-closeout.md),
+[v0.18.1 Patch Readiness Proof](audits/release-0.18.1-patch-readiness.md),
+[v0.18.1 Swarm Readiness Packet](audits/release-0.18.1-swarm-readiness.md),
 and
 [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md).
 The 0.18 cutover lane is closed. The earlier
@@ -60,7 +63,7 @@ action alias movement, and public install smoke from public artifacts.
 |------|--------|----------|
 | Rust 1.95 floor | Passing | `Cargo.toml`, `rust-toolchain.toml`, hosted workflow pins, and the composite action fallback toolchain use Rust 1.95 |
 | Rust and Clippy policy | Passing | `clippy.toml`, `policy/clippy-lints.toml`, and `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` |
-| No-panic governance | Passing | `cargo run -p xtask -- policy check-no-panic-family` and `policy/no-panic-baseline.toml` |
+| No-panic governance | Drift detected | `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is the active drift detector. On 2026-06-11 it reported `213 no-panic policy issue(s) found`, so this row is not release-passing until the debt is removed or explicitly reviewed through `policy/no-panic-baseline.toml` or `policy/no-panic-allowlist.toml`. |
 | Non-Rust file governance | Documented | `policy/non-rust-allowlist.toml`, companion allowlists, `docs/FILE_POLICY.md`, and `docs/POLICY_ALLOWLISTS.md` |
 | CI evidence lane routing | Documented | `docs/ci/test-evidence-lanes.md`, with expensive fuzz, coverage, and self-dogfood lanes routed by label, `main`, schedule, or manual dispatch |
 | Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
@@ -94,6 +97,8 @@ action alias movement, and public install smoke from public artifacts.
 | 0.18 public install smoke | Passing | [v0.18.0 Public Install Smoke](audits/release-0.18.0-public-install-smoke.md) installed `perfgate-cli` 0.18.0 from public GitHub release assets via `cargo binstall` and proved doctor/init/check/promote/require-baseline. |
 | 0.18 publication closeout | Published | [v0.18.0 Publication Closeout](audits/release-0.18.0-publication-closeout.md) records crates, tags, GitHub release assets, checksums, aliases, public install smoke, and non-inferences. |
 | 0.18 staged artifact smoke | Passing | [v0.18.0 Staged Release Artifact Smoke](audits/release-0.18.0-artifact-smoke.md) unpacked a Windows release-like archive, verified `perfgate 0.18.0`, and ran zero-benchmark plus manual-benchmark first-hour smoke from the unpacked binary. |
+| 0.18.1 swarm readiness packet | Completed | [v0.18.1 Swarm Readiness Packet](audits/release-0.18.1-swarm-readiness.md) records merged PRs #248–#258, deferred items, and source-built readiness evidence for this patch lane. |
+| 0.18.1 patch readiness proof | Conditional | [v0.18.1 Patch Readiness Proof](audits/release-0.18.1-patch-readiness.md) passed `xtask pr`, docs checks, product claims, action check, and publish dry-runs; no-panic remains blocked at `213`. |
 | Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
 The only publishable packages allowed by policy are:
@@ -118,12 +123,21 @@ cargo run -p xtask -- publish-check --dry-run --package perfgate
 cargo run -p xtask -- publish-check --dry-run --package perfgate-client
 cargo run -p xtask -- publish-check --dry-run --package perfgate-server
 cargo run -p xtask -- publish-check --dry-run --package perfgate-cli
+cargo +1.95.0 run -p xtask -- policy check-no-panic-family
+cargo run -p xtask -- docs-source-check
 cargo run -p xtask -- action-check
 cargo run -p xtask -- docs-check
+cargo run -p xtask -- product-claims-check
 cargo run -p xtask -- doc-test
 cargo run -p xtask -- schema-compat
 cargo run -p xtask -- ci
 ```
+
+Promotion prerequisite: release candidates prepared from `perfgate-swarm` must
+first follow the [Swarm Promotion Contract](development/SWARM_PROMOTION.md).
+Publication happens from `EffortlessMetrics/perfgate` after a normal
+merge-commit promotion, not from `perfgate-swarm`; do not squash, rebase, or
+move release authority into the swarm repo.
 
 Run `publish-check --dry-run --package <name>` immediately before publishing each
 crate in dependency order. Cargo verifies packaged dependencies against
@@ -161,14 +175,16 @@ perfgate doctor
 perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 ```
 
 For the structured-decision release proof, start from that generated setup and
-prove the install-to-decision path. The first `check` creates a trusted first
-run for promotion; the second `check --require-baseline` represents the next
-change under review and writes compare receipts for `decision evaluate`:
+prove the install-to-decision path. The first `check` creates a reviewed,
+representative first run for promotion; the second `check --require-baseline`
+represents the next change under review and writes compare receipts for
+`decision evaluate`:
 
 ```bash
 cargo binstall perfgate-cli
@@ -176,6 +192,7 @@ perfgate doctor
 perfgate init --ci github --profile standard --suggest-benches
 perfgate doctor --config perfgate.toml
 perfgate check --config perfgate.toml --all
+# Review artifacts and confirm the command is representative before promotion.
 perfgate baseline promote --config perfgate.toml --all
 perfgate check --config perfgate.toml --all --require-baseline
 perfgate ingest probes --file artifacts/probes-baseline.jsonl --out artifacts/perfgate/parser/probes-baseline.json
@@ -209,7 +226,10 @@ advisory for downstream workflow policy.
 
 ## Historical Record: v0.15.1
 
-## Patch Scope
+This section is retained as a historical record only. The current published
+release and next-release blockers are recorded above.
+
+## v0.15.1 Patch Scope
 
 This patch release is intentionally narrow:
 - restore local `perfgate serve` baseline workflows (`promote --to-server`,
@@ -218,17 +238,21 @@ This patch release is intentionally narrow:
   surface
 - roll examples and release docs forward to `v0.15.1`
 
-## Current Status
+## Historical Status As Of 2026-03-28
 
-- Workspace and internal crate versions are set to `0.15.1` on `main`.
-- The local-mode baseline fix and doc cleanup are merged on `main`.
-- `cargo run -p xtask -- ci` passed locally on 2026-03-28 against `main`.
-- `cargo run -p xtask -- publish-check` passed locally on 2026-03-28 against `main`.
-- GitHub release `v0.15.1` is published with platform binaries and `sha256sums.txt`.
-- Publishable workspace crates are now published to crates.io at `0.15.1`.
-- GitHub Action tags now include the exact release tag `v0.15.1` plus moving aliases `v0.15` and `v0`.
+- At the time of this patch lane, workspace and internal crate versions were
+  set to `0.15.1` on `main`.
+- The local-mode baseline fix and doc cleanup had been merged on `main`.
+- `cargo run -p xtask -- ci` had passed locally on 2026-03-28 against `main`.
+- `cargo run -p xtask -- publish-check` had passed locally on 2026-03-28
+  against `main`.
+- GitHub release `v0.15.1` was published with platform binaries and
+  `sha256sums.txt`.
+- Publishable workspace crates were published to crates.io at `0.15.1`.
+- GitHub Action tags included the exact release tag `v0.15.1` plus moving
+  aliases `v0.15` and `v0`.
 
-## Tested and Working
+## Tested And Working In v0.15.1
 
 These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 
@@ -260,7 +284,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 | `baseline delete/verdicts` | **Works** | Live server CLI workflow covers implicit-latest delete plus verdict submit/list |
 | `check --mode cockpit` | **Works** | Produces sensor.report.v1 envelope + extras |
 
-## Known Bugs
+## Known Bugs At The Time
 
 - [#55](https://github.com/EffortlessMetrics/perfgate/issues/55) ~~Leftover DEBUG prints~~ — **Fixed** (committed)
 - [#56](https://github.com/EffortlessMetrics/perfgate/issues/56) ~~CLI examples in docs use wrong flags~~ — **Fixed** (committed)
@@ -287,7 +311,7 @@ These commands were tested end-to-end on Windows (x86_64, Rust 1.92):
 ### `run -p perfgate` vs `run -p perfgate-cli`
 - `cargo run -p perfgate` fails (no bin target — it's a library facade). **Fixed**: all docs now use `cargo run -p perfgate-cli --`.
 
-## What's Solid (ship with confidence)
+## What Was Solid For v0.15.1
 
 The **core local gating pipeline** is production-quality:
 - `run` → `compare` → `md`/`report` → `promote`
@@ -299,21 +323,21 @@ The **core local gating pipeline** is production-quality:
 - Host fingerprinting
 - Statistical significance (Welch's t-test)
 
-## What's Functional But Needs Hardening
+## What Needed Hardening After v0.15.1
 
 - **Baseline server** — works for dev/small-team. Storage backends (SQLite, PostgreSQL, S3) are implemented. Not load-tested. GitHub Actions OIDC is exercised; GitLab and custom OIDC exist but remain lightly exercised.
 - **`bisect`** — wraps git bisect. Works in concept but depends on repo structure and build system. Edge cases likely.
 - **`explain`** — generates prompts, doesn't call an LLM. Useful but the name oversells it.
 - **`aggregate`** — formal fleet/matrix receipt with all/majority/weighted/quorum/fail-if-n-of-m gating. Weight keys use `os-arch` labels such as `linux-x86_64`.
 
-## What's Still Missing / Deferred
+## What Was Still Missing / Deferred At v0.15.1
 
 - **Windows timeout support** — returns `AdapterError::TimeoutUnsupported`
 - **Windows page_faults/ctx_switches** — not collected
 - **OIDC beyond GitHub Actions** — GitLab/Okta not tested
 - **`cargo run -p perfgate` ergonomics** — doesn't work without specifying `--bin`
 
-## Added After v0.15.1 on Main
+## Later Main Additions After v0.15.1
 
 - **Paved first-run setup** — `perfgate init --ci github --profile standard`
   writes `perfgate.toml`, `.github/workflows/perfgate.yml`,

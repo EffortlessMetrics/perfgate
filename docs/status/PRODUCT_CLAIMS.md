@@ -11,16 +11,16 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 
 | Claim ID | Claim | Tier | Surface | Review after |
 |----------|-------|------|---------|--------------|
-| PG-CLAIM-0001 | perfgate supports reviewable performance decisions. | supported | CLI, action, receipts | before-0.18.0-release |
+| PG-CLAIM-0001 | perfgate supports reviewable performance decisions. | supported | CLI, action, receipts | next-decision-contract-change |
 | PG-CLAIM-0002 | perfgate decision bundles are portable local-first evidence. | supported | CLI, receipts | next-decision-contract-change |
-| PG-CLAIM-0003 | the server decision ledger is optional team-scale history, not a correctness prerequisite. | supported | server, CLI, receipts | before-0.18.0-release |
+| PG-CLAIM-0003 | the server decision ledger is optional team-scale history, not a correctness prerequisite. | supported | server, CLI, receipts | next-server-ledger-change |
 | PG-CLAIM-0004 | perfgate has five public crates as the durable public surface. | stable | crates, policy | next-public-surface-change |
 | PG-CLAIM-0005 | Rust 1.95 is the governed MSRV for the current release lane. | stable | toolchain, CI, release | next-msrv-change |
-| PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | supported | policy, CI | before-0.18.0-release |
+| PG-CLAIM-0006 | policy ledgers govern reviewed exceptions and file surfaces. | advisory | policy, CI | next-policy-ledger-change |
 | PG-CLAIM-0007 | the GitHub Action surfaces local reproduction for decision-enabled gates. | supported | action, CLI, artifacts | next-decision-contract-change |
-| PG-CLAIM-0008 | release readiness is proven by the publish-order matrix, not by version bumps alone. | supported | release, crates, CI | next-release-candidate |
-| PG-CLAIM-0009 | perfgate supports a first-hour local adoption path. | supported | CLI, docs, artifacts | before-0.18.0-release |
-| PG-CLAIM-0010 | perfgate supports staged adoption levels from local gate to team ledger. | supported | docs, CLI, action, server | before-0.18.0-release |
+| PG-CLAIM-0008 | release readiness is proven by the publish-order matrix, not by version bumps alone. | supported | release, crates, CI | next-release |
+| PG-CLAIM-0009 | perfgate supports a first-hour local adoption path. | supported | CLI, docs, artifacts | next-onboarding-change |
+| PG-CLAIM-0010 | perfgate supports staged adoption levels from local gate to team ledger. | supported | docs, CLI, action, server | next-adoption-level-change |
 | PG-CLAIM-0011 | perfgate supports probe-backed tradeoff explanation. | supported | CLI, Rust helpers, receipts | next-probe-contract-change |
 | PG-CLAIM-0012 | perfgate supports optional team decision-ledger operations. | supported | server, CLI, dashboard, docs | next-server-ledger-change |
 | PG-CLAIM-0013 | perfgate documents platform-specific metric availability. | advisory | docs, CLI receipts | next-platform-metric-change |
@@ -41,6 +41,13 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 | PG-CLAIM-0028 | perfgate supports advisory policy rollout profiles, promotion readiness, and non-mutating policy patches. | supported | CLI, docs, config | next-policy-ergonomics-change |
 | PG-CLAIM-0029 | perfgate surfaces policy posture in review packets and Action summaries without changing configured behavior. | supported | CLI, action, artifacts | next-policy-ergonomics-change |
 | PG-CLAIM-0030 | perfgate has fixture-backed agent policy guardrails for review-required policy changes. | advisory | CLI guidance, specs, tests | next-agent-policy-change |
+| PG-CLAIM-0031 | perfgate imports existing benchmark outputs into receipts with explicit units, directions, sample model, and non-inferences. | supported | CLI, receipts, docs | next-evidence-intake-change |
+| PG-CLAIM-0032 | perfgate surfaces imported-evidence limits in maturity, policy, review packet, and Action posture output. | supported | CLI, action, artifacts | next-evidence-intake-change |
+| PG-CLAIM-0033 | perfgate provides reviewable adoption packs for common repo shapes without automatic policy changes. | supported | CLI, docs | next-evidence-intake-change |
+| PG-CLAIM-0034 | perfgate can recommend and dry-run a first-use setup without mutating repository policy. | supported | CLI, docs, artifacts | next-first-useful-review-change |
+| PG-CLAIM-0035 | perfgate can explain a first-use performance review with a benchmark passport and explicit non-inferences. | supported | CLI, docs, artifacts | next-first-useful-review-change |
+| PG-CLAIM-0036 | perfgate emits agent-safe repair context and review guardrails without making agents policy authorities. | advisory | CLI, artifacts, tests | next-agent-repair-contract-change |
+| PG-CLAIM-0037 | perfgate emits non-mutating baseline and policy promotion plans for reviewed graduation. | advisory | CLI, config guidance, tests | next-policy-promotion-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -70,7 +77,7 @@ Artifacts:
 - `decision.index.json`
 - `decision-bundle.json`
 
-Review after: before-0.18.0-release
+Review after: next-decision-contract-change
 
 ## PG-CLAIM-0002: Portable local-first decision bundles
 
@@ -121,7 +128,7 @@ Artifacts:
 - decision upload/history/latest/export/prune/debt responses
 - server audit events
 
-Review after: before-0.18.0-release
+Review after: next-server-ledger-change
 
 ## PG-CLAIM-0004: Five-crate public surface
 
@@ -175,7 +182,8 @@ Review after: next-msrv-change
 
 ## PG-CLAIM-0006: Policy-ledger governed exceptions
 
-Tier: supported
+Tier: advisory
+Proof freshness: current
 Surface: policy files, CI, release readiness
 Linked docs: [`POLICY_ALLOWLISTS.md`](../POLICY_ALLOWLISTS.md), [`CLIPPY_POLICY.md`](../CLIPPY_POLICY.md), [`NO_PANIC_POLICY.md`](../NO_PANIC_POLICY.md), [`FILE_POLICY.md`](../FILE_POLICY.md)
 Linked specs: [`PERFGATE-SPEC-0006-policy-ledger-contracts`](../specs/PERFGATE-SPEC-0006-policy-ledger-contracts.md)
@@ -195,12 +203,20 @@ Linked policy:
 Proof commands:
 
 ```bash
-cargo +1.95.0 run -p xtask -- policy check-no-panic-family
 cargo +1.95.0 run -p xtask -- public-surface --strict
 cargo +1.95.0 run -p xtask -- arch
 ```
 
-Review after: before-0.18.0-release
+Known limits:
+
+- `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is currently
+  a drift detector, not passing release proof. On 2026-06-11 it reported
+  `213 no-panic policy issue(s) found`, so do not promote this claim back to
+  `supported` until the no-panic debt is removed or explicitly reviewed.
+  This condition is carried into `v0.18.1` patch-readiness planning as an
+  explicit deferral.
+
+Review after: next-policy-ledger-change
 
 ## PG-CLAIM-0007: Action local reproduction for decisions
 
@@ -228,7 +244,7 @@ Review after: next-decision-contract-change
 
 Tier: supported
 Surface: release, crates, CI
-Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md), [`audits/release-0.18.0-cutover-decision.md`](../audits/release-0.18.0-cutover-decision.md), [`audits/release-0.18.0-publish-readiness.md`](../audits/release-0.18.0-publish-readiness.md), [`audits/release-0.18.0-final-prepublish-proof.md`](../audits/release-0.18.0-final-prepublish-proof.md), [`audits/release-0.18.0-restored-coverage-proof.md`](../audits/release-0.18.0-restored-coverage-proof.md), [`audits/release-0.18.0-final-proof-after-restored-coverage.md`](../audits/release-0.18.0-final-proof-after-restored-coverage.md), [`audits/release-0.18.0-final-proof-after-init-extraction.md`](../audits/release-0.18.0-final-proof-after-init-extraction.md), [`audits/release-0.18.0-publish-packet.md`](../audits/release-0.18.0-publish-packet.md), [`audits/release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md), [`audits/release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`audits/release-0.18.0-public-install-smoke.md`](../audits/release-0.18.0-public-install-smoke.md), [`audits/release-0.18.0-publication-closeout.md`](../audits/release-0.18.0-publication-closeout.md)
+Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`development/SWARM_PROMOTION.md`](../development/SWARM_PROMOTION.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md), [`audits/release-0.18.0-cutover-decision.md`](../audits/release-0.18.0-cutover-decision.md), [`audits/release-0.18.0-publish-readiness.md`](../audits/release-0.18.0-publish-readiness.md), [`audits/release-0.18.0-final-prepublish-proof.md`](../audits/release-0.18.0-final-prepublish-proof.md), [`audits/release-0.18.0-restored-coverage-proof.md`](../audits/release-0.18.0-restored-coverage-proof.md), [`audits/release-0.18.0-final-proof-after-restored-coverage.md`](../audits/release-0.18.0-final-proof-after-restored-coverage.md), [`audits/release-0.18.0-final-proof-after-init-extraction.md`](../audits/release-0.18.0-final-proof-after-init-extraction.md), [`audits/release-0.18.0-publish-packet.md`](../audits/release-0.18.0-publish-packet.md), [`audits/release-0.18.0-install-action-example-audit.md`](../audits/release-0.18.0-install-action-example-audit.md), [`audits/release-0.18.0-artifact-smoke.md`](../audits/release-0.18.0-artifact-smoke.md), [`audits/release-0.18.0-public-install-smoke.md`](../audits/release-0.18.0-public-install-smoke.md), [`audits/release-0.18.0-publication-closeout.md`](../audits/release-0.18.0-publication-closeout.md)
 Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../specs/PERFGATE-SPEC-0005-release-proof-contract.md)
 Linked gates: publish-check --package-list and per-package publish dry-runs
 Proof commands:
@@ -286,7 +302,7 @@ Known limits:
   external hosted canaries were not rerun from `v0.18.0` in the release
   closeout.
 
-Review after: before-0.18.0-release
+Review after: next-onboarding-change
 
 ## PG-CLAIM-0010: Staged adoption levels
 
@@ -313,7 +329,7 @@ Artifacts:
 - `decision.index.json`
 - optional server ledger records
 
-Review after: before-0.18.0-release
+Review after: next-adoption-level-change
 
 ## PG-CLAIM-0011: Probe-backed tradeoff explanation
 
@@ -937,3 +953,291 @@ Known limits:
 - Fresh guardrail fixtures do not prove every agent workflow or external repo.
 
 Review after: next-agent-policy-change
+
+## PG-CLAIM-0031: Evidence intake adapters
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, receipts, docs
+Linked docs: [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`PERFGATE-SPEC-0013-evidence-source-contract`](../specs/PERFGATE-SPEC-0013-evidence-source-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features import
+cargo +1.95.0 run -p xtask -- schema-compat
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_ingest_tests.rs`](../../crates/perfgate-cli/tests/cli_ingest_tests.rs)
+- [`imported_evidence.rs`](../../crates/perfgate-cli/src/imported_evidence.rs)
+- [`main.rs`](../../crates/perfgate-cli/src/main.rs)
+
+Artifacts:
+
+- `perfgate ingest --format generic-command-json`
+- `perfgate ingest --format hyperfine`
+- `perfgate ingest --format criterion`
+- `perfgate ingest --format pytest-benchmark`
+- `perfgate ingest --format k6`
+- `perfgate ingest --format custom-json`
+- `perfgate ingest --format custom-csv`
+- `perfgate.run.v1` receipts with imported source metadata where supported
+
+Known limits:
+
+- External tools remain the measurement authority; perfgate imports evidence
+  into receipts and review surfaces.
+- Successful import does not prove benchmark maturity, host compatibility, or
+  baseline quality.
+- Summary-only imports have weaker noise support than raw samples.
+- Current proof includes in-repo fixtures, one source-built external Rust CLI
+  generic-command canary, and one source-built external non-Rust TypeScript
+  command canary.
+
+Review after: next-evidence-intake-change
+
+## PG-CLAIM-0032: Imported evidence in review surfaces
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, GitHub Action, artifacts
+Linked docs: [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0013-evidence-source-contract`](../specs/PERFGATE-SPEC-0013-evidence-source-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 test -p perfgate-cli --all-features doctor
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 run -p xtask -- action-check
+```
+
+Linked tests:
+
+- [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs)
+- [`cli_doctor_tests.rs`](../../crates/perfgate-cli/tests/cli_doctor_tests.rs)
+- [`cli_calibrate_tests.rs`](../../crates/perfgate-cli/tests/cli_calibrate_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`xtask/src/main.rs`](../../xtask/src/main.rs)
+
+Artifacts:
+
+- `perfgate baseline doctor --config perfgate.toml --bench <bench>`
+- `perfgate doctor signal --config perfgate.toml --bench <bench>`
+- `perfgate calibrate --config perfgate.toml --bench <bench> --emit-patch`
+- `perfgate policy doctor --config perfgate.toml --bench <bench>`
+- `perfgate policy review-packet --config perfgate.toml --bench <bench>`
+- Action policy posture summary for imported evidence where receipts expose
+  source metadata
+
+Known limits:
+
+- Imported evidence remains advisory until normal maturity and policy review
+  surfaces support promotion.
+- Action summaries preserve configured exit-code behavior; they do not make
+  advisory evidence blocking.
+- Missing source path, metric mapping, host context, or raw samples is surfaced
+  as a review limit, not treated as native proof.
+- External hosted Action canaries for the 0.21 intake path remain pending.
+
+Review after: next-evidence-intake-change
+
+## PG-CLAIM-0033: Reviewable adoption packs
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs
+Linked docs: [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`BENCHMARK_RECIPES.md`](../BENCHMARK_RECIPES.md), [`GETTING_STARTED_GITHUB_ACTIONS.md`](../GETTING_STARTED_GITHUB_ACTIONS.md), [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features adoption
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_adoption_tests.rs`](../../crates/perfgate-cli/tests/cli_adoption_tests.rs)
+- [`adoption_packs.rs`](../../crates/perfgate-cli/src/adoption_packs.rs)
+- [`cli_help_snapshot_tests.rs`](../../crates/perfgate-cli/tests/cli_help_snapshot_tests.rs)
+
+Artifacts:
+
+- `perfgate adoption packs`
+- `perfgate adoption packs --pack rust-cli`
+- `perfgate adoption packs --pack rust-workspace`
+- `perfgate adoption packs --pack python-service`
+- `perfgate adoption packs --pack node-tool-action`
+- `perfgate adoption packs --pack http-local-smoke`
+- `perfgate adoption packs --pack generic-command`
+
+Known limits:
+
+- Adoption packs are starting points, not automatic benchmark selection.
+- They do not promote baselines, loosen thresholds, make checks blocking, or
+  require server ledger mode.
+- Source-built Rust CLI and non-Rust TypeScript command canaries have proven
+  the generic-command intake path, but HTTP/k6 adoption and public-release
+  intake proof remain unproven.
+- Source-built adoption-pack docs are not public release proof.
+
+Review after: next-evidence-intake-change
+
+## PG-CLAIM-0034: First-use setup recommendation and dry-run
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs, artifacts
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`PERFGATE-PROP-0002-first-useful-performance-review`](../../.rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features adoption
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_adoption_tests.rs`](../../crates/perfgate-cli/tests/cli_adoption_tests.rs)
+- [`adoption.rs`](../../crates/perfgate-cli/src/adoption.rs)
+- [`adoption_packs.rs`](../../crates/perfgate-cli/src/adoption_packs.rs)
+
+Artifacts:
+
+- `perfgate adoption recommend`
+- `perfgate adoption recommend --json`
+- `perfgate adoption apply --pack <pack> --ci github --dry-run`
+- `target/perfgate-adoption/perfgate.toml.patch`
+- `target/perfgate-adoption/github-workflow.yml`
+- `target/perfgate-adoption/local-commands.md`
+- `target/perfgate-adoption/non-inferences.md`
+
+Known limits:
+
+- Recommendations are reviewable heuristics, not automatic benchmark
+  selection.
+- Dry-run apply does not write repo files unless a future explicit write path
+  is reviewed separately.
+- Dry-run setup does not promote baselines, loosen thresholds, make gates
+  blocking, or require server ledger mode.
+- Current proof is source-built and fixture-backed; it is not public release
+  proof for the next shipped version.
+
+Review after: next-first-useful-review-change
+
+## PG-CLAIM-0035: First-use review explain and benchmark passport
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs, artifacts
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`PERFORMANCE_REVIEW_FAILURE_GALLERY.md`](../PERFORMANCE_REVIEW_FAILURE_GALLERY.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md), [`CANARY_MATRIX.md`](CANARY_MATRIX.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features review
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 run -p xtask -- action-check
+```
+
+Linked tests:
+
+- [`cli_review_tests.rs`](../../crates/perfgate-cli/tests/cli_review_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`benchmark_passport.rs`](../../crates/perfgate-cli/src/benchmark_passport.rs)
+- [`review.rs`](../../crates/perfgate-cli/src/review.rs)
+
+Artifacts:
+
+- `perfgate review explain --config perfgate.toml --bench <bench>`
+- `perfgate review explain --config perfgate.toml --bench <bench> --json`
+- `perfgate policy review-packet --config perfgate.toml --bench <bench>`
+- benchmark passport in review and Action summary surfaces
+
+Known limits:
+
+- Review explain and packets summarize receipts; receipts remain the source of
+  truth.
+- The benchmark passport does not make advisory evidence blocking.
+- Action summary rendering preserves configured exit-code behavior.
+- Current proof is in-repo and source-built; hosted first-useful-review Action
+  canaries and public-release proof remain explicit canary gaps.
+
+Review after: next-first-useful-review-change
+
+## PG-CLAIM-0036: Agent-safe repair context and guardrails
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI, artifacts, tests
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`PERFORMANCE_REVIEW_FAILURE_GALLERY.md`](../PERFORMANCE_REVIEW_FAILURE_GALLERY.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md), [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features repair
+cargo +1.95.0 test -p perfgate-cli --all-features check
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+```
+
+Linked tests:
+
+- [`cli_repair_context_tests.rs`](../../crates/perfgate-cli/tests/cli_repair_context_tests.rs)
+- [`cli_check_tests.rs`](../../crates/perfgate-cli/tests/cli_check_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`repair_context.rs`](../../crates/perfgate-cli/src/repair_context.rs)
+
+Artifacts:
+
+- `repair_context.json`
+- `perfgate review explain` agent guardrails
+- policy review-packet agent guardrails
+
+Known limits:
+
+- Agent guidance is advisory. It does not authorize baseline promotion,
+  threshold loosening, required-gate changes, tradeoff acceptance, or server
+  ledger requirements.
+- Current proof covers fixture-backed repair and policy scenarios, not every
+  agent workflow or external hosted repair loop.
+- A copyable standalone agent prompt is not claimed as a shipped command
+  surface.
+
+Review after: next-agent-repair-contract-change
+
+## PG-CLAIM-0037: Non-mutating promotion plans
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI, config guidance, tests
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+```
+
+Linked tests:
+
+- [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`policy.rs`](../../crates/perfgate-cli/src/policy.rs)
+
+Artifacts:
+
+- `perfgate baseline promote-plan --config perfgate.toml --bench <bench>`
+- `perfgate policy promote-plan --config perfgate.toml --bench <bench> --to gate_candidate`
+- `perfgate policy promote-plan --config perfgate.toml --bench <bench> --to required_gate`
+
+Known limits:
+
+- Promotion plans do not write config, baselines, thresholds, policy, or server
+  settings.
+- `gate_candidate` is reviewable evidence, not blocking policy.
+- `required_gate` remains a human policy decision and needs explicit approval.
+- Plans do not prove public-release behavior until the commands ship and are
+  tested from public artifacts.
+
+Review after: next-policy-promotion-change
