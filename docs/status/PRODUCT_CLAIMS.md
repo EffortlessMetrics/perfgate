@@ -210,9 +210,11 @@ cargo +1.95.0 run -p xtask -- arch
 Known limits:
 
 - `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is currently
-  a drift detector, not passing release proof. On 2026-06-05 it reported
+  a drift detector, not passing release proof. On 2026-06-11 it reported
   `213 no-panic policy issue(s) found`, so do not promote this claim back to
   `supported` until the no-panic debt is removed or explicitly reviewed.
+  This condition is carried into `v0.18.1` patch-readiness planning as an
+  explicit deferral.
 
 Review after: next-policy-ledger-change
 
