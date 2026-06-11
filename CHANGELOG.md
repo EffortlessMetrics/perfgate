@@ -7,14 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes beyond the prepared 0.18.0 release-candidate notes below.
+No unreleased changes beyond the prepared 0.18.1 patch-candidate notes below.
 
-## [0.18.0] - Unreleased
+## [0.18.1] - Unreleased
 
-0.18.0 is prepared in source and release-candidate proof, but it is not yet
-published, tagged, or available through public install paths. The latest public
-release remains `v0.17.0` until the 0.18 publication closeout records crates.io,
-GitHub release, action alias, asset, and public install smoke proof.
+0.18.1 is prepared as a narrow patch release focused on first-run recovery, artifact
+layout guidance, and release-trust truthing. The latest public release remains
+`v0.18.0` until publication gates are complete.
+
+### Changed
+- Added first-run guidance refreshes around missing compare path, missing baseline
+  state, and compare-artifact interpretation.
+- Updated baseline bootstrap and bootstrap promotion UX to avoid ambiguous
+  no-op/error paths on sparse initial repos.
+- Clarified generated check artifacts and first-use output framing in docs and CLI
+  examples.
+- Added no-panic drift truthing updates that keep v0.18.1 release claims explicit
+  about advisory debt at 213 callsite issues.
+- Synced patch-readiness proof and release docs around the same constrained scope.
+- Refreshing publish-facing docs and proof references remains scoped to the v0.18.1
+  patch lane and does not imply broader feature change.
+- No production release tags, public installs, or action alias movement occurred in
+  this prep phase.
+
+## [0.18.0] - 2026-05-18
+
+0.18.0 is published to crates.io and GitHub releases as `v0.18.0` with `v0.18`
+and `v0` action aliases, plus public install smoke proof from public artifacts.
 
 ### Changed
 - Reconciled release-readiness docs with the published v0.17.0 state across
