@@ -61,7 +61,7 @@ action alias movement, and public install smoke from public artifacts.
 |------|--------|----------|
 | Rust 1.95 floor | Passing | `Cargo.toml`, `rust-toolchain.toml`, hosted workflow pins, and the composite action fallback toolchain use Rust 1.95 |
 | Rust and Clippy policy | Passing | `clippy.toml`, `policy/clippy-lints.toml`, and `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` |
-| No-panic governance | Advisory (v0.18.1 deferred) | `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is the active drift detector. On 2026-06-11 it reported `213 no-panic policy issue(s) found`. v0.18.1 treats this as reviewed advisory debt (not a release-pass condition). |
+| No-panic governance | Advisory (v0.18.1 deferred) | `cargo +1.95.0 run -p xtask -- policy check-no-panic-family` is the active drift detector. On 2026-06-11 it reported `240 no-panic policy issue(s) found`. v0.18.1 treats this as reviewed advisory debt (not a release-pass condition). |
 | Non-Rust file governance | Documented | `policy/non-rust-allowlist.toml`, companion allowlists, `docs/FILE_POLICY.md`, and `docs/POLICY_ALLOWLISTS.md` |
 | CI evidence lane routing | Documented | `docs/ci/test-evidence-lanes.md`, with expensive fuzz, coverage, and self-dogfood lanes routed by label, `main`, schedule, or manual dispatch |
 | Public package allowlist | Passing | `cargo run -p xtask -- public-surface --strict` |
