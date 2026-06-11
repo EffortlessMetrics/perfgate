@@ -2,9 +2,9 @@
 
 Date: 2026-06-11
 
-Source branch: `main` on `perfgate-swarm`
+Source branch: `chore/0.18.1-release-prep` on `perfgate-swarm`
 
-Main SHA: `c585a48`
+Main SHA: `a5f2893`
 
 Purpose:
 
