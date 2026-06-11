@@ -53,6 +53,5 @@ the publish commands.
 
 ## Known Deferred Proof
 
-- No-panic policy check remains a controlled drift (`213`) and is carried forward
+- No-panic policy check remains a controlled drift (`240`) and is carried forward
   as an explicit advisory/deferred condition in lane planning.
-

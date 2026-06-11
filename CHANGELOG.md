@@ -23,7 +23,7 @@ layout guidance, and release-trust truthing. The latest public release remains
 - Clarified generated check artifacts and first-use output framing in docs and CLI
   examples.
 - Added no-panic drift truthing updates that keep v0.18.1 release claims explicit
-  about advisory debt at 213 callsite issues.
+  about advisory debt at 240 callsite issues.
 - Synced patch-readiness proof and release docs around the same constrained scope.
 - Refreshing publish-facing docs and proof references remains scoped to the v0.18.1
   patch lane and does not imply broader feature change.

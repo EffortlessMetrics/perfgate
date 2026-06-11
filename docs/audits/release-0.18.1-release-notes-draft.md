@@ -25,7 +25,7 @@ As of this draft:
 - Refreshed baseline bootstrap and promotion guidance for sparse or newly adopted
   repos.
 - Added explicit no-panic release-trust posture (advisory/deferred at
-  `213` policy issues) so release claims match proof.
+  `240` policy issues) so release claims match proof.
 - Refreshed release-readiness evidence and example references for the patch lane.
 
 ## Remaining Release Proof Still Required
