@@ -1,10 +1,10 @@
-perfgate_compare_baseline_value{bench="render/md",metric="binary_bytes"} 680600.000000
-perfgate_compare_current_value{bench="render/md",metric="binary_bytes"} 680616.000000
-perfgate_compare_regression_pct{bench="render/md",metric="binary_bytes"} 0.002351
+perfgate_compare_baseline_value{bench="render/md",metric="binary_bytes"} 680616.000000
+perfgate_compare_current_value{bench="render/md",metric="binary_bytes"} 680664.000000
+perfgate_compare_regression_pct{bench="render/md",metric="binary_bytes"} 0.007052
 perfgate_compare_threshold_pct{bench="render/md",metric="binary_bytes"} 15.000000
 perfgate_compare_status{bench="render/md",metric="binary_bytes",status="pass"} 0
 perfgate_compare_baseline_value{bench="render/md",metric="cpu_ms"} 3.000000
-perfgate_compare_current_value{bench="render/md",metric="cpu_ms"} 3.000000
+perfgate_compare_current_value{bench="render/md",metric="cpu_ms"} 2.000000
 perfgate_compare_regression_pct{bench="render/md",metric="cpu_ms"} 0.000000
 perfgate_compare_threshold_pct{bench="render/md",metric="cpu_ms"} 15.000000
 perfgate_compare_status{bench="render/md",metric="cpu_ms",status="pass"} 0
@@ -13,9 +13,9 @@ perfgate_compare_current_value{bench="render/md",metric="ctx_switches"} 4.000000
 perfgate_compare_regression_pct{bench="render/md",metric="ctx_switches"} 0.000000
 perfgate_compare_threshold_pct{bench="render/md",metric="ctx_switches"} 15.000000
 perfgate_compare_status{bench="render/md",metric="ctx_switches",status="pass"} 0
-perfgate_compare_baseline_value{bench="render/md",metric="max_rss_kb"} 11652.000000
-perfgate_compare_current_value{bench="render/md",metric="max_rss_kb"} 12168.000000
-perfgate_compare_regression_pct{bench="render/md",metric="max_rss_kb"} 4.428424
+perfgate_compare_baseline_value{bench="render/md",metric="max_rss_kb"} 12168.000000
+perfgate_compare_current_value{bench="render/md",metric="max_rss_kb"} 12076.000000
+perfgate_compare_regression_pct{bench="render/md",metric="max_rss_kb"} 0.000000
 perfgate_compare_threshold_pct{bench="render/md",metric="max_rss_kb"} 15.000000
 perfgate_compare_status{bench="render/md",metric="max_rss_kb",status="pass"} 0
 perfgate_compare_baseline_value{bench="render/md",metric="page_faults"} 0.000000
