@@ -13,9 +13,9 @@ perfgate_compare_current_value{bench="render/report",metric="ctx_switches"} 6.00
 perfgate_compare_regression_pct{bench="render/report",metric="ctx_switches"} 0.000000
 perfgate_compare_threshold_pct{bench="render/report",metric="ctx_switches"} 15.000000
 perfgate_compare_status{bench="render/report",metric="ctx_switches",status="pass"} 0
-perfgate_compare_baseline_value{bench="render/report",metric="max_rss_kb"} 11672.000000
-perfgate_compare_current_value{bench="render/report",metric="max_rss_kb"} 11812.000000
-perfgate_compare_regression_pct{bench="render/report",metric="max_rss_kb"} 1.199452
+perfgate_compare_baseline_value{bench="render/report",metric="max_rss_kb"} 11812.000000
+perfgate_compare_current_value{bench="render/report",metric="max_rss_kb"} 11800.000000
+perfgate_compare_regression_pct{bench="render/report",metric="max_rss_kb"} 0.000000
 perfgate_compare_threshold_pct{bench="render/report",metric="max_rss_kb"} 15.000000
 perfgate_compare_status{bench="render/report",metric="max_rss_kb",status="pass"} 0
 perfgate_compare_baseline_value{bench="render/report",metric="page_faults"} 0.000000
