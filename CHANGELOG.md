@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes beyond the prepared 0.18.1 patch-candidate notes below.
+### Fixed
+- Preserve positive submillisecond wall and CPU times in Markdown reports.
 
 ## [0.18.1] - Unreleased
 

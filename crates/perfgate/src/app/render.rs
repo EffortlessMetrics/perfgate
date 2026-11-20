@@ -571,6 +571,7 @@ pub fn render_reason_line(compare: &CompareReceipt, token: &str) -> String {
 /// Format a metric value for display.
 pub fn format_value(metric: Metric, v: f64) -> String {
     match metric {
+        Metric::CpuMs | Metric::WallMs if v > 0.0 && v < 1.0 => v.to_string(),
         Metric::BinaryBytes
         | Metric::CpuMs
         | Metric::CtxSwitches
@@ -791,8 +792,8 @@ mod tests {
                     deltas: BTreeMap::from([(
                         "wall_ms".to_string(),
                         Delta {
-                            baseline: 100.0,
-                            current: 102.1,
+                            baseline: 0.125,
+                            current: 0.127625,
                             ratio: 1.021,
                             pct: 0.021,
                             regression: 0.021,
@@ -871,7 +872,9 @@ mod tests {
         assert!(md.contains("### Weighted Workload"));
         assert!(md.contains("| `max_rss_kb` |"));
         assert!(md.contains("### Probe Evidence"));
-        assert!(md.contains("| `parser.tokenize` | `local` | `wall_ms`"));
+        assert!(
+            md.contains("| `parser.tokenize` | `local` | `wall_ms` | 0.125 ms | 0.127625 ms |")
+        );
         assert!(md.contains("+2.10%"));
         assert!(md.contains("| `parser.batch_loop` | `dominant` | `wall_ms`"));
         assert!(md.contains("-10.40%"));
