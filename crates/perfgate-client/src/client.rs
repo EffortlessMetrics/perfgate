@@ -78,10 +78,11 @@ impl BaselineClient {
         project: &str,
         benchmark: &str,
     ) -> Result<BaselineRecord, ClientError> {
-        let url = self.url(&format!(
-            "projects/{}/baselines/{}/latest",
-            project, benchmark
-        ));
+        let mut url = url::Url::parse(&self.config.server_url)?;
+        url.path_segments_mut()
+            .map_err(|_| ClientError::ValidationError("server URL cannot be a base URL".into()))?
+            .pop_if_empty()
+            .extend(["projects", project, "baselines", benchmark, "latest"]);
         debug!(url = %url, "Getting latest baseline");
 
         let response = self

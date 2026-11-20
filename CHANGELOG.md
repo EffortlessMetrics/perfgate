@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes beyond the prepared 0.18.1 patch-candidate notes below.
+### Fixed
+- Fetching the latest server baseline now supports benchmark names containing slashes, such as `cli/parser`.
 
 ## [0.18.1] - Unreleased
 

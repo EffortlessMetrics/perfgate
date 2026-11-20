@@ -745,6 +745,41 @@ fn test_compare_server_reference_with_baseline_project_without_global_project() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn compare_selects_exact_nested_server_benchmark() {
+    let project = "compare-selector";
+    let api_key = contributor_key();
+    let config = live_server_config(project, StorageBackend::Memory, &api_key, &admin_key());
+    let server = RunningTestServer::spawn(config).await;
+    let temp = TempDir::new().unwrap();
+    let current = temp.path().join("current.json");
+    let output = temp.path().join("compare.json");
+    let mut receipt: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixtures_dir().join("baseline.json")).unwrap()).unwrap();
+
+    for name in ["cli/parser", "cli/parser-fast"] {
+        receipt["run"]["id"] = name.into();
+        receipt["bench"]["name"] = name.into();
+        fs::write(&current, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let mut upload = perfgate_cmd();
+        upload.args(["baseline", "upload", "--file"]).arg(&current);
+        add_server_flags(&mut upload, server.url(), project, &api_key);
+        upload.assert().success();
+    }
+
+    let mut compare = perfgate_cmd();
+    compare
+        .args(["compare", "--baseline", "@server:cli/parser", "--current"])
+        .arg(&current)
+        .arg("--out")
+        .arg(&output);
+    add_server_flags(&mut compare, server.url(), project, &api_key);
+    compare.assert().success();
+    let comparison: serde_json::Value = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
+    assert_eq!(comparison["baseline_ref"]["run_id"], "cli/parser");
+    assert_eq!(comparison["current_ref"]["run_id"], "cli/parser-fast");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn live_server_cli_workflow_memory() {
     let project = unique_project("memory");
     let api_key = contributor_key();
