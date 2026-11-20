@@ -69,7 +69,10 @@ fuzz_target!(|input: PairedInput| {
         // Also fuzz the comparison path
         let comparison = perfgate::domain::paired::compare_paired_stats(&stats);
 
-        // Invariant: CI lower <= CI upper
-        assert!(comparison.ci_95_lower <= comparison.ci_95_upper);
+        match (comparison.ci_95_lower, comparison.ci_95_upper) {
+            (Some(lower), Some(upper)) => assert!(stats.wall_diff_ms.count >= 2 && lower <= upper),
+            (None, None) => assert_eq!(stats.wall_diff_ms.count, 1),
+            _ => panic!("paired confidence bounds must be available together"),
+        }
     }
 });

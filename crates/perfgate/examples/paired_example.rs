@@ -50,11 +50,14 @@ fn main() -> Result<(), PairedError> {
     let comparison = compare_paired_stats(&stats);
     println!("   Mean diff: {:.2} ms", comparison.mean_diff_ms);
     println!("   % change: {:.2}%", comparison.pct_change * 100.0);
-    println!(
-        "   95% CI: [{:.2}, {:.2}] ms",
-        comparison.ci_95_lower, comparison.ci_95_upper
-    );
-    println!("   Std error: {:.4} ms", comparison.std_error);
+    if let (Some(lower), Some(upper)) = (comparison.ci_95_lower, comparison.ci_95_upper) {
+        println!("   95% CI: [{lower:.2}, {upper:.2}] ms");
+    } else {
+        println!("   95% CI: unavailable");
+    }
+    if let Some(std_error) = comparison.std_error {
+        println!("   Std error: {std_error:.4} ms");
+    }
     println!("   Significant: {}", comparison.is_significant);
 
     println!("\n3. Computing paired statistics for regression:");
@@ -94,10 +97,12 @@ fn main() -> Result<(), PairedError> {
     let large_comparison = compare_paired_stats(&large_stats);
     println!("   Sample count: {}", large_stats.wall_diff_ms.count);
     println!("   Mean diff: {:.2} ms", large_comparison.mean_diff_ms);
-    println!(
-        "   95% CI: [{:.2}, {:.2}] ms",
-        large_comparison.ci_95_lower, large_comparison.ci_95_upper
-    );
+    if let (Some(lower), Some(upper)) = (large_comparison.ci_95_lower, large_comparison.ci_95_upper)
+    {
+        println!("   95% CI: [{lower:.2}, {upper:.2}] ms");
+    } else {
+        println!("   95% CI: unavailable");
+    }
 
     println!("\n6. Handling warmup samples (filtered out):");
     let mixed_samples = vec![

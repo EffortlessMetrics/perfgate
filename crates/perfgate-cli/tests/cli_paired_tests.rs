@@ -84,6 +84,10 @@ fn test_paired_basic_produces_valid_json() {
         .as_array()
         .expect("samples should be an array");
     assert_eq!(samples.len(), 2, "should have 2 paired samples (repeat=2)");
+    let significance = &receipt["stats"]["wall_diff_ms"]["significance"];
+    assert_eq!(significance["significant"], false);
+    assert!(significance.get("ci_lower").is_none());
+    assert!(significance.get("ci_upper").is_none());
 }
 
 /// Test paired stats have correct structure (mean, median, std_dev, ci_lower, ci_upper)
@@ -179,6 +183,8 @@ fn test_paired_stats_have_correct_structure() {
         Some(3),
         "wall_diff_ms count should match repeat"
     );
+    assert!(wall_diff["significance"]["ci_lower"].is_number());
+    assert!(wall_diff["significance"]["ci_upper"].is_number());
 }
 
 /// Test paired with work_units for throughput calculations

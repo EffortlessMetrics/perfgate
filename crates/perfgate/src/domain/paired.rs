@@ -202,24 +202,18 @@ pub fn summarize_paired_diffs(
     let std_dev = variance.sqrt();
 
     let significance = policy.map(|p| {
-        let n = count as f64;
-        let std_error = if n > 1.0 { std_dev / n.sqrt() } else { 0.0 };
         let alpha = p.alpha.unwrap_or(0.05);
-        let min_samples = p.min_samples.unwrap_or(3);
-
-        let t_value = if n >= 30.0 { 1.96 } else { 2.0 };
-        let ci_lower = mean - t_value * std_error;
-        let ci_upper = mean + t_value * std_error;
-
-        let significant = n >= min_samples as f64 && (ci_lower > 0.0 || ci_upper < 0.0);
+        let min_samples = p.min_samples.unwrap_or(3).max(2);
+        let bounds = (count >= min_samples)
+            .then(|| paired_95_bounds(mean, std_dev / f64::from(count).sqrt(), count));
 
         Significance {
             test: perfgate_types::SignificanceTest::WelchT,
-            significant,
+            significant: bounds.is_some_and(|(lower, upper)| lower > 0.0 || upper < 0.0),
             alpha,
             p_value: None, // Paired t-test p-value could be added here
-            ci_lower: Some(ci_lower),
-            ci_upper: Some(ci_upper),
+            ci_lower: bounds.map(|(lower, _)| lower),
+            ci_upper: bounds.map(|(_, upper)| upper),
             baseline_samples: count,
             current_samples: count,
         }
@@ -234,6 +228,11 @@ pub fn summarize_paired_diffs(
         count,
         significance,
     })
+}
+
+fn paired_95_bounds(mean: f64, std_error: f64, count: u32) -> (f64, f64) {
+    let t_value = if count >= 30 { 1.96 } else { 2.0 };
+    (mean - t_value * std_error, mean + t_value * std_error)
 }
 
 /// Compute the coefficient of variation (CV) of the wall-time differences
@@ -291,9 +290,12 @@ pub struct PairedComparison {
     pub mean_diff_ms: f64,
     pub median_diff_ms: f64,
     pub pct_change: f64,
-    pub std_error: f64,
-    pub ci_95_lower: f64,
-    pub ci_95_upper: f64,
+    /// Unavailable with fewer than two measured pairs.
+    pub std_error: Option<f64>,
+    /// Unavailable below the sample minimum.
+    pub ci_95_lower: Option<f64>,
+    /// Unavailable below the sample minimum.
+    pub ci_95_upper: Option<f64>,
     pub is_significant: bool,
 }
 
@@ -331,16 +333,15 @@ pub struct PairedComparison {
 /// ```
 pub fn compare_paired_stats(stats: &PairedStats) -> PairedComparison {
     let diff = &stats.wall_diff_ms;
-    let n = diff.count as f64;
-    let std_error = if n > 1.0 {
-        diff.std_dev / n.sqrt()
-    } else {
-        0.0
-    };
-    let t_value = if n >= 30.0 { 1.96 } else { 2.0 };
-    let ci_95_lower = diff.mean - t_value * std_error;
-    let ci_95_upper = diff.mean + t_value * std_error;
-    let is_significant = ci_95_lower > 0.0 || ci_95_upper < 0.0;
+    let std_error = (diff.count >= 2).then(|| diff.std_dev / f64::from(diff.count).sqrt());
+    let bounds = std_error.and_then(|se| match &diff.significance {
+        Some(sig) => sig.ci_lower.zip(sig.ci_upper).filter(|&(lower, upper)| {
+            // Older receipts could include a zero-excluding interval below the policy minimum.
+            sig.significant || (lower <= 0.0 && upper >= 0.0)
+        }),
+        None => Some(paired_95_bounds(diff.mean, se, diff.count)),
+    });
+    let is_significant = bounds.is_some_and(|(lower, upper)| lower > 0.0 || upper < 0.0);
     let baseline_mean = stats.baseline_wall_ms.median as f64;
     let pct_change = if baseline_mean > 0.0 {
         diff.mean / baseline_mean
@@ -352,8 +353,8 @@ pub fn compare_paired_stats(stats: &PairedStats) -> PairedComparison {
         median_diff_ms: diff.median,
         pct_change,
         std_error,
-        ci_95_lower,
-        ci_95_upper,
+        ci_95_lower: bounds.map(|(lower, _)| lower),
+        ci_95_upper: bounds.map(|(_, upper)| upper),
         is_significant,
     }
 }
@@ -639,9 +640,9 @@ mod tests {
 
         let expected_std_error = 5.0 / (10.0_f64).sqrt();
         assert!(
-            (comparison.std_error - expected_std_error).abs() < 0.01,
+            (comparison.std_error.unwrap() - expected_std_error).abs() < 0.01,
             "std_error should be ~1.58, got {}",
-            comparison.std_error
+            comparison.std_error.unwrap()
         );
     }
 
@@ -674,16 +675,16 @@ mod tests {
         let expected_ci_upper = 10.0 + 2.0 * expected_std_error;
 
         assert!(
-            (comparison.ci_95_lower - expected_ci_lower).abs() < 0.01,
+            (comparison.ci_95_lower.unwrap() - expected_ci_lower).abs() < 0.01,
             "ci_95_lower should be ~{}, got {}",
             expected_ci_lower,
-            comparison.ci_95_lower
+            comparison.ci_95_lower.unwrap()
         );
         assert!(
-            (comparison.ci_95_upper - expected_ci_upper).abs() < 0.01,
+            (comparison.ci_95_upper.unwrap() - expected_ci_upper).abs() < 0.01,
             "ci_95_upper should be ~{}, got {}",
             expected_ci_upper,
-            comparison.ci_95_upper
+            comparison.ci_95_upper.unwrap()
         );
 
         assert!(
@@ -720,7 +721,7 @@ mod tests {
         let expected_ci_lower = 10.0 - 1.96 * expected_std_error;
 
         assert!(
-            (comparison.ci_95_lower - expected_ci_lower).abs() < 0.01,
+            (comparison.ci_95_lower.unwrap() - expected_ci_lower).abs() < 0.01,
             "ci_95_lower with n>=30 should use t_value=1.96"
         );
     }
@@ -752,12 +753,40 @@ mod tests {
         assert!(
             !comparison.is_significant,
             "result should not be significant when CI spans zero: [{}, {}]",
-            comparison.ci_95_lower, comparison.ci_95_upper
+            comparison.ci_95_lower.unwrap(),
+            comparison.ci_95_upper.unwrap()
         );
         assert!(
-            comparison.ci_95_lower < 0.0 && comparison.ci_95_upper > 0.0,
+            comparison.ci_95_lower.unwrap() < 0.0 && comparison.ci_95_upper.unwrap() > 0.0,
             "CI should span zero"
         );
+    }
+
+    #[test]
+    fn paired_confidence_requires_enough_measured_pairs() {
+        let samples = [
+            paired_sample(0, true, 100, 110),
+            paired_sample(1, false, 100, 110),
+            paired_sample(2, false, 100, 110),
+            paired_sample(3, false, 100, 110),
+        ];
+        for (measured, minimum, available) in [(1, 1, false), (2, 3, false), (3, 3, true)] {
+            let policy = SignificancePolicy {
+                min_samples: Some(minimum),
+                ..Default::default()
+            };
+            let stats = compute_paired_stats(&samples[..=measured], None, Some(&policy)).unwrap();
+            let significance = stats.wall_diff_ms.significance.as_ref().unwrap();
+            assert_eq!(stats.wall_diff_ms.mean, 10.0);
+            assert_eq!(significance.baseline_samples, measured as u32);
+            assert_eq!(significance.ci_lower, available.then_some(10.0));
+            assert_eq!(significance.ci_upper, available.then_some(10.0));
+            assert_eq!(significance.significant, available);
+            let comparison = compare_paired_stats(&stats);
+            assert_eq!(comparison.ci_95_lower, significance.ci_lower);
+            assert_eq!(comparison.ci_95_upper, significance.ci_upper);
+            assert_eq!(comparison.is_significant, available);
+        }
     }
 
     #[test]
@@ -784,9 +813,10 @@ mod tests {
 
         let comparison = compare_paired_stats(&stats);
 
-        assert_eq!(comparison.std_error, 0.0);
-        assert_eq!(comparison.ci_95_lower, 10.0);
-        assert_eq!(comparison.ci_95_upper, 10.0);
+        assert_eq!(comparison.std_error, None);
+        assert_eq!(comparison.ci_95_lower, None);
+        assert_eq!(comparison.ci_95_upper, None);
+        assert!(!comparison.is_significant);
     }
 
     #[test]
@@ -850,7 +880,7 @@ mod tests {
             "significant improvement should be detected"
         );
         assert!(
-            comparison.ci_95_upper < 0.0,
+            comparison.ci_95_upper.unwrap() < 0.0,
             "CI upper bound should be negative for improvement"
         );
     }
@@ -919,9 +949,9 @@ mod tests {
             };
 
             let comparison = compare_paired_stats(&stats);
-            assert_eq!(comparison.std_error, 0.0);
-            assert_eq!(comparison.ci_95_lower, 10.0);
-            assert_eq!(comparison.ci_95_upper, 10.0);
+            assert_eq!(comparison.std_error, Some(0.0));
+            assert_eq!(comparison.ci_95_lower, Some(10.0));
+            assert_eq!(comparison.ci_95_upper, Some(10.0));
             assert!(comparison.is_significant);
         }
 
@@ -1152,8 +1182,8 @@ mod property_tests {
 
             let comparison = compare_paired_stats(&stats);
 
-            prop_assert!(comparison.ci_95_lower <= mean);
-            prop_assert!(comparison.ci_95_upper >= mean);
+            prop_assert!(comparison.ci_95_lower.unwrap() <= mean);
+            prop_assert!(comparison.ci_95_upper.unwrap() >= mean);
         }
 
         #[test]
@@ -1187,8 +1217,8 @@ mod property_tests {
             let small = make_comparison(10);
             let large = make_comparison(100);
 
-            let width_small = small.ci_95_upper - small.ci_95_lower;
-            let width_large = large.ci_95_upper - large.ci_95_lower;
+            let width_small = small.ci_95_upper.unwrap() - small.ci_95_lower.unwrap();
+            let width_large = large.ci_95_upper.unwrap() - large.ci_95_lower.unwrap();
 
             prop_assert!(width_large < width_small, "CI should narrow with more samples");
         }
@@ -1220,9 +1250,9 @@ mod property_tests {
 
             let comparison = compare_paired_stats(&stats);
 
-            prop_assert_eq!(comparison.std_error, 0.0);
-            prop_assert_eq!(comparison.ci_95_lower, mean);
-            prop_assert_eq!(comparison.ci_95_upper, mean);
+            prop_assert_eq!(comparison.std_error, Some(0.0));
+            prop_assert_eq!(comparison.ci_95_lower, Some(mean));
+            prop_assert_eq!(comparison.ci_95_upper, Some(mean));
         }
 
         #[test]
@@ -1253,7 +1283,8 @@ mod property_tests {
 
             let comparison = compare_paired_stats(&stats);
 
-            let is_significant = comparison.ci_95_lower > 0.0 || comparison.ci_95_upper < 0.0;
+            let is_significant = comparison.ci_95_lower.is_some_and(|lower| lower > 0.0)
+                || comparison.ci_95_upper.is_some_and(|upper| upper < 0.0);
             prop_assert_eq!(comparison.is_significant, is_significant);
         }
 
@@ -1288,14 +1319,14 @@ mod property_tests {
             if let Ok(stats) = compute_paired_stats(&samples, None, None) {
                 let cmp = compare_paired_stats(&stats);
                 prop_assert!(
-                    cmp.ci_95_lower <= cmp.mean_diff_ms,
+                    cmp.ci_95_lower.unwrap() <= cmp.mean_diff_ms,
                     "CI lower {} must be <= mean {}",
-                    cmp.ci_95_lower, cmp.mean_diff_ms
+                    cmp.ci_95_lower.unwrap(), cmp.mean_diff_ms
                 );
                 prop_assert!(
-                    cmp.ci_95_upper >= cmp.mean_diff_ms,
+                    cmp.ci_95_upper.unwrap() >= cmp.mean_diff_ms,
                     "CI upper {} must be >= mean {}",
-                    cmp.ci_95_upper, cmp.mean_diff_ms
+                    cmp.ci_95_upper.unwrap(), cmp.mean_diff_ms
                 );
             }
         }

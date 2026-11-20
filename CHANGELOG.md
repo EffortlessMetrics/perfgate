@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes beyond the prepared 0.18.1 patch-candidate notes below.
+### Fixed
+- Paired runs omit confidence bounds and cannot flag a significant regression below
+  the sample minimum. The Rust paired comparison API exposes optional bounds and standard error.
 
 ## [0.18.1] - Unreleased
 
