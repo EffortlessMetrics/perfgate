@@ -48,6 +48,40 @@ fn comment_dry_run_renders_compare_receipt() {
 }
 
 #[test]
+fn comment_uses_the_direction_from_compare() {
+    let dir = tempdir().unwrap();
+    let compare_path = dir.path().join("compare.json");
+    for (current, expected) in [
+        (
+            "current_warn.json",
+            "+19.00% | ▲ 19.0% improved | 20.0% (higher)",
+        ),
+        (
+            "current_pass.json",
+            "-5.00% | ▼ 5.0% regressed | 20.0% (higher)",
+        ),
+    ] {
+        perfgate_cmd()
+            .arg("compare")
+            .arg("--baseline")
+            .arg(fixtures_dir().join("baseline.json"))
+            .arg("--current")
+            .arg(fixtures_dir().join(current))
+            .args(["--direction", "wall_ms=higher", "--out"])
+            .arg(&compare_path)
+            .assert()
+            .success();
+
+        perfgate_cmd()
+            .args(["comment", "--dry-run", "--compare"])
+            .arg(&compare_path)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(expected));
+    }
+}
+
+#[test]
 fn comment_dry_run_renders_report_receipt() {
     let dir = tempdir().expect("failed to create temp dir");
     let compare_path = generate_warn_compare(dir.path());

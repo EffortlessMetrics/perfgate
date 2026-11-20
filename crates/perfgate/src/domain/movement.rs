@@ -21,6 +21,10 @@ pub fn movement_for_delta(metric: Metric, delta: &Delta) -> MetricMovement {
 
 #[must_use = "movement classification should drive user-facing judgment"]
 pub fn movement_for_pct(metric: Metric, pct: f64) -> MetricMovement {
+    movement_for_direction(metric.default_direction(), pct)
+}
+
+pub(crate) fn movement_for_direction(direction: Direction, pct: f64) -> MetricMovement {
     if !pct.is_finite() {
         return MetricMovement::Unknown;
     }
@@ -28,7 +32,7 @@ pub fn movement_for_pct(metric: Metric, pct: f64) -> MetricMovement {
         return MetricMovement::Unchanged;
     }
 
-    match metric.default_direction() {
+    match direction {
         Direction::Lower => {
             if pct < 0.0 {
                 MetricMovement::Improved
