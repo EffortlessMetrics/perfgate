@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Paired runs omit confidence bounds and cannot flag a significant regression below
-  the sample minimum. The Rust paired comparison API exposes optional bounds and standard error.
+  the sample minimum. Paired receipts record that minimum. When reading older receipts
+  without it, the Rust comparison API returns unavailable bounds. Bounds and standard error
+  are optional in Rust.
 
 ## [0.18.1] - Unreleased
 

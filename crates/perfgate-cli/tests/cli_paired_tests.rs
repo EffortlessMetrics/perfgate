@@ -4,6 +4,8 @@
 
 mod common;
 use common::perfgate_cmd;
+use perfgate::domain::compare_paired_stats;
+use perfgate_types::PairedRunReceipt;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::tempdir;
@@ -88,6 +90,99 @@ fn test_paired_basic_produces_valid_json() {
     assert_eq!(significance["significant"], false);
     assert!(significance.get("ci_lower").is_none());
     assert!(significance.get("ci_upper").is_none());
+    let typed: PairedRunReceipt = serde_json::from_str(&content).unwrap();
+    let decoded: PairedRunReceipt =
+        serde_json::from_slice(&serde_json::to_vec(&typed).unwrap()).unwrap();
+    assert_eq!(decoded.stats.significance_min_samples, Some(3));
+    let comparison = compare_paired_stats(&decoded.stats);
+    assert_eq!(
+        (comparison.ci_95_lower, comparison.ci_95_upper),
+        (None, None)
+    );
+    assert!(!comparison.is_significant);
+}
+
+#[test]
+fn paired_receipt_roundtrip_requires_a_recorded_minimum_for_confidence() {
+    let dir = tempdir().unwrap();
+    let out = dir.path().join("paired.json");
+    perfgate_cmd()
+        .args([
+            "paired",
+            "--name",
+            "roundtrip",
+            "--repeat",
+            "2",
+            "--significance-alpha",
+            "0.10",
+            "--significance-min-samples",
+            "2",
+            "--baseline-cmd",
+        ])
+        .args(success_command())
+        .arg("--current-cmd")
+        .args(success_command())
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .success();
+
+    let raw = fs::read(out).unwrap();
+    let receipt: PairedRunReceipt = serde_json::from_slice(&raw).unwrap();
+    let comparison = compare_paired_stats(&receipt.stats);
+    let sig = receipt.stats.wall_diff_ms.significance.as_ref().unwrap();
+    assert_eq!(sig.alpha, 0.10);
+    assert!(comparison.std_error.is_some());
+    assert!(comparison.ci_95_lower.is_some() && comparison.ci_95_upper.is_some());
+    assert_eq!(comparison.is_significant, sig.significant);
+
+    let encoded = serde_json::to_vec(&receipt).unwrap();
+    let decoded: PairedRunReceipt = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(decoded.stats.significance_min_samples, Some(2));
+    assert_eq!(
+        decoded
+            .stats
+            .wall_diff_ms
+            .significance
+            .as_ref()
+            .unwrap()
+            .alpha,
+        0.10
+    );
+    assert_eq!(compare_paired_stats(&decoded.stats), comparison);
+
+    let mut raw_receipt: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    let stats = raw_receipt["stats"].as_object_mut().unwrap();
+    assert_eq!(stats.remove("significance_min_samples"), Some(2.into()));
+
+    // Old writers could emit bounds of either sign regardless of the sample minimum.
+    let mut stored = raw_receipt["stats"]["wall_diff_ms"]["significance"].clone();
+    for (bound, significant) in [(0.0, false), (10.0, true)] {
+        stored["ci_lower"] = bound.into();
+        stored["ci_upper"] = bound.into();
+        stored["significant"] = significant.into();
+        raw_receipt["stats"]["wall_diff_ms"]["significance"] = stored.clone();
+        let legacy: PairedRunReceipt = serde_json::from_value(raw_receipt.clone()).unwrap();
+        let comparison = compare_paired_stats(&legacy.stats);
+        assert_eq!(
+            (comparison.ci_95_lower, comparison.ci_95_upper),
+            (None, None)
+        );
+        assert!(!comparison.is_significant);
+    }
+
+    // An absent significance object cannot activate the no-policy estimate on legacy data.
+    raw_receipt["stats"]["wall_diff_ms"]
+        .as_object_mut()
+        .unwrap()
+        .remove("significance");
+    let legacy: PairedRunReceipt = serde_json::from_value(raw_receipt).unwrap();
+    let comparison = compare_paired_stats(&legacy.stats);
+    assert_eq!(
+        (comparison.ci_95_lower, comparison.ci_95_upper),
+        (None, None)
+    );
+    assert!(!comparison.is_significant);
 }
 
 /// Test paired stats have correct structure (mean, median, std_dev, ci_lower, ci_upper)

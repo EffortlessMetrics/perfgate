@@ -488,6 +488,7 @@ fn paired_receipt_json_roundtrip() {
             },
         ],
         stats: PairedStats {
+            significance_min_samples: None,
             baseline_wall_ms: U64Summary::new(101, 100, 102),
             current_wall_ms: U64Summary::new(92, 90, 95),
             wall_diff_ms: PairedDiffSummary {

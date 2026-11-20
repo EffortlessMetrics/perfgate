@@ -167,6 +167,7 @@ pub fn compute_paired_stats(
         };
 
     Ok(PairedStats {
+        significance_min_samples: Some(significance_policy.map_or(2, paired_min_samples)),
         baseline_wall_ms,
         current_wall_ms,
         wall_diff_ms,
@@ -203,7 +204,7 @@ pub fn summarize_paired_diffs(
 
     let significance = policy.map(|p| {
         let alpha = p.alpha.unwrap_or(0.05);
-        let min_samples = p.min_samples.unwrap_or(3).max(2);
+        let min_samples = paired_min_samples(p);
         let bounds = (count >= min_samples)
             .then(|| paired_95_bounds(mean, std_dev / f64::from(count).sqrt(), count));
 
@@ -228,6 +229,10 @@ pub fn summarize_paired_diffs(
         count,
         significance,
     })
+}
+
+fn paired_min_samples(policy: &SignificancePolicy) -> u32 {
+    policy.min_samples.unwrap_or(3).max(2)
 }
 
 fn paired_95_bounds(mean: f64, std_error: f64, count: u32) -> (f64, f64) {
@@ -266,6 +271,7 @@ pub fn compute_paired_cv(samples: &[PairedSample]) -> f64 {
 /// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
 ///
 /// let stats = PairedStats {
+///     significance_min_samples: Some(2),
 ///     baseline_wall_ms: U64Summary::new(100, 100, 100 ),
 ///     current_wall_ms: U64Summary::new(120, 120, 120 ),
 ///     wall_diff_ms: PairedDiffSummary {
@@ -304,9 +310,8 @@ pub struct PairedComparison {
 /// Uses a paired t-test approach: t = 1.96 for n ≥ 30, t = 2.0 otherwise.
 /// Significance requires an available interval that excludes zero. With a
 /// policy, use the bounds recorded in the summary. Without a policy, estimate
-/// bounds from two or more measured pairs. Historical summaries do not record
-/// the configured minimum, so a stored interval spanning zero cannot establish
-/// whether an older run met its minimum.
+/// bounds from two or more measured pairs. Both paths require the recorded
+/// sample minimum. Older receipts without it yield no comparison bounds.
 ///
 /// # Examples
 ///
@@ -315,6 +320,7 @@ pub struct PairedComparison {
 /// use perfgate_types::{PairedStats, PairedDiffSummary, U64Summary};
 ///
 /// let stats = PairedStats {
+///     significance_min_samples: Some(2),
 ///     baseline_wall_ms: U64Summary::new(100, 90, 110 ),
 ///     current_wall_ms: U64Summary::new(110, 100, 120 ),
 ///     wall_diff_ms: PairedDiffSummary {
@@ -338,13 +344,17 @@ pub struct PairedComparison {
 pub fn compare_paired_stats(stats: &PairedStats) -> PairedComparison {
     let diff = &stats.wall_diff_ms;
     let std_error = (diff.count >= 2).then(|| diff.std_dev / f64::from(diff.count).sqrt());
-    let bounds = std_error.and_then(|se| match &diff.significance {
-        Some(sig) => sig.ci_lower.zip(sig.ci_upper).filter(|&(lower, upper)| {
-            // Older receipts could include a zero-excluding interval below the policy minimum.
-            sig.significant || (lower <= 0.0 && upper >= 0.0)
-        }),
-        None => Some(paired_95_bounds(diff.mean, se, diff.count)),
-    });
+    let bounds = stats
+        .significance_min_samples
+        .filter(|&minimum| diff.count >= minimum)
+        .and(std_error)
+        .and_then(|se| match &diff.significance {
+            Some(sig) => sig.ci_lower.zip(sig.ci_upper).filter(|&(lower, upper)| {
+                // A stored negative decision cannot establish significance.
+                sig.significant || (lower <= 0.0 && upper >= 0.0)
+            }),
+            None => Some(paired_95_bounds(diff.mean, se, diff.count)),
+        });
     let is_significant = bounds.is_some_and(|(lower, upper)| lower > 0.0 || upper < 0.0);
     let baseline_mean = stats.baseline_wall_ms.median as f64;
     let pct_change = if baseline_mean > 0.0 {
@@ -617,6 +627,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_basic() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(100, 90, 110),
             current_wall_ms: U64Summary::new(110, 100, 120),
             wall_diff_ms: PairedDiffSummary {
@@ -653,6 +664,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_ci_calculation() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(100, 100, 100),
             current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
@@ -700,6 +712,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_large_sample_t_value() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(100, 100, 100),
             current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
@@ -733,6 +746,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_not_significant() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(100, 100, 100),
             current_wall_ms: U64Summary::new(101, 101, 101),
             wall_diff_ms: PairedDiffSummary {
@@ -796,13 +810,14 @@ mod tests {
     }
 
     #[test]
-    fn paired_comparison_respects_recorded_significance_in_older_summaries() {
+    fn paired_comparison_requires_recorded_minimum_even_for_stored_bounds() {
         let samples = [
             paired_sample(0, false, 100, 110),
             paired_sample(1, false, 100, 110),
         ];
         let policy = SignificancePolicy::default();
         let mut stats = compute_paired_stats(&samples, None, Some(&policy)).unwrap();
+        stats.significance_min_samples = None;
         let sig = stats.wall_diff_ms.significance.as_mut().unwrap();
         // Older versions stored bounds even when the sample minimum prevented significance.
         sig.ci_lower = Some(10.0);
@@ -838,6 +853,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_single_sample() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(100, 100, 100),
             current_wall_ms: U64Summary::new(110, 110, 110),
             wall_diff_ms: PairedDiffSummary {
@@ -868,6 +884,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_zero_baseline() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(0, 0, 0),
             current_wall_ms: U64Summary::new(10, 10, 10),
             wall_diff_ms: PairedDiffSummary {
@@ -898,6 +915,7 @@ mod tests {
     #[test]
     fn test_compare_paired_stats_negative_improvement() {
         let stats = PairedStats {
+            significance_min_samples: Some(2),
             baseline_wall_ms: U64Summary::new(100, 100, 100),
             current_wall_ms: U64Summary::new(80, 80, 80),
             wall_diff_ms: PairedDiffSummary {
@@ -975,6 +993,7 @@ mod tests {
         #[test]
         fn test_ci_bounds_with_zero_std_dev() {
             let stats = PairedStats {
+                significance_min_samples: Some(2),
                 baseline_wall_ms: U64Summary::new(100, 100, 100),
                 current_wall_ms: U64Summary::new(110, 110, 110),
                 wall_diff_ms: PairedDiffSummary {
@@ -1004,6 +1023,7 @@ mod tests {
         #[test]
         fn test_large_positive_diff() {
             let stats = PairedStats {
+                significance_min_samples: Some(2),
                 baseline_wall_ms: U64Summary::new(100, 100, 100),
                 current_wall_ms: U64Summary::new(100000, 100000, 100000),
                 wall_diff_ms: PairedDiffSummary {
@@ -1032,6 +1052,7 @@ mod tests {
         #[test]
         fn test_very_small_diffs() {
             let stats = PairedStats {
+                significance_min_samples: Some(2),
                 baseline_wall_ms: U64Summary::new(100000, 100000, 100000),
                 current_wall_ms: U64Summary::new(100001, 100001, 100001),
                 wall_diff_ms: PairedDiffSummary {
@@ -1207,6 +1228,7 @@ mod property_tests {
             count in 2u32..100
         ) {
             let stats = PairedStats {
+                significance_min_samples: Some(2),
                 baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
@@ -1239,6 +1261,7 @@ mod property_tests {
         ) {
             let make_comparison = |count: u32| {
                 let stats = PairedStats {
+                    significance_min_samples: Some(2),
                     baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                     current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                     wall_diff_ms: PairedDiffSummary {
@@ -1275,6 +1298,7 @@ mod property_tests {
             count in 2u32..100
         ) {
             let stats = PairedStats {
+                significance_min_samples: Some(2),
                 baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {
@@ -1308,6 +1332,7 @@ mod property_tests {
             count in 1u32..50
         ) {
             let stats = PairedStats {
+                significance_min_samples: Some(2),
                 baseline_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 current_wall_ms: perfgate_types::U64Summary::new(100, 100, 100 ),
                 wall_diff_ms: PairedDiffSummary {

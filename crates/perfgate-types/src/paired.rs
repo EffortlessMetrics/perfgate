@@ -66,6 +66,9 @@ pub struct PairedDiffSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PairedStats {
+    /// Effective minimum measured pairs for confidence bounds. Absent in older receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub significance_min_samples: Option<u32>,
     pub baseline_wall_ms: U64Summary,
     pub current_wall_ms: U64Summary,
     pub wall_diff_ms: PairedDiffSummary,
@@ -204,6 +207,7 @@ mod tests {
                 rss_diff_kb: None,
             }],
             stats: PairedStats {
+                significance_min_samples: None,
                 baseline_wall_ms: U64Summary::new(100, 100, 100),
                 current_wall_ms: U64Summary::new(110, 110, 110),
                 wall_diff_ms: PairedDiffSummary {
