@@ -302,7 +302,11 @@ pub struct PairedComparison {
 /// Compare paired statistics and compute a confidence interval.
 ///
 /// Uses a paired t-test approach: t = 1.96 for n ≥ 30, t = 2.0 otherwise.
-/// A result is significant when the 95 % CI does not span zero.
+/// Significance requires an available interval that excludes zero. With a
+/// policy, use the bounds recorded in the summary. Without a policy, estimate
+/// bounds from two or more measured pairs. Historical summaries do not record
+/// the configured minimum, so a stored interval spanning zero cannot establish
+/// whether an older run met its minimum.
 ///
 /// # Examples
 ///
@@ -770,7 +774,9 @@ mod tests {
             paired_sample(2, false, 100, 110),
             paired_sample(3, false, 100, 110),
         ];
-        for (measured, minimum, available) in [(1, 1, false), (2, 3, false), (3, 3, true)] {
+        for (measured, minimum, available) in
+            [(1, 1, false), (2, 2, true), (2, 3, false), (3, 3, true)]
+        {
             let policy = SignificancePolicy {
                 min_samples: Some(minimum),
                 ..Default::default()
@@ -787,6 +793,46 @@ mod tests {
             assert_eq!(comparison.ci_95_upper, significance.ci_upper);
             assert_eq!(comparison.is_significant, available);
         }
+    }
+
+    #[test]
+    fn paired_comparison_respects_recorded_significance_in_older_summaries() {
+        let samples = [
+            paired_sample(0, false, 100, 110),
+            paired_sample(1, false, 100, 110),
+        ];
+        let policy = SignificancePolicy::default();
+        let mut stats = compute_paired_stats(&samples, None, Some(&policy)).unwrap();
+        let sig = stats.wall_diff_ms.significance.as_mut().unwrap();
+        // Older versions stored bounds even when the sample minimum prevented significance.
+        sig.ci_lower = Some(10.0);
+        sig.ci_upper = Some(10.0);
+        assert!(!sig.significant);
+        let comparison = compare_paired_stats(&stats);
+        assert_eq!(
+            (comparison.ci_95_lower, comparison.ci_95_upper),
+            (None, None)
+        );
+        assert!(!comparison.is_significant);
+    }
+
+    #[test]
+    fn two_identical_pairs_can_have_zero_bounds_at_an_explicit_minimum_of_two() {
+        let samples = [
+            paired_sample(0, false, 100, 100),
+            paired_sample(1, false, 100, 100),
+        ];
+        let policy = SignificancePolicy {
+            min_samples: Some(2),
+            ..Default::default()
+        };
+        let stats = compute_paired_stats(&samples, None, Some(&policy)).unwrap();
+        let comparison = compare_paired_stats(&stats);
+        assert_eq!(
+            (comparison.ci_95_lower, comparison.ci_95_upper),
+            (Some(0.0), Some(0.0))
+        );
+        assert!(!comparison.is_significant);
     }
 
     #[test]
